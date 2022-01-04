@@ -9,6 +9,7 @@ use std::time::{Instant};
 
 mod runtime;
 mod parser;
+mod lambolt;
 
 use runtime as rt;
 
