@@ -25,6 +25,5 @@ fn main() {
   //println!("* time: {:?}", total);
 
   println!("{}", text::text_to_utf8(&text::highlight(3, 7, &text::utf8_to_text("oi tudo bem? como vai você hoje?\neu pessoalmente estou ok.\nespero que vc tbm"))));
-
   println!(":pp");
 }

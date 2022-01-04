@@ -8,7 +8,7 @@ edition = "2018"
 [dependencies]
 
 [profile.dev]
-opt-level = 0
+# opt-level = 0
 
 [profile.release]
 opt-level = 3

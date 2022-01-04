@@ -170,11 +170,17 @@ pub fn ask_arg(mem: &Worker, term: Lnk, arg: u64) -> Lnk {
 }
 
 pub fn link(mem: &mut Worker, loc: u64, lnk: Lnk) -> Lnk {
-  mem.node[loc as usize] = lnk;
-  if get_tag(lnk) <= VAR {
-    mem.node[get_loc(lnk, if get_tag(lnk) == DP1 { 1 } else { 0 }) as usize] = Arg(loc);
+  unsafe {
+    // mem.node[loc as usize] = lnk;
+    *mem.node.get_unchecked_mut(loc as usize) = lnk;
+    if get_tag(lnk) <= VAR {
+      // let pos = get_loc(lnk, if get_tag(lnk) == DP1 { 1 } else { 0 });
+      let pos = get_loc(lnk, get_tag(lnk) & 0x01);
+      // mem.node[pos as usize] = Arg(loc);
+      *mem.node.get_unchecked_mut(pos as usize) = Arg(loc);
+    }
   }
-  return lnk;
+  lnk
 }
 
 pub fn alloc(mem: &mut Worker, size: u64) -> u64 {
