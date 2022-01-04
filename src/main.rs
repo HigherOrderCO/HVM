@@ -10,6 +10,7 @@ use std::time::{Instant};
 mod runtime;
 mod parser;
 mod lambolt;
+mod text;
 
 use runtime as rt;
 
@@ -22,6 +23,8 @@ fn main() {
   //let total = (start.elapsed().as_millis() as f64) / 1000.0;
   //println!("* rwts: {} ({:.2}m rwt/s)", worker.cost, (worker.cost as f64) / total / 1000000.0);
   //println!("* time: {:?}", total);
+
+  println!("{}", text::text_to_utf8(&text::highlight(3, 7, &text::utf8_to_text("oi tudo bem? como vai você hoje?\neu pessoalmente estou ok.\nespero que vc tbm"))));
 
   println!(":pp");
 }
