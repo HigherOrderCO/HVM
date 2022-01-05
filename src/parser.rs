@@ -6,6 +6,7 @@ use regex::Regex;
 // Regex
 // -----
 
+
 // Text
 // ----
 
@@ -19,18 +20,18 @@ use regex::Regex;
 #[derive(Clone, Copy, Debug)]
 struct State<'a> {
   code: &'a Text,
-  index: usize
+  index: usize,
 }
 
 type Parser<'a, A> = Rc<dyn Fn(State) -> (State, A) + 'a>;
 
 fn read<A>(parser: fn(state: State) -> (State, A), code: &Text) -> A {
-  let (state, value) = parser(State {code, index: 0});
+  let (state, value) = parser(State { code, index: 0 });
   return value;
 }
 
 fn skip_comment(mut state: State) -> (State, bool) {
-  let skips = equal_at(&state.code, &vec!['/','/'], state.index);
+  let skips = equal_at(&state.code, &vec!['/', '/'], state.index);
   if skips {
   state.index += 2;
   while state.index < state.code.len() && equal_at(&state.code, &vec!['\n'], state.index) {
@@ -67,6 +68,7 @@ fn match_here(c: &'static Text) -> Parser<bool> {
   } else {
     return (state, false);
   }
+
   });
 }
 
@@ -160,8 +162,10 @@ fn dry<'a, A: 'a>(parser: Parser<'a, A>) -> Parser<'a, A> {
 }
 
 fn expected_string<A>(c: &'static Text) -> Parser<A> {
+
   return Rc::new(move |state| {
   panic!("Expected '{}':\n{}", "TODO_text_to_utf8", "TODO_HIGHLIGHT_FUNCTION");
+
   });
 }
 

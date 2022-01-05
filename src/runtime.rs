@@ -16,7 +16,7 @@ const MEM_SPACE: u64 = U64_PER_GB;
 const SEEN_SIZE: usize = 4194304; // uses 32 MB, covers heaps up to 2 GB
 
 const VAL: u64 = 1;
-const EXT: u64 = 0x100000000; 
+const EXT: u64 = 0x100000000;
 const ARI: u64 = 0x100000000000000;
 const TAG: u64 = 0x1000000000000000;
 
@@ -42,7 +42,7 @@ const MUL: u64 = 0x2;
 const DIV: u64 = 0x3;
 const MOD: u64 = 0x4;
 const AND: u64 = 0x5;
-const OR : u64 = 0x6;
+const OR: u64 = 0x6;
 const XOR: u64 = 0x7;
 const SHL: u64 = 0x8;
 const SHR: u64 = 0x9;
@@ -205,42 +205,42 @@ pub fn clear(mem: &mut Worker, loc: u64, size: u64) {
 pub fn collect(mem: &mut Worker, term: Lnk) {
   match get_tag(term) {
     DP0 => {
-      link(mem, get_loc(term,0), Era());
+      link(mem, get_loc(term, 0), Era());
       //reduce(mem, get_loc(ask_arg(mem,term,1),0));
       return;
     }
     DP1 => {
-      link(mem, get_loc(term,1), Era());
+      link(mem, get_loc(term, 1), Era());
       //reduce(mem, get_loc(ask_arg(mem,term,0),0));
       return;
     }
     VAR => {
-      link(mem, get_loc(term,0), Era());
+      link(mem, get_loc(term, 0), Era());
       return;
     }
     LAM => {
-      if get_tag(ask_arg(mem,term,0)) != ERA {
-        link(mem, get_loc(ask_arg(mem,term,0),0), Era());
+      if get_tag(ask_arg(mem, term, 0)) != ERA {
+        link(mem, get_loc(ask_arg(mem, term, 0), 0), Era());
       }
-      collect(mem, ask_arg(mem,term,1));
-      clear(mem, get_loc(term,0), 2);
+      collect(mem, ask_arg(mem, term, 1));
+      clear(mem, get_loc(term, 0), 2);
       return;
     }
     APP => {
-      collect(mem, ask_arg(mem,term,0));
-      collect(mem, ask_arg(mem,term,1));
-      clear(mem, get_loc(term,0), 2);
+      collect(mem, ask_arg(mem, term, 0));
+      collect(mem, ask_arg(mem, term, 1));
+      clear(mem, get_loc(term, 0), 2);
       return;
     }
     PAR => {
-      collect(mem, ask_arg(mem,term,0));
-      collect(mem, ask_arg(mem,term,1));
-      clear(mem, get_loc(term,0), 2);
+      collect(mem, ask_arg(mem, term, 0));
+      collect(mem, ask_arg(mem, term, 1));
+      clear(mem, get_loc(term, 0), 2);
       return;
     }
     OP2 => {
-      collect(mem, ask_arg(mem,term,0));
-      collect(mem, ask_arg(mem,term,1));
+      collect(mem, ask_arg(mem, term, 0));
+      collect(mem, ask_arg(mem, term, 1));
       return;
     }
     U32 => {
@@ -249,9 +249,9 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
     CTR | FUN => {
       let arity = get_ari(term);
       for i in 0..arity {
-        collect(mem, ask_arg(mem,term,i));
+        collect(mem, ask_arg(mem, term, i));
       }
-      clear(mem, get_loc(term,0), arity);
+      clear(mem, get_loc(term, 0), arity);
       return;
     }
     _ => {
@@ -283,16 +283,16 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk
     if i != n {
       let leti = alloc(mem, 3);
       let argi = ask_arg(mem, term, i);
-      link(mem, fun0+i, Dp0(get_ext(argn), leti));
-      link(mem, fun1+i, Dp1(get_ext(argn), leti));
-      link(mem, leti+2, argi);
+      link(mem, fun0 + i, Dp0(get_ext(argn), leti));
+      link(mem, fun1 + i, Dp1(get_ext(argn), leti));
+      link(mem, leti + 2, argi);
     } else {
-      link(mem, fun0+i, ask_arg(mem, argn, 0));
-      link(mem, fun1+i, ask_arg(mem, argn, 1));
+      link(mem, fun0 + i, ask_arg(mem, argn, 0));
+      link(mem, fun1 + i, ask_arg(mem, argn, 1));
     }
   }
-  link(mem, par0+0, Cal(arit, func, fun0));
-  link(mem, par0+1, Cal(arit, func, fun1));
+  link(mem, par0 + 0, Cal(arit, func, fun0));
+  link(mem, par0 + 1, Cal(arit, func, fun1));
   let done = Par(get_ext(argn), par0);
   link(mem, host, done);
   return done;
@@ -305,7 +305,6 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
   let mut host = root;
 
   loop {
-
     let term = ask_lnk(mem, host);
 
     if init == 1 {
@@ -353,8 +352,8 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
             inc_cost(mem);
             subst(mem, ask_arg(mem, arg0, 0), ask_arg(mem, term, 1));
             let done = link(mem, host, ask_arg(mem, arg0, 1));
-            clear(mem, get_loc(term,0), 2);
-            clear(mem, get_loc(arg0,0), 2);
+            clear(mem, get_loc(term, 0), 2);
+            clear(mem, get_loc(arg0, 0), 2);
             init = 1;
             continue;
           }
@@ -364,13 +363,13 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
             let app1 = get_loc(arg0, 0);
             let let0 = alloc(mem, 3);
             let par0 = alloc(mem, 2);
-            link(mem, let0+2, ask_arg(mem, term, 1));
-            link(mem, app0+1, Dp0(get_ext(arg0), let0));
-            link(mem, app0+0, ask_arg(mem, arg0, 0));
-            link(mem, app1+0, ask_arg(mem, arg0, 1));
-            link(mem, app1+1, Dp1(get_ext(arg0), let0));
-            link(mem, par0+0, App(app0));
-            link(mem, par0+1, App(app1));
+            link(mem, let0 + 2, ask_arg(mem, term, 1));
+            link(mem, app0 + 1, Dp0(get_ext(arg0), let0));
+            link(mem, app0 + 0, ask_arg(mem, arg0, 0));
+            link(mem, app1 + 0, ask_arg(mem, arg0, 1));
+            link(mem, app1 + 1, Dp1(get_ext(arg0), let0));
+            link(mem, par0 + 0, App(app0));
+            link(mem, par0 + 1, App(app1));
             let done = Par(get_ext(arg0), par0);
             link(mem, host, done);
           }
@@ -384,16 +383,16 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
             let par0 = get_loc(arg0, 0);
             let lam0 = alloc(mem, 2);
             let lam1 = alloc(mem, 2);
-            link(mem, let0+2, ask_arg(mem, arg0, 1));
-            link(mem, par0+1, Var(lam1));
+            link(mem, let0 + 2, ask_arg(mem, arg0, 1));
+            link(mem, par0 + 1, Var(lam1));
             let arg0_arg_0 = ask_arg(mem, arg0, 0);
-            link(mem, par0+0, Var(lam0));
+            link(mem, par0 + 0, Var(lam0));
             subst(mem, arg0_arg_0, Par(get_ext(term), par0));
-            let term_arg_0 = ask_arg(mem,term,0);
-            link(mem, lam0+1, Dp0(get_ext(term), let0));
+            let term_arg_0 = ask_arg(mem, term, 0);
+            link(mem, lam0 + 1, Dp0(get_ext(term), let0));
             subst(mem, term_arg_0, Lam(lam0));
-            let term_arg_1 = ask_arg(mem,term,1);                      
-            link(mem, lam1+1, Dp1(get_ext(term), let0));
+            let term_arg_1 = ask_arg(mem, term, 1);
+            link(mem, lam1 + 1, Dp1(get_ext(term), let0));
             subst(mem, term_arg_1, Lam(lam1));
             let done = Lam(if get_tag(term) == DP0 { lam0 } else { lam1 });
             link(mem, host, done);
@@ -403,37 +402,44 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
           if get_tag(arg0) == PAR {
             if get_ext(term) == get_ext(arg0) {
               inc_cost(mem);
-              subst(mem, ask_arg(mem,term,0), ask_arg(mem,arg0,0));
-              subst(mem, ask_arg(mem,term,1), ask_arg(mem,arg0,1));
-              let done = link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
-              clear(mem, get_loc(term,0), 3);
-              clear(mem, get_loc(arg0,0), 2);
+              subst(mem, ask_arg(mem, term, 0), ask_arg(mem, arg0, 0));
+              subst(mem, ask_arg(mem, term, 1), ask_arg(mem, arg0, 1));
+              let done = link(
+                mem,
+                host,
+                ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }),
+              );
+              clear(mem, get_loc(term, 0), 3);
+              clear(mem, get_loc(arg0, 0), 2);
               init = 1;
               continue;
             } else {
               inc_cost(mem);
               let par0 = alloc(mem, 2);
-              let let0 = get_loc(term,0);
-              let par1 = get_loc(arg0,0);
+              let let0 = get_loc(term, 0);
+              let par1 = get_loc(arg0, 0);
               let let1 = alloc(mem, 3);
-              link(mem, let0+2, ask_arg(mem,arg0,0));
-              link(mem, let1+2, ask_arg(mem,arg0,1));
-              let term_arg_0 = ask_arg(mem,term,0);
-              let term_arg_1 = ask_arg(mem,term,1);
-              link(mem, par1+0, Dp1(get_ext(term),let0));
-              link(mem, par1+1, Dp1(get_ext(term),let1));
-              link(mem, par0+0, Dp0(get_ext(term),let0));
-              link(mem, par0+1, Dp0(get_ext(term),let1));
-              subst(mem, term_arg_0, Par(get_ext(arg0),par0));
-              subst(mem, term_arg_1, Par(get_ext(arg0),par1));
-              let done = Par(get_ext(arg0), if get_tag(term) == DP0 { par0 } else { par1 });
+              link(mem, let0 + 2, ask_arg(mem, arg0, 0));
+              link(mem, let1 + 2, ask_arg(mem, arg0, 1));
+              let term_arg_0 = ask_arg(mem, term, 0);
+              let term_arg_1 = ask_arg(mem, term, 1);
+              link(mem, par1 + 0, Dp1(get_ext(term), let0));
+              link(mem, par1 + 1, Dp1(get_ext(term), let1));
+              link(mem, par0 + 0, Dp0(get_ext(term), let0));
+              link(mem, par0 + 1, Dp0(get_ext(term), let1));
+              subst(mem, term_arg_0, Par(get_ext(arg0), par0));
+              subst(mem, term_arg_1, Par(get_ext(arg0), par1));
+              let done = Par(
+                get_ext(arg0),
+                if get_tag(term) == DP0 { par0 } else { par1 },
+              );
               link(mem, host, done);
             }
           }
           if get_tag(arg0) == U32 {
             inc_cost(mem);
-            subst(mem, ask_arg(mem,term,0), arg0);
-            subst(mem, ask_arg(mem,term,1), arg0);
+            subst(mem, ask_arg(mem, term, 0), arg0);
+            subst(mem, ask_arg(mem, term, 1), arg0);
             let done = arg0;
             link(mem, host, arg0);
           }
@@ -442,21 +448,25 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
             let func = get_ext(arg0);
             let arit = get_ari(arg0);
             if arit == 0 {
-              subst(mem, ask_arg(mem,term,0), Ctr(0, func, 0));
-              subst(mem, ask_arg(mem,term,1), Ctr(0, func, 0));
-              clear(mem, get_loc(term,0), 3);
+              subst(mem, ask_arg(mem, term, 0), Ctr(0, func, 0));
+              subst(mem, ask_arg(mem, term, 1), Ctr(0, func, 0));
+              clear(mem, get_loc(term, 0), 3);
               let done = link(mem, host, Ctr(0, func, 0));
             } else {
-              let ctr0 = get_loc(arg0,0);
+              let ctr0 = get_loc(arg0, 0);
               let ctr1 = alloc(mem, arit);
-              let term_arg_0 = ask_arg(mem,term,0);
-              let term_arg_1 = ask_arg(mem,term,1);
+              let term_arg_0 = ask_arg(mem, term, 0);
+              let term_arg_1 = ask_arg(mem, term, 1);
               for i in 0..arit {
-                let leti = if i == 0 { get_loc(term,0) } else { alloc(mem, 3) };
+                let leti = if i == 0 {
+                  get_loc(term, 0)
+                } else {
+                  alloc(mem, 3)
+                };
                 let arg0_arg_i = ask_arg(mem, arg0, i);
-                link(mem, ctr0+i, Dp0(get_ext(term), leti));
-                link(mem, ctr1+i, Dp1(get_ext(term), leti));
-                link(mem, leti+2, arg0_arg_i);
+                link(mem, ctr0 + i, Dp0(get_ext(term), leti));
+                link(mem, ctr1 + i, Dp1(get_ext(term), leti));
+                link(mem, leti + 2, arg0_arg_i);
               }
               subst(mem, term_arg_0, Ctr(arit, func, ctr0));
               subst(mem, term_arg_1, Ctr(arit, func, ctr1));
@@ -474,26 +484,26 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
             let b = get_val(arg1);
             let c;
             match get_ext(term) {
-              ADD => c = (a +  b) & 0xFFFFFFFF,
-              SUB => c = (a -  b) & 0xFFFFFFFF,
-              MUL => c = (a *  b) & 0xFFFFFFFF,
-              DIV => c = (a /  b) & 0xFFFFFFFF,
-              MOD => c = (a %  b) & 0xFFFFFFFF,
-              AND => c = (a &  b) & 0xFFFFFFFF,
-              OR  => c = (a |  b) & 0xFFFFFFFF,
-              XOR => c = (a ^  b) & 0xFFFFFFFF,
+              ADD => c = (a + b) & 0xFFFFFFFF,
+              SUB => c = (a - b) & 0xFFFFFFFF,
+              MUL => c = (a * b) & 0xFFFFFFFF,
+              DIV => c = (a / b) & 0xFFFFFFFF,
+              MOD => c = (a % b) & 0xFFFFFFFF,
+              AND => c = (a & b) & 0xFFFFFFFF,
+              OR => c = (a | b) & 0xFFFFFFFF,
+              XOR => c = (a ^ b) & 0xFFFFFFFF,
               SHL => c = (a << b) & 0xFFFFFFFF,
               SHR => c = (a >> b) & 0xFFFFFFFF,
-              LTN => c = if a <  b { 1 } else { 0 },
+              LTN => c = if a < b { 1 } else { 0 },
               LTE => c = if a <= b { 1 } else { 0 },
               EQL => c = if a == b { 1 } else { 0 },
               GTE => c = if a >= b { 1 } else { 0 },
-              GTN => c = if a >  b { 1 } else { 0 },
+              GTN => c = if a > b { 1 } else { 0 },
               NEQ => c = if a != b { 1 } else { 0 },
-              _   => c = 0,
+              _ => c = 0,
             }
             let done = U_32(c);
-            clear(mem, get_loc(term,0), 2);
+            clear(mem, get_loc(term, 0), 2);
             link(mem, host, done);
           }
           if get_tag(arg0) == PAR {
@@ -502,13 +512,13 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
             let op21 = get_loc(arg0, 0);
             let let0 = alloc(mem, 3);
             let par0 = alloc(mem, 2);
-            link(mem, let0+2, arg1);
-            link(mem, op20+1, Dp0(get_ext(arg0), let0));
-            link(mem, op20+0, ask_arg(mem, arg0, 0));
-            link(mem, op21+0, ask_arg(mem, arg0, 1));
-            link(mem, op21+1, Dp1(get_ext(arg0), let0));
-            link(mem, par0+0, Op2(get_ext(term), op20));
-            link(mem, par0+1, Op2(get_ext(term), op21));
+            link(mem, let0 + 2, arg1);
+            link(mem, op20 + 1, Dp0(get_ext(arg0), let0));
+            link(mem, op20 + 0, ask_arg(mem, arg0, 0));
+            link(mem, op21 + 0, ask_arg(mem, arg0, 1));
+            link(mem, op21 + 1, Dp1(get_ext(arg0), let0));
+            link(mem, par0 + 0, Op2(get_ext(term), op20));
+            link(mem, par0 + 1, Op2(get_ext(term), op21));
             let done = Par(get_ext(arg0), par0);
             link(mem, host, done);
           }
@@ -518,13 +528,13 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
             let op21 = get_loc(arg1, 0);
             let let0 = alloc(mem, 3);
             let par0 = alloc(mem, 2);
-            link(mem, let0+2, arg0);
-            link(mem, op20+0, Dp0(get_ext(arg1), let0));
-            link(mem, op20+1, ask_arg(mem, arg1, 0));
-            link(mem, op21+1, ask_arg(mem, arg1, 1));
-            link(mem, op21+0, Dp1(get_ext(arg1), let0));
-            link(mem, par0+0, Op2(get_ext(term), op20));
-            link(mem, par0+1, Op2(get_ext(term), op21));
+            link(mem, let0 + 2, arg0);
+            link(mem, op20 + 0, Dp0(get_ext(arg1), let0));
+            link(mem, op20 + 1, ask_arg(mem, arg1, 0));
+            link(mem, op21 + 1, ask_arg(mem, arg1, 1));
+            link(mem, op21 + 0, Dp1(get_ext(arg1), let0));
+            link(mem, par0 + 0, Op2(get_ext(term), op20));
+            link(mem, par0 + 1, Op2(get_ext(term), op21));
             let done = Par(get_ext(arg1), par0);
             link(mem, host, done);
           }
@@ -534,8 +544,8 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
           let ari = get_ari(term);
           match fun {
             _SLOW => {
-              let LOC_0 : u64 = get_loc(term,0);
-              let LNK_0 : u64 = ask_arg(mem, term, 0);
+              let LOC_0: u64 = get_loc(term, 0);
+              let LNK_0: u64 = ask_arg(mem, term, 0);
               if (get_tag(LNK_0) == PAR) {
                 cal_par(mem, host, term, LNK_0, 0);
               }
@@ -548,61 +558,61 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
                 continue;
               }
               inc_cost(mem);
-              let loc_0 : u64 = LOC_0;
-              let lnk_1 : u64 = LNK_0;
-              let dup_2 : u64 = alloc(mem, 3);
-              let col_3 : u64 = 0;
-              link(mem, dup_2+0, Era());
-              link(mem, dup_2+1, Era());
-              link(mem, dup_2+2, lnk_1);
-              let ret_6 : u64;
-              let op2_7 : u64 = alloc(mem, 2);
-              link(mem, op2_7+0, Dp0(col_3, dup_2));
-              link(mem, op2_7+1, U_32(1));
+              let loc_0: u64 = LOC_0;
+              let lnk_1: u64 = LNK_0;
+              let dup_2: u64 = alloc(mem, 3);
+              let col_3: u64 = 0;
+              link(mem, dup_2 + 0, Era());
+              link(mem, dup_2 + 1, Era());
+              link(mem, dup_2 + 2, lnk_1);
+              let ret_6: u64;
+              let op2_7: u64 = alloc(mem, 2);
+              link(mem, op2_7 + 0, Dp0(col_3, dup_2));
+              link(mem, op2_7 + 1, U_32(1));
               ret_6 = Op2(SUB, op2_7);
-              let ctr_8 : u64 = alloc(mem, 1);
-              link(mem, ctr_8+0, ret_6);
-              let ret_9 : u64;
-              let op2_10 : u64 = alloc(mem, 2);
-              link(mem, op2_10+0, Dp1(col_3, dup_2));
-              link(mem, op2_10+1, U_32(1));
+              let ctr_8: u64 = alloc(mem, 1);
+              link(mem, ctr_8 + 0, ret_6);
+              let ret_9: u64;
+              let op2_10: u64 = alloc(mem, 2);
+              link(mem, op2_10 + 0, Dp1(col_3, dup_2));
+              link(mem, op2_10 + 1, U_32(1));
               ret_9 = Op2(SUB, op2_10);
-              let ctr_11 : u64 = alloc(mem, 1);
-              link(mem, ctr_11+0, ret_9);
-              let ret_4 : u64;
-              let op2_5 : u64 = alloc(mem, 2);
-              link(mem, op2_5+0, Cal(1, _SLOW, ctr_8));
-              link(mem, op2_5+1, Cal(1, _SLOW, ctr_11));
+              let ctr_11: u64 = alloc(mem, 1);
+              link(mem, ctr_11 + 0, ret_9);
+              let ret_4: u64;
+              let op2_5: u64 = alloc(mem, 2);
+              link(mem, op2_5 + 0, Cal(1, _SLOW, ctr_8));
+              link(mem, op2_5 + 1, Cal(1, _SLOW, ctr_11));
               ret_4 = Op2(ADD, op2_5);
               link(mem, host, ret_4);
               clear(mem, get_loc(term, 0), 1);
               host = host;
               init = 1;
               continue;
-            },
+            }
             _MAIN => {
               inc_cost(mem);
-              let dup_0 : u64 = alloc(mem, 3);
-              let col_1 : u64 = 0;
+              let dup_0: u64 = alloc(mem, 3);
+              let col_1: u64 = 0;
               //OP2:0:5|ARG:0:4|U32:0:2|~      |DP1:0:0|FUN:1:3|FUN:1:4|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|
-              link(mem, dup_0+0, Era());
-              link(mem, dup_0+1, Era());
-              link(mem, dup_0+2, U_32(25));
-              let ctr_4 : u64 = alloc(mem, 1);
-              link(mem, ctr_4+0, Dp0(col_1, dup_0));
-              let ctr_5 : u64 = alloc(mem, 1);
-              link(mem, ctr_5+0, Dp1(col_1, dup_0));
-              let ret_2 : u64;
-              let op2_3 : u64 = alloc(mem, 2);
-              link(mem, op2_3+0, Cal(1, _SLOW, ctr_4));
-              link(mem, op2_3+1, Cal(1, _SLOW, ctr_5));
+              link(mem, dup_0 + 0, Era());
+              link(mem, dup_0 + 1, Era());
+              link(mem, dup_0 + 2, U_32(25));
+              let ctr_4: u64 = alloc(mem, 1);
+              link(mem, ctr_4 + 0, Dp0(col_1, dup_0));
+              let ctr_5: u64 = alloc(mem, 1);
+              link(mem, ctr_5 + 0, Dp1(col_1, dup_0));
+              let ret_2: u64;
+              let op2_3: u64 = alloc(mem, 2);
+              link(mem, op2_3 + 0, Cal(1, _SLOW, ctr_4));
+              link(mem, op2_3 + 1, Cal(1, _SLOW, ctr_5));
               ret_2 = Op2(ADD, op2_3);
               link(mem, host, ret_2);
               clear(mem, get_loc(term, 0), 0);
               host = host;
               init = 1;
               continue;
-            },
+            }
             _ => {
               //let_fun();
               break;
@@ -625,7 +635,7 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
   return ask_lnk(mem, root);
 }
 
-pub fn set_bit(bits: &mut[u64], bit: u64) {
+pub fn set_bit(bits: &mut [u64], bit: u64) {
   bits[bit as usize >> 6] |= (1 << (bit & 0x3f));
 }
 
@@ -668,7 +678,7 @@ pub fn normal_go(mem: &mut Worker, host: u64, seen: &mut [u64]) -> Lnk {
       _ => {}
     }
     for loc in rec_locs {
-      let lnk : Lnk = normal_go(mem, loc, seen);
+      let lnk: Lnk = normal_go(mem, loc, seen);
       link(mem, loc, lnk);
     }
     return term;
@@ -706,14 +716,14 @@ fn show_lnk(x: Lnk) -> String {
       F32 => "F32",
       OUT => "OUT",
       NIL => "NIL",
-      _   => "???",
+      _ => "???",
     };
     return format!("{}:{:x}:{:x}", tgs, ext, val);
   }
 }
 
 fn show_mem(worker: &Worker) -> String {
-  let mut s : String = String::new();
+  let mut s: String = String::new();
   for i in 0..24 {
     // pushes to the string
     s.push_str(&show_lnk(worker.node[i]));
