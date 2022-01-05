@@ -1,4 +1,4 @@
-use crate::text::{*};
+use crate::text::*;
 
 // Text
 // ----
@@ -13,18 +13,18 @@ use crate::text::{*};
 #[derive(Clone, Copy, Debug)]
 struct State<'a> {
   code: &'a Text,
-  index: usize
+  index: usize,
 }
 
 type Parser<A> = Box<dyn FnOnce(State) -> (State, A)>;
 
 fn read<A>(parser: fn(state: State) -> (State, A), code: &Text) -> A {
-  let (state, value) = parser(State {code, index: 0});
+  let (state, value) = parser(State { code, index: 0 });
   return value;
 }
 
 fn skip_comment(mut state: State) -> (State, bool) {
-  let skips = equal_at(&state.code, &vec!['/','/'], state.index);
+  let skips = equal_at(&state.code, &vec!['/', '/'], state.index);
   if skips {
     state.index += 2;
     while state.index < state.code.len() && equal_at(&state.code, &vec!['\n'], state.index) {
@@ -57,7 +57,13 @@ fn skip(state: State) -> (State, bool) {
 fn match_here(c: &'static Text) -> Parser<bool> {
   return Box::new(move |state| {
     if equal_at(&state.code, c, state.index) {
-      return (State {code: state.code, index: state.index + c.len()}, true);
+      return (
+        State {
+          code: state.code,
+          index: state.index + c.len(),
+        },
+        true,
+      );
     } else {
       return (state, false);
     }
@@ -86,7 +92,13 @@ fn get_char() -> Parser<char> {
   return Box::new(move |state| {
     let (state, skipped) = skip(state);
     if state.index < state.code.len() {
-      return (State {code: state.code, index: state.index + 1}, state.code[state.index]);
+      return (
+        State {
+          code: state.code,
+          index: state.index + 1,
+        },
+        state.code[state.index],
+      );
     } else {
       return (state, '\0');
     }
@@ -135,12 +147,18 @@ fn dry<A: 'static>(parser: Parser<A>) -> Parser<A> {
 
 fn expected_string<A>(c: &'static Text) -> Parser<A> {
   return Box::new(move |state| {
-    panic!("Expected '{}':\n{}", "TODO_text_to_utf8", "TODO_HIGHLIGHT_FUNCTION");
+    panic!(
+      "Expected '{}':\n{}",
+      "TODO_text_to_utf8", "TODO_HIGHLIGHT_FUNCTION"
+    );
   });
 }
 
 fn expected_type<A>(name: &'static Text) -> Parser<A> {
   return Box::new(move |state| {
-    panic!("Expected {}:\n{}", "TODO_text_to_utf8", "TODO_HIGHLIGHT_FUNCTION");
+    panic!(
+      "Expected {}:\n{}",
+      "TODO_text_to_utf8", "TODO_HIGHLIGHT_FUNCTION"
+    );
   });
 }
