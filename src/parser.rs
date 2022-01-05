@@ -165,3 +165,22 @@ fn expected_type<A>(name: &'static Text) -> Parser<A> {
     panic!("Expected {}:\n{}", "TODO_text_to_utf8", "TODO_HIGHLIGHT_FUNCTION");
   });
 }
+
+// Evaluates a list-like parser, with an opener, separator, and closer.
+fn list<'a, A: 'a, B: 'a>(
+  open: Parser<'a, bool>,
+  sep: Parser<'a, bool>,
+  close: Parser<'a, bool>,
+  elem: Parser<'a, A>,
+  make: fn(x: Vec<A>) -> B
+) -> Parser<'a, B> {
+    return Rc::new(move |state| {
+        let (state, skp) = open(state);
+        let (state, arr) = until(close.clone(), Rc::new(|state| {
+            let (state, val) = elem(state);
+            let (state, skp) = sep(state);
+            (state, val)
+        }))(state);
+        (state, make(arr))
+    })
+}
