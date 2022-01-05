@@ -1,4 +1,5 @@
 use crate::text::{*};
+use std::rc::Rc;
 
 // Text
 // ----
@@ -16,7 +17,7 @@ struct State<'a> {
   index: usize
 }
 
-type Parser<A> = Box<dyn FnOnce(State) -> (State, A)>;
+type Parser<'a, A> = Rc<dyn Fn(State) -> (State, A) + 'a>;
 
 fn read<A>(parser: fn(state: State) -> (State, A), code: &Text) -> A {
   let (state, value) = parser(State {code, index: 0});
@@ -55,7 +56,7 @@ fn skip(state: State) -> (State, bool) {
 }
 
 fn match_here(c: &'static Text) -> Parser<bool> {
-  return Box::new(move |state| {
+  return Rc::new(move |state| {
     if equal_at(&state.code, c, state.index) {
       return (State {code: state.code, index: state.index + c.len()}, true);
     } else {
@@ -64,15 +65,35 @@ fn match_here(c: &'static Text) -> Parser<bool> {
   });
 }
 
-fn matchs(match_code: &'static Text) -> Parser<bool> {
-  return Box::new(move |state| {
+fn until<'a, A: 'a>(delim: Parser<'a, bool>, parser: Parser<'a, A>) -> Parser<'a, Vec<A>> {
+    Rc::new(move |state| {
+        let mut ret = Vec::new();
+        let mut delimited = true;
+        let mut state = state;
+        while delimited {
+            let (new_state, new_delimited) = delim(state);
+            if new_delimited {
+                let (new_state, parsed) = parser(new_state);
+                ret.push(parsed);
+                state = new_state;
+            } else {
+                state = new_state;
+            }
+            delimited = new_delimited;
+        }
+        (state, ret)
+    })
+}
+
+fn matchs<'a>(match_code: &'static Text) -> Parser<'a, bool> {
+  return Rc::new(move |state| {
     let (state, skipped) = skip(state);
     return match_here(match_code)(state);
   });
 }
 
 fn consume(c: &'static Text) -> Parser<()> {
-  return Box::new(move |state| {
+  return Rc::new(move |state| {
     let (state, matched) = match_here(c)(state);
     if matched {
       return (state, ());
@@ -82,8 +103,8 @@ fn consume(c: &'static Text) -> Parser<()> {
   });
 }
 
-fn get_char() -> Parser<char> {
-  return Box::new(move |state| {
+fn get_char<'a>() -> Parser<'a, char> {
+  return Rc::new(move |state| {
     let (state, skipped) = skip(state);
     if state.index < state.code.len() {
       return (State {code: state.code, index: state.index + 1}, state.code[state.index]);
@@ -93,17 +114,17 @@ fn get_char() -> Parser<char> {
   });
 }
 
-fn done() -> Parser<bool> {
-  return Box::new(move |state| {
+fn done<'a>() -> Parser<'a, bool> {
+  return Rc::new(move |state| {
     let (state, skipped) = skip(state);
     return (state, state.index == state.code.len());
   });
 }
 
-fn guard<A: 'static>(head: Parser<bool>, body: Parser<A>) -> Parser<Option<A>> {
-  return Box::new(move |state| {
+fn guard<'a, A: 'a>(head: Parser<'a, bool>, body: Parser<'a, A>) -> Parser<'a, Option<A>> {
+  return Rc::new(move |state| {
     let (state, skipped) = skip(state);
-    let (state, matched) = dry(head)(state);
+    let (state, matched) = dry(head.clone())(state);
     if matched {
       let (state, got) = body(state);
       return (state, Some(got));
@@ -113,10 +134,10 @@ fn guard<A: 'static>(head: Parser<bool>, body: Parser<A>) -> Parser<Option<A>> {
   });
 }
 
-fn grammar<A: 'static>(name: &'static Text, choices: Vec<Parser<Option<A>>>) -> Parser<A> {
-  return Box::new(move |state| {
+fn grammar<'a, A: 'a>(name: &'static Text, choices: Vec<Parser<'a, Option<A>>>) -> Parser<'a, A> {
+  return Rc::new(move |state| {
     //for i in 0..choices.len() {
-    for choice in choices {
+    for choice in &choices {
       let (state, got) = choice(state);
       if got.is_some() {
         return (state, got.unwrap());
@@ -126,21 +147,21 @@ fn grammar<A: 'static>(name: &'static Text, choices: Vec<Parser<Option<A>>>) -> 
   });
 }
 
-fn dry<A: 'static>(parser: Parser<A>) -> Parser<A> {
-  return Box::new(move |state| {
+fn dry<'a, A: 'a>(parser: Parser<'a, A>) -> Parser<'a, A> {
+  return Rc::new(move |state| {
     let (state, result) = parser(state);
     return (state, result);
   });
 }
 
 fn expected_string<A>(c: &'static Text) -> Parser<A> {
-  return Box::new(move |state| {
+  return Rc::new(move |state| {
     panic!("Expected '{}':\n{}", "TODO_text_to_utf8", "TODO_HIGHLIGHT_FUNCTION");
   });
 }
 
 fn expected_type<A>(name: &'static Text) -> Parser<A> {
-  return Box::new(move |state| {
+  return Rc::new(move |state| {
     panic!("Expected {}:\n{}", "TODO_text_to_utf8", "TODO_HIGHLIGHT_FUNCTION");
   });
 }
