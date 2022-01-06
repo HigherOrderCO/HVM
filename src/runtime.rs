@@ -10,48 +10,48 @@ const U64_PER_KB: u64 = 0x80;
 const U64_PER_MB: u64 = 0x20000;
 const U64_PER_GB: u64 = 0x8000000;
 
-const MAX_ARITY: u64 = 16;
-const MEM_SPACE: u64 = U64_PER_GB;
+pub const MAX_ARITY: u64 = 16;
+pub const MEM_SPACE: u64 = U64_PER_GB;
 
-const SEEN_SIZE: usize = 4194304; // uses 32 MB, covers heaps up to 2 GB
+pub const SEEN_SIZE: usize = 4194304; // uses 32 MB, covers heaps up to 2 GB
 
-const VAL: u64 = 1;
-const EXT: u64 = 0x100000000;
-const ARI: u64 = 0x100000000000000;
-const TAG: u64 = 0x1000000000000000;
+pub const VAL: u64 = 1;
+pub const EXT: u64 = 0x100000000;
+pub const ARI: u64 = 0x100000000000000;
+pub const TAG: u64 = 0x1000000000000000;
 
-const DP0: u64 = 0x0;
-const DP1: u64 = 0x1;
-const VAR: u64 = 0x2;
-const ARG: u64 = 0x3;
-const ERA: u64 = 0x4;
-const LAM: u64 = 0x5;
-const APP: u64 = 0x6;
-const PAR: u64 = 0x7;
-const CTR: u64 = 0x8;
-const FUN: u64 = 0x9;
-const OP2: u64 = 0xA;
-const U32: u64 = 0xB;
-const F32: u64 = 0xC;
-const OUT: u64 = 0xE;
-const NIL: u64 = 0xF;
+pub const DP0: u64 = 0x0;
+pub const DP1: u64 = 0x1;
+pub const VAR: u64 = 0x2;
+pub const ARG: u64 = 0x3;
+pub const ERA: u64 = 0x4;
+pub const LAM: u64 = 0x5;
+pub const APP: u64 = 0x6;
+pub const PAR: u64 = 0x7;
+pub const CTR: u64 = 0x8;
+pub const FUN: u64 = 0x9;
+pub const OP2: u64 = 0xA;
+pub const U32: u64 = 0xB;
+pub const F32: u64 = 0xC;
+pub const OUT: u64 = 0xE;
+pub const NIL: u64 = 0xF;
 
-const ADD: u64 = 0x0;
-const SUB: u64 = 0x1;
-const MUL: u64 = 0x2;
-const DIV: u64 = 0x3;
-const MOD: u64 = 0x4;
-const AND: u64 = 0x5;
-const OR: u64 = 0x6;
-const XOR: u64 = 0x7;
-const SHL: u64 = 0x8;
-const SHR: u64 = 0x9;
-const LTN: u64 = 0xA;
-const LTE: u64 = 0xB;
-const EQL: u64 = 0xC;
-const GTE: u64 = 0xD;
-const GTN: u64 = 0xE;
-const NEQ: u64 = 0xF;
+pub const ADD: u64 = 0x0;
+pub const SUB: u64 = 0x1;
+pub const MUL: u64 = 0x2;
+pub const DIV: u64 = 0x3;
+pub const MOD: u64 = 0x4;
+pub const AND: u64 = 0x5;
+pub const OR: u64 = 0x6;
+pub const XOR: u64 = 0x7;
+pub const SHL: u64 = 0x8;
+pub const SHR: u64 = 0x9;
+pub const LTN: u64 = 0xA;
+pub const LTE: u64 = 0xB;
+pub const EQL: u64 = 0xC;
+pub const GTE: u64 = 0xD;
+pub const GTN: u64 = 0xE;
+pub const NEQ: u64 = 0xF;
 
 const _MAIN: u64 = 0;
 const _SLOW: u64 = 1;
@@ -59,7 +59,7 @@ const _SLOW: u64 = 1;
 // Types
 // -----
 
-type Lnk = u64;
+pub type Lnk = u64;
 
 pub struct Worker {
   pub node: Vec<Lnk>,

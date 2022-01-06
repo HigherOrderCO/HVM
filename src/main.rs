@@ -11,6 +11,7 @@ mod lambolt;
 mod parser;
 mod runtime;
 mod text;
+mod readback;
 
 use runtime as rt;
 
