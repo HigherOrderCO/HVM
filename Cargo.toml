@@ -6,6 +6,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+cranelift = "0.80.0"
+cranelift-jit = "0.80.0"
+cranelift-module = "0.80.0"
+cranelift-native = "0.80.0"
 
 [profile.dev]
 # opt-level = 0
