@@ -11,11 +11,7 @@ struct State<'a> {
   count: &'a mut u32,
 }
 
-fn name(
-  state: &mut State,
-  term: Lnk,
-  depth: u32,
-) {
+fn name(state: &mut State, term: Lnk, depth: u32) {
   // let &mut State{mem, ref mut seen, ref mut names, ref mut count} = state; // TODO: ???
   if state.seen.contains(&term) {
     return;
@@ -32,10 +28,10 @@ fn name(
       name(state, body, depth + 1);
     }
     rt::APP => {
-        let lam = rt::ask_arg(state.mem, term, 0);
-        let arg = rt::ask_arg(state.mem, term, 1);
-        name(state, lam, depth + 1);
-        name(state, arg, depth + 1);
+      let lam = rt::ask_arg(state.mem, term, 0);
+      let arg = rt::ask_arg(state.mem, term, 1);
+      name(state, lam, depth + 1);
+      name(state, arg, depth + 1);
     }
     rt::PAR => {
       let arg0 = rt::ask_arg(state.mem, term, 0);
