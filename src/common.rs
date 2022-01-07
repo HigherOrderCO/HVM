@@ -1,5 +1,5 @@
+use crate::lambolt::{File, Rule, Term};
 use std::{collections::HashMap, u128};
-use crate::lambolt::{File, Term, Rule};
 
 pub type IdTable = HashMap<String, u64>;
 // Generates a name table for a whole program. That table links constructor
@@ -7,26 +7,26 @@ pub type IdTable = HashMap<String, u64>;
 pub fn gen_name_table(file: &File) -> IdTable {
   fn find_ctrs(term: &Term, table: &mut IdTable, fresh: &mut u64) {
     match term {
-      Term::Dup{expr, body, ..} => {
+      Term::Dup { expr, body, .. } => {
         find_ctrs(expr, table, fresh);
         find_ctrs(body, table, fresh);
-      },
-      Term::Let{expr, body, ..} => {
+      }
+      Term::Let { expr, body, .. } => {
         find_ctrs(expr, table, fresh);
         find_ctrs(body, table, fresh);
-      },
-      Term::Lam{body, ..} => {
+      }
+      Term::Lam { body, .. } => {
         find_ctrs(body, table, fresh);
-      },
-      Term::App{func, argm, ..} => {
+      }
+      Term::App { func, argm, .. } => {
         find_ctrs(func, table, fresh);
         find_ctrs(argm, table, fresh);
-      },
-      Term::Op2{val0, val1, ..} => {
+      }
+      Term::Op2 { val0, val1, .. } => {
         find_ctrs(val0, table, fresh);
         find_ctrs(val1, table, fresh);
-      },
-      Term::Ctr{name, args} => {
+      }
+      Term::Ctr { name, args } => {
         let id = table.get(name);
         if id.is_none() {
           let first_char = name.chars().next();
@@ -46,7 +46,7 @@ pub fn gen_name_table(file: &File) -> IdTable {
           }
         }
       }
-      _ => ()
+      _ => (),
     }
   }
 
@@ -60,21 +60,19 @@ pub fn gen_name_table(file: &File) -> IdTable {
   table
 }
 
-
 pub type IsFunctionTable = HashMap<String, bool>;
 // Finds constructors that are used as functions.
 pub fn gen_is_call(file: &File) -> IsFunctionTable {
-  let mut is_call : IsFunctionTable = HashMap::new();
+  let mut is_call: IsFunctionTable = HashMap::new();
   let rules = &file.0;
   for rule in rules {
     let term = &rule.lhs;
-    if let Term::Ctr{name, ..} = term {
+    if let Term::Ctr { name, .. } = term {
       is_call.insert(name.clone(), true);
     }
   }
   is_call
 }
-
 
 pub type GroupTable<'a, 'b> = HashMap<String, (usize, Vec<&'a Rule>)>;
 // Groups rules by name. For example:
@@ -84,11 +82,11 @@ pub type GroupTable<'a, 'b> = HashMap<String, (usize, Vec<&'a Rule>)>;
 //   (add (zero)   (zero)  ) = (zero)
 // This is a group of 4 rules starting with the "add" name.
 pub fn gen_groups(file: &File) -> GroupTable {
-  let mut groups : GroupTable = HashMap::new();
+  let mut groups: GroupTable = HashMap::new();
   let rules = &file.0;
-  for rule in rules  {
+  for rule in rules {
     let term = &rule.lhs;
-    if let Term::Ctr{name, args} = term {
+    if let Term::Ctr { name, args } = term {
       let args_size = args.len();
       let group = groups.get_mut(name);
       match group {

@@ -7,12 +7,12 @@
 //use std::time::{SystemTime, UNIX_EPOCH};
 use std::time::Instant;
 
+mod common;
 mod lambolt;
 mod parser;
 mod readback;
 mod runtime;
 mod text;
-mod common;
 
 use runtime as rt;
 
