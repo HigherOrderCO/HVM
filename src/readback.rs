@@ -90,7 +90,11 @@ fn go(
         format!("λ{} {}", name_txt, body_txt)
       }
       rt::APP => {
-        panic!("TODO: not implemented")
+        let func = rt::ask_arg(state.mem, term, 0);
+        let func_txt = go(state, func, depth + 1);
+        let argm = rt::ask_arg(state.mem, term, 1);
+        let argm_txt = go(state, func, depth + 1);
+        format!("({} {})", func_txt, argm_txt)
       }
       rt::PAR => {
         panic!("TODO: not implemented")
@@ -108,10 +112,19 @@ fn go(
         panic!("TODO: not implemented")
       }
       rt::CTR | rt::FUN => {
-        panic!("TODO: not implemented")
+        let func = rt::get_fun(term);
+        let arit = rt::get_ari(term);
+        let args = (0..arit).map(|i| {
+          let arg = rt::ask_arg(state.mem, term, i);
+          let arg_txt = go(state, arg, depth + 1);
+          arg_txt
+        });
+        // TODO: Handle `table[func] ||`.
+        let name = format!("${}", func);
+        format!("({}{})", name, args.map(|x| format!(" {}", x)).collect::<String>())
       }
       default => {
-        panic!("TODO: not implemented")
+        format!("?({})", rt::get_tag(term))
       }
     }
   }

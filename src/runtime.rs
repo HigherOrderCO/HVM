@@ -150,6 +150,14 @@ pub fn get_val(lnk: Lnk) -> u64 {
   return lnk & 0xFFFFFFFF;
 }
 
+pub fn get_col(lnk: Lnk) -> u64 {
+  todo!()
+}
+
+pub fn get_fun(lnk: Lnk) -> u64 {
+  todo!()
+}
+
 pub fn get_ari(lnk: Lnk) -> u64 {
   return (lnk / ARI) & 0xF;
 }
