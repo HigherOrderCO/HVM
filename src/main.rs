@@ -27,7 +27,7 @@ enum StrBinTree {
 }
 
 fn sbt_tip(state: State) -> (State, Option<StrBinTree>) {
-//  println!("sbt_tip");
+  //  println!("sbt_tip");
   (state, Some(StrBinTree::Tip))
 }
 fn sbt_tie(state: State) -> (State, Option<StrBinTree>) {
@@ -36,61 +36,62 @@ fn sbt_tie(state: State) -> (State, Option<StrBinTree>) {
     Some(left_val) => {
       let (state, right) = sbt(state);
       match right {
-        Some(right_val) => {
-          (state, Some(StrBinTree::Tie { left: Box::new(left_val), right: Box::new(right_val) }))
-        },
-        None =>
-          (state, None)
-      }}
-    None =>
-      (state, None)
+        Some(right_val) => (
+          state,
+          Some(StrBinTree::Tie {
+            left: Box::new(left_val),
+            right: Box::new(right_val),
+          }),
+        ),
+        None => (state, None),
+      }
+    }
+    None => (state, None),
   }
 }
 fn sbt(state: State) -> (State, Option<StrBinTree>) {
-//    println!("sbt:");
-//    debug(state);
-//    println!("");
-    let left_paren = Rc::new(text::utf8_to_text("("));
-    let right_paren = Rc::new(text::utf8_to_text(")"));
-    let (state, has_left_paren) = matchs(left_paren)(state);
-    if has_left_paren {
-      let (state, result) = grammar(&text::utf8_to_text("bintree"), vec![Rc::new(sbt_tie), Rc::new(sbt_tip)])(state);
-      match result {
-        Some(tree) => {
-          let (state, has_right_paren) = matchs(right_paren)(state);
-          if has_right_paren {
-//            println!("sbt_tie");
-            (state, Some(tree))
-          } else {
-            (state, None)
-          }
-        }
-        None =>
+  //    println!("sbt:");
+  //    debug(state);
+  //    println!("");
+  let left_paren = Rc::new(text::utf8_to_text("("));
+  let right_paren = Rc::new(text::utf8_to_text(")"));
+  let (state, has_left_paren) = matchs(left_paren)(state);
+  if has_left_paren {
+    let (state, result) = grammar(
+      &text::utf8_to_text("bintree"),
+      vec![Rc::new(sbt_tie), Rc::new(sbt_tip)],
+    )(state);
+    match result {
+      Some(tree) => {
+        let (state, has_right_paren) = matchs(right_paren)(state);
+        if has_right_paren {
+          //            println!("sbt_tie");
+          (state, Some(tree))
+        } else {
           (state, None)
+        }
       }
-    } else {
-      (state, None)
+      None => (state, None),
     }
+  } else {
+    (state, None)
+  }
 }
 fn main() {
   let state = parser::State {
-      code: &text::utf8_to_text(
-        "((()(()()))())"
-      ),
-      index: 0
+    code: &text::utf8_to_text("((()(()()))())"),
+    index: 0,
   };
   let (state, result) = sbt(state);
   match result {
-      Some(tree) =>
-        println!("parsed"),
-      None =>
-        println!("not parsed")
+    Some(tree) => println!("parsed"),
+    None => println!("not parsed"),
   };
-//  if result {
-//      println!("it's true, while the awful pray for tomorrow");
-//  } else {
-//      println!("it's false");
-//  }
+  //  if result {
+  //      println!("it's true, while the awful pray for tomorrow");
+  //  } else {
+  //      println!("it's false");
+  //  }
 
   //let mut worker = rt::new_worker();
   //worker.size = 1;

@@ -23,9 +23,9 @@ pub struct State<'a> {
 pub type Parser<'a, A> = Rc<dyn Fn(State) -> (State, A) + 'a>;
 
 pub fn debug(state: State) {
-    let slice = &state.code[state.index..];
-    let slice_str = text_to_utf8(slice);
-    println!("{}", slice_str);
+  let slice = &state.code[state.index..];
+  let slice_str = text_to_utf8(slice);
+  println!("{}", slice_str);
 }
 
 pub fn read<A>(parser: fn(state: State) -> (State, A), code: &Text) -> A {
@@ -159,15 +159,18 @@ pub fn guard<'a, A: 'a>(head: Parser<'a, bool>, body: Parser<'a, A>) -> Parser<'
   })
 }
 
-pub fn grammar<'a, A: 'a>(name: &'a Text, choices: Vec<Parser<'a, Option<A>>>) -> Parser<'a, Option<A>> {
+pub fn grammar<'a, A: 'a>(
+  name: &'a Text,
+  choices: Vec<Parser<'a, Option<A>>>,
+) -> Parser<'a, Option<A>> {
   Rc::new(move |state| {
     for choice in &choices {
       let (state, result) = choice(state);
       match result {
-          Some(value) => {
-              return (state, Some(value));
-          },
-          None => {}
+        Some(value) => {
+          return (state, Some(value));
+        }
+        None => {}
       };
     }
     (state, None)
