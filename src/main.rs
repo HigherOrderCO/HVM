@@ -12,6 +12,7 @@ mod parser;
 mod readback;
 mod runtime;
 mod text;
+mod common;
 
 use runtime as rt;
 
