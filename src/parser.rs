@@ -28,23 +28,27 @@ fn read<A>(parser: fn(state: State) -> (State, A), code: &Text) -> A {
 }
 
 fn skip_comment(mut state: State) -> (State, bool) {
-  let skips = equal_at(&state.code, &vec!['/', '/'], state.index);
-  if skips {
+  if state.index + 1 < state.code.len() && equal_at(&state.code, &vec!['/', '/'], state.index) {
     state.index += 2;
     while state.index < state.code.len() && equal_at(&state.code, &vec!['\n'], state.index) {
       state.index += 1;
     }
+    (state, true)
+  } else {
+    (state, false)
   }
-  return (state, skips);
 }
 
 fn skip_spaces(mut state: State) -> (State, bool) {
-  let mut skips = equal_at(&state.code, &vec![' '], state.index);
-  while skips {
-    state.index += 1;
-    skips = equal_at(&state.code, &vec![' '], state.index);
+  if state.index < state.code.len() && equal_at(&state.code, &vec![' '], state.index) {
+      state.index += 1;
+      while state.index < state.code.len() && equal_at(&state.code, &vec![' '], state.index) {
+        state.index += 1;
+      }
+      (state, true)
+  } else {
+      (state, false)
   }
-  return (state, skips);
 }
 
 fn skip(state: State) -> (State, bool) {
@@ -58,9 +62,9 @@ fn skip(state: State) -> (State, bool) {
   }
 }
 
-fn match_here(c: &'static Text) -> Parser<bool> {
+fn match_here<'a>(c: Rc<Text>) -> Parser<'a, bool> {
   return Rc::new(move |state| {
-    if equal_at(&state.code, c, state.index) {
+    if equal_at(&state.code, &c, state.index) {
       return (
         State {
           code: state.code,
@@ -94,23 +98,23 @@ fn until<'a, A: 'a>(delim: Parser<'a, bool>, parser: Parser<'a, A>) -> Parser<'a
   })
 }
 
-fn matchs<'a>(match_code: &'static Text) -> Parser<'a, bool> {
+pub fn matchs<'a>(match_code: Rc<Text>) -> Parser<'a, bool> {
   return Rc::new(move |state| {
     let (state, skipped) = skip(state);
-    return match_here(match_code)(state);
+    return match_here(match_code.clone())(state);
   });
 }
 
-fn consume(c: &'static Text) -> Parser<()> {
-  return Rc::new(move |state| {
-    let (state, matched) = match_here(c)(state);
-    if matched {
-      return (state, ());
-    } else {
-      return expected_string(c)(state);
-    }
-  });
-}
+//fn consume(c: &'static Text) -> Parser<()> {
+//  return Rc::new(move |state| {
+//    let (state, matched) = match_here(c)(state);
+//    if matched {
+//      return (state, ());
+//    } else {
+//      return expected_string(c)(state);
+//    }
+//  });
+//}
 
 fn get_char<'a>() -> Parser<'a, char> {
   return Rc::new(move |state| {
