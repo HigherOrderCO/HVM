@@ -12,7 +12,9 @@ pub type Text = Vec<char>;
 
 pub fn equal_at(text: &Text, test: &Text, i: usize) -> bool {
   for j in 0..test.len() {
-    if test[i as usize + j] != test[j as usize] {
+    let left_idx = i as usize + j;
+    let right_idx = j as usize;
+    if left_idx >= text.len() || text[left_idx] != test[right_idx] {
       return false;
     }
   }
