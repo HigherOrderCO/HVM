@@ -121,7 +121,11 @@ fn go(
         });
         // TODO: Handle `table[func] ||`.
         let name = format!("${}", func);
-        format!("({}{})", name, args.map(|x| format!(" {}", x)).collect::<String>())
+        format!(
+          "({}{})",
+          name,
+          args.map(|x| format!(" {}", x)).collect::<String>()
+        )
       }
       default => {
         format!("?({})", rt::get_tag(term))
