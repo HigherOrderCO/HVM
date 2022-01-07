@@ -15,12 +15,12 @@ use std::rc::Rc;
 //export type Parser<A> = (state: State) => [State, A];
 //Rust:
 #[derive(Clone, Copy, Debug)]
-struct State<'a> {
-  code: &'a Text,
-  index: usize,
+pub struct State<'a> {
+  pub code: &'a Text,
+  pub index: usize,
 }
 
-type Parser<'a, A> = Rc<dyn Fn(State) -> (State, A) + 'a>;
+pub type Parser<'a, A> = Rc<dyn Fn(State) -> (State, A) + 'a>;
 
 fn read<A>(parser: fn(state: State) -> (State, A), code: &Text) -> A {
   let (state, value) = parser(State { code, index: 0 });
