@@ -41,13 +41,13 @@ fn skip_comment(mut state: State) -> (State, bool) {
 
 fn skip_spaces(mut state: State) -> (State, bool) {
   if state.index < state.code.len() && equal_at(&state.code, &vec![' '], state.index) {
+    state.index += 1;
+    while state.index < state.code.len() && equal_at(&state.code, &vec![' '], state.index) {
       state.index += 1;
-      while state.index < state.code.len() && equal_at(&state.code, &vec![' '], state.index) {
-        state.index += 1;
-      }
-      (state, true)
+    }
+    (state, true)
   } else {
-      (state, false)
+    (state, false)
   }
 }
 
