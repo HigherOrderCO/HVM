@@ -7,7 +7,6 @@
 #[macro_use(lazy_static)]
 extern crate lazy_static;
 
-
 //use std::time::{SystemTime, UNIX_EPOCH};
 use crate::parser::*;
 use crate::text::Text;
