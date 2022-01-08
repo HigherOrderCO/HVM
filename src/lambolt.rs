@@ -5,8 +5,7 @@ use std::fmt;
 
 // Term
 // ----
-
-enum Term {
+pub enum Term {
   Var {
     name: String,
   },
@@ -43,9 +42,9 @@ enum Term {
   },
 }
 
-type BTerm = Box<Term>;
+pub type BTerm = Box<Term>;
 
-enum Oper {
+pub enum Oper {
   ADD,
   SUB,
   MUL,
@@ -67,15 +66,15 @@ enum Oper {
 // Rule
 // ----
 
-struct Rule {
-  lhs: Term,
-  rhs: Term,
+pub struct Rule {
+  pub lhs: Term,
+  pub rhs: Term,
 }
 
 // File
 // ----
 
-struct File(Vec<Rule>);
+pub struct File(pub Vec<Rule>);
 
 // Stringifier
 // ===========

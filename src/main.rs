@@ -10,6 +10,7 @@ use crate::text::Text;
 use std::rc::Rc;
 use std::time::Instant;
 
+mod common;
 mod lambolt;
 mod parser;
 mod readback;
