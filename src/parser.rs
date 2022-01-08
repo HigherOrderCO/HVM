@@ -1,19 +1,7 @@
 use crate::text::*;
+use regex::Regex;
 use std::rc::Rc;
 
-// Regex
-// -----
-
-// Text
-// ----
-
-//TypeScript
-//export type State = {
-//  code: string,
-//  index: number
-//};
-//export type Parser<A> = (state: State) => [State, A];
-//Rust:
 #[derive(Clone, Copy, Debug)]
 pub struct State<'a> {
   pub code: &'a Text,
