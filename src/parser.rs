@@ -159,6 +159,49 @@ pub fn guard<'a, A: 'a>(head: Parser<'a, bool>, body: Parser<'a, A>) -> Parser<'
   })
 }
 
+// Name
+// ====
+
+// Parses a name right after the parsing cursor.
+fn name_here(state: State) -> (State, Text) {
+  let mut state = state.clone();
+  let mut name = Vec::<char>::new();
+  let re = Regex::new(r"^[.0-9A-Z_a-z]$").unwrap();
+  let state_index = state.index;
+  state
+    .code
+    .iter()
+    .skip(state.index)
+    .take_while(|&&ch| re.is_match(&text_to_utf8(&[ch])))
+    .for_each(|&ch| {
+      name.push(ch);
+      state.index += 1;
+    });
+  state.index += state_index;
+  (state, name)
+}
+
+// Parses a name after skipping.
+fn name(state: State) -> (State, Text) {
+  name_here(skip(state).0)
+}
+
+// Parses a non-empty name after skipping.
+fn name1(state: State) -> (State, Text) {
+  let (state, name1) = name(state);
+  if name1.len() > 0 {
+    (state, name1)
+  } else {
+    lazy_static! {
+      static ref N: Vec<char> = utf8_to_text("name");
+    }
+    expected_type(&N)(state)
+  }
+}
+
+// Combinators
+// ===========
+
 pub fn grammar<'a, A: 'a>(
   name: &'a Text,
   choices: Vec<Parser<'a, Option<A>>>,
