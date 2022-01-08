@@ -8,6 +8,10 @@ edition = "2018"
 [dependencies]
 lazy_static = "1.4"
 regex = "1.5"
+cranelift = "0.80.0"
+cranelift-jit = "0.80.0"
+cranelift-module = "0.80.0"
+cranelift-native = "0.80.0"
 
 [profile.dev]
 # opt-level = 0
