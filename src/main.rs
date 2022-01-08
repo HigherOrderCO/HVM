@@ -31,6 +31,7 @@ fn sbt_tip(state: State) -> (State, Option<StrBinTree>) {
   //  println!("sbt_tip");
   (state, Some(StrBinTree::Tip))
 }
+
 fn sbt_tie(state: State) -> (State, Option<StrBinTree>) {
   let (state, left) = sbt(state);
   match left {
@@ -50,6 +51,7 @@ fn sbt_tie(state: State) -> (State, Option<StrBinTree>) {
     None => (state, None),
   }
 }
+
 fn sbt(state: State) -> (State, Option<StrBinTree>) {
   //    println!("sbt:");
   //    debug(state);
