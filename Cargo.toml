@@ -1,3 +1,5 @@
+# cargo-features = ["const_impl_trait", "type_alias_impl_trait"]
+
 [package]
 name = "lambdavm"
 version = "0.1.0"
