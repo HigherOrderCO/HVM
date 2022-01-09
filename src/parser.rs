@@ -22,7 +22,7 @@
 //
 //    This will abort the entire parser, like a "throw", and return the error message. Use this
 //    when you know that only one parsing branch can reach this location, yet the source is wrong.
-// 
+//
 // Check the Testree example at the bottom of this file.
 
 // Types
@@ -34,14 +34,14 @@ pub struct State<'a> {
   pub index: usize,
 }
 
-pub type Answer<'a,A> = Result<(State<'a>, A), String>;
-pub type Parser<'a,A> = Box<dyn Fn(State<'a>) -> Answer<'a,A>>;
+pub type Answer<'a, A> = Result<(State<'a>, A), String>;
+pub type Parser<'a, A> = Box<dyn Fn(State<'a>) -> Answer<'a, A>>;
 
 // Utils
 // =====
 
 pub fn equal_at(text: &str, test: &str, i: usize) -> bool {
-  return &text[i .. i + test.len()] == test;
+  return &text[i..i + test.len()] == test;
 }
 
 pub fn flatten(texts: &[&str]) -> String {
@@ -66,8 +66,7 @@ pub fn find(text: &str, target: &str) -> usize {
   return text.find(target).unwrap();
 }
 
-
-pub fn read<'a,A>(parser: Parser<'a,A>, code: &'a str) -> A {
+pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> A {
   match parser(State { code, index: 0 }) {
     Ok((state, value)) => value,
     Err(msg) => panic!("{}", msg),
@@ -91,65 +90,71 @@ pub fn head_default<'a>(state: State<'a>) -> char {
 
 pub fn tail<'a>(state: State<'a>) -> State {
   let fst = head(state);
-  let add = match head(state) { Some(c) => c.len_utf8(), None => 0 };
-  return State{
+  let add = match head(state) {
+    Some(c) => c.len_utf8(),
+    None => 0,
+  };
+  return State {
     code: state.code,
     index: state.index + add,
-  }
+  };
 }
 
-pub fn get_char<'a>(state: State<'a>) -> Answer<'a,char> {
+pub fn get_char<'a>(state: State<'a>) -> Answer<'a, char> {
   let (state, skipped) = skip(state)?;
   if let Some(got) = head(state) {
-    let state = State{ code: state.code, index: state.index + got.len_utf8() };
+    let state = State {
+      code: state.code,
+      index: state.index + got.len_utf8(),
+    };
     return Ok((state, got));
   } else {
     return Ok((state, '\0'));
   }
 }
 
-pub fn get_char_parser<'a>() -> Parser<'a,char> {
+pub fn get_char_parser<'a>() -> Parser<'a, char> {
   return Box::new(|x| get_char(x));
 }
 
 // Skippers
 // ========
 
-pub fn skip_comment<'a>(state: State<'a>) -> Answer<'a,bool> {
+pub fn skip_comment<'a>(state: State<'a>) -> Answer<'a, bool> {
   let mut state = state;
   if state.index + 1 < state.code.len() && equal_at(&state.code, "//", state.index) {
     state.index += 2;
     while state.index < state.code.len() && equal_at(&state.code, "\n", state.index) {
       state.index += 1;
     }
-    return Ok((state, true))
+    return Ok((state, true));
   } else {
-    return Ok((state, false))
+    return Ok((state, false));
   };
 }
 
-pub fn skip_comment_parser<'a>() -> Parser<'a,bool> {
+pub fn skip_comment_parser<'a>() -> Parser<'a, bool> {
   return Box::new(|x| skip_comment(x));
 }
 
-pub fn skip_spaces<'a>(state: State<'a>) -> Answer<'a,bool> {
+pub fn skip_spaces<'a>(state: State<'a>) -> Answer<'a, bool> {
   let mut state = state;
   if state.index < state.code.len() && equal_at(&state.code, " ", state.index) {
     state.index += 1;
     while state.index < state.code.len() && equal_at(&state.code, " ", state.index) {
       state.index += 1;
     }
-    return Ok((state, true))
+    return Ok((state, true));
   } else {
-    return Ok((state, false))
+    return Ok((state, false));
   }
 }
 
-pub fn skip_spaces_parser<'a>() -> Parser<'a,bool> {
+pub fn skip_spaces_parser<'a>() -> Parser<'a, bool> {
   return Box::new(|x| skip_spaces(x));
 }
 
-pub fn skip<'a>(state: State<'a>) -> Answer<'a,bool> {
+pub fn skip<'a>(state: State<'a>) -> Answer<'a, bool> {
   let (state, comment) = skip_comment(state)?;
   let (state, spaces) = skip_spaces(state)?;
   if comment || spaces {
@@ -160,7 +165,7 @@ pub fn skip<'a>(state: State<'a>) -> Answer<'a,bool> {
   }
 }
 
-pub fn skip_parser<'a>() -> Parser<'a,bool> {
+pub fn skip_parser<'a>() -> Parser<'a, bool> {
   return Box::new(|x| skip(x));
 }
 
@@ -169,11 +174,11 @@ pub fn skip_parser<'a>() -> Parser<'a,bool> {
 
 // Attempts to match a string right after the cursor.
 // Returns true if successful. Consumes string.
-pub fn text_here<'a>(pat: &str, state: State<'a>) -> Answer<'a,bool> {
+pub fn text_here<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
   if equal_at(&state.code, pat, state.index) {
     let state = State {
       code: state.code,
-      index: state.index + pat.len()
+      index: state.index + pat.len(),
     };
     return Ok((state, true));
   } else {
@@ -181,23 +186,23 @@ pub fn text_here<'a>(pat: &str, state: State<'a>) -> Answer<'a,bool> {
   }
 }
 
-pub fn text_here_parser<'a>(pat: &'static str) -> Parser<'a,bool> {
-  return Box::new(move |x| text_here(pat,x));
+pub fn text_here_parser<'a>(pat: &'static str) -> Parser<'a, bool> {
+  return Box::new(move |x| text_here(pat, x));
 }
 
 // Like 'text_here', but skipping spaces and comments before.
-pub fn text<'a>(pat: &str, state: State<'a>) -> Answer<'a,bool> {
+pub fn text<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
   let (state, skipped) = skip(state)?;
   let (state, matched) = text_here(pat, state)?;
   return Ok((state, matched));
 }
 
-pub fn text_parser<'a>(pat: &'static str) -> Parser<'a,bool> {
-  return Box::new(move |x| text(pat,x));
+pub fn text_parser<'a>(pat: &'static str) -> Parser<'a, bool> {
+  return Box::new(move |x| text(pat, x));
 }
 
 // Like 'text', but aborts if there is no match.
-pub fn consume<'a>(pat: &str, state: State<'a>) -> Answer<'a,()> {
+pub fn consume<'a>(pat: &str, state: State<'a>) -> Answer<'a, ()> {
   let (state, matched) = text(pat, state)?;
   if matched {
     return Ok((state, ()));
@@ -206,17 +211,17 @@ pub fn consume<'a>(pat: &str, state: State<'a>) -> Answer<'a,()> {
   }
 }
 
-pub fn consume_parser<'a>(pat: &'static str) -> Parser<'a,()> {
-  return Box::new(move |x| consume(pat,x));
+pub fn consume_parser<'a>(pat: &'static str) -> Parser<'a, ()> {
+  return Box::new(move |x| consume(pat, x));
 }
 
 // Returns true if we are at the end of the file, skipping spaces and comments.
-pub fn done<'a>(state: State<'a>) -> Answer<'a,bool> {
+pub fn done<'a>(state: State<'a>) -> Answer<'a, bool> {
   let (state, skipped) = skip(state)?;
   return Ok((state, state.index == state.code.len()));
 }
 
-pub fn done_parser<'a>() -> Parser<'a,bool> {
+pub fn done_parser<'a>() -> Parser<'a, bool> {
   return Box::new(move |x| done(x));
 }
 
@@ -247,7 +252,7 @@ pub fn guard<'a, A: 'a>(
 pub fn grammar<'a, A: 'a>(
   name: &'static str,
   choices: &[Parser<'a, Option<A>>],
-  state: State<'a>
+  state: State<'a>,
 ) -> Answer<'a, A> {
   for choice in choices {
     let (state, result) = choice(state)?;
@@ -284,7 +289,7 @@ pub fn until<'a, A: 'a>(
       state = new_state;
       result.push(a);
     }
-  };
+  }
   return Ok((state, result));
 }
 
@@ -310,7 +315,7 @@ pub fn list<'a, A: 'a, B: 'a>(
       state = new_state;
       elems.push(elem);
     }
-  };
+  }
   return Ok((state, make(elems)));
 }
 
@@ -318,9 +323,8 @@ pub fn list<'a, A: 'a, B: 'a>(
 // ====
 
 // Is this character a valid name letter?
-pub fn is_letter(chr: char) -> bool {
-  return
-    (  chr >= 'A' && chr <= 'Z'
+fn is_letter(chr: char) -> bool {
+  return (chr >= 'A' && chr <= 'Z'
     || chr >= 'a' && chr <= 'z'
     || chr >= '0' && chr <= '9'
     || chr == '_'
@@ -328,8 +332,8 @@ pub fn is_letter(chr: char) -> bool {
 }
 
 // Parses a name right after the parsing cursor.
-pub fn name_here<'a>(state: State<'a>) -> Answer<'a,String> {
-  let mut name : String = String::new();
+pub fn name_here<'a>(state: State<'a>) -> Answer<'a, String> {
+  let mut name: String = String::new();
   let mut state = state;
   loop {
     if let Some(got) = head(state) {
@@ -356,7 +360,7 @@ pub fn name<'a>(state: State<'a>) -> Answer<'a,String> {
 pub fn name1<'a>(state: State<'a>) -> Answer<'a,String> {
   let (state, name1) = name(state)?;
   if name1.len() > 0 {
-    return Ok((state, name1))
+    return Ok((state, name1));
   } else {
     return expected("name", 1, state);
   }
@@ -366,7 +370,11 @@ pub fn name1<'a>(state: State<'a>) -> Answer<'a,String> {
 // ======
 
 pub fn expected<'a, A>(name: &str, size: usize, state: State<'a>) -> Answer<'a, A> {
-  return Err(format!("Expected {}:\n{}", name, &highlight(state.index, state.index + size, state.code)));
+  return Err(format!(
+    "Expected {}:\n{}",
+    name,
+    &highlight(state.index, state.index + size, state.code)
+  ));
 }
 
 pub fn highlight(from_index: usize, to_index: usize, code: &str) -> String {
@@ -404,27 +412,27 @@ pub fn highlight(from_index: usize, to_index: usize, code: &str) -> String {
     let rest;
     if numb == from_line && numb == to_line {
       rest = flatten(&[
-        &line[0 .. find(line, open)],
+        &line[0..find(line, open)],
         open_color,
-        &line[find(line, open) + open.len() .. find(line, close)],
+        &line[find(line, open) + open.len()..find(line, close)],
         close_color,
-        &line[find(line, close) + close.len() .. line.len()],
+        &line[find(line, close) + close.len()..line.len()],
         "\n",
       ]);
     } else if numb == from_line {
       rest = flatten(&[
-        &line[0 .. find(line, open)],
+        &line[0..find(line, open)],
         open_color,
-        &line[find(line, open) .. line.len()],
+        &line[find(line, open)..line.len()],
         "\n",
       ]);
     } else if numb > from_line && numb < to_line {
       rest = flatten(&[&open_color, &line, &close_color, "\n"]);
     } else if numb == to_line {
       rest = flatten(&[
-        &line[0 .. find(line, open)],
+        &line[0..find(line, open)],
         open_color,
-        &line[find(line, open) .. find(line, close) + close.len()],
+        &line[find(line, open)..find(line, close) + close.len()],
         close_color,
         "\n",
       ]);
@@ -452,28 +460,36 @@ pub enum Testree {
 
 pub fn testree_show(tt: &Testree) -> String {
   match tt {
-    Testree::Node{lft,rgt} => format!("({} {})", testree_show(lft), testree_show(rgt)),
-    Testree::Leaf{val} => format!("{}", val),
+    Testree::Node { lft, rgt } => format!("({} {})", testree_show(lft), testree_show(rgt)),
+    Testree::Leaf { val } => format!("{}", val),
   }
 }
 
 pub fn node_parser<'a>() -> Parser<'a, Option<Box<Testree>>> {
   return Box::new(|state| {
-    return guard(text_parser("("), Box::new(|state| {
-      let (state, lft) = testree_parser()(state)?;
-      let (state, rgt) = testree_parser()(state)?;
-      let (state, skp) = consume(")", state)?;
-      return Ok((state, Box::new(Testree::Node{lft, rgt})));
-    }), state);
+    return guard(
+      text_parser("("),
+      Box::new(|state| {
+        let (state, lft) = testree_parser()(state)?;
+        let (state, rgt) = testree_parser()(state)?;
+        let (state, skp) = consume(")", state)?;
+        return Ok((state, Box::new(Testree::Node { lft, rgt })));
+      }),
+      state,
+    );
   });
 }
 
 pub fn leaf_parser<'a>() -> Parser<'a, Option<Box<Testree>>> {
   return Box::new(|state| {
-    return guard(text_parser(""), Box::new(|state| {
-      let (state, val) = name(state)?;
-      return Ok((state, Box::new(Testree::Leaf{val})));
-    }), state);
+    return guard(
+      text_parser(""),
+      Box::new(|state| {
+        let (state, val) = name(state)?;
+        return Ok((state, Box::new(Testree::Leaf { val })));
+      }),
+      state,
+    );
   });
 }
 

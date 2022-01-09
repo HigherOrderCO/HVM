@@ -12,9 +12,16 @@ mod runtime;
 
 fn main() {
   // Testing the error highlighter
-  println!("{}", &parser::highlight(3, 7, "oi tudo bem? como vai você hoje?\neu pessoalmente estou ok.\nespero que vc tbm"));
+  println!(
+    "{}",
+    &parser::highlight(
+      3,
+      7,
+      "oi tudo bem? como vai você hoje?\neu pessoalmente estou ok.\nespero que vc tbm"
+    )
+  );
 
   // Testing the parser
-  let tt : parser::Testree = *parser::read(parser::testree_parser(), "(oi ((tudo bem) (com voce)))");
+  let tt: parser::Testree = *parser::read(parser::testree_parser(), "(oi ((tudo bem) (com voce)))");
   println!("{}", parser::testree_show(&tt));
 }
