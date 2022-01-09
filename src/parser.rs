@@ -351,13 +351,13 @@ pub fn name_here<'a>(state: State<'a>) -> Answer<'a, String> {
 }
 
 // Parses a name after skipping.
-pub fn name<'a>(state: State<'a>) -> Answer<'a,String> {
+pub fn name<'a>(state: State<'a>) -> Answer<'a, String> {
   let (state, skipped) = skip(state)?;
   return name_here(state);
 }
 
 // Parses a non-empty name after skipping.
-pub fn name1<'a>(state: State<'a>) -> Answer<'a,String> {
+pub fn name1<'a>(state: State<'a>) -> Answer<'a, String> {
   let (state, name1) = name(state)?;
   if name1.len() > 0 {
     return Ok((state, name1));

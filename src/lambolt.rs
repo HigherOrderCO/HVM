@@ -1,5 +1,5 @@
-use std::fmt;
 use crate::parser;
+use std::fmt;
 
 // Types
 // =====
@@ -77,7 +77,7 @@ pub struct Rule {
 // File
 // ----
 
-pub struct File{
+pub struct File {
   pub rules: Vec<Rule>,
 }
 
@@ -172,53 +172,81 @@ impl fmt::Display for File {
 // ======
 
 pub fn parse_let<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTerm>> {
-  return parser::guard(parser::text_parser("let "), Box::new(|state| {
-    let (state, name) = parser::name1(state)?;
-    let (state, spk1) = parser::consume("=", state)?;
-    let (state, expr) = parse_term(state)?;
-    let (state, skp2) = parser::text(";", state)?;
-    let (state, body) = parse_term(state)?;
-    return Ok((state, Box::new(Term::Let{name, expr, body})));
-  }), state);
+  return parser::guard(
+    parser::text_parser("let "),
+    Box::new(|state| {
+      let (state, name) = parser::name1(state)?;
+      let (state, spk1) = parser::consume("=", state)?;
+      let (state, expr) = parse_term(state)?;
+      let (state, skp2) = parser::text(";", state)?;
+      let (state, body) = parse_term(state)?;
+      return Ok((state, Box::new(Term::Let { name, expr, body })));
+    }),
+    state,
+  );
 }
 
 pub fn parse_dup<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTerm>> {
-  return parser::guard(parser::text_parser("dup "), Box::new(|state| {
-    let (state, nam0) = parser::name1(state)?;
-    let (state, nam1) = parser::name1(state)?;
-    let (state, spk1) = parser::consume("=", state)?;
-    let (state, expr) = parse_term(state)?;
-    let (state, skp2) = parser::text(";", state)?;
-    let (state, body) = parse_term(state)?;
-    return Ok((state, Box::new(Term::Dup{nam0, nam1, expr, body})));
-  }), state);
+  return parser::guard(
+    parser::text_parser("dup "),
+    Box::new(|state| {
+      let (state, nam0) = parser::name1(state)?;
+      let (state, nam1) = parser::name1(state)?;
+      let (state, spk1) = parser::consume("=", state)?;
+      let (state, expr) = parse_term(state)?;
+      let (state, skp2) = parser::text(";", state)?;
+      let (state, body) = parse_term(state)?;
+      return Ok((
+        state,
+        Box::new(Term::Dup {
+          nam0,
+          nam1,
+          expr,
+          body,
+        }),
+      ));
+    }),
+    state,
+  );
 }
 
 pub fn parse_lam<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTerm>> {
-  return parser::guard(parser::text_parser("λ"), Box::new(|state| {
-    let (state, skp0) = parser::text("λ", state)?;
-    let (state, name) = parser::name(state)?;
-    let (state, body) = parse_term(state)?;
-    return Ok((state, Box::new(Term::Lam{name, body})));
-  }), state);
+  return parser::guard(
+    parser::text_parser("λ"),
+    Box::new(|state| {
+      let (state, skp0) = parser::text("λ", state)?;
+      let (state, name) = parser::name(state)?;
+      let (state, body) = parse_term(state)?;
+      return Ok((state, Box::new(Term::Lam { name, body })));
+    }),
+    state,
+  );
 }
 
 pub fn parse_app<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTerm>> {
-  return parser::guard(parser::text_parser("("), Box::new(|state| {
-    return parser::list(
-      parser::text_parser("("),
-      parser::text_parser(""),
-      parser::text_parser(")"),
-      Box::new(|x| parse_term(x)),
-      Box::new(|args| {
-        if args.len() > 0 {
-          return args.into_iter().reduce(|a,b| Box::new(Term::App{func:a,argm:b})).unwrap();
-        } else {
-          return Box::new(Term::U32{numb: 0});
-        }
-      }),
-      state);
-  }), state);
+  return parser::guard(
+    parser::text_parser("("),
+    Box::new(|state| {
+      return parser::list(
+        parser::text_parser("("),
+        parser::text_parser(""),
+        parser::text_parser(")"),
+        Box::new(|x| parse_term(x)),
+        Box::new(|args| {
+          if args.len() > 0 {
+            return args
+              .into_iter()
+              .reduce(|a, b| Box::new(Term::App { func: a, argm: b }))
+              .unwrap();
+          } else {
+            return Box::new(Term::U32 { numb: 0 });
+          }
+        }),
+        state,
+      );
+    }),
+    state,
+  );
 }
 
 pub fn parse_ctr<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTerm>> {
@@ -231,9 +259,12 @@ pub fn parse_ctr<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTer
     Box::new(|state| {
       let (state, skp0) = parser::text("(", state)?;
       let (state, name) = parser::name1(state)?;
-      let (state, args) = parser::until(parser::text_parser(")"), Box::new(|x| parse_term(x)), state)?;
-      return Ok((state, Box::new(Term::Ctr{name, args})));
-    }), state);
+      let (state, args) =
+        parser::until(parser::text_parser(")"), Box::new(|x| parse_term(x)), state)?;
+      return Ok((state, Box::new(Term::Ctr { name, args })));
+    }),
+    state,
+  );
 }
 
 pub fn parse_u32<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTerm>> {
@@ -245,39 +276,44 @@ pub fn parse_u32<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTer
     Box::new(|state| {
       let (state, numb) = parser::name1(state)?;
       if numb.len() > 0 {
-        return Ok((state, Box::new(Term::U32{numb: numb.parse::<u32>().unwrap()})));
+        return Ok((
+          state,
+          Box::new(Term::U32 {
+            numb: numb.parse::<u32>().unwrap(),
+          }),
+        ));
       } else {
-        return Ok((state, Box::new(Term::U32{numb: 0})));
+        return Ok((state, Box::new(Term::U32 { numb: 0 })));
       }
-    }), state);
+    }),
+    state,
+  );
 }
 
 pub fn parse_op2<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTerm>> {
   fn is_op_char(chr: char) -> bool {
     return chr == '+'
-        || chr == '\\'
-        || chr == '-'
-        || chr == '*'
-        || chr == '/'
-        || chr == '%'
-        || chr == '&'
-        || chr == '|'
-        || chr == '^'
-        || chr == '<'
-        || chr == '>'
-        || chr == '='
-        || chr == '!';
+      || chr == '\\'
+      || chr == '-'
+      || chr == '*'
+      || chr == '/'
+      || chr == '%'
+      || chr == '&'
+      || chr == '|'
+      || chr == '^'
+      || chr == '<'
+      || chr == '>'
+      || chr == '='
+      || chr == '!';
   }
   fn parse_oper<'a>(state: parser::State<'a>) -> parser::Answer<'a, Oper> {
-    fn op<'a>(symb: &'static str, oper: Oper) -> parser::Parser<'a,Option<Oper>> {
+    fn op<'a>(symb: &'static str, oper: Oper) -> parser::Parser<'a, Option<Oper>> {
       return Box::new(move |state| {
         let (state, done) = parser::text(symb, state)?;
         return Ok((state, if done { Some(oper) } else { None }));
       });
     }
-    return parser::grammar("Oper", &[
-      op("+", Oper::ADD)
-    ], state);
+    return parser::grammar("Oper", &[op("+", Oper::ADD)], state);
   }
   return parser::guard(
     Box::new(|state| {
@@ -291,9 +327,10 @@ pub fn parse_op2<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTer
       let (state, val0) = parse_term(state)?;
       let (state, val1) = parse_term(state)?;
       let (state, skp1) = parser::text(")", state)?;
-      return Ok((state, Box::new(Term::Op2{oper, val0, val1})));
+      return Ok((state, Box::new(Term::Op2 { oper, val0, val1 })));
     }),
-    state);
+    state,
+  );
 }
 
 pub fn parse_var<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTerm>> {
@@ -304,22 +341,28 @@ pub fn parse_var<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTer
     }),
     Box::new(|state| {
       let (state, name) = parser::name(state)?;
-      return Ok((state, Box::new(Term::Var{name})));
-    }), state);
+      return Ok((state, Box::new(Term::Var { name })));
+    }),
+    state,
+  );
 }
 
 pub fn parse_term<'a>(state: parser::State<'a>) -> parser::Answer<'a, BTerm> {
-  return parser::grammar("Term", &[
-    Box::new(|state| parse_let(state)),
-    Box::new(|state| parse_dup(state)),
-    Box::new(|state| parse_lam(state)),
-    Box::new(|state| parse_ctr(state)),
-    Box::new(|state| parse_op2(state)),
-    Box::new(|state| parse_app(state)),
-    Box::new(|state| parse_u32(state)),
-    Box::new(|state| parse_var(state)),
-    Box::new(|state| Ok((state, Some(Box::new(Term::U32{numb: 0}))))),
-  ], state);
+  return parser::grammar(
+    "Term",
+    &[
+      Box::new(|state| parse_let(state)),
+      Box::new(|state| parse_dup(state)),
+      Box::new(|state| parse_lam(state)),
+      Box::new(|state| parse_ctr(state)),
+      Box::new(|state| parse_op2(state)),
+      Box::new(|state| parse_app(state)),
+      Box::new(|state| parse_u32(state)),
+      Box::new(|state| parse_var(state)),
+      Box::new(|state| Ok((state, Some(Box::new(Term::U32 { numb: 0 }))))),
+    ],
+    state,
+  );
 }
 
 pub fn parse_rule<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<Rule>> {
@@ -329,9 +372,10 @@ pub fn parse_rule<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<Rul
       let (state, lhs) = parse_term(state)?;
       let (state, spk) = parser::consume("=", state)?;
       let (state, rhs) = parse_term(state)?;
-      return Ok((state, Rule{lhs, rhs}));
+      return Ok((state, Rule { lhs, rhs }));
     }),
-    state);
+    state,
+  );
 }
 
 pub fn parse_file<'a>(state: parser::State<'a>) -> parser::Answer<'a, File> {
@@ -349,8 +393,8 @@ pub fn parse_file<'a>(state: parser::State<'a>) -> parser::Answer<'a, File> {
       return parser::expected("definition", 1, state);
     }
     state = new_state;
-  };
-  return Ok((state, File{rules}));
+  }
+  return Ok((state, File { rules }));
 }
 
 pub fn read_file(code: &str) -> File {

@@ -69,7 +69,8 @@ pub fn gen_is_call(file: &File) -> IsFunctionTable {
   let rules = &file.rules;
   for rule in rules {
     let term = &rule.lhs;
-    if let Term::Ctr { name, .. } = &**term { // FIXME: this looks wrong, will check later
+    if let Term::Ctr { name, .. } = &**term {
+      // FIXME: this looks wrong, will check later
       is_call.insert(name.clone(), true);
     }
   }
@@ -88,7 +89,8 @@ pub fn gen_groups(file: &File) -> GroupTable {
   let rules = &file.rules;
   for rule in rules {
     let term = &rule.lhs;
-    if let Term::Ctr { name, args } = &**term { // FIXME: this looks wrong, will check later
+    if let Term::Ctr { name, args } = &**term {
+      // FIXME: this looks wrong, will check later
       let args_size = args.len();
       let group = groups.get_mut(name);
       match group {
