@@ -2,6 +2,7 @@ use crate::lambolt::{File, Rule, Term};
 use std::{collections::HashMap, u128};
 
 pub type IdTable = HashMap<String, u64>;
+
 // Generates a name table for a whole program. That table links constructor
 // names (such as `cons` and `succ`) to small ids (such as `0` and `1`).
 pub fn gen_name_table(file: &File) -> IdTable {
@@ -52,7 +53,7 @@ pub fn gen_name_table(file: &File) -> IdTable {
 
   let mut table = HashMap::new();
   let mut fresh = 0;
-  let rules = &file.0;
+  let rules = &file.rules;
   for rule in rules {
     find_ctrs(&rule.lhs, &mut table, &mut fresh);
     find_ctrs(&rule.rhs, &mut table, &mut fresh);
@@ -61,13 +62,14 @@ pub fn gen_name_table(file: &File) -> IdTable {
 }
 
 pub type IsFunctionTable = HashMap<String, bool>;
+
 // Finds constructors that are used as functions.
 pub fn gen_is_call(file: &File) -> IsFunctionTable {
   let mut is_call: IsFunctionTable = HashMap::new();
-  let rules = &file.0;
+  let rules = &file.rules;
   for rule in rules {
     let term = &rule.lhs;
-    if let Term::Ctr { name, .. } = term {
+    if let Term::Ctr { name, .. } = &**term { // FIXME: this looks wrong, will check later
       is_call.insert(name.clone(), true);
     }
   }
@@ -83,10 +85,10 @@ pub type GroupTable<'a, 'b> = HashMap<String, (usize, Vec<&'a Rule>)>;
 // This is a group of 4 rules starting with the "add" name.
 pub fn gen_groups(file: &File) -> GroupTable {
   let mut groups: GroupTable = HashMap::new();
-  let rules = &file.0;
+  let rules = &file.rules;
   for rule in rules {
     let term = &rule.lhs;
-    if let Term::Ctr { name, args } = term {
+    if let Term::Ctr { name, args } = &**term { // FIXME: this looks wrong, will check later
       let args_size = args.len();
       let group = groups.get_mut(name);
       match group {
