@@ -1,5 +1,7 @@
 use crate::parser;
+use ropey::Rope;
 use std::fmt;
+use std::fmt::Write;
 
 // Types
 // =====
@@ -114,6 +116,32 @@ impl fmt::Display for Oper {
   }
 }
 
+#[derive(Debug, Clone, Default)]
+struct RopeBuilder {
+  rope_builder: ropey::RopeBuilder,
+}
+
+impl RopeBuilder {
+  pub fn new() -> Self {
+    RopeBuilder::default()
+  }
+
+  pub fn append(&mut self, chunk: &str) {
+    self.rope_builder.append(chunk);
+  }
+
+  pub fn finish(self) -> Rope {
+    self.rope_builder.finish()
+  }
+}
+
+impl std::fmt::Write for RopeBuilder {
+  fn write_str(&mut self, s: &str) -> fmt::Result {
+    self.append(s);
+    Ok(())
+  }
+}
+
 impl fmt::Display for Term {
   // WARN: I think this could overflow, might need to rewrite it to be iterative instead of recursive?
   // NOTE: Another issue is complexity. This function is O(N^2). Should use ropes to be linear.
@@ -125,18 +153,39 @@ impl fmt::Display for Term {
         nam1,
         expr,
         body,
-      } => write!(f, "dup {} {} = {}; {}", nam0, nam1, expr, body),
-      Self::Let { name, expr, body } => write!(f, "let {} = {}; {}", name, expr, body),
-      Self::Lam { name, body } => write!(f, "λ{} {}", name, body),
-      Self::App { func, argm } => write!(f, "({} {})", func, argm),
-      Self::Ctr { name, args } => write!(
-        f,
-        "({}{})",
-        name,
-        args.iter().map(|x| format!(" {}", x)).collect::<String>()
-      ),
+      } => {
+        let mut builder = RopeBuilder::new();
+        write!(builder, "dup {} {} = {}; {}", nam0, nam1, expr, body)?;
+        write!(f, "{}", builder.finish())
+      }
+      Self::Let { name, expr, body } => {
+        let mut builder = RopeBuilder::new();
+        write!(builder, "let {} = {}; {}", name, expr, body)?;
+        write!(f, "{}", builder.finish())
+      }
+      Self::Lam { name, body } => {
+        let mut builder = RopeBuilder::new();
+        write!(builder, "λ{} {}", name, body)?;
+        write!(f, "{}", builder.finish())
+      }
+      Self::App { func, argm } => {
+        let mut builder = RopeBuilder::new();
+        write!(builder, "({} {})", func, argm)?;
+        write!(f, "{}", builder.finish())
+      }
+      Self::Ctr { name, args } => {
+        let mut builder = RopeBuilder::new();
+        write!(builder, "({}", name)?;
+        args.iter().try_for_each(|x| write!(builder, " {}", x))?;
+        builder.append(")");
+        write!(f, "{}", builder.finish())
+      }
       Self::U32 { numb } => write!(f, "{}", numb),
-      Self::Op2 { oper, val0, val1 } => write!(f, "({} {} {})", oper, val0, val1),
+      Self::Op2 { oper, val0, val1 } => {
+        let mut builder = RopeBuilder::new();
+        write!(builder, "({} {} {})", oper, val0, val1)?;
+        write!(f, "{}", builder.finish())
+      }
     }
   }
 }
@@ -146,7 +195,9 @@ impl fmt::Display for Term {
 
 impl fmt::Display for Rule {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "{} = {}", self.lhs, self.rhs)
+    let mut builder = RopeBuilder::new();
+    write!(builder, "{} = {}", self.lhs, self.rhs)?;
+    write!(f, "{}", builder.finish())
   }
 }
 
@@ -155,16 +206,18 @@ impl fmt::Display for Rule {
 
 impl fmt::Display for File {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(
-      f,
-      "{}",
+    if self.rules.len() > 0 {
+      let mut builder = RopeBuilder::new();
+      write!(builder, "{}", self.rules.first().unwrap())?;
       self
         .rules
         .iter()
-        .map(|rule| format!("{}", rule))
-        .collect::<Vec<String>>()
-        .join("\n")
-    )
+        .skip(1)
+        .try_for_each(|x| write!(builder, "\n{}", x))?;
+      write!(f, "{}", builder.finish())
+    } else {
+      write!(f, "")
+    }
   }
 }
 
