@@ -129,7 +129,7 @@ pub fn skip_comment<'a>(state: State<'a>) -> Answer<'a, bool> {
   let mut state = state;
   if state.index + 1 < state.code.len() && equal_at(&state.code, "//", state.index) {
     state.index += 2;
-    while state.index < state.code.len() && equal_at(&state.code, "\n", state.index) {
+    while state.index < state.code.len() && !equal_at(&state.code, "\n", state.index) {
       state.index += 1;
     }
     return Ok((state, true));

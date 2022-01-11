@@ -15,9 +15,12 @@ fn main() {
   //println!("{}", term);
 
   let file : lambolt::File = parser::read(Box::new(|x| lambolt::parse_file(x)), "
+    // Doubles a natural number
     (Double (Zero))   = (Zero)
     (Double (Succ a)) = (Succ (Succ (Double a)))
-    (Main)            = (Double (Succ (Succ (Zero))))
+
+    // Main function
+    (Main) = (Double (Succ (Succ (Zero))))
   ");
   for rule in file.rules {
     println!("{} = {}", rule.lhs, rule.rhs);
