@@ -43,7 +43,7 @@ pub type Parser<'a, A> = Box<dyn Fn(State<'a>) -> Answer<'a, A>>;
 // =====
 
 pub fn equal_at(text: &str, test: &str, i: usize) -> bool {
-  return &text[i .. std::cmp::min(text.len(), i + test.len())] == test;
+  return &text[i..std::cmp::min(text.len(), i + test.len())] == test;
 }
 
 pub fn flatten(texts: &[&str]) -> String {
@@ -74,7 +74,7 @@ pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> A {
     Err(msg) => {
       println!("{}", msg);
       panic!("No parse.");
-    },
+    }
   }
 }
 
@@ -245,7 +245,7 @@ pub fn guard<'a, A: 'a>(
   state: State<'a>,
 ) -> Answer<'a, Option<A>> {
   let (state, skipped) = skip(state)?;
-  let (_    , matched) = head(state)?;
+  let (_, matched) = head(state)?;
   if matched {
     let (state, got) = body(state)?;
     return Ok((state, Some(got)));
