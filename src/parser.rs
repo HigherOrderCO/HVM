@@ -25,6 +25,8 @@
 //
 // Check the Testree example at the bottom of this file.
 
+use std::cmp;
+
 // Types
 // =====
 
