@@ -41,7 +41,7 @@ pub type Parser<'a, A> = Box<dyn Fn(State<'a>) -> Answer<'a, A>>;
 // =====
 
 pub fn equal_at(text: &str, test: &str, i: usize) -> bool {
-  return &text[i..i + test.len()] == test;
+  return &text[i .. std::cmp::min(text.len(), i + test.len())] == test;
 }
 
 pub fn flatten(texts: &[&str]) -> String {
@@ -69,7 +69,10 @@ pub fn find(text: &str, target: &str) -> usize {
 pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> A {
   match parser(State { code, index: 0 }) {
     Ok((state, value)) => value,
-    Err(msg) => panic!("{}", msg),
+    Err(msg) => {
+      println!("{}", msg);
+      panic!("No parse.");
+    },
   }
 }
 
@@ -138,10 +141,13 @@ pub fn skip_comment_parser<'a>() -> Parser<'a, bool> {
 }
 
 pub fn skip_spaces<'a>(state: State<'a>) -> Answer<'a, bool> {
+  pub fn is_space(chr: char) -> bool {
+    return chr == ' ' || chr == '\n' || chr == '\t';
+  }
   let mut state = state;
-  if state.index < state.code.len() && equal_at(&state.code, " ", state.index) {
+  if state.index < state.code.len() && is_space(head_default(state)) {
     state.index += 1;
-    while state.index < state.code.len() && equal_at(&state.code, " ", state.index) {
+    while state.index < state.code.len() && is_space(head_default(state)) {
       state.index += 1;
     }
     return Ok((state, true));
@@ -237,7 +243,7 @@ pub fn guard<'a, A: 'a>(
   state: State<'a>,
 ) -> Answer<'a, Option<A>> {
   let (state, skipped) = skip(state)?;
-  let (state, matched) = head(state)?;
+  let (_    , matched) = head(state)?;
   if matched {
     let (state, got) = body(state)?;
     return Ok((state, Some(got)));
@@ -283,6 +289,7 @@ pub fn until<'a, A: 'a>(
   loop {
     let (new_state, delimited) = delim(state)?;
     if delimited {
+      state = new_state;
       break;
     } else {
       let (new_state, a) = parser(new_state)?;
@@ -470,6 +477,7 @@ pub fn node_parser<'a>() -> Parser<'a, Option<Box<Testree>>> {
     return guard(
       text_parser("("),
       Box::new(|state| {
+        let (state, skp) = consume("(", state)?;
         let (state, lft) = testree_parser()(state)?;
         let (state, rgt) = testree_parser()(state)?;
         let (state, skp) = consume(")", state)?;
