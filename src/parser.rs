@@ -25,6 +25,8 @@
 //
 // Check the Testree example at the bottom of this file.
 
+use std::cmp;
+
 // Types
 // =====
 
@@ -41,7 +43,7 @@ pub type Parser<'a, A> = Box<dyn Fn(State<'a>) -> Answer<'a, A>>;
 // =====
 
 pub fn equal_at(text: &str, test: &str, i: usize) -> bool {
-  return &text[i..i + test.len()] == test;
+  return &text[i..cmp::min(i+test.len(), text.len())] == test;
 }
 
 pub fn flatten(texts: &[&str]) -> String {
