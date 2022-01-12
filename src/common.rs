@@ -1,5 +1,5 @@
-use std::{collections::HashMap, fmt::format, u64};
 use crate::lambolt::{File, Rule, Term};
+use std::{collections::HashMap, fmt::format, u64};
 
 pub type IdTable = HashMap<String, u64>;
 // Generates a name table for a whole program. That table links constructor
@@ -109,7 +109,7 @@ pub fn gen_groups(file: &File) -> GroupTable {
 
 pub struct SanitizeResult {
   pub rule: Rule,
-  pub uses: HashMap<String, u64>
+  pub uses: HashMap<String, u64>,
 }
 // This big function sanitizes a rule. That is, it renames every variable in a
 // rule, in order to make it unique. Moreover, it will also add a `.N` to the
@@ -120,16 +120,16 @@ pub struct SanitizeResult {
 // It also returns the usage count of each variable.
 pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
   let mut size = 0;
-  let mut uses : HashMap<String, u64> = HashMap::new();
+  let mut uses: HashMap<String, u64> = HashMap::new();
 
   // creates a new name for a variable
   // the first will receive x0, second x1, ...
   let mut fresh = || {
-    let key = format!("x{}" , size);
+    let key = format!("x{}", size);
     size += 1;
     key
   };
-  
+
   // generate table containing the new_names following
   // pattern described before
   let table = create_fresh(rule, &mut fresh)?;
@@ -141,21 +141,21 @@ pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
   };
 
   // sanitize left side
-  let lhs = 
-    sanitize_term(&rule.lhs, true, &mut table.clone(), &mut ctx)?;
+  let lhs = sanitize_term(&rule.lhs, true, &mut table.clone(), &mut ctx)?;
   // sanitize right side
-  let mut rhs = 
-    sanitize_term(&rule.rhs, false, &mut table.clone(),  &mut ctx)?;
-  
+  let mut rhs = sanitize_term(&rule.rhs, false, &mut table.clone(), &mut ctx)?;
+
   // duplicate right side variables that are used more than once
   for (key, value) in table {
-    let expr = Box::new(Term::Var{name: value.clone()});
+    let expr = Box::new(Term::Var {
+      name: value.clone(),
+    });
     rhs = duplicator(&value, expr, rhs, &mut uses);
   }
 
   // forms the new rules
-  let rule = Rule{lhs, rhs};
-  Ok(SanitizeResult{rule, uses})
+  let rule = Rule { lhs, rhs };
+  Ok(SanitizeResult { rule, uses })
 }
 
 // Pass through the lhs of the function generating new names
@@ -164,27 +164,27 @@ pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
 // Also checks if rule's left side is valid.
 type NameTable = HashMap<String, String>;
 fn create_fresh(rule: &Rule, fresh: &mut dyn FnMut() -> String) -> Result<NameTable, String> {
-  let mut table : HashMap<String, String> = HashMap::new();
-  
+  let mut table: HashMap<String, String> = HashMap::new();
+
   let lhs = &rule.lhs;
-  if let Term::Ctr{ref name, ref args} = **lhs {
+  if let Term::Ctr { ref name, ref args } = **lhs {
     for arg in args {
       match &**arg {
-        Term::Var{name, ..} => {
+        Term::Var { name, .. } => {
           table.insert(name.clone(), fresh());
-        },
-        Term::Ctr{args,..} => {
+        }
+        Term::Ctr { args, .. } => {
           for arg in args {
-            if let Term::Var{name} = &**arg {
+            if let Term::Var { name } = &**arg {
               table.insert(name.clone(), fresh());
             } else {
               return Err("Invalid left-hand side".to_owned());
             }
           }
         }
-        Term::U32{..} => {}
+        Term::U32 { .. } => {}
         _ => {
-          return Err("Invalid left-hand side".to_owned()); 
+          return Err("Invalid left-hand side".to_owned());
         }
       }
     }
@@ -195,43 +195,49 @@ fn create_fresh(rule: &Rule, fresh: &mut dyn FnMut() -> String) -> Result<NameTa
   Ok(table)
 }
 struct CtxSanitizeTerm<'a> {
-  uses: &'a mut HashMap<String, u64>, 
-  fresh: &'a mut dyn FnMut() -> String
+  uses: &'a mut HashMap<String, u64>,
+  fresh: &'a mut dyn FnMut() -> String,
 }
 // Sanitize one term, following the described in main function
 fn sanitize_term(
-  term: &Term, 
+  term: &Term,
   lhs: bool,
-  tbl: &mut HashMap<String,String>,
+  tbl: &mut HashMap<String, String>,
   ctx: &mut CtxSanitizeTerm,
 ) -> Result<Box<Term>, String> {
   let term = match term {
-    Term::Var{name} => {
+    Term::Var { name } => {
       if lhs {
         // create a var with the name generated before
         let name = tbl.get(name).unwrap_or(name);
-        Box::new(
-          Term::Var{name: name.clone()})
+        Box::new(Term::Var { name: name.clone() })
       } else {
         // create a var with the name generated before
         // concatenated with '.{{times_used}}'
         let gen_name = tbl.get(name);
         if let Some(name) = gen_name {
           let used = {
-            *ctx.uses
+            *ctx
+              .uses
               .entry(name.clone())
-              .and_modify(|x| { *x += 1; })
+              .and_modify(|x| {
+                *x += 1;
+              })
               .or_insert(1)
           };
           let name = format!("{}.{}", name, used - 1);
-          Box::new(
-            Term::Var{name})
+          Box::new(Term::Var { name })
         } else {
-          return Err(format!("Error: unbound variable {}.", name))
+          return Err(format!("Error: unbound variable {}.", name));
         }
       }
-    },
-    Term::Dup{expr, body, nam0 , nam1} => {
+    }
+    Term::Dup {
+      expr,
+      body,
+      nam0,
+      nam1,
+    } => {
       let new_nam0 = (ctx.fresh)();
       let new_nam1 = (ctx.fresh)();
       let expr = sanitize_term(expr, lhs, tbl, ctx)?;
@@ -241,54 +247,71 @@ fn sanitize_term(
       let body = sanitize_term(body, lhs, tbl, ctx)?;
       let nam0 = format!("{}.0", new_nam0.clone());
       let nam1 = format!("{}.0", new_nam1.clone());
-      let term = Term::Dup{nam0, nam1, expr, body};
+      let term = Term::Dup {
+        nam0,
+        nam1,
+        expr,
+        body,
+      };
       Box::new(term)
-    },
-    Term::Let{name, expr, body} => {
+    }
+    Term::Let { name, expr, body } => {
       let new_name = (ctx.fresh)();
       let expr = sanitize_term(expr, lhs, tbl, ctx)?;
       tbl.insert(name.clone(), new_name);
-      
+
       let body = sanitize_term(body, lhs, tbl, ctx)?;
       let term = duplicator(&name, expr, body, ctx.uses);
       term
     }
-    Term::Lam{name, body} => {
+    Term::Lam { name, body } => {
       let new_name = (ctx.fresh)();
       tbl.insert(name.clone(), new_name.clone());
 
       let body = {
         let body = sanitize_term(body, lhs, tbl, ctx)?;
-        let expr = Box::new(Term::Var{name: new_name.clone()});
+        let expr = Box::new(Term::Var {
+          name: new_name.clone(),
+        });
         let body = duplicator(&name, expr, body, ctx.uses);
         body
       };
-      let term = Term::Lam{name: new_name.clone(), body };
+      let term = Term::Lam {
+        name: new_name.clone(),
+        body,
+      };
       Box::new(term)
     }
-    Term::App{func, argm} => {
+    Term::App { func, argm } => {
       let func = sanitize_term(func, lhs, tbl, ctx)?;
       let argm = sanitize_term(argm, lhs, tbl, ctx)?;
-      let term = Term::App{func, argm};
+      let term = Term::App { func, argm };
       Box::new(term)
     }
-    Term::Ctr{name, args} => {
+    Term::Ctr { name, args } => {
       let mut n_args = vec![];
       for arg in args {
         let arg = sanitize_term(arg, lhs, tbl, ctx)?;
         n_args.push(arg);
       }
-      let term = Term::Ctr{name: name.clone(), args: n_args};
+      let term = Term::Ctr {
+        name: name.clone(),
+        args: n_args,
+      };
       Box::new(term)
     }
-    Term::Op2{oper, val0, val1} => {
+    Term::Op2 { oper, val0, val1 } => {
       let val0 = sanitize_term(val0, lhs, tbl, ctx)?;
       let val1 = sanitize_term(val1, lhs, tbl, ctx)?;
-      let term = Term::Op2{oper: *oper, val0, val1};
+      let term = Term::Op2 {
+        oper: *oper,
+        val0,
+        val1,
+      };
       Box::new(term)
     }
-    Term::U32{numb} => {
-      let term = Term::U32{numb: *numb};
+    Term::U32 { numb } => {
+      let term = Term::U32 { numb: *numb };
       Box::new(term)
     }
   };
@@ -296,12 +319,16 @@ fn sanitize_term(
   Ok(term)
 }
 
-
 // Duplicates all variables that are used more than once.
 // The process is done generating auxiliary variables and
 // applying dup on them.
-fn duplicator(name: &String, expr: Box<Term>, body: Box<Term>, uses: &HashMap<String, u64>) -> Box<Term> {
-  let amount = uses.get(name).map(|x| {*x});
+fn duplicator(
+  name: &String,
+  expr: Box<Term>,
+  body: Box<Term>,
+  uses: &HashMap<String, u64>,
+) -> Box<Term> {
+  let amount = uses.get(name).map(|x| *x);
   // verify if variable is used more than once
   if amount > Some(1) {
     let amount = amount.unwrap(); // certainly is not None
@@ -310,51 +337,59 @@ fn duplicator(name: &String, expr: Box<Term>, body: Box<Term>, uses: &HashMap<St
     let mut vars = vec![];
 
     // generate name for duplicated variables
-    for i in (aux_qtt .. duplicated_times * 2).rev() {
+    for i in (aux_qtt..duplicated_times * 2).rev() {
       let i = i - aux_qtt; // moved to 0,1,..
       let key = format!("{}.{}", name, i);
       vars.push(key);
-    } 
+    }
 
     // generate name for aux variables
-    for i in (0 .. aux_qtt).rev() {
+    for i in (0..aux_qtt).rev() {
       let key = format!("c.{}", i);
       vars.push(key);
     }
 
     // use aux variables to duplicate the variable
-    let dup = Term::Dup{
+    let dup = Term::Dup {
       nam0: vars.pop().unwrap(),
       nam1: vars.pop().unwrap(),
       expr,
-      body: duplicator_go(1, duplicated_times, body, &mut vars)
+      body: duplicator_go(1, duplicated_times, body, &mut vars),
     };
 
     Box::new(dup)
   } else {
     // if not used more than once just make a let then
-    let term = Term::Let{name: format!("{}.0" , name), expr, body};
+    let term = Term::Let {
+      name: format!("{}.0", name),
+      expr,
+      body,
+    };
     Box::new(term)
   }
 }
 
 // Recursive aux function to duplicate one varible
 // an amount of times
-fn duplicator_go(i: u64, duplicated_times: u64, body: Box<Term>, vars: &mut Vec<String>) -> Box<Term> {
+fn duplicator_go(
+  i: u64,
+  duplicated_times: u64,
+  body: Box<Term>,
+  vars: &mut Vec<String>,
+) -> Box<Term> {
   if i == duplicated_times {
     body
   } else {
     let nam0 = vars.pop().unwrap();
     let nam1 = vars.pop().unwrap();
-    let exp0 = 
-      Box::new(
-        Term::Var{
-          name: format!("c.{}", i - 1)});
-    Box::new(  
-      Term::Dup{
-          nam0, 
-          nam1,
-          expr: exp0,
-          body: duplicator_go(i + 1, duplicated_times, body, vars)})
+    let exp0 = Box::new(Term::Var {
+      name: format!("c.{}", i - 1),
+    });
+    Box::new(Term::Dup {
+      nam0,
+      nam1,
+      expr: exp0,
+      body: duplicator_go(i + 1, duplicated_times, body, vars),
+    })
   }
 }

@@ -16,7 +16,7 @@ fn main() {
   //let term : Box<lambolt::Term> = parser::read(Box::new(|x| lambolt::parse_term(x)), " (Double x y z)");
   //println!("{}", term);
 
-    // Testing the error highlighter
+  // Testing the error highlighter
   //println!(
   //"{}",
   //&parser::highlight(
@@ -56,6 +56,6 @@ fn main() {
       Err(err) => {
         println!("{}", err);
       }
-    } 
+    }
   }
 }
