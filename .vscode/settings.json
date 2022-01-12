@@ -1,6 +1,11 @@
 {
   "cSpell.words": [
     "lambolt",
-    "oper"
+    "oper",
+    "readback"
+  ],
+  "cSpell.ignoreWords": [
+    "argm",
+    "arit"
   ]
 }
