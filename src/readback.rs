@@ -82,7 +82,9 @@ struct Stacks {
 
 impl Stacks {
   fn new() -> Stacks {
-    Stacks { stacks: HashMap::new() }
+    Stacks {
+      stacks: HashMap::new(),
+    }
   }
   fn get(&self, col: Lnk) -> Option<&Vec<bool>> {
     self.stacks.get(&col)
@@ -91,13 +93,13 @@ impl Stacks {
     let mut stacks = self.stacks.clone();
     let stack = stacks.entry(col).or_insert(Vec::new());
     stack.pop();
-    Stacks{stacks}
+    Stacks { stacks }
   }
   fn push(&self, col: Lnk, val: bool) -> Stacks {
     let mut stacks = self.stacks.clone();
     let stack = stacks.entry(col).or_insert(Vec::new());
     stack.push(val);
-    Stacks{stacks}
+    Stacks { stacks }
   }
 }
 
@@ -171,7 +173,7 @@ fn go(ctx: &mut CtxGo, stacks: Stacks, term: Lnk, depth: u32) -> String {
           rt::GTE => ">=",
           rt::GTN => ">",
           rt::NEQ => "!=",
-          default => panic!("unknown operation")
+          default => panic!("unknown operation"),
         };
         let val0 = rt::ask_arg(ctx.mem, term, 0);
         let val1 = rt::ask_arg(ctx.mem, term, 1);

@@ -36,7 +36,7 @@ pub struct State<'a> {
   pub index: usize,
 }
 
-impl <'a> State<'a> {
+impl<'a> State<'a> {
   fn rest(&self) -> &'a str {
     &self.code[self.index..]
   }
