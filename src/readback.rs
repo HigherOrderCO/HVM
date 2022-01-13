@@ -222,7 +222,11 @@ fn go(ctx: &mut CtxGo, stacks: Stacks, term: Lnk, depth: u32) -> String {
 }
 
 /// Reads back a Lambolt term from Runtime's memory
-pub fn runtime_to_lambolt(mem: &Worker, input_term: Option<Lnk>, table: &HashMap<Lnk, String>) -> String {
+pub fn runtime_to_lambolt(
+  mem: &Worker,
+  input_term: Option<Lnk>,
+  table: &HashMap<Lnk, String>,
+) -> String {
   let term: Lnk = input_term.unwrap_or(rt::ask_lnk(mem, 0));
   let mut names = HashMap::<Lnk, String>::new();
   let mut seen = HashSet::<Lnk>::new();
