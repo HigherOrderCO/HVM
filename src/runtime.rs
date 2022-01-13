@@ -62,22 +62,56 @@ const _SLOW: u64 = 1;
 pub type Lnk = u64;
 
 pub enum Term {
-  Var { bidx: u64 },
-  Dup { expr: Box<Term>, body: Box<Term> },
-  Let { expr: Box<Term>, body: Box<Term> },
-  Lam { body: Box<Term> },
-  App { func: Box<Term>, argm: Box<Term> },
-  Ctr { func: u64, args: Vec<Box<Term>> },
+  Var {
+    bidx: u64,
+  },
+  Dup {
+    expr: Box<Term>,
+    body: Box<Term>,
+  },
+  Let {
+    expr: Box<Term>,
+    body: Box<Term>,
+  },
+  Lam {
+    body: Box<Term>,
+  },
+  App {
+    func: Box<Term>,
+    argm: Box<Term>,
+  },
+  Ctr {
+    func: u64,
+    args: Vec<Box<Term>>,
+  },
   // Fun { func: u64, args: Vec<Box<Term>> }, TODO: should we have this?
-  U32 { numb: u32 },
-  Op2 { oper: Oper, val0: Box<Term>, val1: Box<Term> },
+  U32 {
+    numb: u32,
+  },
+  Op2 {
+    oper: Oper,
+    val0: Box<Term>,
+    val1: Box<Term>,
+  },
 }
 
 pub enum Oper {
-  ADD, SUB, MUL, DIV,
-  MOD, AND, OR , XOR,
-  SHL, SHR, LTN, LTE,
-  EQL, GTE, GTN, NEQ,
+  ADD,
+  SUB,
+  MUL,
+  DIV,
+  MOD,
+  AND,
+  OR,
+  XOR,
+  SHL,
+  SHR,
+  LTN,
+  LTE,
+  EQL,
+  GTE,
+  GTN,
+  NEQ,
 }
 
 pub struct Worker {

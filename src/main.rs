@@ -24,7 +24,7 @@ fn main() {
   let term_out = readback::runtime_to_lambolt(
     &worker,
     Some(runtime::ask_lnk(&worker, 0)),
-    &std::collections::HashMap::new()
+    &std::collections::HashMap::new(),
   );
 
   println!("Recovered term: {}", &term_out);
@@ -32,15 +32,15 @@ fn main() {
   //runtime::build_term(&mut worker, &term);
 
   //let file : lambolt::File = parser::read(Box::new(|x| lambolt::parse_file(x)), "
-    //// Doubles a natural number
-    //(Double (Zero)) = (Zero)
-    //(Double (Succ a)) = (Succ (Succ (Double a)))
-    //// Main function
-    //(Main) = (Double (Succ (Succ (Zero))))
+  //// Doubles a natural number
+  //(Double (Zero)) = (Zero)
+  //(Double (Succ a)) = (Succ (Succ (Double a)))
+  //// Main function
+  //(Main) = (Double (Succ (Succ (Zero))))
   //");
 
   //for rule in file.rules {
-    //println!("{} = {}", rule.lhs, rule.rhs);
+  //println!("{} = {}", rule.lhs, rule.rhs);
   //}
 
   // Testing the error highlighter
@@ -58,31 +58,31 @@ fn main() {
   //println!("{}", parser::testree_show(&tt));
 
   //let file: lambolt::File = parser::read(
-    //Box::new(|x| lambolt::parse_file(x)),
-    //"
-    //// Doubles a natural number
-    //(Double (Zero))   = (Zero)
-    //(Double (Succ a)) = (Succ (Succ (Double a)))
-    //(Fn (Cons head tail)) = (Cons (Pair head head) Fn (tail))
+  //Box::new(|x| lambolt::parse_file(x)),
+  //"
+  //// Doubles a natural number
+  //(Double (Zero))   = (Zero)
+  //(Double (Succ a)) = (Succ (Succ (Double a)))
+  //(Fn (Cons head tail)) = (Cons (Pair head head) Fn (tail))
 
-    //// Main function
-    //(Main) = (Double (Succ (Succ (Zero))))
+  //// Main function
+  //(Main) = (Double (Succ (Succ (Zero))))
   //",
   //);
 
   //for rule in file.rules {
-    //let san_rule = sanitize(&rule);
-    //match san_rule {
-      //Ok(san_rule) => {
-        //println!("===========");
-        //println!("BEFORE {}", &rule);
-        //println!("AFTER {}", san_rule.rule);
-        //println!("USES {:?}", san_rule.uses);
-        //println!();
-      //}
-      //Err(err) => {
-        //println!("{}", err);
-      //}
-    //}
+  //let san_rule = sanitize(&rule);
+  //match san_rule {
+  //Ok(san_rule) => {
+  //println!("===========");
+  //println!("BEFORE {}", &rule);
+  //println!("AFTER {}", san_rule.rule);
+  //println!("USES {:?}", san_rule.uses);
+  //println!();
+  //}
+  //Err(err) => {
+  //println!("{}", err);
+  //}
+  //}
   //}
 }
