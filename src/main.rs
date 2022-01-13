@@ -4,9 +4,6 @@
 #![allow(non_snake_case)]
 #![allow(unused_imports)]
 
-//use crate::common::sanitize;
-
-mod common;
 mod lambolt;
 mod parser;
 mod readback;
@@ -18,14 +15,19 @@ fn main() {
   // TODO: not working yet, stack overflows, I'll continue tomorrow.
   let mut worker = runtime::new_worker();
   let term_in = runtime::Term::Ctr{func: 42, args: vec![]};
-  runtime::make_term(&mut worker, &term_in);
+  
+  let root = runtime::make_term(&mut worker, &term_in);
+  runtime::link(&mut worker, 0, root);
+
+  //println!("{} {} {}", worker.node[0], worker.node[1], worker.node[2]);
+
   let term_out = readback::runtime_to_lambolt(
     &worker,
     Some(runtime::ask_lnk(&worker, 0)),
     &std::collections::HashMap::new()
   );
 
-  //println!("Recovered term: {}", &term);
+  println!("Recovered term: {}", &term_out);
 
   //runtime::build_term(&mut worker, &term);
 

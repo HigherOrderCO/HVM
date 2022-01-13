@@ -300,84 +300,6 @@ pub fn inc_cost(mem: &mut Worker) {
   mem.cost += 1;
 }
 
-// Dynamic functions
-// -----------------
-
-// Interpreted, with recursive builder would be like:
-//(Foo A@(Tic a b) B@(Tac c d)) = (Bar (Tac a b) (Tic c d))
-//Ctr(Bar, Ctr(Tac, Var(0), Var(1)), ...
-//vars = [
-  //get_arg(A, 0),
-  //get_arg(A, 1),
-  //get_arg(A, 2),
-  //get_arg(A, 3),
-//]
-//tac = alloc(2)
-//tic = alloc(2)
-//bar = alloc(2)
-//link(bar[0], tac)
-//link(bar[1], tic)
-//link(tac[0], vars[0]);
-
-//pub enum Term {
-  //Var { name: u64 },
-  //Dup { expr: BTerm, body: BTerm },
-  //Let { expr: BTerm, body: BTerm },
-  //Lam { body: BTerm },
-  //App { func: BTerm, argm: BTerm },
-  //Ctr { name: String, args: Vec<BTerm> },
-  //U32 { numb: u32 },
-  //Op2 { oper: Oper, val0: BTerm, val1: BTerm },
-//}
-
-// Recursivelly builds a term.
-fn make_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
-  match term {
-    Term::Var{bidx} => {
-      if *bidx < vars.len() as u64 {
-        return vars[*bidx as usize];
-      } else {
-        panic!("Unbound variable.");
-      }
-    },
-    Term::Dup{expr, body} => {
-      panic!("TODO");
-    },
-    Term::Let{expr, body} => {
-      panic!("TODO");
-    },
-    Term::Lam{body} => {
-      let node = alloc(mem, 2);
-      vars.push(Var(node));
-      let body = make_term_go(mem, body, vars);
-      vars.pop();
-      return Lam(node);
-    },
-    Term::App{func, argm} => {
-      panic!("TODO");
-    },
-    Term::Ctr{func, args} => {
-      let size = args.len() as u64;
-      let node = alloc(mem, size);
-      for (i,arg) in args.iter().enumerate() {
-        let arg_lnk = make_term_go(mem, arg, vars);
-        link(mem, node + i as u64, arg_lnk);
-      }
-      return Ctr(size, *func, node);
-    },
-    Term::U32{numb} => {
-      panic!("TODO");
-    },
-    Term::Op2{oper, val0, val1} => {
-      panic!("TODO");
-    },
-  }
-}
-
-pub fn make_term(mem: &mut Worker, term: &Term) -> Lnk {
-  return make_term_go(mem, term, &mut Vec::new());
-}
-
 // Reduction
 // ---------
 
@@ -859,3 +781,82 @@ fn test_runtime() {
   //println!("* rwts: {} ({:.2}m rwt/s)", worker.cost, (worker.cost as f64) / total / 1000000.0);
   //println!("* time: {:?}", total);
 }
+
+// Dynamic functions
+// -----------------
+
+// Interpreted, with recursive builder would be like:
+//(Foo A@(Tic a b) B@(Tac c d)) = (Bar (Tac a b) (Tic c d))
+//Ctr(Bar, Ctr(Tac, Var(0), Var(1)), ...
+//vars = [
+  //get_arg(A, 0),
+  //get_arg(A, 1),
+  //get_arg(A, 2),
+  //get_arg(A, 3),
+//]
+//tac = alloc(2)
+//tic = alloc(2)
+//bar = alloc(2)
+//link(bar[0], tac)
+//link(bar[1], tic)
+//link(tac[0], vars[0]);
+
+//pub enum Term {
+  //Var { name: u64 },
+  //Dup { expr: BTerm, body: BTerm },
+  //Let { expr: BTerm, body: BTerm },
+  //Lam { body: BTerm },
+  //App { func: BTerm, argm: BTerm },
+  //Ctr { name: String, args: Vec<BTerm> },
+  //U32 { numb: u32 },
+  //Op2 { oper: Oper, val0: BTerm, val1: BTerm },
+//}
+
+// Recursivelly builds a term.
+fn make_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
+  match term {
+    Term::Var{bidx} => {
+      if *bidx < vars.len() as u64 {
+        return vars[*bidx as usize];
+      } else {
+        panic!("Unbound variable.");
+      }
+    },
+    Term::Dup{expr, body} => {
+      panic!("TODO");
+    },
+    Term::Let{expr, body} => {
+      panic!("TODO");
+    },
+    Term::Lam{body} => {
+      let node = alloc(mem, 2);
+      vars.push(Var(node));
+      let body = make_term_go(mem, body, vars);
+      vars.pop();
+      return Lam(node);
+    },
+    Term::App{func, argm} => {
+      panic!("TODO");
+    },
+    Term::Ctr{func, args} => {
+      let size = args.len() as u64;
+      let node = alloc(mem, size);
+      for (i,arg) in args.iter().enumerate() {
+        let arg_lnk = make_term_go(mem, arg, vars);
+        link(mem, node + i as u64, arg_lnk);
+      }
+      return Ctr(size, *func, node);
+    },
+    Term::U32{numb} => {
+      panic!("TODO");
+    },
+    Term::Op2{oper, val0, val1} => {
+      panic!("TODO");
+    },
+  }
+}
+
+pub fn make_term(mem: &mut Worker, term: &Term) -> Lnk {
+  return make_term_go(mem, term, &mut Vec::new());
+}
+
