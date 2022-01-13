@@ -61,6 +61,25 @@ const _SLOW: u64 = 1;
 
 pub type Lnk = u64;
 
+pub enum Term {
+  Var { bidx: u64 },
+  Dup { expr: Box<Term>, body: Box<Term> },
+  Let { expr: Box<Term>, body: Box<Term> },
+  Lam { body: Box<Term> },
+  App { func: Box<Term>, argm: Box<Term> },
+  Ctr { func: u64, args: Vec<Box<Term>> },
+  // Fun { func: u64, args: Vec<Box<Term>> }, TODO: should we have this?
+  U32 { numb: u32 },
+  Op2 { oper: Oper, val0: Box<Term>, val1: Box<Term> },
+}
+
+pub enum Oper {
+  ADD, SUB, MUL, DIV,
+  MOD, AND, OR , XOR,
+  SHL, SHR, LTN, LTE,
+  EQL, GTE, GTN, NEQ,
+}
+
 pub struct Worker {
   pub node: Vec<Lnk>,
   pub size: u64,
@@ -81,6 +100,9 @@ pub fn new_worker() -> Worker {
 // -------
 
 static mut SEEN_DATA: [u64; SEEN_SIZE] = [0; SEEN_SIZE];
+
+// Constructors
+// ------------
 
 pub fn Var(pos: u64) -> Lnk {
   return (VAR * TAG) | pos;
@@ -138,6 +160,9 @@ pub fn Out(arg: u64, fld: u64) -> Lnk {
   return (OUT * TAG) | (arg << 8) | fld;
 }
 
+// Getters
+// -------
+
 pub fn get_tag(lnk: Lnk) -> u64 {
   return lnk / TAG;
 }
@@ -165,6 +190,9 @@ pub fn get_ari(lnk: Lnk) -> u64 {
 pub fn get_loc(lnk: Lnk, arg: u64) -> u64 {
   return get_val(lnk) + arg;
 }
+
+// Memory
+// ------
 
 pub fn ask_lnk(mem: &Worker, loc: u64) -> Lnk {
   unsafe {
@@ -270,6 +298,84 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
 
 pub fn inc_cost(mem: &mut Worker) {
   mem.cost += 1;
+}
+
+// Reduction
+// ---------
+
+// Interpreted, with recursive builder would be like:
+//(Foo A@(Tic a b) B@(Tac c d)) = (Bar (Tac a b) (Tic c d))
+//Ctr(Bar, Ctr(Tac, Var(0), Var(1)), ...
+//vars = [
+  //get_arg(A, 0),
+  //get_arg(A, 1),
+  //get_arg(A, 2),
+  //get_arg(A, 3),
+//]
+//tac = alloc(2)
+//tic = alloc(2)
+//bar = alloc(2)
+//link(bar[0], tac)
+//link(bar[1], tic)
+//link(tac[0], vars[0]);
+
+//pub enum Term {
+  //Var { name: u64 },
+  //Dup { expr: BTerm, body: BTerm },
+  //Let { expr: BTerm, body: BTerm },
+  //Lam { body: BTerm },
+  //App { func: BTerm, argm: BTerm },
+  //Ctr { name: String, args: Vec<BTerm> },
+  //U32 { numb: u32 },
+  //Op2 { oper: Oper, val0: BTerm, val1: BTerm },
+//}
+
+// Recursivelly builds a term.
+fn build_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
+  match term {
+    Term::Var{bidx} => {
+      if *bidx < vars.len() as u64 {
+        return vars[*bidx as usize];
+      } else {
+        panic!("Unbound variable.");
+      }
+    },
+    Term::Dup{expr, body} => {
+      panic!("TODO");
+    },
+    Term::Let{expr, body} => {
+      panic!("TODO");
+    },
+    Term::Lam{body} => {
+      let node = alloc(mem, 2);
+      vars.push(Var(node));
+      let body = build_term_go(mem, body, vars);
+      vars.pop();
+      return Lam(node);
+    },
+    Term::App{func, argm} => {
+      panic!("TODO");
+    },
+    Term::Ctr{func, args} => {
+      let size = args.len() as u64;
+      let node = alloc(mem, size);
+      for (i,arg) in args.iter().enumerate() {
+        let arg_lnk = build_term_go(mem, arg, vars);
+        link(mem, node + i as u64, arg_lnk);
+      }
+      return Ctr(size, *func, node);
+    },
+    Term::U32{numb} => {
+      panic!("TODO");
+    },
+    Term::Op2{oper, val0, val1} => {
+      panic!("TODO");
+    },
+  }
+}
+
+pub fn build_term(mem: &mut Worker, term: &Term) -> Lnk {
+  return build_term_go(mem, term, &mut Vec::new());
 }
 
 pub fn subst(mem: &mut Worker, lnk: Lnk, val: Lnk) {

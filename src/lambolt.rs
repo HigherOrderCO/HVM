@@ -398,6 +398,10 @@ pub fn parse_file<'a>(state: parser::State<'a>) -> parser::Answer<'a, File> {
   return Ok((state, File { rules }));
 }
 
+pub fn read_term(code: &str) -> Box<Term> {
+  return parser::read(Box::new(|x| parse_term(x)), code);
+}
+
 pub fn read_file(code: &str) -> File {
   return parser::read(Box::new(|x| parse_file(x)), code);
 }
