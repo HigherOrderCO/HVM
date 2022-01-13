@@ -4,7 +4,9 @@
 #![allow(non_snake_case)]
 #![allow(unused_imports)]
 
-//mod common;
+//use crate::common::sanitize;
+
+mod common;
 mod lambolt;
 mod parser;
 mod readback;
@@ -13,12 +15,10 @@ mod runtime;
 //use std::collections::{HashMap, HashSet};
 
 fn main() {
+  // TODO: not working yet, stack overflows, I'll continue tomorrow.
   let mut worker = runtime::new_worker();
-
   let term_in = runtime::Term::Ctr{func: 42, args: vec![]};
   runtime::make_term(&mut worker, &term_in);
-
-  // TODO: not tested yet / stack overflows, I'll continue tomorrow.
   let term_out = readback::runtime_to_lambolt(
     &worker,
     Some(runtime::ask_lnk(&worker, 0)),
@@ -54,4 +54,33 @@ fn main() {
   // Testing the parser
   //let tt: parser::Testree = *parser::read(parser::testree_parser(), "(oi ((tudo bem) (com voce)))");
   //println!("{}", parser::testree_show(&tt));
+
+  //let file: lambolt::File = parser::read(
+    //Box::new(|x| lambolt::parse_file(x)),
+    //"
+    //// Doubles a natural number
+    //(Double (Zero))   = (Zero)
+    //(Double (Succ a)) = (Succ (Succ (Double a)))
+    //(Fn (Cons head tail)) = (Cons (Pair head head) Fn (tail))
+
+    //// Main function
+    //(Main) = (Double (Succ (Succ (Zero))))
+  //",
+  //);
+
+  //for rule in file.rules {
+    //let san_rule = sanitize(&rule);
+    //match san_rule {
+      //Ok(san_rule) => {
+        //println!("===========");
+        //println!("BEFORE {}", &rule);
+        //println!("AFTER {}", san_rule.rule);
+        //println!("USES {:?}", san_rule.uses);
+        //println!();
+      //}
+      //Err(err) => {
+        //println!("{}", err);
+      //}
+    //}
+  //}
 }
