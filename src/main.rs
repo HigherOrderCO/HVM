@@ -10,26 +10,24 @@ mod parser;
 mod readback;
 mod runtime;
 
+//use std::collections::{HashMap, HashSet};
+
 fn main() {
-  //let term = lambolt::read_term("(Foo)");
-  //println!("{}", term);
-
   let mut worker = runtime::new_worker();
-  worker.node[0] = runtime::Ctr(0, 42, 0);
 
-  let term = readback::runtime_to_lambolt(&worker, Some(runtime::ask_lnk(&worker, 0)), ());
+  let term_in = runtime::Term::Ctr{func: 42, args: vec![]};
+  runtime::make_term(&mut worker, &term_in);
 
-  println!("Recovered term: {}", &term);
+  // TODO: not tested yet / stack overflows, I'll continue tomorrow.
+  let term_out = readback::runtime_to_lambolt(
+    &worker,
+    Some(runtime::ask_lnk(&worker, 0)),
+    &std::collections::HashMap::new()
+  );
 
-
-
-
-
-
+  //println!("Recovered term: {}", &term);
 
   //runtime::build_term(&mut worker, &term);
-
-
 
   //let file : lambolt::File = parser::read(Box::new(|x| lambolt::parse_file(x)), "
     //// Doubles a natural number
@@ -45,12 +43,12 @@ fn main() {
 
   // Testing the error highlighter
   //println!(
-    //"{}",
-    //&parser::highlight(
-      //3,
-      //7,
-      //"oi tudo bem? como vai você hoje?\neu pessoalmente estou ok.\nespero que vc tbm"
-    //)
+  //"{}",
+  //&parser::highlight(
+  //3,
+  //7,
+  //"oi tudo bem? como vai você hoje?\neu pessoalmente estou ok.\nespero que vc tbm"
+  //)
   //);
 
   // Testing the parser

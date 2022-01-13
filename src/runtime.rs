@@ -300,8 +300,8 @@ pub fn inc_cost(mem: &mut Worker) {
   mem.cost += 1;
 }
 
-// Reduction
-// ---------
+// Dynamic functions
+// -----------------
 
 // Interpreted, with recursive builder would be like:
 //(Foo A@(Tic a b) B@(Tac c d)) = (Bar (Tac a b) (Tic c d))
@@ -331,7 +331,7 @@ pub fn inc_cost(mem: &mut Worker) {
 //}
 
 // Recursivelly builds a term.
-fn build_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
+fn make_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
   match term {
     Term::Var{bidx} => {
       if *bidx < vars.len() as u64 {
@@ -349,7 +349,7 @@ fn build_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
     Term::Lam{body} => {
       let node = alloc(mem, 2);
       vars.push(Var(node));
-      let body = build_term_go(mem, body, vars);
+      let body = make_term_go(mem, body, vars);
       vars.pop();
       return Lam(node);
     },
@@ -360,7 +360,7 @@ fn build_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
       let size = args.len() as u64;
       let node = alloc(mem, size);
       for (i,arg) in args.iter().enumerate() {
-        let arg_lnk = build_term_go(mem, arg, vars);
+        let arg_lnk = make_term_go(mem, arg, vars);
         link(mem, node + i as u64, arg_lnk);
       }
       return Ctr(size, *func, node);
@@ -374,9 +374,12 @@ fn build_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
   }
 }
 
-pub fn build_term(mem: &mut Worker, term: &Term) -> Lnk {
-  return build_term_go(mem, term, &mut Vec::new());
+pub fn make_term(mem: &mut Worker, term: &Term) -> Lnk {
+  return make_term_go(mem, term, &mut Vec::new());
 }
+
+// Reduction
+// ---------
 
 pub fn subst(mem: &mut Worker, lnk: Lnk, val: Lnk) {
   if get_tag(lnk) != ERA {

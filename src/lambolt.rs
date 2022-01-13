@@ -261,7 +261,8 @@ pub fn parse_ctr<'a>(state: parser::State<'a>) -> parser::Answer<'a, Option<BTer
     Box::new(|state| {
       let (state, skp0) = parser::text("(", state)?;
       let (state, name) = parser::name1(state)?;
-      let (state, args) = parser::until(parser::text_parser(")"), Box::new(|x| parse_term(x)), state)?;
+      let (state, args) =
+        parser::until(parser::text_parser(")"), Box::new(|x| parse_term(x)), state)?;
       return Ok((state, Box::new(Term::Ctr { name, args })));
     }),
     state,
