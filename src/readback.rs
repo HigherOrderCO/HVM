@@ -7,8 +7,11 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// Reads back a Lambolt term from Runtime's memory
-pub fn runtime_to_lambolt(mem: &Worker, input_term: Option<Lnk>, table: &HashMap<Lnk, String>) -> String {
-
+pub fn runtime_to_lambolt(
+  mem: &Worker,
+  input_term: Option<Lnk>,
+  table: &HashMap<Lnk, String>,
+) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
     names: &'a mut HashMap<Lnk, String>,

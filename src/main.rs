@@ -14,8 +14,11 @@ mod runtime;
 fn main() {
   // TODO: not working yet, stack overflows, I'll continue tomorrow.
   let mut worker = runtime::new_worker();
-  let term_in = runtime::Term::Ctr{func: 42, args: vec![]};
-  
+  let term_in = runtime::Term::Ctr {
+    func: 42,
+    args: vec![],
+  };
+
   let root = runtime::make_term(&mut worker, &term_in);
   runtime::link(&mut worker, 0, root);
 
