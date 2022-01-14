@@ -17,7 +17,7 @@ pub fn lambolt_to_runtime(term: &lb::Term, comp: &cm::Compilable) -> rt::Term {
       lb::Oper::DIV => rt::DIV,
       lb::Oper::MOD => rt::MOD,
       lb::Oper::AND => rt::AND,
-      lb::Oper::OR  => rt::OR,
+      lb::Oper::OR => rt::OR,
       lb::Oper::XOR => rt::XOR,
       lb::Oper::SHL => rt::SHL,
       lb::Oper::SHR => rt::SHR,
@@ -208,7 +208,7 @@ pub fn runtime_to_lambolt(mem: &Worker, comp: &cm::Compilable, host: u64) -> Str
     // Should investigate if it is needed or not.
 
     //if ctx.seen.contains(&term) {
-      //"@".to_string()
+    //"@".to_string()
     //} else {
     match rt::get_tag(term) {
       rt::LAM => {

@@ -11,9 +11,12 @@ mod parser;
 mod runtime;
 
 fn main() {
-  let (norm, cost) = eval("Main", "
+  let (norm, cost) = eval(
+    "Main",
+    "
     (Main) = ((λf λx (f (f x))) (λf λx (f (f x))))
-  ");
+  ",
+  );
 
   println!("{}", norm);
   println!("- rwts: {}", cost);
