@@ -256,10 +256,10 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
       lb::Term::Let { name, expr, body } => {
         let new_name = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
-        tbl.insert(name.clone(), new_name);
+        tbl.insert(name.clone(), new_name.clone());
 
         let body = sanitize_term(body, lhs, tbl, ctx)?;
-        let term = duplicator(&name, expr, body, ctx.uses);
+        let term = duplicator(&new_name, expr, body, ctx.uses);
         term
       }
       lb::Term::Lam { name, body } => {
@@ -270,7 +270,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
           let expr = Box::new(lb::Term::Var {
             name: new_name.clone(),
           });
-          let body = duplicator(&name, expr, body, ctx.uses);
+          let body = duplicator(&new_name, expr, body, ctx.uses);
           body
         };
         let term = lb::Term::Lam {

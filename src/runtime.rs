@@ -61,6 +61,7 @@ const _SLOW: u64 = 1;
 
 pub type Lnk = u64;
 
+#[derive(Debug)]
 pub enum Term {
   Var {
     bidx: u64,
@@ -88,29 +89,10 @@ pub enum Term {
     numb: u32,
   },
   Op2 {
-    oper: Oper,
+    oper: u64,
     val0: Box<Term>,
     val1: Box<Term>,
   },
-}
-
-pub enum Oper {
-  ADD,
-  SUB,
-  MUL,
-  DIV,
-  MOD,
-  AND,
-  OR,
-  XOR,
-  SHL,
-  SHR,
-  LTN,
-  LTE,
-  EQL,
-  GTE,
-  GTN,
-  NEQ,
 }
 
 pub struct Worker {
@@ -445,7 +427,6 @@ pub fn reduce(mem: &mut Worker, root: u64, depth: u64) -> Lnk {
             let done = Par(get_ext(arg0), par0);
             link(mem, host, done);
           }
-          continue;
         }
         DP0 | DP1 => {
           let arg0 = ask_arg(mem, term, 2);
@@ -765,7 +746,7 @@ pub fn normal(mem: &mut Worker, host: u64) -> Lnk {
 // Debug
 // -----
 
-fn show_lnk(x: Lnk) -> String {
+pub fn show_lnk(x: Lnk) -> String {
   if (x == 0) {
     return String::from("~");
   } else {
@@ -794,7 +775,7 @@ fn show_lnk(x: Lnk) -> String {
   }
 }
 
-fn show_mem(worker: &Worker) -> String {
+pub fn show_mem(worker: &Worker) -> String {
   let mut s: String = String::new();
   for i in 0..24 {
     // pushes to the string
@@ -807,8 +788,9 @@ fn show_mem(worker: &Worker) -> String {
 // Dynamic functions
 // -----------------
 
-// Recursivelly builds a term.
-pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
+// Writes a Term represented as a Rust enum on the Runtime's memory.
+pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>, dups: &mut u64) -> Lnk {
+  //println!("make_term {:?}", term);
   match term {
     Term::Var { bidx } => {
       if *bidx < vars.len() as u64 {
@@ -818,43 +800,71 @@ pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
       }
     }
     Term::Dup { expr, body } => {
-      panic!("TODO");
+      let node = alloc(mem, 3);
+      let dupk = *dups;
+      *dups += 1;
+      link(mem, node + 0, Era());
+      link(mem, node + 1, Era());
+      let expr = make_term(mem, expr, vars, dups);
+      link(mem, node + 2, expr);
+      vars.push(Dp0(dupk, node));
+      vars.push(Dp1(dupk, node));
+      let body = make_term(mem, body, vars, dups);
+      vars.pop();
+      vars.pop();
+      return body;
     }
     Term::Let { expr, body } => {
-      panic!("TODO");
+      let expr = make_term(mem, expr, vars, dups);
+      vars.push(expr);
+      let body = make_term(mem, body, vars, dups);
+      vars.pop();
+      return body;
     }
     Term::Lam { body } => {
       let node = alloc(mem, 2);
+      link(mem, node + 0, Era());
       vars.push(Var(node));
-      let body = make_term(mem, body, vars);
+      let body = make_term(mem, body, vars, dups);
+      link(mem, node + 1, body);
       vars.pop();
       return Lam(node);
     }
     Term::App { func, argm } => {
-      panic!("TODO");
+      let node = alloc(mem, 2);
+      let func = make_term(mem, func, vars, dups);
+      link(mem, node + 0, func);
+      let argm = make_term(mem, argm, vars, dups);
+      link(mem, node + 1, argm);
+      return App(node);
     }
     Term::Ctr { func, args } => {
       let size = args.len() as u64;
       let node = alloc(mem, size);
       for (i, arg) in args.iter().enumerate() {
-        let arg_lnk = make_term(mem, arg, vars);
+        let arg_lnk = make_term(mem, arg, vars, dups);
         link(mem, node + i as u64, arg_lnk);
       }
-      //println!("made ctr {} at {}", size, node);
       return Ctr(size, *func, node);
     }
     Term::U32 { numb } => {
-      panic!("TODO");
+      return U_32((*numb as u64));
     }
     Term::Op2 { oper, val0, val1 } => {
-      panic!("TODO");
+      let node = alloc(mem, 2);
+      let val0 = make_term(mem, val0, vars, dups);
+      link(mem, node + 0, val0);
+      let val1 = make_term(mem, val1, vars, dups);
+      link(mem, node + 1, val0);
+      return Op2(*oper, node);
     }
   }
 }
 
 pub fn alloc_term(mem: &mut Worker, term: &Term) -> u64 {
+  let mut dups = 0;
   let host = alloc(mem, 1);
-  let term = make_term(mem, term, &mut Vec::new());
+  let term = make_term(mem, term, &mut Vec::new(), &mut dups);
   link(mem, host, term);
   return host;
 }
