@@ -16,7 +16,7 @@ pub fn lambolt_to_runtime(term: &lb::Term, meta: &lb::Meta) -> rt::Term {
       lb::Oper::DIV => rt::Oper::DIV,
       lb::Oper::MOD => rt::Oper::MOD,
       lb::Oper::AND => rt::Oper::AND,
-      lb::Oper::OR  => rt::Oper::OR,
+      lb::Oper::OR => rt::Oper::OR,
       lb::Oper::XOR => rt::Oper::XOR,
       lb::Oper::SHL => rt::Oper::SHL,
       lb::Oper::SHR => rt::Oper::SHR,
@@ -32,59 +32,67 @@ pub fn lambolt_to_runtime(term: &lb::Term, meta: &lb::Meta) -> rt::Term {
     term: &lb::Term,
     meta: &lb::Meta,
     depth: u64,
-    vars: &mut HashMap<String,u64>,
+    vars: &mut HashMap<String, u64>,
   ) -> rt::Term {
     match term {
-      lb::Term::Var{name} => {
+      lb::Term::Var { name } => {
         if let Some(var_depth) = vars.get(name) {
-          return rt::Term::Var{bidx: depth};
+          return rt::Term::Var { bidx: depth };
         } else {
           panic!("Unbound variable.");
         }
-      },
-      lb::Term::Dup{nam0, nam1, expr, body} => {
+      }
+      lb::Term::Dup {
+        nam0,
+        nam1,
+        expr,
+        body,
+      } => {
         let expr = Box::new(convert_term(expr, meta, depth + 0, vars));
         vars.insert(nam0.clone(), depth + 0);
         vars.insert(nam1.clone(), depth + 1);
         let body = Box::new(convert_term(body, meta, depth + 2, vars));
         vars.remove(nam0);
         vars.remove(nam1);
-        return rt::Term::Dup{expr, body};
-      },
-      lb::Term::Lam{name, body} => {
+        return rt::Term::Dup { expr, body };
+      }
+      lb::Term::Lam { name, body } => {
         vars.insert(name.clone(), depth);
         let body = Box::new(convert_term(body, meta, depth + 1, vars));
         vars.remove(name);
-        return rt::Term::Lam{body};
-      },
-      lb::Term::Let{name, expr, body} => {
+        return rt::Term::Lam { body };
+      }
+      lb::Term::Let { name, expr, body } => {
         let expr = Box::new(convert_term(expr, meta, depth + 0, vars));
         vars.insert(name.clone(), depth);
         let body = Box::new(convert_term(body, meta, depth + 1, vars));
         vars.remove(name);
-        return rt::Term::Let{expr, body};
-      },
-      lb::Term::App{func, argm} => {
+        return rt::Term::Let { expr, body };
+      }
+      lb::Term::App { func, argm } => {
         let func = Box::new(convert_term(func, meta, depth + 0, vars));
         let argm = Box::new(convert_term(argm, meta, depth + 0, vars));
-        return rt::Term::App{func, argm};
-      },
-      lb::Term::Ctr{name, args} => {
-        let mut new_args : Vec<Box<rt::Term>> = Vec::new();
+        return rt::Term::App { func, argm };
+      }
+      lb::Term::Ctr { name, args } => {
+        let mut new_args: Vec<Box<rt::Term>> = Vec::new();
         for arg in args {
           new_args.push(Box::new(convert_term(arg, meta, depth + 0, vars)));
         }
-        return rt::Term::Ctr{func: meta.name_to_id[name], args: new_args};
-      },
-      lb::Term::U32{numb} => {
-        return rt::Term::U32{numb: *numb};
-      },
-      lb::Term::Op2{oper, val0, val1} => {
+        return rt::Term::Ctr {
+          func: meta.name_to_id[name],
+          args: new_args,
+        };
+      }
+      lb::Term::U32 { numb } => {
+        return rt::Term::U32 { numb: *numb };
+      }
+      lb::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, meta, depth + 0, vars));
         let val1 = Box::new(convert_term(val1, meta, depth + 1, vars));
-        return rt::Term::Op2{oper, val0, val1};
-      },
+        return rt::Term::Op2 { oper, val0, val1 };
+      }
     }
   }
   return convert_term(term, meta, 0, &mut HashMap::new());

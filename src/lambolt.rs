@@ -707,7 +707,6 @@ pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
 // Meta
 // ====
 
-
 pub fn gen_meta(file: &File) -> Meta {
   // Generates a name table for a whole program. That table links constructor
   // names (such as `cons` and `succ`) to small ids (such as `0` and `1`).
@@ -767,7 +766,7 @@ pub fn gen_meta(file: &File) -> Meta {
     table
   }
   pub fn invert(name_to_id: &NameToId) -> IdToName {
-    let mut id_to_name : IdToName = HashMap::new();
+    let mut id_to_name: IdToName = HashMap::new();
     for (name, id) in name_to_id {
       id_to_name.insert(*id, name.clone());
     }
@@ -822,5 +821,9 @@ pub fn gen_meta(file: &File) -> Meta {
   let name_to_id = gen_name_to_id(&file.rules);
   let id_to_name = invert(&name_to_id);
   let ctr_is_cal = gen_ctr_is_cal(&file.rules);
-  return Meta { name_to_id, id_to_name, ctr_is_cal };
+  return Meta {
+    name_to_id,
+    id_to_name,
+    ctr_is_cal,
+  };
 }

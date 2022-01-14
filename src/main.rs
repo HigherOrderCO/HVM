@@ -4,9 +4,9 @@
 #![allow(non_snake_case)]
 #![allow(unused_imports)]
 
+mod convert;
 mod lambolt;
 mod parser;
-mod convert;
 mod runtime;
 
 fn main() {
