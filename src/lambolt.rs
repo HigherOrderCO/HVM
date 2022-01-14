@@ -431,7 +431,6 @@ pub struct SanitizeResult {
 //         ~> `(fn (cons x0   x1))   = (cons (pair x0.0 x0.1) x1.0)`
 // It also returns the usage count of each variable.
 pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
-
   // Pass through the lhs of the function generating new names
   // for every variable found in the style described before with
   // the fresh function. Also checks if rule's left side is valid.
@@ -505,7 +504,12 @@ pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
           }
         }
       }
-      Term::Dup { expr, body, nam0, nam1 } => {
+      Term::Dup {
+        expr,
+        body,
+        nam0,
+        nam1,
+      } => {
         let new_nam0 = (ctx.fresh)();
         let new_nam1 = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;

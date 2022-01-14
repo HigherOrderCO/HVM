@@ -776,30 +776,30 @@ fn show_mem(worker: &Worker) -> String {
 // Recursivelly builds a term.
 pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
   match term {
-    Term::Var{bidx} => {
+    Term::Var { bidx } => {
       if *bidx < vars.len() as u64 {
         return vars[*bidx as usize];
       } else {
         panic!("Unbound variable.");
       }
-    },
-    Term::Dup{expr, body} => {
+    }
+    Term::Dup { expr, body } => {
       panic!("TODO");
-    },
-    Term::Let{expr, body} => {
+    }
+    Term::Let { expr, body } => {
       panic!("TODO");
-    },
-    Term::Lam{body} => {
+    }
+    Term::Lam { body } => {
       let node = alloc(mem, 2);
       vars.push(Var(node));
       let body = make_term(mem, body, vars);
       vars.pop();
       return Lam(node);
-    },
-    Term::App{func, argm} => {
+    }
+    Term::App { func, argm } => {
       panic!("TODO");
-    },
-    Term::Ctr{func, args} => {
+    }
+    Term::Ctr { func, args } => {
       let size = args.len() as u64;
       let node = alloc(mem, size);
       for (i,arg) in args.iter().enumerate() {
@@ -808,13 +808,13 @@ pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
       }
       //println!("made ctr {} at {}", size, node);
       return Ctr(size, *func, node);
-    },
-    Term::U32{numb} => {
+    }
+    Term::U32 { numb } => {
       panic!("TODO");
-    },
-    Term::Op2{oper, val0, val1} => {
+    }
+    Term::Op2 { oper, val0, val1 } => {
       panic!("TODO");
-    },
+    }
   }
 }
 
