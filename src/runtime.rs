@@ -61,6 +61,58 @@ const _SLOW: u64 = 1;
 
 pub type Lnk = u64;
 
+pub enum Term {
+  Var {
+    bidx: u64,
+  },
+  Dup {
+    expr: Box<Term>,
+    body: Box<Term>,
+  },
+  Let {
+    expr: Box<Term>,
+    body: Box<Term>,
+  },
+  Lam {
+    body: Box<Term>,
+  },
+  App {
+    func: Box<Term>,
+    argm: Box<Term>,
+  },
+  Ctr {
+    func: u64,
+    args: Vec<Box<Term>>,
+  },
+  U32 {
+    numb: u32,
+  },
+  Op2 {
+    oper: Oper,
+    val0: Box<Term>,
+    val1: Box<Term>,
+  },
+}
+
+pub enum Oper {
+  ADD,
+  SUB,
+  MUL,
+  DIV,
+  MOD,
+  AND,
+  OR,
+  XOR,
+  SHL,
+  SHR,
+  LTN,
+  LTE,
+  EQL,
+  GTE,
+  GTN,
+  NEQ,
+}
+
 pub struct Worker {
   pub node: Vec<Lnk>,
   pub size: u64,
@@ -81,6 +133,9 @@ pub fn new_worker() -> Worker {
 // -------
 
 static mut SEEN_DATA: [u64; SEEN_SIZE] = [0; SEEN_SIZE];
+
+// Constructors
+// ------------
 
 pub fn Var(pos: u64) -> Lnk {
   return (VAR * TAG) | pos;
@@ -138,6 +193,9 @@ pub fn Out(arg: u64, fld: u64) -> Lnk {
   return (OUT * TAG) | (arg << 8) | fld;
 }
 
+// Getters
+// -------
+
 pub fn get_tag(lnk: Lnk) -> u64 {
   return lnk / TAG;
 }
@@ -165,6 +223,9 @@ pub fn get_ari(lnk: Lnk) -> u64 {
 pub fn get_loc(lnk: Lnk, arg: u64) -> u64 {
   return get_val(lnk) + arg;
 }
+
+// Memory
+// ------
 
 pub fn ask_lnk(mem: &Worker, loc: u64) -> Lnk {
   unsafe {
@@ -271,6 +332,9 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
 pub fn inc_cost(mem: &mut Worker) {
   mem.cost += 1;
 }
+
+// Reduction
+// ---------
 
 pub fn subst(mem: &mut Worker, lnk: Lnk, val: Lnk) {
   if get_tag(lnk) != ERA {
@@ -740,13 +804,57 @@ fn show_mem(worker: &Worker) -> String {
   return s;
 }
 
-fn test_runtime() {
-  //let mut worker = new_worker();
-  //worker.size = 1;
-  //worker.node[0] = Cal(0, 0, 0);
-  //let start = Instant::now();
-  //normal(&mut worker, 0);
-  //let total = (start.elapsed().as_millis() as f64) / 1000.0;
-  //println!("* rwts: {} ({:.2}m rwt/s)", worker.cost, (worker.cost as f64) / total / 1000000.0);
-  //println!("* time: {:?}", total);
+// Dynamic functions
+// -----------------
+
+// Recursivelly builds a term.
+pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
+  match term {
+    Term::Var { bidx } => {
+      if *bidx < vars.len() as u64 {
+        return vars[*bidx as usize];
+      } else {
+        panic!("Unbound variable.");
+      }
+    }
+    Term::Dup { expr, body } => {
+      panic!("TODO");
+    }
+    Term::Let { expr, body } => {
+      panic!("TODO");
+    }
+    Term::Lam { body } => {
+      let node = alloc(mem, 2);
+      vars.push(Var(node));
+      let body = make_term(mem, body, vars);
+      vars.pop();
+      return Lam(node);
+    }
+    Term::App { func, argm } => {
+      panic!("TODO");
+    }
+    Term::Ctr { func, args } => {
+      let size = args.len() as u64;
+      let node = alloc(mem, size);
+      for (i, arg) in args.iter().enumerate() {
+        let arg_lnk = make_term(mem, arg, vars);
+        link(mem, node + i as u64, arg_lnk);
+      }
+      //println!("made ctr {} at {}", size, node);
+      return Ctr(size, *func, node);
+    }
+    Term::U32 { numb } => {
+      panic!("TODO");
+    }
+    Term::Op2 { oper, val0, val1 } => {
+      panic!("TODO");
+    }
+  }
+}
+
+pub fn alloc_term(mem: &mut Worker, term: &Term) -> u64 {
+  let host = alloc(mem, 1);
+  let term = make_term(mem, term, &mut Vec::new());
+  link(mem, host, term);
+  return host;
 }

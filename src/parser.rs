@@ -36,6 +36,12 @@ pub struct State<'a> {
   pub index: usize,
 }
 
+impl<'a> State<'a> {
+  fn rest(&self) -> &'a str {
+    &self.code[self.index..]
+  }
+}
+
 pub type Answer<'a, A> = Result<(State<'a>, A), String>;
 pub type Parser<'a, A> = Box<dyn Fn(State<'a>) -> Answer<'a, A>>;
 
