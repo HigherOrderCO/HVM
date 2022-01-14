@@ -326,7 +326,12 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
           }
         }
       }
-      lb::Term::Dup { expr, body, nam0, nam1, } => {}
+      lb::Term::Dup {
+        expr,
+        body,
+        nam0,
+        nam1,
+      } => {}
       lb::Term::Let { name, expr, body } => {}
       lb::Term::Lam { name, body } => {}
       lb::Term::App { func, argm } => {}
@@ -438,7 +443,9 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
 
   // duplicate right side variables that are used more than once
   for (key, value) in table {
-    let expr = Box::new(lb::Term::Var { name: value.clone() });
+    let expr = Box::new(lb::Term::Var {
+      name: value.clone(),
+    });
     rhs = duplicator(&value, expr, rhs, &mut uses);
   }
 
@@ -449,4 +456,3 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
   // returns the sanitized rule
   Ok(lb::Rule { lhs, rhs })
 }
-
