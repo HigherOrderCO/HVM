@@ -5,6 +5,7 @@
 #![allow(unused_imports)]
 
 mod compilable;
+mod compiler;
 mod convert;
 mod lambolt;
 mod parser;
