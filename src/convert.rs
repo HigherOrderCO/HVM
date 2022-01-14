@@ -2,12 +2,13 @@
 
 use crate::lambolt as lb;
 use crate::runtime as rt;
+use crate::compilable as cm;
 use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 /// Converts a Lambolt term to a Runtime-ready term
-pub fn lambolt_to_runtime(term: &lb::Term, meta: &lb::Meta) -> rt::Term {
+pub fn lambolt_to_runtime(term: &lb::Term, comp: &cm::Compilable) -> rt::Term {
   fn convert_oper(oper: &lb::Oper) -> rt::Oper {
     match oper {
       lb::Oper::ADD => rt::Oper::ADD,
@@ -30,7 +31,7 @@ pub fn lambolt_to_runtime(term: &lb::Term, meta: &lb::Meta) -> rt::Term {
   }
   fn convert_term(
     term: &lb::Term,
-    meta: &lb::Meta,
+    comp: &cm::Compilable,
     depth: u64,
     vars: &mut HashMap<String, u64>,
   ) -> rt::Term {
@@ -48,39 +49,39 @@ pub fn lambolt_to_runtime(term: &lb::Term, meta: &lb::Meta) -> rt::Term {
         expr,
         body,
       } => {
-        let expr = Box::new(convert_term(expr, meta, depth + 0, vars));
+        let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.insert(nam0.clone(), depth + 0);
         vars.insert(nam1.clone(), depth + 1);
-        let body = Box::new(convert_term(body, meta, depth + 2, vars));
+        let body = Box::new(convert_term(body, comp, depth + 2, vars));
         vars.remove(nam0);
         vars.remove(nam1);
         return rt::Term::Dup { expr, body };
       }
       lb::Term::Lam { name, body } => {
         vars.insert(name.clone(), depth);
-        let body = Box::new(convert_term(body, meta, depth + 1, vars));
+        let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.remove(name);
         return rt::Term::Lam { body };
       }
       lb::Term::Let { name, expr, body } => {
-        let expr = Box::new(convert_term(expr, meta, depth + 0, vars));
+        let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.insert(name.clone(), depth);
-        let body = Box::new(convert_term(body, meta, depth + 1, vars));
+        let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.remove(name);
         return rt::Term::Let { expr, body };
       }
       lb::Term::App { func, argm } => {
-        let func = Box::new(convert_term(func, meta, depth + 0, vars));
-        let argm = Box::new(convert_term(argm, meta, depth + 0, vars));
+        let func = Box::new(convert_term(func, comp, depth + 0, vars));
+        let argm = Box::new(convert_term(argm, comp, depth + 0, vars));
         return rt::Term::App { func, argm };
       }
       lb::Term::Ctr { name, args } => {
         let mut new_args: Vec<Box<rt::Term>> = Vec::new();
         for arg in args {
-          new_args.push(Box::new(convert_term(arg, meta, depth + 0, vars)));
+          new_args.push(Box::new(convert_term(arg, comp, depth + 0, vars)));
         }
         return rt::Term::Ctr {
-          func: meta.name_to_id[name],
+          func: comp.name_to_id[name],
           args: new_args,
         };
       }
@@ -89,17 +90,17 @@ pub fn lambolt_to_runtime(term: &lb::Term, meta: &lb::Meta) -> rt::Term {
       }
       lb::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
-        let val0 = Box::new(convert_term(val0, meta, depth + 0, vars));
-        let val1 = Box::new(convert_term(val1, meta, depth + 1, vars));
+        let val0 = Box::new(convert_term(val0, comp, depth + 0, vars));
+        let val1 = Box::new(convert_term(val1, comp, depth + 1, vars));
         return rt::Term::Op2 { oper, val0, val1 };
       }
     }
   }
-  return convert_term(term, meta, 0, &mut HashMap::new());
+  return convert_term(term, comp, 0, &mut HashMap::new());
 }
 
 /// Reads back a Lambolt term from Runtime's memory
-pub fn runtime_to_lambolt(mem: &Worker, meta: &lb::Meta, host: u64) -> String {
+pub fn runtime_to_lambolt(mem: &Worker, comp: &cm::Compilable, host: u64) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
     names: &'a mut HashMap<Lnk, String>,
@@ -163,7 +164,7 @@ pub fn runtime_to_lambolt(mem: &Worker, meta: &lb::Meta, host: u64) -> String {
 
   struct CtxGo<'a> {
     mem: &'a Worker,
-    meta: &'a lb::Meta,
+    comp: &'a cm::Compilable,
     names: &'a HashMap<Lnk, String>,
     seen: &'a HashSet<Lnk>,
     // count: &'a mut u32,
@@ -292,7 +293,7 @@ pub fn runtime_to_lambolt(mem: &Worker, meta: &lb::Meta, host: u64) -> String {
             .map(|x| format!(" {}", x))
             .collect::<String>();
           let name = ctx
-            .meta
+            .comp
             .id_to_name
             .get(&func)
             .map(String::to_string)
@@ -329,7 +330,7 @@ pub fn runtime_to_lambolt(mem: &Worker, meta: &lb::Meta, host: u64) -> String {
 
   let ctx = &mut CtxGo {
     mem,
-    meta,
+    comp,
     names: &names,
     seen: &seen,
   };
