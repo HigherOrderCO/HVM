@@ -53,21 +53,11 @@ pub fn equal_at(text: &str, test: &str, i: usize) -> bool {
 }
 
 pub fn flatten(texts: &[&str]) -> String {
-  let mut result: String = String::new();
-  for text in texts.iter() {
-    for chr in text.chars() {
-      result.push(chr);
-    }
-  }
-  return result;
+  texts.join("")
 }
 
 pub fn lines(text: &str) -> Vec<String> {
-  let mut result: Vec<String> = Vec::new();
-  for line in text.lines() {
-    result.push(line.to_string());
-  }
-  return result;
+  text.lines().map(String::from).collect()
 }
 
 pub fn find(text: &str, target: &str) -> usize {
