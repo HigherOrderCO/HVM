@@ -1,6 +1,10 @@
 use crate::parser;
 use std::fmt;
-use std::{collections::HashMap, fmt::format, u64};
+use std::{
+  collections::{BTreeMap, HashMap},
+  fmt::format,
+  u64,
+};
 
 // Types
 // =====
@@ -434,9 +438,11 @@ pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
   // Pass through the lhs of the function generating new names
   // for every variable found in the style described before with
   // the fresh function. Also checks if rule's left side is valid.
-  type NameTable = HashMap<String, String>;
+  // BTree is used here for determinism (HashMap does not maintain
+  // order among executions)
+  type NameTable = BTreeMap<String, String>;
   fn create_fresh(rule: &Rule, fresh: &mut dyn FnMut() -> String) -> Result<NameTable, String> {
-    let mut table: HashMap<String, String> = HashMap::new();
+    let mut table = BTreeMap::new();
 
     let lhs = &rule.lhs;
     if let Term::Ctr { ref name, ref args } = **lhs {
@@ -476,7 +482,7 @@ pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
   fn sanitize_term(
     term: &Term,
     lhs: bool,
-    tbl: &mut HashMap<String, String>,
+    tbl: &mut NameTable,
     ctx: &mut CtxSanitizeTerm,
   ) -> Result<Box<Term>, String> {
     let term = match term {
