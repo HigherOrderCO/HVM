@@ -1,5 +1,5 @@
-use std::collections::{BTreeMap, HashMap};
 use crate::lambolt as lb;
+use std::collections::{BTreeMap, HashMap};
 
 // A Compilable is a Lambolt file ready for compilation.
 // It includes data such as:
