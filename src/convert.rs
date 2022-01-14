@@ -1,8 +1,8 @@
 // TODO: we should readback as a lambolt::Term, not as a string
 
+use crate::compilable as cm;
 use crate::lambolt as lb;
 use crate::runtime as rt;
-use crate::compilable as cm;
 use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
