@@ -37,7 +37,7 @@ fn main() {
     (Double (Zero))   = (Zero)
     (Double (Succ a)) = (Succ (Succ (Double a)))
     (Fn (Cons head tail)) = (Cons (Pair head head) Fn (tail))
-
+    
     // Main function
     (Main) = (Double (Succ (Succ (Zero))))
   ",

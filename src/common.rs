@@ -1,5 +1,9 @@
 use crate::lambolt::{File, Rule, Term};
-use std::{collections::HashMap, fmt::format, u64};
+use std::{
+  collections::{BTreeMap, HashMap},
+  fmt::format,
+  u64,
+};
 
 pub type IdTable = HashMap<String, u64>;
 // Generates a name table for a whole program. That table links constructor
@@ -162,9 +166,9 @@ pub fn sanitize(rule: &Rule) -> Result<SanitizeResult, String> {
 // for every variable found in the style described before with
 // the fresh function.
 // Also checks if rule's left side is valid.
-type NameTable = HashMap<String, String>;
+type NameTable = BTreeMap<String, String>;
 fn create_fresh(rule: &Rule, fresh: &mut dyn FnMut() -> String) -> Result<NameTable, String> {
-  let mut table: HashMap<String, String> = HashMap::new();
+  let mut table = BTreeMap::new();
 
   let lhs = &rule.lhs;
   if let Term::Ctr { ref name, ref args } = **lhs {
@@ -202,7 +206,7 @@ struct CtxSanitizeTerm<'a> {
 fn sanitize_term(
   term: &Term,
   lhs: bool,
-  tbl: &mut HashMap<String, String>,
+  tbl: &mut NameTable,
   ctx: &mut CtxSanitizeTerm,
 ) -> Result<Box<Term>, String> {
   let term = match term {
