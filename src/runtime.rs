@@ -42,7 +42,7 @@ pub const MUL: u64 = 0x2;
 pub const DIV: u64 = 0x3;
 pub const MOD: u64 = 0x4;
 pub const AND: u64 = 0x5;
-pub const OR: u64 = 0x6;
+pub const OR : u64 = 0x6;
 pub const XOR: u64 = 0x7;
 pub const SHL: u64 = 0x8;
 pub const SHR: u64 = 0x9;
@@ -62,56 +62,21 @@ const _SLOW: u64 = 1;
 pub type Lnk = u64;
 
 pub enum Term {
-  Var {
-    bidx: u64,
-  },
-  Dup {
-    expr: Box<Term>,
-    body: Box<Term>,
-  },
-  Let {
-    expr: Box<Term>,
-    body: Box<Term>,
-  },
-  Lam {
-    body: Box<Term>,
-  },
-  App {
-    func: Box<Term>,
-    argm: Box<Term>,
-  },
-  Ctr {
-    func: u64,
-    args: Vec<Box<Term>>,
-  },
-  // Fun { func: u64, args: Vec<Box<Term>> }, TODO: should we have this?
-  U32 {
-    numb: u32,
-  },
-  Op2 {
-    oper: Oper,
-    val0: Box<Term>,
-    val1: Box<Term>,
-  },
+  Var { bidx: u64 },
+  Dup { expr: Box<Term>, body: Box<Term> },
+  Let { expr: Box<Term>, body: Box<Term> },
+  Lam { body: Box<Term> },
+  App { func: Box<Term>, argm: Box<Term> },
+  Ctr { func: u64, args: Vec<Box<Term>> },
+  U32 { numb: u32 },
+  Op2 { oper: Oper, val0: Box<Term>, val1: Box<Term> },
 }
 
 pub enum Oper {
-  ADD,
-  SUB,
-  MUL,
-  DIV,
-  MOD,
-  AND,
-  OR,
-  XOR,
-  SHL,
-  SHR,
-  LTN,
-  LTE,
-  EQL,
-  GTE,
-  GTN,
-  NEQ,
+  ADD, SUB, MUL, DIV,
+  MOD, AND, OR , XOR,
+  SHL, SHR, LTN, LTE,
+  EQL, GTE, GTN, NEQ,
 }
 
 pub struct Worker {
@@ -805,49 +770,11 @@ fn show_mem(worker: &Worker) -> String {
   return s;
 }
 
-fn test_runtime() {
-  //let mut worker = new_worker();
-  //worker.size = 1;
-  //worker.node[0] = Cal(0, 0, 0);
-  //let start = Instant::now();
-  //normal(&mut worker, 0);
-  //let total = (start.elapsed().as_millis() as f64) / 1000.0;
-  //println!("* rwts: {} ({:.2}m rwt/s)", worker.cost, (worker.cost as f64) / total / 1000000.0);
-  //println!("* time: {:?}", total);
-}
-
 // Dynamic functions
 // -----------------
 
-// Interpreted, with recursive builder would be like:
-//(Foo A@(Tic a b) B@(Tac c d)) = (Bar (Tac a b) (Tic c d))
-//Ctr(Bar, Ctr(Tac, Var(0), Var(1)), ...
-//vars = [
-  //get_arg(A, 0),
-  //get_arg(A, 1),
-  //get_arg(A, 2),
-  //get_arg(A, 3),
-//]
-//tac = alloc(2)
-//tic = alloc(2)
-//bar = alloc(2)
-//link(bar[0], tac)
-//link(bar[1], tic)
-//link(tac[0], vars[0]);
-
-//pub enum Term {
-  //Var { name: u64 },
-  //Dup { expr: BTerm, body: BTerm },
-  //Let { expr: BTerm, body: BTerm },
-  //Lam { body: BTerm },
-  //App { func: BTerm, argm: BTerm },
-  //Ctr { name: String, args: Vec<BTerm> },
-  //U32 { numb: u32 },
-  //Op2 { oper: Oper, val0: BTerm, val1: BTerm },
-//}
-
 // Recursivelly builds a term.
-fn make_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
+pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
   match term {
     Term::Var{bidx} => {
       if *bidx < vars.len() as u64 {
@@ -865,7 +792,7 @@ fn make_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
     Term::Lam{body} => {
       let node = alloc(mem, 2);
       vars.push(Var(node));
-      let body = make_term_go(mem, body, vars);
+      let body = make_term(mem, body, vars);
       vars.pop();
       return Lam(node);
     },
@@ -876,9 +803,10 @@ fn make_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
       let size = args.len() as u64;
       let node = alloc(mem, size);
       for (i,arg) in args.iter().enumerate() {
-        let arg_lnk = make_term_go(mem, arg, vars);
+        let arg_lnk = make_term(mem, arg, vars);
         link(mem, node + i as u64, arg_lnk);
       }
+      //println!("made ctr {} at {}", size, node);
       return Ctr(size, *func, node);
     },
     Term::U32{numb} => {
@@ -890,7 +818,9 @@ fn make_term_go(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>) -> Lnk {
   }
 }
 
-pub fn make_term(mem: &mut Worker, term: &Term) -> Lnk {
-  return make_term_go(mem, term, &mut Vec::new());
+pub fn alloc_term(mem: &mut Worker, term: &Term) -> u64 {
+  let host = alloc(mem, 1);
+  let term = make_term(mem, term, &mut Vec::new());
+  link(mem, host, term);
+  return host;
 }
-
