@@ -8,7 +8,7 @@ use crate::lambolt as lb;
 // - func_rules: sanitized rules grouped by function
 // - id_to_name: maps ctr ids to names
 // - name_to_id: maps ctr names to ids
-// - ctr_is_cal: true if a ctr is a cal
+// - ctr_is_cal: true if a ctr is used as a function
 // A sanitized rule has all its variables renamed to have unique names.
 // Variables that are never used are renamed to "*".
 
