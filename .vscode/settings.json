@@ -9,6 +9,8 @@
     "arit",
     "askama",
     "cplb",
+    "ctrs",
+    "dups",
     "ropey"
   ]
 }
