@@ -5,6 +5,7 @@
 #![allow(unused_imports)]
 
 mod compilable;
+mod compiler;
 mod convert;
 mod lambolt;
 mod parser;
@@ -39,7 +40,7 @@ fn eval(main: &str, code: &str) -> (String, u64) {
   println!("{}", &comp.func_rules.get("Foo").expect("?")[0].rhs);
 
   // Converts it to a Runtime Term and stores it on the worker's memory
-  let term = convert::lambolt_to_runtime(&body, &comp);
+  let term = convert::lambolt_to_runtime(body, &comp);
   let host = runtime::alloc_term(&mut worker, &term);
 
   // Normalizes it
@@ -49,5 +50,5 @@ fn eval(main: &str, code: &str) -> (String, u64) {
   let norm = convert::runtime_to_lambolt(&worker, &comp, host);
 
   // Returns the normal form and the gas cost
-  return (norm, worker.cost);
+  (norm, worker.cost)
 }

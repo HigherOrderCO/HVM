@@ -1,5 +1,7 @@
 // TODO: we should readback as a lambolt::Term, not as a string
 
+#![allow(clippy::identity_op)]
+
 use crate::compilable as cm;
 use crate::lambolt as lb;
 use crate::runtime as rt;
@@ -11,22 +13,22 @@ use std::fmt;
 pub fn lambolt_to_runtime(term: &lb::Term, comp: &cm::Compilable) -> rt::Term {
   fn convert_oper(oper: &lb::Oper) -> u64 {
     match oper {
-      lb::Oper::ADD => rt::ADD,
-      lb::Oper::SUB => rt::SUB,
-      lb::Oper::MUL => rt::MUL,
-      lb::Oper::DIV => rt::DIV,
-      lb::Oper::MOD => rt::MOD,
-      lb::Oper::AND => rt::AND,
-      lb::Oper::OR  => rt::OR,
-      lb::Oper::XOR => rt::XOR,
-      lb::Oper::SHL => rt::SHL,
-      lb::Oper::SHR => rt::SHR,
-      lb::Oper::LTN => rt::LTN,
-      lb::Oper::LTE => rt::LTE,
-      lb::Oper::EQL => rt::EQL,
-      lb::Oper::GTE => rt::GTE,
-      lb::Oper::GTN => rt::GTN,
-      lb::Oper::NEQ => rt::NEQ,
+      lb::Oper::Add => rt::ADD,
+      lb::Oper::Sub => rt::SUB,
+      lb::Oper::Mul => rt::MUL,
+      lb::Oper::Div => rt::DIV,
+      lb::Oper::Mod => rt::MOD,
+      lb::Oper::And => rt::AND,
+      lb::Oper::Or => rt::OR,
+      lb::Oper::Xor => rt::XOR,
+      lb::Oper::Shl => rt::SHL,
+      lb::Oper::Shr => rt::SHR,
+      lb::Oper::Ltn => rt::LTN,
+      lb::Oper::Lte => rt::LTE,
+      lb::Oper::Eql => rt::EQL,
+      lb::Oper::Gte => rt::GTE,
+      lb::Oper::Gtn => rt::GTN,
+      lb::Oper::Neq => rt::NEQ,
     }
   }
   fn convert_term(
@@ -38,7 +40,7 @@ pub fn lambolt_to_runtime(term: &lb::Term, comp: &cm::Compilable) -> rt::Term {
     match term {
       lb::Term::Var { name } => {
         if let Some(var_depth) = vars.get(name) {
-          return rt::Term::Var { bidx: *var_depth };
+          rt::Term::Var { bidx: *var_depth }
         } else {
           panic!("Unbound variable.");
         }
@@ -55,48 +57,47 @@ pub fn lambolt_to_runtime(term: &lb::Term, comp: &cm::Compilable) -> rt::Term {
         let body = Box::new(convert_term(body, comp, depth + 2, vars));
         vars.remove(nam0);
         vars.remove(nam1);
-        return rt::Term::Dup { expr, body };
+        rt::Term::Dup { expr, body }
       }
       lb::Term::Lam { name, body } => {
         vars.insert(name.clone(), depth);
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.remove(name);
-        return rt::Term::Lam { body };
+        rt::Term::Lam { body }
       }
       lb::Term::Let { name, expr, body } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.insert(name.clone(), depth);
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.remove(name);
-        return rt::Term::Let { expr, body };
+        rt::Term::Let { expr, body }
       }
       lb::Term::App { func, argm } => {
         let func = Box::new(convert_term(func, comp, depth + 0, vars));
         let argm = Box::new(convert_term(argm, comp, depth + 0, vars));
-        return rt::Term::App { func, argm };
+        rt::Term::App { func, argm }
       }
       lb::Term::Ctr { name, args } => {
-        let mut new_args: Vec<Box<rt::Term>> = Vec::new();
+        let mut new_args: Vec<rt::Term> = Vec::new();
         for arg in args {
-          new_args.push(Box::new(convert_term(arg, comp, depth + 0, vars)));
+          new_args.push(convert_term(arg, comp, depth + 0, vars));
         }
-        return rt::Term::Ctr {
+        rt::Term::Ctr {
           func: comp.name_to_id[name],
           args: new_args,
-        };
+        }
       }
-      lb::Term::U32 { numb } => {
-        return rt::Term::U32 { numb: *numb };
-      }
+      lb::Term::U32 { numb } => rt::Term::U32 { numb: *numb },
       lb::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, comp, depth + 0, vars));
         let val1 = Box::new(convert_term(val1, comp, depth + 1, vars));
-        return rt::Term::Op2 { oper, val0, val1 };
+        rt::Term::Op2 { oper, val0, val1 }
       }
     }
   }
-  return convert_term(term, comp, 0, &mut HashMap::new());
+
+  convert_term(term, comp, 0, &mut HashMap::new())
 }
 
 //pub func_rules: HashMap<String, Vec<lb::Rule>>,
@@ -275,13 +276,13 @@ pub fn runtime_to_lambolt(mem: &Worker, comp: &cm::Compilable, host: u64) -> Str
     }
     fn pop(&self, col: Lnk) -> Stacks {
       let mut stacks = self.stacks.clone();
-      let stack = stacks.entry(col).or_insert(Vec::new());
+      let stack = stacks.entry(col).or_insert_with(Vec::new);
       stack.pop();
       Stacks { stacks }
     }
     fn push(&self, col: Lnk, val: bool) -> Stacks {
       let mut stacks = self.stacks.clone();
-      let stack = stacks.entry(col).or_insert(Vec::new());
+      let stack = stacks.entry(col).or_insert_with(Vec::new);
       stack.push(val);
       Stacks { stacks }
     }
@@ -292,7 +293,7 @@ pub fn runtime_to_lambolt(mem: &Worker, comp: &cm::Compilable, host: u64) -> Str
     // Should investigate if it is needed or not.
 
     //if ctx.seen.contains(&term) {
-      //"@".to_string()
+    //"@".to_string()
     //} else {
     match rt::get_tag(term) {
       rt::LAM => {
@@ -376,8 +377,7 @@ pub fn runtime_to_lambolt(mem: &Worker, comp: &cm::Compilable, host: u64) -> Str
         let args_txt = (0..arit)
           .map(|i| {
             let arg = rt::ask_arg(ctx.mem, term, i);
-            let arg_txt = go(ctx, stacks.clone(), arg, depth + 1);
-            arg_txt
+            go(ctx, stacks.clone(), arg, depth + 1)
           })
           .map(|x| format!(" {}", x))
           .collect::<String>();
@@ -403,7 +403,7 @@ pub fn runtime_to_lambolt(mem: &Worker, comp: &cm::Compilable, host: u64) -> Str
     //}
   }
 
-  let term = rt::ask_lnk(&mem, host);
+  let term = rt::ask_lnk(mem, host);
 
   let mut names = HashMap::<Lnk, String>::new();
   let mut seen = HashSet::<Lnk>::new();
@@ -425,5 +425,5 @@ pub fn runtime_to_lambolt(mem: &Worker, comp: &cm::Compilable, host: u64) -> Str
   };
   let stacks = Stacks::new();
 
-  return go(ctx, stacks, term, 0);
+  go(ctx, stacks, term, 0)
 }
