@@ -12,12 +12,15 @@ mod parser;
 mod runtime;
 
 fn main() {
-  let (norm, cost) = eval("Main", "
+  let (norm, cost) = eval(
+    "Main",
+    "
     (Double (Succ pred)) = (Succ (Succ (Double pred)))
     (Double (Zero))      = (Zero)
     (Foo a b)            = λc λd (Ue a b c d)
     (Main)               = (Double (Zero))
-  ");
+  ",
+  );
 
   println!("{}", norm);
   println!("- rwts: {}", cost);

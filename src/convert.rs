@@ -105,25 +105,20 @@ pub fn lambolt_to_runtime(term: &lb::Term, comp: &cm::Compilable) -> rt::Term {
 //pub name_to_id: HashMap<String, u64>,
 //pub ctr_is_cal: HashMap<String, bool>,
 pub fn make_rewriter(comp: &cm::Compilable, name: String) -> Option<rt::Function> {
-
   // Makes the test vector, which is used to determine if certain clause matched
   fn make_cond(comp: &cm::Compilable, lhs: &lb::Term) -> Vec<rt::Lnk> {
-    if let lb::Term::Ctr{name, args} = lhs {
-      let mut lnks : Vec<rt::Lnk> = Vec::new();
+    if let lb::Term::Ctr { name, args } = lhs {
+      let mut lnks: Vec<rt::Lnk> = Vec::new();
       for arg in args {
         lnks.push(match &**arg {
-          lb::Term::Ctr{name, args} => {
+          lb::Term::Ctr { name, args } => {
             let ari = args.len() as u64;
             let fun = comp.name_to_id.get(&*name).unwrap_or(&0);
             let pos = 0;
             rt::Ctr(ari, *fun, pos)
           }
-          lb::Term::U32{numb} => {
-            rt::U_32(*numb as u64)
-          }
-          _ => {
-            0
-          }
+          lb::Term::U32 { numb } => rt::U_32(*numb as u64),
+          _ => 0,
         })
       }
       return lnks;
@@ -132,17 +127,17 @@ pub fn make_rewriter(comp: &cm::Compilable, name: String) -> Option<rt::Function
   }
 
   // Makes the vars vector, which is used to access lhs variables
-  fn make_vars(comp: &cm::Compilable, lhs: &lb::Term) -> Vec<(u64,Option<u64>)> {
-    if let lb::Term::Ctr{name, args} = lhs {
-      let mut vars : Vec<(u64,Option<u64>)> = Vec::new();
-      for (i,arg) in args.iter().enumerate() {
+  fn make_vars(comp: &cm::Compilable, lhs: &lb::Term) -> Vec<(u64, Option<u64>)> {
+    if let lb::Term::Ctr { name, args } = lhs {
+      let mut vars: Vec<(u64, Option<u64>)> = Vec::new();
+      for (i, arg) in args.iter().enumerate() {
         match &**arg {
-          lb::Term::Ctr{name, args} => {
+          lb::Term::Ctr { name, args } => {
             for j in 0..args.len() {
               vars.push((i as u64, Some(j as u64)));
             }
           }
-          lb::Term::Var{..} => {
+          lb::Term::Var { .. } => {
             vars.push((i as u64, None));
           }
           _ => {}
@@ -154,17 +149,20 @@ pub fn make_rewriter(comp: &cm::Compilable, name: String) -> Option<rt::Function
   }
 
   if let Some(rules) = comp.func_rules.get(&name) {
-
     // Builds the "stricts" vector
     let mut stricts = Vec::new();
-    for (i,rule) in rules.iter().enumerate() {
+    for (i, rule) in rules.iter().enumerate() {
       while stricts.len() < i {
         stricts.push(false);
       }
       match *rule.lhs {
-        lb::Term::Ctr{..} => { stricts[i] = true; }
-        lb::Term::U32{..} => { stricts[i] = true; }
-        _                 => {}
+        lb::Term::Ctr { .. } => {
+          stricts[i] = true;
+        }
+        lb::Term::U32 { .. } => {
+          stricts[i] = true;
+        }
+        _ => {}
       }
     }
 
@@ -175,11 +173,7 @@ pub fn make_rewriter(comp: &cm::Compilable, name: String) -> Option<rt::Function
       conds.push(make_cond(comp, &rule.lhs));
       varss.push(make_vars(comp, &rule.lhs));
     }
-
   }
-
-  
-
 
   return None;
 }

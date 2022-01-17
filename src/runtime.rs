@@ -4,7 +4,7 @@
 #![allow(non_snake_case)]
 #![allow(clippy::identity_op)]
 
-use std::collections::{HashMap};
+use std::collections::HashMap;
 
 // Constants
 // ---------
@@ -350,7 +350,7 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk
   done
 }
 
-pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64,Function>, root: u64) -> Lnk {
+pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Lnk {
   let mut stack: Vec<u64> = Vec::new();
 
   let mut init = 1;
@@ -387,7 +387,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64,Function>, root: u64) -> Lnk
             if len == 0 {
               init = 0;
             } else {
-              for (i,x) in f.stricts.iter().enumerate() {
+              for (i, x) in f.stricts.iter().enumerate() {
                 if i < f.stricts.len() - 1 && *x {
                   stack.push(get_loc(term, i as u64) | 0x80000000);
                 } else {
@@ -398,16 +398,16 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64,Function>, root: u64) -> Lnk
             continue;
           }
           //match fun {
-            //_SLOW => {
-              //stack.push(host);
-              //host = get_loc(term, 0);
-              //continue;
-            //}
-            //_MAIN => {
-              //init = 0;
-              //continue;
-            //}
-            //_ => {}
+          //_SLOW => {
+          //stack.push(host);
+          //host = get_loc(term, 0);
+          //continue;
+          //}
+          //_MAIN => {
+          //init = 0;
+          //continue;
+          //}
+          //_ => {}
           //}
         }
         _ => {}
@@ -613,80 +613,80 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64,Function>, root: u64) -> Lnk
             println!("rabisco");
           }
           //match fun {
-            //_SLOW => {
-              //let LOC_0: u64 = get_loc(term, 0);
-              //let LNK_0: u64 = ask_arg(mem, term, 0);
-              //if (get_tag(LNK_0) == PAR) {
-                //cal_par(mem, host, term, LNK_0, 0);
-              //}
-              //if (get_tag(LNK_0) == U32 && get_val(LNK_0) == 0) {
-                //inc_cost(mem);
-                //link(mem, host, U_32(1));
-                //clear(mem, get_loc(term, 0), 1);
-                //host = host;
-                //init = 1;
-                //continue;
-              //}
-              //inc_cost(mem);
-              //let loc_0: u64 = LOC_0;
-              //let lnk_1: u64 = LNK_0;
-              //let dup_2: u64 = alloc(mem, 3);
-              //let col_3: u64 = 0;
-              //link(mem, dup_2 + 0, Era());
-              //link(mem, dup_2 + 1, Era());
-              //link(mem, dup_2 + 2, lnk_1);
-              //let ret_6: u64;
-              //let op2_7: u64 = alloc(mem, 2);
-              //link(mem, op2_7 + 0, Dp0(col_3, dup_2));
-              //link(mem, op2_7 + 1, U_32(1));
-              //ret_6 = Op2(SUB, op2_7);
-              //let ctr_8: u64 = alloc(mem, 1);
-              //link(mem, ctr_8 + 0, ret_6);
-              //let ret_9: u64;
-              //let op2_10: u64 = alloc(mem, 2);
-              //link(mem, op2_10 + 0, Dp1(col_3, dup_2));
-              //link(mem, op2_10 + 1, U_32(1));
-              //ret_9 = Op2(SUB, op2_10);
-              //let ctr_11: u64 = alloc(mem, 1);
-              //link(mem, ctr_11 + 0, ret_9);
-              //let ret_4: u64;
-              //let op2_5: u64 = alloc(mem, 2);
-              //link(mem, op2_5 + 0, Cal(1, _SLOW, ctr_8));
-              //link(mem, op2_5 + 1, Cal(1, _SLOW, ctr_11));
-              //ret_4 = Op2(ADD, op2_5);
-              //link(mem, host, ret_4);
-              //clear(mem, get_loc(term, 0), 1);
-              //host = host;
-              //init = 1;
-              //continue;
-            //}
-            //_MAIN => {
-              //inc_cost(mem);
-              //let dup_0: u64 = alloc(mem, 3);
-              //let col_1: u64 = 0;
-              ////OP2:0:5|ARG:0:4|U32:0:2|~      |DP1:0:0|FUN:1:3|FUN:1:4|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|
-              //link(mem, dup_0 + 0, Era());
-              //link(mem, dup_0 + 1, Era());
-              //link(mem, dup_0 + 2, U_32(25));
-              //let ctr_4: u64 = alloc(mem, 1);
-              //link(mem, ctr_4 + 0, Dp0(col_1, dup_0));
-              //let ctr_5: u64 = alloc(mem, 1);
-              //link(mem, ctr_5 + 0, Dp1(col_1, dup_0));
-              //let ret_2: u64;
-              //let op2_3: u64 = alloc(mem, 2);
-              //link(mem, op2_3 + 0, Cal(1, _SLOW, ctr_4));
-              //link(mem, op2_3 + 1, Cal(1, _SLOW, ctr_5));
-              //ret_2 = Op2(ADD, op2_3);
-              //link(mem, host, ret_2);
-              //clear(mem, get_loc(term, 0), 0);
-              //host = host;
-              //init = 1;
-              //continue;
-            //}
-            //_ => {
-              ////let_fun();
-              //break;
-            //}
+          //_SLOW => {
+          //let LOC_0: u64 = get_loc(term, 0);
+          //let LNK_0: u64 = ask_arg(mem, term, 0);
+          //if (get_tag(LNK_0) == PAR) {
+          //cal_par(mem, host, term, LNK_0, 0);
+          //}
+          //if (get_tag(LNK_0) == U32 && get_val(LNK_0) == 0) {
+          //inc_cost(mem);
+          //link(mem, host, U_32(1));
+          //clear(mem, get_loc(term, 0), 1);
+          //host = host;
+          //init = 1;
+          //continue;
+          //}
+          //inc_cost(mem);
+          //let loc_0: u64 = LOC_0;
+          //let lnk_1: u64 = LNK_0;
+          //let dup_2: u64 = alloc(mem, 3);
+          //let col_3: u64 = 0;
+          //link(mem, dup_2 + 0, Era());
+          //link(mem, dup_2 + 1, Era());
+          //link(mem, dup_2 + 2, lnk_1);
+          //let ret_6: u64;
+          //let op2_7: u64 = alloc(mem, 2);
+          //link(mem, op2_7 + 0, Dp0(col_3, dup_2));
+          //link(mem, op2_7 + 1, U_32(1));
+          //ret_6 = Op2(SUB, op2_7);
+          //let ctr_8: u64 = alloc(mem, 1);
+          //link(mem, ctr_8 + 0, ret_6);
+          //let ret_9: u64;
+          //let op2_10: u64 = alloc(mem, 2);
+          //link(mem, op2_10 + 0, Dp1(col_3, dup_2));
+          //link(mem, op2_10 + 1, U_32(1));
+          //ret_9 = Op2(SUB, op2_10);
+          //let ctr_11: u64 = alloc(mem, 1);
+          //link(mem, ctr_11 + 0, ret_9);
+          //let ret_4: u64;
+          //let op2_5: u64 = alloc(mem, 2);
+          //link(mem, op2_5 + 0, Cal(1, _SLOW, ctr_8));
+          //link(mem, op2_5 + 1, Cal(1, _SLOW, ctr_11));
+          //ret_4 = Op2(ADD, op2_5);
+          //link(mem, host, ret_4);
+          //clear(mem, get_loc(term, 0), 1);
+          //host = host;
+          //init = 1;
+          //continue;
+          //}
+          //_MAIN => {
+          //inc_cost(mem);
+          //let dup_0: u64 = alloc(mem, 3);
+          //let col_1: u64 = 0;
+          ////OP2:0:5|ARG:0:4|U32:0:2|~      |DP1:0:0|FUN:1:3|FUN:1:4|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|
+          //link(mem, dup_0 + 0, Era());
+          //link(mem, dup_0 + 1, Era());
+          //link(mem, dup_0 + 2, U_32(25));
+          //let ctr_4: u64 = alloc(mem, 1);
+          //link(mem, ctr_4 + 0, Dp0(col_1, dup_0));
+          //let ctr_5: u64 = alloc(mem, 1);
+          //link(mem, ctr_5 + 0, Dp1(col_1, dup_0));
+          //let ret_2: u64;
+          //let op2_3: u64 = alloc(mem, 2);
+          //link(mem, op2_3 + 0, Cal(1, _SLOW, ctr_4));
+          //link(mem, op2_3 + 1, Cal(1, _SLOW, ctr_5));
+          //ret_2 = Op2(ADD, op2_3);
+          //link(mem, host, ret_2);
+          //clear(mem, get_loc(term, 0), 0);
+          //host = host;
+          //init = 1;
+          //continue;
+          //}
+          //_ => {
+          ////let_fun();
+          //break;
+          //}
           //}
         }
         _ => {}
@@ -713,7 +713,12 @@ pub fn get_bit(bits: &[u64], bit: u64) -> bool {
   (((bits[bit as usize >> 6] >> (bit & 0x3f)) as u8) & 1) == 1
 }
 
-pub fn normal_go(mem: &mut Worker, funcs: &HashMap<u64,Function>, host: u64, seen: &mut [u64]) -> Lnk {
+pub fn normal_go(
+  mem: &mut Worker,
+  funcs: &HashMap<u64, Function>,
+  host: u64,
+  seen: &mut [u64],
+) -> Lnk {
   let term = ask_lnk(mem, host);
   if get_bit(seen, host) {
     term
