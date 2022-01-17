@@ -49,25 +49,15 @@ pub type Parser<'a, A> = Box<dyn Fn(State<'a>) -> Answer<'a, A>>;
 // =====
 
 pub fn equal_at(text: &str, test: &str, i: usize) -> bool {
-  return &text[i..std::cmp::min(text.len(), i + test.len())] == test;
+  return &text.as_bytes()[i..std::cmp::min(text.len(), i + test.len())] == test.as_bytes();
 }
 
 pub fn flatten(texts: &[&str]) -> String {
-  let mut result: String = String::new();
-  for text in texts.iter() {
-    for chr in text.chars() {
-      result.push(chr);
-    }
-  }
-  return result;
+  texts.join("")
 }
 
 pub fn lines(text: &str) -> Vec<String> {
-  let mut result: Vec<String> = Vec::new();
-  for line in text.lines() {
-    result.push(line.to_string());
-  }
-  return result;
+  text.lines().map(String::from).collect()
 }
 
 pub fn find(text: &str, target: &str) -> usize {
@@ -322,8 +312,9 @@ pub fn list<'a, A: 'a, B: 'a>(
   let mut elems = Vec::new();
   loop {
     let (new_state, done) = parse_close(state)?;
-    let (new_state, skip) = parse_sep(state)?;
+    let (new_state, skip) = parse_sep(new_state)?;
     if done {
+      state = new_state;
       break;
     } else {
       let (new_state, elem) = parse_elem(new_state)?;
