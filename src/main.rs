@@ -12,7 +12,10 @@ mod runtime;
 
 fn main() {
   let (norm, cost) = eval("Main", "
-    (Main) = ((λf λx (f (f x))) (λf λx (f (f x))))
+    (Double (Succ pred)) = (Succ (Succ (Double pred)))
+    (Double (Zero))      = (Zero)
+    (Foo a b)            = λc λd (Ue a b c d)
+    (Main)               = (Double (Zero))
   ");
 
   println!("{}", norm);
@@ -33,12 +36,14 @@ fn eval(main: &str, code: &str) -> (String, u64) {
   // Finds the main rule on the compilable file and gets its body
   let body = &comp.func_rules.get(main).expect("Main not found.")[0].rhs;
 
+  println!("{}", &comp.func_rules.get("Foo").expect("?")[0].rhs);
+
   // Converts it to a Runtime Term and stores it on the worker's memory
   let term = convert::lambolt_to_runtime(&body, &comp);
   let host = runtime::alloc_term(&mut worker, &term);
 
   // Normalizes it
-  runtime::normal(&mut worker, host);
+  runtime::normal(&mut worker, host, &std::collections::HashMap::new());
 
   // Reads it back to a Lambolt term, as a String
   let norm = convert::runtime_to_lambolt(&worker, &comp, host);
