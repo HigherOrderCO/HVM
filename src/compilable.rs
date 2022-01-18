@@ -152,8 +152,8 @@ pub struct SanitizedRule {
 //   - If they're used once, nothing changes.
 //   - If they're never used, their name is changed to "*".
 // Example:
-//   - sanitizing: `(Foo a b) = (+b (+ a a))`
-//   - results in: `(Foo x0 b) = dup x0.0 x0.1 = x0; (+b (+ x0.0 x0.1))`
+//   - sanitizing: `(Foo a b) = (+ a a)`
+//   - results in: `(Foo x0 *) = dup x0.0 x0.1 = x0; (+ x0.0 x0.1)`
 pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
   // Pass through the lhs of the function generating new names
   // for every variable found in the style described before with
