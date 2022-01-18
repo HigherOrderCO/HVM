@@ -414,3 +414,7 @@ pub fn read_term(code: &str) -> Box<Term> {
 pub fn read_file(code: &str) -> File {
   return parser::read(Box::new(|x| parse_file(x)), code);
 }
+
+pub fn read_rule(code: &str) -> Option<Rule> {
+  return parser::read(Box::new(|x| parse_rule(x)), code);
+}

@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 // - ctr_is_cal: true if a ctr is used as a function
 // A sanitized rule has all its variables renamed to have unique names.
 // Variables that are never used are renamed to "*".
-
+#[derive(Debug)]
 pub struct Compilable {
   pub func_rules: HashMap<String, Vec<lb::Rule>>,
   pub id_to_name: HashMap<u64, String>,
@@ -152,8 +152,8 @@ pub struct SanitizedRule {
 //   - If they're used once, nothing changes.
 //   - If they're never used, their name is changed to "*".
 // Example:
-//   - sanitizing: `(Foo a b) = (+ a a)`
-//   - results in: `(Foo x0 *) = dup x0.0 x0.1 = x0; (+ x0.0 x0.1)`
+//   - sanitizing: `(Foo a b) = (+b (+ a a))`
+//   - results in: `(Foo x0 b) = dup x0.0 x0.1 = x0; (+b (+ x0.0 x0.1))`
 pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
   // Pass through the lhs of the function generating new names
   // for every variable found in the style described before with
@@ -208,9 +208,17 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
     let term = match term {
       lb::Term::Var { name } => {
         if lhs {
-          // create a var with the name generated before
           let name = tbl.get(name).unwrap_or(name);
-          Box::new(lb::Term::Var { name: name.clone() })
+          let amount = ctx.uses.get(name).map(|x| *x);
+          if amount > Some(0) {
+            // var is used in rhs
+            // create a var with the name generated before
+            Box::new(lb::Term::Var { name: name.clone() })
+          } else {
+            // var is not used in rhs
+            // delete its name
+            Box::new(lb::Term::Var {name: "*".to_string()})
+          }
         } else {
           // create a var with the name generated before
           // concatenated with '.{{times_used}}'
@@ -380,7 +388,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
       };
 
       Box::new(dup)
-    } else {
+    } else if amount == Some(1) {
       // if not used more than once just make a let then
       let term = lb::Term::Let {
         name: format!("{}.0", name),
@@ -388,6 +396,8 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
         body,
       };
       Box::new(term)
+    } else {
+      body
     }
   }
 
@@ -438,8 +448,8 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
   };
 
   // sanitize left and right sides
-  let mut lhs = sanitize_term(&rule.lhs, true, &mut table.clone(), &mut ctx)?;
   let mut rhs = sanitize_term(&rule.rhs, false, &mut table.clone(), &mut ctx)?;
+  let mut lhs = sanitize_term(&rule.lhs, true, &mut table.clone(), &mut ctx)?;
 
   // duplicate right side variables that are used more than once
   for (key, value) in table {
@@ -455,4 +465,119 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
 
   // returns the sanitized rule
   Ok(lb::Rule { lhs, rhs })
+}
+
+#[cfg(test)]
+mod tests {
+  use core::panic;
+  use cranelift::codegen::timing::compile;
+
+  use crate::lambolt::{Rule, read_file, read_rule};
+  use super::{sanitize_rule, gen_compilable};
+
+  #[test]
+  fn test_sanitize_expected_code() {
+    // code and expected code after sanitize
+    let codes = [
+      (
+        "(Foo a b c) = (+c (+c (+b (+ b b))))", 
+        "(Foo * x1 x2) = dup x2.0 x2.1 = x2; dup c.0 x1.0 = x1; dup x1.1 x1.2 = c.0; (+ x2.0 (+ x2.1 (+ x1.0 (+ x1.1 x1.2))))",
+      ),
+      (
+        "(Foo a b c d e f g h i j k l m n) = (+ (+ a a) i)", 
+        "(Foo x0 * * * * * * * x8 * * * * *) = let x8.0 = x8; dup x0.0 x0.1 = x0; (+ (+ x0.0 x0.1) x8.0)"
+      ),
+      (
+        "(Double (Zero)) = (Zero)", 
+        "(Double (Zero)) = (Zero)"
+      ),
+      (
+        "(Double (Succ a)) = (Double (Succ (Succ a)))", 
+        "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
+      )
+    ];
+    
+    // test if after sanitize all are equal
+    // to the expected
+    for (code, expected) in codes {
+      let rule = read_rule(code);
+      match rule {
+        None => panic!("Rule not parsed"),
+        Some(v) => {
+          let result = sanitize_rule(&v);
+          match result {
+            Ok(rule) => assert_eq!(rule.to_string(), expected),
+            Err(err) => panic!("Rule not sanitized")
+          }
+        }
+      }
+    }
+  }
+  
+  #[test]
+  fn test_sanitize_fail_code() {
+    // code that has to fail
+    let FAILS = [
+      // more than one nesting in constructors
+      "(Foo (Bar (Zaz x))) = (x)",
+      // variable not declared in lhs
+      "(Succ x) = (j)"
+    ];
+
+    for code in FAILS {
+      let rule = read_rule(code);
+      match rule {
+        None => panic!("Rule not parsed"),
+        Some(v) => {
+          let result = sanitize_rule(&v);
+          assert!(matches!(result, Err(_)));
+        }
+      }
+    }
+  }
+
+
+  #[test]
+  fn test_compilable_expected() {
+    let file = "
+      (Double (Zero)) = (Zero)
+      (Double (Succ x)) = (Succ ( Succ (Double x)))
+    ";
+
+    let file = read_file(file);
+    let compilable = gen_compilable(&file);
+
+    // func_rules testing
+    // contains expected key
+    assert!(compilable.func_rules.contains_key("Double"));
+    // contains expected number of keys
+    assert_eq!(compilable.func_rules.len(), 1);
+    // key contains expected number of rules
+    assert_eq!(compilable.func_rules.get("Double").unwrap().len(), 2);
+    
+    // id_to_name e name_to_id testing
+    // check expected length
+    assert_eq!(compilable.id_to_name.len(), 3);
+    // check determinism and existence
+    assert_eq!(compilable.id_to_name.get(&0).unwrap(), "Double");
+    assert_eq!(compilable.id_to_name.get(&1).unwrap(), "Zero");
+    assert_eq!(compilable.id_to_name.get(&2).unwrap(), "Succ");
+    // check cohesion
+    let size = compilable.id_to_name.len();
+    for (id, name) in compilable.id_to_name {
+      // assert name_to_id id will have same 
+      // id that generate name in id_to_name
+      // also checks if the two maps have same length
+      let id_to_compare = compilable.name_to_id.get(&name).unwrap();
+      assert_eq!(*id_to_compare, id);
+    }
+
+    // ctr_is_cal testing
+    // expected key exist
+    assert!(compilable.ctr_is_cal.contains_key("Double"));
+    // contains expected number of keys
+    assert_eq!(compilable.ctr_is_cal.len(), 1);
+    // key contains expected value
+    assert_eq!(*compilable.ctr_is_cal.get("Double").unwrap(), true);
+  }
 }
