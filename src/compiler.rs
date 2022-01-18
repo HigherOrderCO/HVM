@@ -67,9 +67,7 @@ pub fn compile(compilable: &cplb::Compilable, target: Target, mode: Mode) -> Str
     rewrite_rules_step_0: "",
     rewrite_rules_step_1: "",
   };
-  let rendered = template.render().unwrap();
-
-  rendered
+  template.render().unwrap()
 }
 
 fn compile_constructor_name(name: &str) -> String {
@@ -144,11 +142,12 @@ fn emit_use_static(target: Target, use_static: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+  use super::{compile, Mode, Target};
   use crate::compilable;
   use crate::lambolt;
+
   #[test]
   fn test() {
-    use super::{Mode, Target};
     let code = "(Main) = ((λf λx (f (f x))) (λf λx (f (f x))))";
     let file = lambolt::read_file(code);
     let comp = compilable::gen_compilable(&file);

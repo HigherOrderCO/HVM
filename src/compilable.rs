@@ -24,7 +24,7 @@ pub fn gen_compilable(file: &lb::File) -> Compilable {
   // names (such as `cons` and `succ`) to small ids (such as `0` and `1`).
   pub type NameToId = HashMap<String, u64>;
   pub type IdToName = HashMap<u64, String>;
-  pub fn gen_name_to_id(rules: &Vec<lb::Rule>) -> NameToId {
+  pub fn gen_name_to_id(rules: &[lb::Rule]) -> NameToId {
     fn find_ctrs(term: &lb::Term, table: &mut NameToId, fresh: &mut u64) {
       match term {
         lb::Term::Dup { expr, body, .. } => {
@@ -82,12 +82,12 @@ pub fn gen_compilable(file: &lb::File) -> Compilable {
     for (name, id) in name_to_id {
       id_to_name.insert(*id, name.clone());
     }
-    return id_to_name;
+    id_to_name
   }
 
   // Finds constructors that are used as functions.
   pub type IsFunctionTable = HashMap<String, bool>;
-  pub fn gen_ctr_is_cal(rules: &Vec<lb::Rule>) -> IsFunctionTable {
+  pub fn gen_ctr_is_cal(rules: &[lb::Rule]) -> IsFunctionTable {
     let mut is_call: IsFunctionTable = HashMap::new();
     for rule in rules {
       let term = &rule.lhs;
@@ -106,12 +106,12 @@ pub fn gen_compilable(file: &lb::File) -> Compilable {
   //   (add (zero)   (zero)  ) = (zero)
   // This is a group of 4 rules starting with the "add" name.
   pub type FuncRules = HashMap<String, Vec<lb::Rule>>;
-  pub fn gen_func_rules(rules: &Vec<lb::Rule>) -> FuncRules {
+  pub fn gen_func_rules(rules: &[lb::Rule]) -> FuncRules {
     let mut groups: FuncRules = HashMap::new();
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
         let group = groups.get_mut(name);
-        let rule = sanitize_rule(&rule).unwrap();
+        let rule = sanitize_rule(rule).unwrap();
         match group {
           None => {
             groups.insert(name.clone(), Vec::from([rule]));
@@ -129,12 +129,12 @@ pub fn gen_compilable(file: &lb::File) -> Compilable {
   let name_to_id = gen_name_to_id(&file.rules);
   let id_to_name = invert(&name_to_id);
   let ctr_is_cal = gen_ctr_is_cal(&file.rules);
-  return Compilable {
+  Compilable {
     func_rules,
     name_to_id,
     id_to_name,
     ctr_is_cal,
-  };
+  }
 }
 
 // Sanitize
@@ -251,8 +251,8 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
         tbl.insert(nam1.clone(), new_nam1.clone());
 
         let body = sanitize_term(body, lhs, tbl, ctx)?;
-        let nam0 = format!("{}.0", new_nam0.clone());
-        let nam1 = format!("{}.0", new_nam1.clone());
+        let nam0 = format!("{}.0", new_nam0);
+        let nam1 = format!("{}.0", new_nam1);
         let term = lb::Term::Dup {
           nam0,
           nam1,
@@ -267,8 +267,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
         tbl.insert(name.clone(), new_name.clone());
 
         let body = sanitize_term(body, lhs, tbl, ctx)?;
-        let term = duplicator(&new_name, expr, body, ctx.uses);
-        term
+        duplicator(&new_name, expr, body, ctx.uses)
       }
       lb::Term::Lam { name, body } => {
         let new_name = (ctx.fresh)();
@@ -278,11 +277,10 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
           let expr = Box::new(lb::Term::Var {
             name: new_name.clone(),
           });
-          let body = duplicator(&new_name, expr, body, ctx.uses);
-          body
+          duplicator(&new_name, expr, body, ctx.uses)
         };
         let term = lb::Term::Lam {
-          name: new_name.clone(),
+          name: new_name,
           body,
         };
         Box::new(term)
@@ -353,12 +351,12 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
   // The process is done generating auxiliary variables and
   // applying dup on them.
   fn duplicator(
-    name: &String,
+    name: &str,
     expr: Box<lb::Term>,
     body: Box<lb::Term>,
     uses: &HashMap<String, u64>,
   ) -> Box<lb::Term> {
-    let amount = uses.get(name).map(|x| *x);
+    let amount = uses.get(name).copied();
     // verify if variable is used more than once
     if amount > Some(1) {
       let amount = amount.unwrap(); // certainly is not None
@@ -401,7 +399,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
     }
   }
 
-  // Recursive aux function to duplicate one varible
+  // Recursive aux function to duplicate one variable
   // an amount of times
   fn duplicator_go(
     i: u64,
@@ -456,7 +454,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
     let expr = Box::new(lb::Term::Var {
       name: value.clone(),
     });
-    rhs = duplicator(&value, expr, rhs, &mut uses);
+    rhs = duplicator(&value, expr, rhs, &uses);
   }
 
   // renames unused variables to "*"
