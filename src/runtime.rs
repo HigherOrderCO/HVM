@@ -98,11 +98,11 @@ pub enum Term {
   },
 }
 
-pub type Rewriter = Box<dyn Fn(&mut Worker, u64) -> Lnk>;
+pub type Rewriter = Box<dyn Fn(&mut Worker, u64, Lnk) -> bool>;
 
 pub struct Function {
-  stricts: Vec<bool>,
-  rewrite: Rewriter,
+  pub stricts: Vec<bool>,
+  pub rewriter: Rewriter,
 }
 
 pub struct Worker {
@@ -610,7 +610,11 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64,Function>, root: u64) -> Lnk
           let fun = get_ext(term);
           let ari = get_ari(term);
           if let Some(f) = funcs.get(&fun) {
-            println!("rabisco");
+            if (f.rewriter)(mem, host, term) {
+              host = host;
+              init = 1;
+              continue;
+            }
           }
           //match fun {
             //_SLOW => {
