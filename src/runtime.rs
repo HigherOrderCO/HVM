@@ -766,7 +766,7 @@ pub fn normal_go(
 
 pub fn normal(mem: &mut Worker, host: u64, funcs: &HashMap<u64, Function>) -> Lnk {
   let mut seen = vec![0; 4194304];
-  return normal_go(mem, funcs, host, &mut seen);
+  normal_go(mem, funcs, host, &mut seen)
 }
 
 // Debug

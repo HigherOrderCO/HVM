@@ -2,11 +2,15 @@
 // https://github.com/Kindelia/LambdaVM/blob/new_v2/src/Compile/Compile.ts
 
 use askama::Template;
-use ropey::{Rope, RopeBuilder};
+use ropey::Rope;
+use std::fmt::Write;
 
 use crate::compilable as cplb;
 use crate::lambolt as lb;
+use crate::rope::RopeBuilder;
 use crate::runtime as rt;
+
+const TAB: &str = "  ";
 
 #[derive(Template)]
 #[template(path = "runtime.c", escape = "none", syntax = "c")]
@@ -16,27 +20,6 @@ struct CodeTemplate<'a> {
   constructor_ids: &'a str,
   rewrite_rules_step_0: &'a str,
   rewrite_rules_step_1: &'a str,
-}
-
-#[derive(Default)]
-struct CodeBuilder {
-  rope_builder: RopeBuilder,
-}
-
-impl CodeBuilder {
-  pub fn new() -> Self {
-    CodeBuilder {
-      rope_builder: RopeBuilder::default(),
-    }
-  }
-
-  pub fn append(&mut self, chunk: &str) {
-    self.rope_builder.append(chunk);
-  }
-
-  pub fn finish(self) -> Rope {
-    self.rope_builder.finish()
-  }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -85,11 +68,10 @@ fn compile_group_step_1(meta: &cplb::Compilable) -> Rope {
 
 // Creates a new line with an amount of tabs.
 fn line(idt: u32, text: &str) -> Rope {
-  // for (var i = 0; i < tab; ++i) {
-  //   text = "  " + text;
-  // }
-  // return text + "\n";
-  todo!() // TODO
+  let mut rope_builder = RopeBuilder::new();
+  (0..idt).for_each(|_| rope_builder.append(TAB));
+  writeln!(rope_builder, "{}", text).unwrap();
+  rope_builder.finish()
 }
 
 fn emit_const(target: Target) -> &'static str {

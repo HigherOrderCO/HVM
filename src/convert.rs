@@ -77,16 +77,13 @@ pub fn lambolt_term_to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> r
         let argm = Box::new(convert_term(argm, comp, depth + 0, vars));
         rt::Term::App { func, argm }
       }
-      lb::Term::Ctr { name, args } => {
-        let mut new_args: Vec<rt::Term> = Vec::new();
-        for arg in args {
-          new_args.push(convert_term(arg, comp, depth + 0, vars));
-        }
-        rt::Term::Ctr {
-          func: comp.name_to_id[name],
-          args: new_args,
-        }
-      }
+      lb::Term::Ctr { name, args } => rt::Term::Ctr {
+        func: comp.name_to_id[name],
+        args: args
+          .iter()
+          .map(|arg| convert_term(arg, comp, depth + 0, vars))
+          .collect(),
+      },
       lb::Term::U32 { numb } => rt::Term::U32 { numb: *numb },
       lb::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
@@ -111,122 +108,115 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
   // This is an aux function that makes the stricts vector. It specifies which arguments need
   // reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument must be
   // reduced. The stricts vector will be: `[true, false]`.
-  fn make_stricts(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<bool> {
-    let mut stricts = Vec::new();
-    for (i, rule) in rules.iter().enumerate() {
-      while stricts.len() < i {
-        stricts.push(false);
-      }
-      match *rule.lhs {
-        lb::Term::Ctr { ref args, .. } => stricts[i] = true,
-        lb::Term::U32 { .. } => stricts[i] = true,
-        _ => {}
-      }
-    }
-    return stricts;
+  fn make_stricts(comp: &cm::Compilable, rules: &[lb::Rule]) -> Vec<bool> {
+    rules
+      .iter()
+      .map(|rule| match *rule.lhs {
+        lb::Term::Ctr { ref args, .. } => true,
+        lb::Term::U32 { .. } => true,
+        _ => false,
+      })
+      .collect()
   }
 
   // This is an aux function that makes the vectors used to determine if certain rule matched.
   // That vector will contain Lnks with the proper constructor tag, for each strict argument, and
   // 0, for each variable argument. For example, on `(Add (Succ a) b) = ...`, we only need to
   // match one constructor, `Succ`. The resulting vector will be: `[rt::Ctr(SUCC,1,0), 0]`.
-  fn make_conds(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<rt::Lnk>> {
-    let mut conds = Vec::new();
-    for rule in rules {
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        let mut lnks: Vec<rt::Lnk> = Vec::new();
-        for arg in args {
-          lnks.push(match **arg {
-            lb::Term::Ctr { ref name, ref args } => {
-              let ari = args.len() as u64;
-              let fun = comp.name_to_id.get(&*name).unwrap_or(&0);
-              let pos = 0;
-              rt::Ctr(ari, *fun, pos)
-            }
-            lb::Term::U32 { ref numb } => rt::U_32(*numb as u64),
-            _ => 0,
-          })
+  fn make_conds(comp: &cm::Compilable, rules: &[lb::Rule]) -> Vec<Vec<rt::Lnk>> {
+    rules
+      .iter()
+      .map(|rule| {
+        if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
+          return args
+            .iter()
+            .map(|arg| match **arg {
+              lb::Term::Ctr { ref name, ref args } => {
+                let ari = args.len() as u64;
+                let fun = comp.name_to_id.get(&*name).unwrap_or(&0);
+                let pos = 0;
+                rt::Ctr(ari, *fun, pos)
+              }
+              lb::Term::U32 { ref numb } => rt::U_32(*numb as u64),
+              _ => 0,
+            })
+            .collect();
         }
-        conds.push(lnks);
-      }
-      panic!("Left-hand side not a function.");
-    }
-    return conds;
+        panic!("Left-hand side not a function.");
+      })
+      .collect()
   }
 
   // This is an aux function that makes the vars vectors, which is used to locate left-hand side
   // variables. For example, on `(Add (Succ a) b) = ...`, we have two variables, one on the first
   // field of the first argument, and one is the second argument. Both variables are used. The vars
   // vector for it is: `[(0,Some(0),true), (1,None,true)]`
-  fn make_varss(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<VarInfo>> {
-    let mut varss = Vec::new();
-    for rule in rules {
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        let mut vars: Vec<VarInfo> = Vec::new();
-        for (i, arg) in args.iter().enumerate() {
-          match &**arg {
-            lb::Term::Ctr { name, args } => {
-              for j in 0..args.len() {
-                match *args[j] {
-                  lb::Term::Var { ref name } => {
-                    vars.push((i as u64, Some(j as u64), name != "*"));
-                  }
-                  _ => {
-                    panic!(
-                      "Argument {}, constructor {}, field {}, is not a variable.",
-                      i, name, j
-                    );
+  fn make_varss(comp: &cm::Compilable, rules: &[lb::Rule]) -> Vec<Vec<VarInfo>> {
+    rules
+      .iter()
+      .map(|rule| {
+        if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
+          let mut vars: Vec<VarInfo> = Vec::new();
+          for (i, arg) in args.iter().enumerate() {
+            match &**arg {
+              lb::Term::Ctr { name, args } => {
+                for (j, arg) in args.iter().enumerate() {
+                  match **arg {
+                    lb::Term::Var { ref name } => {
+                      vars.push((i as u64, Some(j as u64), name != "*"));
+                    }
+                    _ => {
+                      panic!(
+                        "Argument {}, constructor {}, field {}, is not a variable.",
+                        i, name, j
+                      );
+                    }
                   }
                 }
               }
+              lb::Term::Var { name } => {
+                vars.push((i as u64, None, name != "*"));
+              }
+              _ => {}
             }
-            lb::Term::Var { name } => {
-              vars.push((i as u64, None, name != "*"));
-            }
-            _ => {}
           }
+          return vars;
         }
-        varss.push(vars);
-      }
-      panic!("Left-hand side not a function.");
-    }
-    return varss;
+        panic!("Left-hand side not a function.");
+      })
+      .collect()
   }
 
   // This is an aux function that makes the clears vector. It specifies which arguments need to
   // be freed after reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument
   // is a constructor that can be freed. The clears vector will be: `[(0,1)]`. The first value is
   // the argument index, the second value is the ctor arity.
-  fn make_clears(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<(u64, u64)> {
+  fn make_clears(comp: &cm::Compilable, rules: &[lb::Rule]) -> Vec<(u64, u64)> {
     let mut clears = Vec::new();
     for (i, rule) in rules.iter().enumerate() {
-      match *rule.lhs {
-        lb::Term::Ctr { ref args, .. } => {
-          clears.push((i as u64, args.len() as u64));
-        }
-        _ => {}
+      if let lb::Term::Ctr { ref args, .. } = *rule.lhs {
+        clears.push((i as u64, args.len() as u64));
       }
     }
-    return clears;
+    clears
   }
 
   // Makes the bodies vector.
-  fn make_bodies(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<rt::Term> {
-    let mut bodies = Vec::new();
-    for rule in rules {
-      bodies.push(lambolt_term_to_runtime_term(comp, &rule.rhs));
-    }
-    return bodies;
+  fn make_bodies(comp: &cm::Compilable, rules: &[lb::Rule]) -> Vec<rt::Term> {
+    rules
+      .iter()
+      .map(|rule| lambolt_term_to_runtime_term(comp, &rule.rhs))
+      .collect()
   }
 
   // Attempts to get this Lambolt function from the `comp` object
   if let Some(rules) = comp.func_rules.get(&name) {
     // Builds the static objects
-    let stricts = make_stricts(comp, &rules);
-    let conds = make_conds(comp, &rules);
-    let varss = make_varss(comp, &rules);
-    let bodies = make_bodies(comp, &rules);
-    let clears = make_clears(comp, &rules);
+    let stricts = make_stricts(comp, rules);
+    let conds = make_conds(comp, rules);
+    let varss = make_varss(comp, rules);
+    let bodies = make_bodies(comp, rules);
+    let clears = make_clears(comp, rules);
     let count = rules.len() as u64;
     let arity = stricts.len() as u64;
 
@@ -276,13 +266,13 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
         // If all conditions are satisfied, the rule matched, so we must apply it
         if matched {
           // Gets all the left-hand side vars (ex: `a` and `b`).
-          let mut vars = Vec::new();
-          for (i, may_j, used) in rule_vars {
-            match *may_j {
-              Some(j) => vars.push(rt::ask_arg(mem, args[*i as usize], j)),
-              None => vars.push(args[*i as usize]),
-            }
-          }
+          let mut vars = rule_vars
+            .iter()
+            .map(|(i, may_j, used)| match *may_j {
+              Some(j) => rt::ask_arg(mem, args[*i as usize], j),
+              None => args[*i as usize],
+            })
+            .collect();
 
           // FIXME: `dups` must be global to properly color the fan nodes, but Rust complains about
           // mutating borrowed variables. Until this is fixed, the language will be very restrict.
@@ -310,7 +300,7 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
           return true;
         }
       }
-      return false;
+      false
     });
 
     return Some(rt::Function {
@@ -319,7 +309,7 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
     });
   }
 
-  return None;
+  None
 }
 
 /// Reads back a Lambolt term from Runtime's memory
