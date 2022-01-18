@@ -19,7 +19,7 @@ pub fn lambolt_term_to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> r
       lb::Oper::Div => rt::DIV,
       lb::Oper::Mod => rt::MOD,
       lb::Oper::And => rt::AND,
-      lb::Oper::Or  => rt::OR,
+      lb::Oper::Or => rt::OR,
       lb::Oper::Xor => rt::XOR,
       lb::Oper::Shl => rt::SHL,
       lb::Oper::Shr => rt::SHR,
@@ -106,7 +106,6 @@ pub fn lambolt_term_to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> r
 //   (Add (Succ a) b) = (Succ (Add a b))
 //   (Add (Zero)   b) = b
 pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt::Function> {
-
   type VarInfo = (u64, Option<u64>, bool); // Argument index, field index, is it used?
 
   // This is an aux function that makes the stricts vector. It specifies which arguments need
@@ -114,14 +113,14 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
   // reduced. The stricts vector will be: `[true, false]`.
   fn make_stricts(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<bool> {
     let mut stricts = Vec::new();
-    for (i,rule) in rules.iter().enumerate() {
+    for (i, rule) in rules.iter().enumerate() {
       while stricts.len() < i {
         stricts.push(false);
       }
       match *rule.lhs {
-        lb::Term::Ctr{ref args, ..} => { stricts[i] = true }
-        lb::Term::U32{..}           => { stricts[i] = true }
-        _                           => {}
+        lb::Term::Ctr { ref args, .. } => stricts[i] = true,
+        lb::Term::U32 { .. } => stricts[i] = true,
+        _ => {}
       }
     }
     return stricts;
@@ -134,22 +133,18 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
   fn make_conds(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<rt::Lnk>> {
     let mut conds = Vec::new();
     for rule in rules {
-      if let lb::Term::Ctr{ref name, ref args} = *rule.lhs {
-        let mut lnks : Vec<rt::Lnk> = Vec::new();
+      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
+        let mut lnks: Vec<rt::Lnk> = Vec::new();
         for arg in args {
           lnks.push(match **arg {
-            lb::Term::Ctr{ref name, ref args} => {
+            lb::Term::Ctr { ref name, ref args } => {
               let ari = args.len() as u64;
               let fun = comp.name_to_id.get(&*name).unwrap_or(&0);
               let pos = 0;
               rt::Ctr(ari, *fun, pos)
             }
-            lb::Term::U32{ref numb} => {
-              rt::U_32(*numb as u64)
-            }
-            _ => {
-              0
-            }
+            lb::Term::U32 { ref numb } => rt::U_32(*numb as u64),
+            _ => 0,
           })
         }
         conds.push(lnks);
@@ -166,23 +161,26 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
   fn make_varss(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<VarInfo>> {
     let mut varss = Vec::new();
     for rule in rules {
-      if let lb::Term::Ctr{ref name, ref args} = *rule.lhs {
-        let mut vars : Vec<VarInfo> = Vec::new();
-        for (i,arg) in args.iter().enumerate() {
+      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
+        let mut vars: Vec<VarInfo> = Vec::new();
+        for (i, arg) in args.iter().enumerate() {
           match &**arg {
-            lb::Term::Ctr{name, args} => {
+            lb::Term::Ctr { name, args } => {
               for j in 0..args.len() {
                 match *args[j] {
-                  lb::Term::Var{ref name} => {
+                  lb::Term::Var { ref name } => {
                     vars.push((i as u64, Some(j as u64), name != "*"));
                   }
                   _ => {
-                    panic!("Argument {}, constructor {}, field {}, is not a variable.", i, name, j);
+                    panic!(
+                      "Argument {}, constructor {}, field {}, is not a variable.",
+                      i, name, j
+                    );
                   }
                 }
               }
             }
-            lb::Term::Var{name} => {
+            lb::Term::Var { name } => {
               vars.push((i as u64, None, name != "*"));
             }
             _ => {}
@@ -199,12 +197,14 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
   // be freed after reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument
   // is a constructor that can be freed. The clears vector will be: `[(0,1)]`. The first value is
   // the argument index, the second value is the ctor arity.
-  fn make_clears(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<(u64,u64)> {
+  fn make_clears(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<(u64, u64)> {
     let mut clears = Vec::new();
-    for (i,rule) in rules.iter().enumerate() {
+    for (i, rule) in rules.iter().enumerate() {
       match *rule.lhs {
-        lb::Term::Ctr{ref args, ..} => { clears.push((i as u64, args.len() as u64)); }
-        _                           => {}
+        lb::Term::Ctr { ref args, .. } => {
+          clears.push((i as u64, args.len() as u64));
+        }
+        _ => {}
       }
     }
     return clears;
@@ -221,22 +221,20 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
 
   // Attempts to get this Lambolt function from the `comp` object
   if let Some(rules) = comp.func_rules.get(&name) {
-    
     // Builds the static objects
     let stricts = make_stricts(comp, &rules);
-    let conds   = make_conds(comp, &rules);
-    let varss   = make_varss(comp, &rules);
-    let bodies  = make_bodies(comp, &rules);
-    let clears  = make_clears(comp, &rules);
-    let count   = rules.len() as u64;
-    let arity   = stricts.len() as u64;
+    let conds = make_conds(comp, &rules);
+    let varss = make_varss(comp, &rules);
+    let bodies = make_bodies(comp, &rules);
+    let clears = make_clears(comp, &rules);
+    let count = rules.len() as u64;
+    let arity = stricts.len() as u64;
 
     // Builds the returned stricts vector.
     let stricts_ret = stricts.clone();
 
     // Builds the returned rewriter function.
-    let rewriter : rt::Rewriter = Box::new(move |mem, host, term| {
-
+    let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
       // Gets the left-hand side arguments (ex: `(Succ a)` and `b`)
       let mut args = Vec::new();
       for i in 0..arity {
@@ -263,21 +261,26 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
         // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
         for (i, cond) in rule_cond.iter().enumerate() {
           match rt::get_tag(*cond) {
-            rt::U32 => { matched = matched && rt::get_tag(args[i]) == rt::U32 && rt::get_val(args[i]) == rt::get_val(*cond); },
-            rt::CTR => { matched = matched && rt::get_tag(args[i]) == rt::CTR; },
-            _       => {},
+            rt::U32 => {
+              matched = matched
+                && rt::get_tag(args[i]) == rt::U32
+                && rt::get_val(args[i]) == rt::get_val(*cond);
+            }
+            rt::CTR => {
+              matched = matched && rt::get_tag(args[i]) == rt::CTR;
+            }
+            _ => {}
           }
         }
 
         // If all conditions are satisfied, the rule matched, so we must apply it
         if matched {
-
           // Gets all the left-hand side vars (ex: `a` and `b`).
           let mut vars = Vec::new();
           for (i, may_j, used) in rule_vars {
             match *may_j {
               Some(j) => vars.push(rt::ask_arg(mem, args[*i as usize], j)),
-              None    => vars.push(args[*i as usize]),
+              None => vars.push(args[*i as usize]),
             }
           }
 
@@ -310,7 +313,10 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
       return false;
     });
 
-    return Some(rt::Function { stricts: stricts_ret, rewriter });
+    return Some(rt::Function {
+      stricts: stricts_ret,
+      rewriter,
+    });
   }
 
   return None;
@@ -318,7 +324,11 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
 
 /// Reads back a Lambolt term from Runtime's memory
 // TODO: we should readback as a lambolt::Term, not as a string
-pub fn readback_lambolt_term_from_runtime(mem: &Worker, comp: &cm::Compilable, host: u64) -> String {
+pub fn readback_lambolt_term_from_runtime(
+  mem: &Worker,
+  comp: &cm::Compilable,
+  host: u64,
+) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
     names: &'a mut HashMap<Lnk, String>,
