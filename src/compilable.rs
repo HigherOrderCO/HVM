@@ -209,7 +209,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
       lb::Term::Var { name } => {
         if lhs {
           let name = tbl.get(name).unwrap_or(name);
-          let amount = ctx.uses.get(name).map(|x| *x);
+          let amount = ctx.uses.get(name).copied();
           if amount > Some(0) {
             // var is used in rhs
             // create a var with the name generated before
@@ -217,7 +217,9 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
           } else {
             // var is not used in rhs
             // delete its name
-            Box::new(lb::Term::Var {name: "*".to_string()})
+            Box::new(lb::Term::Var {
+              name: "*".to_string(),
+            })
           }
         } else {
           // create a var with the name generated before
@@ -357,45 +359,55 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
     uses: &HashMap<String, u64>,
   ) -> Box<lb::Term> {
     let amount = uses.get(name).copied();
-    // verify if variable is used more than once
-    if amount > Some(1) {
-      let amount = amount.unwrap(); // certainly is not None
-      let duplicated_times = amount - 1; // times that name is duplicated
-      let aux_qtt = amount - 2; // quantity of aux variables
-      let mut vars = vec![];
 
-      // generate name for duplicated variables
-      for i in (aux_qtt..duplicated_times * 2).rev() {
-        let i = i - aux_qtt; // moved to 0,1,..
-        let key = format!("{}.{}", name, i);
-        vars.push(key);
+    match amount {
+      // if not used nothing is done
+      None => body,
+      Some(x) => {
+        match x.cmp(&1) {
+          // if not used nothing is done
+          std::cmp::Ordering::Less => body,
+          // if used once just make a let then
+          std::cmp::Ordering::Equal => {
+            let term = lb::Term::Let {
+              name: format!("{}.0", name),
+              expr,
+              body,
+            };
+            Box::new(term)
+          }
+          // if used more then once duplicate
+          std::cmp::Ordering::Greater => {
+            let amount = amount.unwrap(); // certainly is not None
+            let duplicated_times = amount - 1; // times that name is duplicated
+            let aux_qtt = amount - 2; // quantity of aux variables
+            let mut vars = vec![];
+
+            // generate name for duplicated variables
+            for i in (aux_qtt..duplicated_times * 2).rev() {
+              let i = i - aux_qtt; // moved to 0,1,..
+              let key = format!("{}.{}", name, i);
+              vars.push(key);
+            }
+
+            // generate name for aux variables
+            for i in (0..aux_qtt).rev() {
+              let key = format!("c.{}", i);
+              vars.push(key);
+            }
+
+            // use aux variables to duplicate the variable
+            let dup = lb::Term::Dup {
+              nam0: vars.pop().unwrap(),
+              nam1: vars.pop().unwrap(),
+              expr,
+              body: duplicator_go(1, duplicated_times, body, &mut vars),
+            };
+
+            Box::new(dup)
+          }
+        }
       }
-
-      // generate name for aux variables
-      for i in (0..aux_qtt).rev() {
-        let key = format!("c.{}", i);
-        vars.push(key);
-      }
-
-      // use aux variables to duplicate the variable
-      let dup = lb::Term::Dup {
-        nam0: vars.pop().unwrap(),
-        nam1: vars.pop().unwrap(),
-        expr,
-        body: duplicator_go(1, duplicated_times, body, &mut vars),
-      };
-
-      Box::new(dup)
-    } else if amount == Some(1) {
-      // if not used more than once just make a let then
-      let term = lb::Term::Let {
-        name: format!("{}.0", name),
-        expr,
-        body,
-      };
-      Box::new(term)
-    } else {
-      body
     }
   }
 
@@ -470,8 +482,8 @@ mod tests {
   use core::panic;
   use cranelift::codegen::timing::compile;
 
-  use crate::lambolt::{Rule, read_file, read_rule};
-  use super::{sanitize_rule, gen_compilable};
+  use super::{gen_compilable, sanitize_rule};
+  use crate::lambolt::{read_file, read_rule, Rule};
 
   #[test]
   fn test_sanitize_expected_code() {
@@ -494,7 +506,7 @@ mod tests {
         "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
       )
     ];
-    
+
     // test if after sanitize all are equal
     // to the expected
     for (code, expected) in codes {
@@ -505,13 +517,13 @@ mod tests {
           let result = sanitize_rule(&v);
           match result {
             Ok(rule) => assert_eq!(rule.to_string(), expected),
-            Err(err) => panic!("Rule not sanitized")
+            Err(err) => panic!("Rule not sanitized"),
           }
         }
       }
     }
   }
-  
+
   #[test]
   fn test_sanitize_fail_code() {
     // code that has to fail
@@ -519,7 +531,7 @@ mod tests {
       // more than one nesting in constructors
       "(Foo (Bar (Zaz x))) = (x)",
       // variable not declared in lhs
-      "(Succ x) = (j)"
+      "(Succ x) = (j)",
     ];
 
     for code in FAILS {
@@ -533,7 +545,6 @@ mod tests {
       }
     }
   }
-
 
   #[test]
   fn test_compilable_expected() {
@@ -552,7 +563,7 @@ mod tests {
     assert_eq!(compilable.func_rules.len(), 1);
     // key contains expected number of rules
     assert_eq!(compilable.func_rules.get("Double").unwrap().len(), 2);
-    
+
     // id_to_name e name_to_id testing
     // check expected length
     assert_eq!(compilable.id_to_name.len(), 3);
@@ -563,7 +574,7 @@ mod tests {
     // check cohesion
     let size = compilable.id_to_name.len();
     for (id, name) in compilable.id_to_name {
-      // assert name_to_id id will have same 
+      // assert name_to_id id will have same
       // id that generate name in id_to_name
       // also checks if the two maps have same length
       let id_to_compare = compilable.name_to_id.get(&name).unwrap();
@@ -576,6 +587,6 @@ mod tests {
     // contains expected number of keys
     assert_eq!(compilable.ctr_is_cal.len(), 1);
     // key contains expected value
-    assert_eq!(*compilable.ctr_is_cal.get("Double").unwrap(), true);
+    assert!(*compilable.ctr_is_cal.get("Double").unwrap());
   }
 }
