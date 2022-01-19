@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, HashMap};
 // - ctr_is_cal: true if a ctr is used as a function
 // A sanitized rule has all its variables renamed to have unique names.
 // Variables that are never used are renamed to "*".
-
+#[derive(Debug)]
 pub struct Compilable {
   pub func_rules: HashMap<String, Vec<lb::Rule>>,
   pub id_to_name: HashMap<u64, String>,
@@ -208,9 +208,19 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
     let term = match term {
       lb::Term::Var { name } => {
         if lhs {
-          // create a var with the name generated before
           let name = tbl.get(name).unwrap_or(name);
-          Box::new(lb::Term::Var { name: name.clone() })
+          let amount = ctx.uses.get(name).copied();
+          if amount > Some(0) {
+            // var is used in rhs
+            // create a var with the name generated before
+            Box::new(lb::Term::Var { name: name.clone() })
+          } else {
+            // var is not used in rhs
+            // delete its name
+            Box::new(lb::Term::Var {
+              name: "*".to_string(),
+            })
+          }
         } else {
           // create a var with the name generated before
           // concatenated with '.{{times_used}}'
@@ -349,43 +359,55 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
     uses: &HashMap<String, u64>,
   ) -> Box<lb::Term> {
     let amount = uses.get(name).copied();
-    // verify if variable is used more than once
-    if amount > Some(1) {
-      let amount = amount.unwrap(); // certainly is not None
-      let duplicated_times = amount - 1; // times that name is duplicated
-      let aux_qtt = amount - 2; // quantity of aux variables
-      let mut vars = vec![];
 
-      // generate name for duplicated variables
-      for i in (aux_qtt..duplicated_times * 2).rev() {
-        let i = i - aux_qtt; // moved to 0,1,..
-        let key = format!("{}.{}", name, i);
-        vars.push(key);
+    match amount {
+      // if not used nothing is done
+      None => body,
+      Some(x) => {
+        match x.cmp(&1) {
+          // if not used nothing is done
+          std::cmp::Ordering::Less => body,
+          // if used once just make a let then
+          std::cmp::Ordering::Equal => {
+            let term = lb::Term::Let {
+              name: format!("{}.0", name),
+              expr,
+              body,
+            };
+            Box::new(term)
+          }
+          // if used more then once duplicate
+          std::cmp::Ordering::Greater => {
+            let amount = amount.unwrap(); // certainly is not None
+            let duplicated_times = amount - 1; // times that name is duplicated
+            let aux_qtt = amount - 2; // quantity of aux variables
+            let mut vars = vec![];
+
+            // generate name for duplicated variables
+            for i in (aux_qtt..duplicated_times * 2).rev() {
+              let i = i - aux_qtt; // moved to 0,1,..
+              let key = format!("{}.{}", name, i);
+              vars.push(key);
+            }
+
+            // generate name for aux variables
+            for i in (0..aux_qtt).rev() {
+              let key = format!("c.{}", i);
+              vars.push(key);
+            }
+
+            // use aux variables to duplicate the variable
+            let dup = lb::Term::Dup {
+              nam0: vars.pop().unwrap(),
+              nam1: vars.pop().unwrap(),
+              expr,
+              body: duplicator_go(1, duplicated_times, body, &mut vars),
+            };
+
+            Box::new(dup)
+          }
+        }
       }
-
-      // generate name for aux variables
-      for i in (0..aux_qtt).rev() {
-        let key = format!("c.{}", i);
-        vars.push(key);
-      }
-
-      // use aux variables to duplicate the variable
-      let dup = lb::Term::Dup {
-        nam0: vars.pop().unwrap(),
-        nam1: vars.pop().unwrap(),
-        expr,
-        body: duplicator_go(1, duplicated_times, body, &mut vars),
-      };
-
-      Box::new(dup)
-    } else {
-      // if not used more than once just make a let then
-      let term = lb::Term::Let {
-        name: format!("{}.0", name),
-        expr,
-        body,
-      };
-      Box::new(term)
     }
   }
 
@@ -436,8 +458,8 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
   };
 
   // sanitize left and right sides
-  let mut lhs = sanitize_term(&rule.lhs, true, &mut table.clone(), &mut ctx)?;
   let mut rhs = sanitize_term(&rule.rhs, false, &mut table.clone(), &mut ctx)?;
+  let mut lhs = sanitize_term(&rule.lhs, true, &mut table.clone(), &mut ctx)?;
 
   // duplicate right side variables that are used more than once
   for (key, value) in table {
@@ -453,4 +475,118 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
 
   // returns the sanitized rule
   Ok(lb::Rule { lhs, rhs })
+}
+
+#[cfg(test)]
+mod tests {
+  use core::panic;
+  use cranelift::codegen::timing::compile;
+
+  use super::{gen_compilable, sanitize_rule};
+  use crate::lambolt::{read_file, read_rule, Rule};
+
+  #[test]
+  fn test_sanitize_expected_code() {
+    // code and expected code after sanitize
+    let codes = [
+      (
+        "(Foo a b c) = (+c (+c (+b (+ b b))))", 
+        "(Foo * x1 x2) = dup x2.0 x2.1 = x2; dup c.0 x1.0 = x1; dup x1.1 x1.2 = c.0; (+ x2.0 (+ x2.1 (+ x1.0 (+ x1.1 x1.2))))",
+      ),
+      (
+        "(Foo a b c d e f g h i j k l m n) = (+ (+ a a) i)", 
+        "(Foo x0 * * * * * * * x8 * * * * *) = let x8.0 = x8; dup x0.0 x0.1 = x0; (+ (+ x0.0 x0.1) x8.0)"
+      ),
+      (
+        "(Double (Zero)) = (Zero)", 
+        "(Double (Zero)) = (Zero)"
+      ),
+      (
+        "(Double (Succ a)) = (Double (Succ (Succ a)))", 
+        "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
+      )
+    ];
+
+    // test if after sanitize all are equal
+    // to the expected
+    for (code, expected) in codes {
+      let rule = read_rule(code);
+      match rule {
+        None => panic!("Rule not parsed"),
+        Some(v) => {
+          let result = sanitize_rule(&v);
+          match result {
+            Ok(rule) => assert_eq!(rule.to_string(), expected),
+            Err(err) => panic!("Rule not sanitized"),
+          }
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn test_sanitize_fail_code() {
+    // code that has to fail
+    let FAILS = [
+      // more than one nesting in constructors
+      "(Foo (Bar (Zaz x))) = (x)",
+      // variable not declared in lhs
+      "(Succ x) = (j)",
+    ];
+
+    for code in FAILS {
+      let rule = read_rule(code);
+      match rule {
+        None => panic!("Rule not parsed"),
+        Some(v) => {
+          let result = sanitize_rule(&v);
+          assert!(matches!(result, Err(_)));
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn test_compilable_expected() {
+    let file = "
+      (Double (Zero)) = (Zero)
+      (Double (Succ x)) = (Succ ( Succ (Double x)))
+    ";
+
+    let file = read_file(file);
+    let compilable = gen_compilable(&file);
+
+    // func_rules testing
+    // contains expected key
+    assert!(compilable.func_rules.contains_key("Double"));
+    // contains expected number of keys
+    assert_eq!(compilable.func_rules.len(), 1);
+    // key contains expected number of rules
+    assert_eq!(compilable.func_rules.get("Double").unwrap().len(), 2);
+
+    // id_to_name e name_to_id testing
+    // check expected length
+    assert_eq!(compilable.id_to_name.len(), 3);
+    // check determinism and existence
+    assert_eq!(compilable.id_to_name.get(&0).unwrap(), "Double");
+    assert_eq!(compilable.id_to_name.get(&1).unwrap(), "Zero");
+    assert_eq!(compilable.id_to_name.get(&2).unwrap(), "Succ");
+    // check cohesion
+    let size = compilable.id_to_name.len();
+    for (id, name) in compilable.id_to_name {
+      // assert name_to_id id will have same
+      // id that generate name in id_to_name
+      // also checks if the two maps have same length
+      let id_to_compare = compilable.name_to_id.get(&name).unwrap();
+      assert_eq!(*id_to_compare, id);
+    }
+
+    // ctr_is_cal testing
+    // expected key exist
+    assert!(compilable.ctr_is_cal.contains_key("Double"));
+    // contains expected number of keys
+    assert_eq!(compilable.ctr_is_cal.len(), 1);
+    // key contains expected value
+    assert!(*compilable.ctr_is_cal.get("Double").unwrap());
+  }
 }
