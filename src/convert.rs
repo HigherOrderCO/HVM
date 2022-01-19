@@ -10,7 +10,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 pub fn build_dynamic_functions(comp: &cm::Compilable) -> HashMap<u64, rt::Function> {
-  let mut fns : HashMap<u64, rt::Function> = HashMap::new();
+  let mut fns: HashMap<u64, rt::Function> = HashMap::new();
   for (name, rules) in &comp.func_rules {
     let id = comp.name_to_id.get(name).unwrap_or(&0);
     let ff = build_dynamic_function(comp, rules);
@@ -37,11 +37,15 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
         while stricts.len() < args.len() {
           stricts.push(false);
         }
-        for (i,arg) in args.iter().enumerate() {
+        for (i, arg) in args.iter().enumerate() {
           match **arg {
-            lb::Term::Ctr { .. } => { stricts[i] = true; }
-            lb::Term::U32 { .. } => { stricts[i] = true; }
-            _                    => {}
+            lb::Term::Ctr { .. } => {
+              stricts[i] = true;
+            }
+            lb::Term::U32 { .. } => {
+              stricts[i] = true;
+            }
+            _ => {}
           }
         }
       } else {
@@ -128,10 +132,12 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
     let mut clears = Vec::new();
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        for (i,arg) in args.iter().enumerate() {
+        for (i, arg) in args.iter().enumerate() {
           match **arg {
-            lb::Term::Ctr { ref args, .. } => { clears.push((i as u64, args.len() as u64)); }
-            _                              => {}
+            lb::Term::Ctr { ref args, .. } => {
+              clears.push((i as u64, args.len() as u64));
+            }
+            _ => {}
           }
         }
       } else {
@@ -323,9 +329,15 @@ pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> rt::Term {
           term_args.push(convert_term(arg, comp, depth + 0, vars));
         }
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
-          rt::Term::Cal { func: term_func, args: term_args }
+          rt::Term::Cal {
+            func: term_func,
+            args: term_args,
+          }
         } else {
-          rt::Term::Ctr { func: term_func, args: term_args }
+          rt::Term::Ctr {
+            func: term_func,
+            args: term_args,
+          }
         }
       }
       lb::Term::U32 { numb } => rt::Term::U32 { numb: *numb },
@@ -341,14 +353,9 @@ pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> rt::Term {
   convert_term(term, comp, 0, &mut HashMap::new())
 }
 
-
 /// Reads back a Lambolt term from Runtime's memory
 // TODO: we should readback as a lambolt::Term, not as a string
-pub fn readback_as_code(
-  mem: &Worker,
-  comp: &cm::Compilable,
-  host: u64,
-) -> String {
+pub fn readback_as_code(mem: &Worker, comp: &cm::Compilable, host: u64) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
     names: &'a mut HashMap<Lnk, String>,

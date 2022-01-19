@@ -35,7 +35,10 @@ fn eval(main: &str, code: &str) -> (String, u64) {
   let funs = convert::build_dynamic_functions(&comp);
 
   // Builds a runtime "(Main)" term
-  let term = lambolt::Term::Ctr{name: String::from("Main"), args: Vec::new()};
+  let term = lambolt::Term::Ctr {
+    name: String::from("Main"),
+    args: Vec::new(),
+  };
   let term = convert::to_runtime_term(&comp, &term);
 
   // Allocs it on the Runtime's memory
