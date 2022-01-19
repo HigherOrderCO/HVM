@@ -226,10 +226,7 @@ pub fn build_dynamic_function(comp: &cm::Compilable, name: String) -> Option<rt:
     // Builds the returned rewriter function.
     let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
       // Gets the left-hand side arguments (ex: `(Succ a)` and `b`)
-      let mut args = Vec::new();
-      for i in 0..arity {
-        args.push(rt::ask_arg(mem, term, i));
-      }
+      let args: Vec<Lnk> = (0..arity).map(|i| rt::ask_arg(mem, term, i)).collect();
 
       // For each argument, if it is strict and a PAR, apply the cal_par rule
       for i in 0..arity {

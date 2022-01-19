@@ -9,7 +9,6 @@ mod compiler;
 mod convert;
 mod lambolt;
 mod parser;
-mod rope;
 mod runtime;
 
 fn main() {

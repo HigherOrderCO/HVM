@@ -1,16 +1,17 @@
 // re-implementing from:
 // https://github.com/Kindelia/LambdaVM/blob/new_v2/src/Compile/Compile.ts
 
+use std::collections::{HashMap, HashSet};
+
 use askama::Template;
-use ropey::Rope;
-use std::fmt::Write;
+use ropey::{Rope, RopeBuilder};
 
 use crate::compilable as cplb;
 use crate::lambolt as lb;
-use crate::rope::RopeBuilder;
 use crate::runtime as rt;
 
-const TAB: &str = "  ";
+const INDENT: &str = "  ";
+const LINE_BREAK: &str = "\n";
 
 #[derive(Template)]
 #[template(path = "runtime.c", escape = "none", syntax = "c")]
@@ -20,6 +21,44 @@ struct CodeTemplate<'a> {
   constructor_ids: &'a str,
   rewrite_rules_step_0: &'a str,
   rewrite_rules_step_1: &'a str,
+}
+
+#[derive(Default)]
+struct CodeBuilder {
+  rope_builder: RopeBuilder,
+}
+
+impl CodeBuilder {
+  pub fn new() -> Self {
+    CodeBuilder {
+      rope_builder: RopeBuilder::new(),
+    }
+  }
+
+  // Append a string
+  pub fn add(&mut self, chunk: &str) -> &mut Self {
+    self.rope_builder.append(chunk);
+    self
+  }
+
+  // Append given number of indentation
+  pub fn idt(&mut self, idt: u32) -> &mut Self {
+    for _ in 0..idt {
+      self.add(INDENT);
+    }
+    self
+  }
+
+  // Append line break
+  pub fn ln(&mut self) -> &mut Self {
+    self.add(LINE_BREAK)
+  }
+
+  // pub fn nope(&self) {}
+
+  pub fn finish(self) -> Rope {
+    self.rope_builder.finish()
+  }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -37,7 +76,13 @@ pub fn compile(compilable: &cplb::Compilable, target: Target, mode: Mode) -> Str
   let use_dynamic_flag = emit_use_dynamic(target, matches!(mode, Mode::Dynamic));
   let use_static_flag = emit_use_static(target, matches!(mode, Mode::Static));
 
-  // TODO: constructor_ids
+  let constructor_ids = emit_constructor_ids(target, &compilable.name_to_id);
+  let rewrite_rules_step_0 = emit_group_step_0(target, compilable);
+  let rewrite_rules_step_1 = emit_group_step_1(target, compilable);
+
+  let constructor_ids = &constructor_ids.to_string();
+  let rewrite_rules_step_0 = &rewrite_rules_step_0.to_string();
+  let rewrite_rules_step_1 = &rewrite_rules_step_1.to_string();
 
   // TODO: rewrite_rules_step_0
 
@@ -46,32 +91,97 @@ pub fn compile(compilable: &cplb::Compilable, target: Target, mode: Mode) -> Str
   let template = CodeTemplate {
     use_dynamic_flag,
     use_static_flag,
-    constructor_ids: "",
-    rewrite_rules_step_0: "",
-    rewrite_rules_step_1: "",
+    constructor_ids,
+    rewrite_rules_step_0,
+    rewrite_rules_step_1,
   };
   template.render().unwrap()
 }
 
-fn compile_constructor_name(name: &str) -> String {
-  // TODO:  replace(/\./g,"$")
-  format!("${}", name.to_uppercase())
+fn emit_constructor_name(name: &str) -> String {
+  format!("${}", name.to_uppercase().replace(".", "$"))
 }
 
-fn compile_group_step_0(meta: &cplb::Compilable) -> Rope {
-  todo!() // TODO
+fn emit_constructor_ids(target: Target, name_to_id: &HashMap<String, u64>) -> Rope {
+  let mut builder = CodeBuilder::new();
+
+  for (name, id) in name_to_id.iter() {
+    builder.add(emit_const(target));
+    builder.add(" ");
+    builder.add(&emit_constructor_name(name));
+    builder.add(" = ");
+    builder.add(&emit_u64(target, *id));
+    builder.add(";\n");
+  }
+
+  builder.finish()
 }
 
-fn compile_group_step_1(meta: &cplb::Compilable) -> Rope {
-  todo!() // TODO
+fn emit_group_step_0(target: Target, comp: &cplb::Compilable) -> Rope {
+  let mut builder = CodeBuilder::new();
+
+  let base_idt = 6;
+
+  for (name, rules) in comp.func_rules.iter() {
+    let name = &emit_constructor_name(name);
+    builder.idt(base_idt).add("case ").add(name).add(": {").ln();
+
+    let len = rules.len();
+
+    // let mut reduce_at: HashSet<usize> = HashSet::new();
+    // let mut stricts: Vec<usize> = Vec::new();
+    let mut to_reduce: Vec<usize> = Vec::new();
+    for rule in rules {
+      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
+        for (i, arg) in args.iter().enumerate() {
+          match &**arg {
+            lb::Term::Ctr { .. } | lb::Term::U32 { .. } => {
+              to_reduce.push(i);
+            }
+            default => {}
+          }
+        }
+      }
+    }
+
+    if to_reduce.is_empty() {
+      builder.idt(base_idt + 1).add("init = 0;").ln();
+      builder.idt(base_idt + 1).add("continue;").ln();
+    } else {
+      builder
+        .idt(base_idt + 1)
+        .add("stk_push(&stack, host);")
+        .ln();
+      for (i, pos) in to_reduce.iter().enumerate() {
+        let pos = &pos.to_string();
+        if i < to_reduce.len() - 1 {
+          builder
+            .idt(base_idt + 1)
+            .add("stk_push(&stack, get_loc(term, ")
+            .add(pos)
+            .add(") | 0x80000000);")
+            .ln();
+        } else {
+          builder
+            .idt(base_idt + 1)
+            .add("host = get_loc(term, ")
+            .add(pos)
+            .add(");")
+            .ln();
+        }
+      }
+      builder.idt(base_idt + 1).add("continue;").ln();
+    }
+
+    builder.idt(base_idt).add("}").ln();
+  }
+
+  builder.finish()
 }
 
-// Creates a new line with an amount of tabs.
-fn line(idt: u32, text: &str) -> Rope {
-  let mut rope_builder = RopeBuilder::new();
-  (0..idt).for_each(|_| rope_builder.append(TAB));
-  writeln!(rope_builder, "{}", text).unwrap();
-  rope_builder.finish()
+fn emit_group_step_1(target: Target, comp: &cplb::Compilable) -> Rope {
+  // TODO
+  Rope::from("")
 }
 
 fn emit_const(target: Target) -> &'static str {
@@ -124,16 +234,29 @@ fn emit_use_static(target: Target, use_static: bool) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-  use super::{compile, Mode, Target};
+  use super::*;
   use crate::compilable;
   use crate::lambolt;
 
   #[test]
+  fn test_emit_constructor_name() {
+    let original = "Some.Test.Term";
+    let emitted = emit_constructor_name(original);
+    assert_eq!(emitted, "$SOME$TEST$TERM");
+  }
+
+  #[test]
   fn test() {
-    let code = "(Main) = ((λf λx (f (f x))) (λf λx (f (f x))))";
+    // let code = "(Main) = ((λf λx (f (f x))) (λf λx (f (f x))))";
+    let code = "
+      (Double (Succ pred)) = (Succ (Succ (Double pred)))
+      (Double (Zero))      = (Zero)
+      (Foo a b)            = λc λd (Ue a b c d)
+      (Main)               = (Double (Zero))
+    ";
     let file = lambolt::read_file(code);
     let comp = compilable::gen_compilable(&file);
     let result = super::compile(&comp, Target::C, Mode::Static);
-    // println!("{}", result);
+    println!("{}", result);
   }
 }

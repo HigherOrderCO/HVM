@@ -284,7 +284,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
         Box::new(term)
       }
       lb::Term::Ctr { name, args } => {
-        let mut n_args = vec![];
+        let mut n_args = Vec::with_capacity(args.len());
         for arg in args {
           let arg = sanitize_term(arg, lhs, tbl, ctx)?;
           n_args.push(arg);

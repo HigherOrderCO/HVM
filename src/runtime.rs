@@ -549,26 +549,25 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
             inc_cost(mem);
             let a = get_val(arg0);
             let b = get_val(arg1);
-            let c;
-            match get_ext(term) {
-              ADD => c = (a + b) & 0xFFFFFFFF,
-              SUB => c = (a - b) & 0xFFFFFFFF,
-              MUL => c = (a * b) & 0xFFFFFFFF,
-              DIV => c = (a / b) & 0xFFFFFFFF,
-              MOD => c = (a % b) & 0xFFFFFFFF,
-              AND => c = (a & b) & 0xFFFFFFFF,
-              OR => c = (a | b) & 0xFFFFFFFF,
-              XOR => c = (a ^ b) & 0xFFFFFFFF,
-              SHL => c = (a << b) & 0xFFFFFFFF,
-              SHR => c = (a >> b) & 0xFFFFFFFF,
-              LTN => c = if a < b { 1 } else { 0 },
-              LTE => c = if a <= b { 1 } else { 0 },
-              EQL => c = if a == b { 1 } else { 0 },
-              GTE => c = if a >= b { 1 } else { 0 },
-              GTN => c = if a > b { 1 } else { 0 },
-              NEQ => c = if a != b { 1 } else { 0 },
-              _ => c = 0,
-            }
+            let c = match get_ext(term) {
+              ADD => (a + b) & 0xFFFFFFFF,
+              SUB => (a - b) & 0xFFFFFFFF,
+              MUL => (a * b) & 0xFFFFFFFF,
+              DIV => (a / b) & 0xFFFFFFFF,
+              MOD => (a % b) & 0xFFFFFFFF,
+              AND => (a & b) & 0xFFFFFFFF,
+              OR => (a | b) & 0xFFFFFFFF,
+              XOR => (a ^ b) & 0xFFFFFFFF,
+              SHL => (a << b) & 0xFFFFFFFF,
+              SHR => (a >> b) & 0xFFFFFFFF,
+              LTN => if a < b { 1 } else { 0 },
+              LTE => if a <= b { 1 } else { 0 },
+              EQL => if a == b { 1 } else { 0 },
+              GTE => if a >= b { 1 } else { 0 },
+              GTN => if a > b { 1 } else { 0 },
+              NEQ => if a != b { 1 } else { 0 },
+              _ => 0,
+            };
             let done = U_32(c);
             clear(mem, get_loc(term, 0), 2);
             link(mem, host, done);
