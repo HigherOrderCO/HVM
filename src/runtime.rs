@@ -32,7 +32,7 @@ pub const LAM: u64 = 0x5;
 pub const APP: u64 = 0x6;
 pub const PAR: u64 = 0x7;
 pub const CTR: u64 = 0x8;
-pub const FUN: u64 = 0x9;
+pub const CAL: u64 = 0x9;
 pub const OP2: u64 = 0xA;
 pub const U32: u64 = 0xB;
 pub const F32: u64 = 0xC;
@@ -83,6 +83,10 @@ pub enum Term {
   App {
     func: Box<Term>,
     argm: Box<Term>,
+  },
+  Cal {
+    func: u64,
+    args: Vec<Term>,
   },
   Ctr {
     func: u64,
@@ -178,7 +182,7 @@ pub fn Ctr(ari: u64, fun: u64, pos: u64) -> Lnk {
 }
 
 pub fn Cal(ari: u64, fun: u64, pos: u64) -> Lnk {
-  (FUN * TAG) | (ari * ARI) | (fun * EXT) | pos
+  (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos
 }
 
 pub fn Out(arg: u64, fld: u64) -> Lnk {
@@ -298,7 +302,7 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
       collect(mem, ask_arg(mem, term, 1));
     }
     U32 => {}
-    CTR | FUN => {
+    CTR | CAL => {
       let arity = get_ari(term);
       for i in 0..arity {
         collect(mem, ask_arg(mem, term, i));
@@ -358,6 +362,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
 
   loop {
     let term = ask_lnk(mem, host);
+    //println!("reducing term {}", show_lnk(term));
 
     if init == 1 {
       match get_tag(term) {
@@ -378,19 +383,22 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
           host = get_loc(term, 1);
           continue;
         }
-        FUN => {
+        CAL => {
           let fun = get_ext(term);
           let ari = get_ari(term);
           if let Some(f) = funcs.get(&fun) {
-            println!("match func {}", fun);
             let len = f.stricts.len() as u64;
+            //println!("matching func {} {}", fun, len);
             if len == 0 {
               init = 0;
             } else {
               for (i, x) in f.stricts.iter().enumerate() {
+                //println!(">> {} {}", i, x);
                 if i < f.stricts.len() - 1 && *x {
+                  //println!(".. ltn");
                   stack.push(get_loc(term, i as u64) | 0x80000000);
                 } else {
+                  //println!(".. gte");
                   host = get_loc(term, i as u64);
                 }
               }
@@ -606,7 +614,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
             link(mem, host, done);
           }
         }
-        FUN => {
+        CAL => {
           let fun = get_ext(term);
           let ari = get_ari(term);
           if let Some(f) = funcs.get(&fun) {
@@ -668,7 +676,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
           //inc_cost(mem);
           //let dup_0: u64 = alloc(mem, 3);
           //let col_1: u64 = 0;
-          ////OP2:0:5|ARG:0:4|U32:0:2|~      |DP1:0:0|FUN:1:3|FUN:1:4|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|
+          ////OP2:0:5|ARG:0:4|U32:0:2|~      |DP1:0:0|CAL:1:3|CAL:1:4|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|
           //link(mem, dup_0 + 0, Era());
           //link(mem, dup_0 + 1, Era());
           //link(mem, dup_0 + 2, U_32(25));
@@ -748,7 +756,7 @@ pub fn normal_go(
       DP1 => {
         rec_locs.push(get_loc(term, 2));
       }
-      CTR | FUN => {
+      CTR | CAL => {
         let arity = get_ari(term);
         for i in 0..arity {
           rec_locs.push(get_loc(term, i));
@@ -789,7 +797,7 @@ pub fn show_lnk(x: Lnk) -> String {
       APP => "APP",
       PAR => "PAR",
       CTR => "CTR",
-      FUN => "FUN",
+      CAL => "CAL",
       OP2 => "OP2",
       U32 => "U32",
       F32 => "F32",
@@ -863,6 +871,15 @@ pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>, dups: &mut 
       let argm = make_term(mem, argm, vars, dups);
       link(mem, node + 1, argm);
       App(node)
+    }
+    Term::Cal { func, args } => {
+      let size = args.len() as u64;
+      let node = alloc(mem, size);
+      for (i, arg) in args.iter().enumerate() {
+        let arg_lnk = make_term(mem, arg, vars, dups);
+        link(mem, node + i as u64, arg_lnk);
+      }
+      Cal(size, *func, node)
     }
     Term::Ctr { func, args } => {
       let size = args.len() as u64;
