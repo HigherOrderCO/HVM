@@ -2,7 +2,7 @@
 
 #![allow(clippy::identity_op)]
 
-use crate::compilable as cm;
+use crate::rulebook as rb;
 use crate::lambolt as lb;
 use crate::runtime as rt;
 use crate::runtime::{Lnk, Worker};
@@ -65,16 +65,16 @@ pub struct DynFun {
   rules: Vec<DynRule>,
 }
 
-// Given a Compilable file and a function name, builds a dynamic Rust closure that applies that
+// Given a RuleBook file and a function name, builds a dynamic Rust closure that applies that
 // function to the runtime memory buffer directly. This process is complex, so I'll write a lot of
 // comments here. All comments will be based on the following Lambolt example:
 //   (Add (Succ a) b) = (Succ (Add a b))
 //   (Add (Zero)   b) = b
-pub fn build_dynfun(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> DynFun {
+pub fn build_dynfun(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> DynFun {
   // This is an aux function that makes the redex vector. It specifies which arguments need
   // reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument must be
   // reduced. The redex vector will be: `[true, false]`.
-  fn make_redex(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<bool> {
+  fn make_redex(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> Vec<bool> {
     let mut redex = Vec::new();
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
@@ -103,7 +103,7 @@ pub fn build_dynfun(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> DynFun {
   // That vector will contain Lnks with the proper constructor tag, for each strict argument, and
   // 0, for each variable argument. For example, on `(Add (Succ a) b) = ...`, we only need to
   // match one constructor, `Succ`. The resulting vector will be: `[rt::Ctr(SUCC,1,0), 0]`.
-  fn make_cond_vec(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<rt::Lnk>> {
+  fn make_cond_vec(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> Vec<Vec<rt::Lnk>> {
     let mut cond_vec = Vec::new();
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
@@ -132,7 +132,7 @@ pub fn build_dynfun(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> DynFun {
   // variables. For example, on `(Add (Succ a) b) = ...`, we have two variables, one on the first
   // field of the first argument, and one is the second argument. Both variables are used. The vars
   // vector for it is: `[(0,Some(0),true), (1,None,true)]`
-  fn make_vars_vec(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<DynVar>> {
+  fn make_vars_vec(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> Vec<Vec<DynVar>> {
     let mut vars_vec = Vec::new();
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
@@ -177,7 +177,7 @@ pub fn build_dynfun(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> DynFun {
   // be freed after reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument
   // is a constructor that can be freed. The free vector will be: `[(0,1)]`. The first value is
   // the argument index, the second value is the ctor arity.
-  fn make_free_vec(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<(u64, u64)>> {
+  fn make_free_vec(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> Vec<Vec<(u64, u64)>> {
     let mut free_vec = Vec::new();
     for rule in rules {
       let mut rule_free = Vec::new();
@@ -199,7 +199,7 @@ pub fn build_dynfun(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> DynFun {
   }
 
   // Makes the terms vector.
-  fn make_body_vec(comp: &cm::Compilable, rules: &Vec<lb::Rule>, vars_vec: &Vec<Vec<DynVar>>) -> Vec<DynTerm> {
+  fn make_body_vec(comp: &rb::RuleBook, rules: &Vec<lb::Rule>, vars_vec: &Vec<Vec<DynVar>>) -> Vec<DynTerm> {
     let mut body_vec = Vec::new();
     for i in 0 .. rules.len() {
       body_vec.push(term_to_dynterm(comp, &rules[i].rhs, vars_vec[i].len() as u64));
@@ -220,7 +220,7 @@ pub fn build_dynfun(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> DynFun {
   return DynFun { redex, rules: dynrules };
 }
 
-pub fn build_runtime_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> rt::Function {
+pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
   let stricts = dynfun.redex.clone();
 
@@ -313,7 +313,7 @@ pub fn build_runtime_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
   return rt::Function { stricts, rewriter };
 }
 
-pub fn build_runtime_functions(comp: &cm::Compilable) -> HashMap<u64, rt::Function> {
+pub fn build_runtime_functions(comp: &rb::RuleBook) -> HashMap<u64, rt::Function> {
   let mut fns: HashMap<u64, rt::Function> = HashMap::new();
   for (name, rules) in &comp.func_rules {
     let id = comp.name_to_id.get(name).unwrap_or(&0);
@@ -324,7 +324,7 @@ pub fn build_runtime_functions(comp: &cm::Compilable) -> HashMap<u64, rt::Functi
 }
 
 /// Converts a Lambolt Term to a Runtime Term
-pub fn term_to_dynterm(comp: &cm::Compilable, term: &lb::Term, free_vars: u64) -> DynTerm {
+pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> DynTerm {
   fn convert_oper(oper: &lb::Oper) -> u64 {
     match oper {
       lb::Oper::Add => rt::ADD,
@@ -347,7 +347,7 @@ pub fn term_to_dynterm(comp: &cm::Compilable, term: &lb::Term, free_vars: u64) -
   }
   fn convert_term(
     term: &lb::Term,
-    comp: &cm::Compilable,
+    comp: &rb::RuleBook,
     depth: u64,
     vars: &mut Vec<String>,
   ) -> DynTerm {
@@ -430,7 +430,7 @@ pub fn term_to_dynterm(comp: &cm::Compilable, term: &lb::Term, free_vars: u64) -
 
 /// Reads back a Lambolt term from Runtime's memory
 // TODO: we should readback as a lambolt::Term, not as a string
-pub fn readback_as_code(mem: &Worker, comp: &cm::Compilable, host: u64) -> String {
+pub fn readback_as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
     names: &'a mut HashMap<Lnk, String>,
@@ -496,7 +496,7 @@ pub fn readback_as_code(mem: &Worker, comp: &cm::Compilable, host: u64) -> Strin
 
   struct CtxGo<'a> {
     mem: &'a Worker,
-    comp: &'a cm::Compilable,
+    comp: &'a rb::RuleBook,
     names: &'a HashMap<Lnk, String>,
     seen: &'a HashSet<Lnk>,
     // count: &'a mut u32,
@@ -762,6 +762,6 @@ pub fn alloc_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   host
 }
 
-pub fn alloc_term(mem: &mut rt::Worker, comp: &cm::Compilable, term: &lb::Term) -> u64 {
+pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lb::Term) -> u64 {
   return alloc_dynterm(mem, &term_to_dynterm(comp, term, 0));
 }

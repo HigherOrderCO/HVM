@@ -1,10 +1,10 @@
 use crate::lambolt as lb;
 use std::collections::{BTreeMap, HashMap};
 
-// Compilable
-// ==========
+// RuleBook
+// ========
 
-// A Compilable is a Lambolt file ready for compilation. It includes:
+// A RuleBook is a Lambolt file ready for compilation. It includes:
 // - func_rules: sanitized rules grouped by function
 // - id_to_name: maps ctr ids to names
 // - name_to_id: maps ctr names to ids
@@ -12,14 +12,14 @@ use std::collections::{BTreeMap, HashMap};
 // A sanitized rule has all its variables renamed to have unique names.
 // Variables that are never used are renamed to "*".
 #[derive(Debug)]
-pub struct Compilable {
+pub struct RuleBook {
   pub func_rules: HashMap<String, Vec<lb::Rule>>,
   pub id_to_name: HashMap<u64, String>,
   pub name_to_id: HashMap<String, u64>,
   pub ctr_is_cal: HashMap<String, bool>,
 }
 
-pub fn gen_compilable(file: &lb::File) -> Compilable {
+pub fn gen_rulebook(file: &lb::File) -> RuleBook {
   // Generates a name table for a whole program. That table links constructor
   // names (such as `cons` and `succ`) to small ids (such as `0` and `1`).
   pub type NameToId = HashMap<String, u64>;
@@ -129,7 +129,7 @@ pub fn gen_compilable(file: &lb::File) -> Compilable {
   let name_to_id = gen_name_to_id(&file.rules);
   let id_to_name = invert(&name_to_id);
   let ctr_is_cal = gen_ctr_is_cal(&file.rules);
-  Compilable {
+  RuleBook {
     func_rules,
     name_to_id,
     id_to_name,
@@ -482,7 +482,7 @@ mod tests {
   use core::panic;
   use cranelift::codegen::timing::compile;
 
-  use super::{gen_compilable, sanitize_rule};
+  use super::{gen_rulebook, sanitize_rule};
   use crate::lambolt::{read_file, read_rule, Rule};
 
   #[test]
@@ -547,46 +547,46 @@ mod tests {
   }
 
   #[test]
-  fn test_compilable_expected() {
+  fn test_rulebook_expected() {
     let file = "
       (Double (Zero)) = (Zero)
       (Double (Succ x)) = (Succ ( Succ (Double x)))
     ";
 
     let file = read_file(file);
-    let compilable = gen_compilable(&file);
+    let rulebook = gen_rulebook(&file);
 
     // func_rules testing
     // contains expected key
-    assert!(compilable.func_rules.contains_key("Double"));
+    assert!(rulebook.func_rules.contains_key("Double"));
     // contains expected number of keys
-    assert_eq!(compilable.func_rules.len(), 1);
+    assert_eq!(rulebook.func_rules.len(), 1);
     // key contains expected number of rules
-    assert_eq!(compilable.func_rules.get("Double").unwrap().len(), 2);
+    assert_eq!(rulebook.func_rules.get("Double").unwrap().len(), 2);
 
     // id_to_name e name_to_id testing
     // check expected length
-    assert_eq!(compilable.id_to_name.len(), 3);
+    assert_eq!(rulebook.id_to_name.len(), 3);
     // check determinism and existence
-    assert_eq!(compilable.id_to_name.get(&0).unwrap(), "Double");
-    assert_eq!(compilable.id_to_name.get(&1).unwrap(), "Zero");
-    assert_eq!(compilable.id_to_name.get(&2).unwrap(), "Succ");
+    assert_eq!(rulebook.id_to_name.get(&0).unwrap(), "Double");
+    assert_eq!(rulebook.id_to_name.get(&1).unwrap(), "Zero");
+    assert_eq!(rulebook.id_to_name.get(&2).unwrap(), "Succ");
     // check cohesion
-    let size = compilable.id_to_name.len();
-    for (id, name) in compilable.id_to_name {
+    let size = rulebook.id_to_name.len();
+    for (id, name) in rulebook.id_to_name {
       // assert name_to_id id will have same
       // id that generate name in id_to_name
       // also checks if the two maps have same length
-      let id_to_compare = compilable.name_to_id.get(&name).unwrap();
+      let id_to_compare = rulebook.name_to_id.get(&name).unwrap();
       assert_eq!(*id_to_compare, id);
     }
 
     // ctr_is_cal testing
     // expected key exist
-    assert!(compilable.ctr_is_cal.contains_key("Double"));
+    assert!(rulebook.ctr_is_cal.contains_key("Double"));
     // contains expected number of keys
-    assert_eq!(compilable.ctr_is_cal.len(), 1);
+    assert_eq!(rulebook.ctr_is_cal.len(), 1);
     // key contains expected value
-    assert!(*compilable.ctr_is_cal.get("Double").unwrap());
+    assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
   }
 }

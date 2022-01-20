@@ -2,7 +2,7 @@
 
 #![allow(clippy::identity_op)]
 
-use crate::compilable as cm;
+use crate::rulebook as rb;
 use crate::lambolt as lb;
 use crate::runtime as rt;
 use crate::runtime::{Lnk, Worker};
@@ -11,7 +11,7 @@ use std::fmt;
 
 /// Reads back a Lambolt term from Runtime's memory
 // TODO: we should readback as a lambolt::Term, not as a string
-pub fn as_code(mem: &Worker, comp: &cm::Compilable, host: u64) -> String {
+pub fn as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
     names: &'a mut HashMap<Lnk, String>,
@@ -77,7 +77,7 @@ pub fn as_code(mem: &Worker, comp: &cm::Compilable, host: u64) -> String {
 
   struct CtxGo<'a> {
     mem: &'a Worker,
-    comp: &'a cm::Compilable,
+    comp: &'a rb::RuleBook,
     names: &'a HashMap<Lnk, String>,
     seen: &'a HashSet<Lnk>,
     // count: &'a mut u32,

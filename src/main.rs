@@ -4,7 +4,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_imports)]
 
-mod compilable;
+mod rulebook;
 mod compiler;
 mod dynfun;
 mod lambolt;
@@ -31,8 +31,8 @@ fn eval(main: &str, code: &str) -> (String, u64) {
   // Parses and reads the input file
   let file = lambolt::read_file(code);
 
-  // Converts the Lambolt file to a compilable file
-  let comp = compilable::gen_compilable(&file);
+  // Converts the Lambolt file to a rulebook file
+  let comp = rulebook::gen_rulebook(&file);
 
   // Builds dynamic functions
   let funs = dynfun::build_runtime_functions(&comp);
