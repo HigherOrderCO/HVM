@@ -32,20 +32,20 @@ fn eval(main: &str, code: &str) -> (String, u64) {
   let file = lambolt::read_file(code);
 
   // Converts the Lambolt file to a rulebook file
-  let comp = rulebook::gen_rulebook(&file);
+  let book = rulebook::gen_rulebook(&file);
 
   // Builds dynamic functions
-  let funs = dynfun::build_runtime_functions(&comp);
+  let funs = dynfun::build_runtime_functions(&book);
 
   // Builds a runtime "(Main)" term
   let main = lambolt::read_term("(Main)");
-  let host = dynfun::alloc_term(&mut worker, &comp, &main);
+  let host = dynfun::alloc_term(&mut worker, &book, &main);
 
   // Normalizes it
   runtime::normal(&mut worker, host, &funs);
 
   // Reads it back to a Lambolt string
-  let norm = readback::as_code(&worker, &comp, host);
+  let norm = readback::as_code(&worker, &book, host);
 
   // Returns the normal form and the gas cost
   (norm, worker.cost)
