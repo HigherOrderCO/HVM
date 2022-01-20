@@ -1,7 +1,7 @@
 // re-implementing from:
 // https://github.com/Kindelia/LambdaVM/blob/new_v2/src/Compile/Compile.ts
 
-// TODO: in a future, we should compile from a `Vec<DynFun>` to a `Vec<Function>`. This will
+// Note: in a future, we should compile from a `Vec<DynFun>` to a `Vec<Function>`. This will
 // greatly decrease the size of this work, since most of the logic here is to shared by the
 // `build_dynfun` function on `dynfun.rs`. The JIT compiler should also start from `DynFun`.
 // So, the ideal compilation pipeline would be:
@@ -10,12 +10,13 @@
 //                                                       -> CLangFile            (compiled)
 
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 
 use askama::Template;
 use ropey::{Rope, RopeBuilder};
 
-use crate::rulebook as rb;
 use crate::lambolt as lb;
+use crate::rulebook as rb;
 use crate::runtime as rt;
 
 const INDENT: &str = "  ";
@@ -69,6 +70,23 @@ impl CodeBuilder {
   }
 }
 
+impl fmt::Write for CodeBuilder {
+  fn write_str(&mut self, txt: &str) -> fmt::Result {
+    self.add(txt);
+    Ok(())
+  }
+}
+
+#[macro_export]
+macro_rules! line {
+  ($b:expr, $idt:expr, $($arg:tt)*) => {{
+    use std::fmt::Write;
+    $b.idt($idt);
+    $b.write_fmt(format_args!($($arg)*)).unwrap();
+    $b.ln();
+  }}
+}
+
 #[derive(Clone, Copy, Debug)]
 pub enum Target {
   C,
@@ -91,10 +109,6 @@ pub fn compile(rulebook: &rb::RuleBook, target: Target, mode: Mode) -> String {
   let constructor_ids = &constructor_ids.to_string();
   let rewrite_rules_step_0 = &rewrite_rules_step_0.to_string();
   let rewrite_rules_step_1 = &rewrite_rules_step_1.to_string();
-
-  // TODO: rewrite_rules_step_0
-
-  // TODO: rewrite_rules_step_1
 
   let template = CodeTemplate {
     use_dynamic_flag,
@@ -187,9 +201,28 @@ fn emit_group_step_0(target: Target, comp: &rb::RuleBook) -> Rope {
   builder.finish()
 }
 
+struct Step1Ctx {
+  // locs: {[name: string]: string} = {};
+  // args: {[name: string]: string} = {};
+  // uses: {[name: string]: number} = {};
+  // dups = 0;
+  // text = "";
+  // size = 0;
+}
+
 fn emit_group_step_1(target: Target, comp: &rb::RuleBook) -> Rope {
-  // TODO
-  Rope::from("")
+  let mut bd = CodeBuilder::new();
+  let mut ctx = Step1Ctx {};
+
+  let idt = 6;
+
+  for (name, rules) in comp.func_rules.iter() {
+    let name = &emit_constructor_name(name);
+    line!(bd, idt, "case {}: {{", name);
+
+    // TODO
+  }
+  bd.finish()
 }
 
 fn emit_const(target: Target) -> &'static str {
@@ -243,8 +276,8 @@ fn emit_use_static(target: Target, use_static: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::rulebook;
   use crate::lambolt;
+  use crate::rulebook;
 
   #[test]
   fn test_emit_constructor_name() {
