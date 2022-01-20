@@ -148,10 +148,10 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
   }
 
   // Makes the bodies vector.
-  fn make_bodies(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<rt::Term> {
+  fn make_bodies(comp: &cm::Compilable, rules: &Vec<lb::Rule>, varss: &Vec<Vec<VarInfo>>) -> Vec<rt::Term> {
     let mut bodies = Vec::new();
-    for rule in rules {
-      bodies.push(to_runtime_term(comp, &rule.rhs));
+    for i in 0 .. rules.len() {
+      bodies.push(to_runtime_term(comp, &rules[i].rhs, varss[i].len() as u64));
     }
     return bodies;
   }
@@ -160,7 +160,7 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
   let stricts = make_stricts(comp, &rules);
   let conds = make_conds(comp, &rules);
   let varss = make_varss(comp, &rules);
-  let bodies = make_bodies(comp, &rules);
+  let bodies = make_bodies(comp, &rules, &varss);
   let clears = make_clears(comp, &rules);
   let count = rules.len() as u64;
   let arity = stricts.len() as u64;
@@ -170,6 +170,8 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
 
   // Builds the returned rewriter function.
   let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
+    //println!("> rewriter");
+
     // Gets the left-hand side arguments (ex: `(Succ a)` and `b`)
     let mut args = Vec::new();
     for i in 0..arity {
@@ -194,22 +196,33 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
       let mut matched = true;
 
       // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
+      //println!(">> testing conditions... total: {} conds", rule_cond.len());
       for (i, cond) in rule_cond.iter().enumerate() {
         match rt::get_tag(*cond) {
           rt::U32 => {
-            matched = matched
-              && rt::get_tag(args[i]) == rt::U32
-              && rt::get_val(args[i]) == rt::get_val(*cond);
+            //println!(">>> cond demands U32 {} at {}", rt::get_val(*cond), i);
+            let same_tag = rt::get_tag(args[i]) == rt::U32;
+            let same_val = rt::get_val(args[i]) == rt::get_val(*cond);
+            matched = matched && same_tag && same_val;
           }
           rt::CTR => {
-            matched = matched && rt::get_tag(args[i]) == rt::CTR;
+            //println!(">>> cond demands CTR {} at {}", rt::get_ext(*cond), i);
+            //println!(">>> got: {} {}", rt::get_tag(args[i]), rt::get_ext(args[i]));
+            let same_tag = rt::get_tag(args[i]) == rt::CTR;
+            let same_ext = rt::get_ext(args[i]) == rt::get_ext(*cond);
+            matched = matched && same_tag && same_ext;
           }
           _ => {}
         }
       }
 
+      //println!(">> matched? {}", matched);
+
       // If all conditions are satisfied, the rule matched, so we must apply it
       if matched {
+        // Increments the gas count
+        rt::inc_cost(mem);
+        
         // Gets all the left-hand side vars (ex: `a` and `b`).
         let mut vars = Vec::new();
         for (i, may_j, used) in rule_vars {
@@ -255,7 +268,7 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
 }
 
 /// Converts a Lambolt Term to a Runtime Term
-pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> rt::Term {
+pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term, free_vars: u64) -> rt::Term {
   fn convert_oper(oper: &lb::Oper) -> u64 {
     match oper {
       lb::Oper::Add => rt::ADD,
@@ -264,7 +277,7 @@ pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> rt::Term {
       lb::Oper::Div => rt::DIV,
       lb::Oper::Mod => rt::MOD,
       lb::Oper::And => rt::AND,
-      lb::Oper::Or => rt::OR,
+      lb::Oper::Or  => rt::OR,
       lb::Oper::Xor => rt::XOR,
       lb::Oper::Shl => rt::SHL,
       lb::Oper::Shr => rt::SHR,
@@ -280,15 +293,17 @@ pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> rt::Term {
     term: &lb::Term,
     comp: &cm::Compilable,
     depth: u64,
-    vars: &mut HashMap<String, u64>,
+    vars: &mut Vec<String>,
   ) -> rt::Term {
     match term {
       lb::Term::Var { name } => {
-        if let Some(var_depth) = vars.get(name) {
-          rt::Term::Var { bidx: *var_depth }
-        } else {
-          panic!("Unbound variable.");
+        for i in 0 .. vars.len() {
+          let j = vars.len() - i - 1;
+          if vars[j] == *name {
+            return rt::Term::Var { bidx: j as u64 }
+          }
         }
+        panic!("Unbound variable: '{}'.", name);
       }
       lb::Term::Dup {
         nam0,
@@ -297,24 +312,24 @@ pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> rt::Term {
         body,
       } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
-        vars.insert(nam0.clone(), depth + 0);
-        vars.insert(nam1.clone(), depth + 1);
+        vars.push(nam0.clone());
+        vars.push(nam1.clone());
         let body = Box::new(convert_term(body, comp, depth + 2, vars));
-        vars.remove(nam0);
-        vars.remove(nam1);
+        vars.pop();
+        vars.pop();
         rt::Term::Dup { expr, body }
       }
       lb::Term::Lam { name, body } => {
-        vars.insert(name.clone(), depth);
+        vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
-        vars.remove(name);
+        vars.pop();
         rt::Term::Lam { body }
       }
       lb::Term::Let { name, expr, body } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
-        vars.insert(name.clone(), depth);
+        vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
-        vars.remove(name);
+        vars.pop();
         rt::Term::Let { expr, body }
       }
       lb::Term::App { func, argm } => {
@@ -350,7 +365,11 @@ pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term) -> rt::Term {
     }
   }
 
-  convert_term(term, comp, 0, &mut HashMap::new())
+  let mut vars = Vec::new();
+  for i in 0 .. free_vars {
+    vars.push(format!("x{}", i).to_string());
+  }
+  convert_term(term, comp, 0, &mut vars)
 }
 
 /// Reads back a Lambolt term from Runtime's memory
@@ -520,7 +539,7 @@ pub fn readback_as_code(mem: &Worker, comp: &cm::Compilable, host: u64) -> Strin
           rt::DIV => "/",
           rt::MOD => "%",
           rt::AND => "&",
-          rt::OR => "|",
+          rt::OR  => "|",
           rt::XOR => "^",
           rt::SHL => "<<",
           rt::SHR => ">>",

@@ -12,9 +12,11 @@ mod parser;
 mod runtime;
 
 fn main() {
-  println!(":pp");
-
-  let (norm, cost) = eval("Main", "(Main) = ((λf λx (f (f x))) (λf λx (f (f x))))");
+  let (norm, cost) = eval("Main", "
+    (Double (Succ x)) = (Succ (Succ (Double x)))
+    (Double (Zero))   = (Zero)
+    (Main)            = (Double (Succ (Succ (Zero))))
+  ");
 
   println!("{}", norm);
   println!("- rwts: {}", cost);
@@ -39,7 +41,7 @@ fn eval(main: &str, code: &str) -> (String, u64) {
     name: String::from("Main"),
     args: Vec::new(),
   };
-  let term = convert::to_runtime_term(&comp, &term);
+  let term = convert::to_runtime_term(&comp, &term, 0);
 
   // Allocs it on the Runtime's memory
   let host = runtime::alloc_term(&mut worker, &term);

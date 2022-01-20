@@ -362,7 +362,6 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
 
   loop {
     let term = ask_lnk(mem, host);
-    //println!("reducing term {}", show_lnk(term));
 
     if init == 1 {
       match get_tag(term) {
@@ -388,17 +387,14 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
           let ari = get_ari(term);
           if let Some(f) = funcs.get(&fun) {
             let len = f.stricts.len() as u64;
-            //println!("matching func {} {}", fun, len);
             if len == 0 {
               init = 0;
             } else {
+              stack.push(host);
               for (i, x) in f.stricts.iter().enumerate() {
-                //println!(">> {} {}", i, x);
                 if i < f.stricts.len() - 1 && *x {
-                  //println!(".. ltn");
                   stack.push(get_loc(term, i as u64) | 0x80000000);
                 } else {
-                  //println!(".. gte");
                   host = get_loc(term, i as u64);
                 }
               }
@@ -787,6 +783,11 @@ pub fn show_lnk(x: Lnk) -> String {
     let tag = get_tag(x);
     let ext = get_ext(x);
     let val = get_val(x);
+    let ari = match tag {
+      CTR => format!("{}", get_ari(x)),
+      CAL => format!("{}", get_ari(x)),
+      _   => String::from(""),
+    };
     let tgs = match tag {
       DP0 => "DP0",
       DP1 => "DP1",
@@ -805,7 +806,7 @@ pub fn show_lnk(x: Lnk) -> String {
       NIL => "NIL",
       _ => "???",
     };
-    format!("{}:{:x}:{:x}", tgs, ext, val)
+    format!("{}{}:{:x}:{:x}", tgs, ari, ext, val)
   }
 }
 
@@ -824,7 +825,6 @@ pub fn show_mem(worker: &Worker) -> String {
 
 // Writes a Term represented as a Rust enum on the Runtime's memory.
 pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>, dups: &mut u64) -> Lnk {
-  //println!("make_term {:?}", term);
   match term {
     Term::Var { bidx } => {
       if *bidx < vars.len() as u64 {
