@@ -1,12 +1,20 @@
 // re-implementing from:
 // https://github.com/Kindelia/LambdaVM/blob/new_v2/src/Compile/Compile.ts
 
+// TODO: in a future, we should compile from a `Vec<DynFun>` to a `Vec<Function>`. This will
+// greatly decrease the size of this work, since most of the logic here is to shared by the
+// `build_dynfun` function on `dynfun.rs`. The JIT compiler should also start from `DynFun`.
+// So, the ideal compilation pipeline would be:
+// LamboltCode -> LamboltFile -> RuleBook -> Vec<DynFun> -> Vec<RuntimeFunction> (interpreted)
+//                                                       -> Vec<RuntimeFunction> (JIT-compiled)
+//                                                       -> CLangFile            (compiled)
+
 use std::collections::{HashMap, HashSet};
 
 use askama::Template;
 use ropey::{Rope, RopeBuilder};
 
-use crate::compilable as cplb;
+use crate::rulebook as rb;
 use crate::lambolt as lb;
 use crate::runtime as rt;
 
@@ -72,13 +80,13 @@ pub enum Mode {
   Static,
 }
 
-pub fn compile(compilable: &cplb::Compilable, target: Target, mode: Mode) -> String {
+pub fn compile(rulebook: &rb::RuleBook, target: Target, mode: Mode) -> String {
   let use_dynamic_flag = emit_use_dynamic(target, matches!(mode, Mode::Dynamic));
   let use_static_flag = emit_use_static(target, matches!(mode, Mode::Static));
 
-  let constructor_ids = emit_constructor_ids(target, &compilable.name_to_id);
-  let rewrite_rules_step_0 = emit_group_step_0(target, compilable);
-  let rewrite_rules_step_1 = emit_group_step_1(target, compilable);
+  let constructor_ids = emit_constructor_ids(target, &rulebook.name_to_id);
+  let rewrite_rules_step_0 = emit_group_step_0(target, rulebook);
+  let rewrite_rules_step_1 = emit_group_step_1(target, rulebook);
 
   let constructor_ids = &constructor_ids.to_string();
   let rewrite_rules_step_0 = &rewrite_rules_step_0.to_string();
@@ -117,7 +125,7 @@ fn emit_constructor_ids(target: Target, name_to_id: &HashMap<String, u64>) -> Ro
   builder.finish()
 }
 
-fn emit_group_step_0(target: Target, comp: &cplb::Compilable) -> Rope {
+fn emit_group_step_0(target: Target, comp: &rb::RuleBook) -> Rope {
   let mut builder = CodeBuilder::new();
 
   let base_idt = 6;
@@ -179,7 +187,7 @@ fn emit_group_step_0(target: Target, comp: &cplb::Compilable) -> Rope {
   builder.finish()
 }
 
-fn emit_group_step_1(target: Target, comp: &cplb::Compilable) -> Rope {
+fn emit_group_step_1(target: Target, comp: &rb::RuleBook) -> Rope {
   // TODO
   Rope::from("")
 }
@@ -235,7 +243,7 @@ fn emit_use_static(target: Target, use_static: bool) -> &'static str {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::compilable;
+  use crate::rulebook;
   use crate::lambolt;
 
   #[test]
@@ -255,7 +263,7 @@ mod tests {
       (Main)               = (Double (Zero))
     ";
     let file = lambolt::read_file(code);
-    let comp = compilable::gen_compilable(&file);
+    let comp = rulebook::gen_rulebook(&file);
     let result = super::compile(&comp, Target::C, Mode::Static);
     println!("{}", result);
   }
