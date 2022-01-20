@@ -12,19 +12,31 @@ mod parser;
 mod readback;
 mod runtime;
 
+use std::time::Instant;
+
 fn main() {
-  let (norm, cost) = eval("Main", "
-    (Double (Succ x)) = (Succ (Succ (Double x)))
-    (Double (Zero))   = (Zero)
-    (Main)            = (Double (Succ (Succ (Zero))))
+  let (norm, cost, time) = eval("Main", "
+    (Slow (E))      = 1
+    (Slow (O pred)) = (+ (Slow pred) (Slow pred))
+    (Slow (I pred)) = (+ (Slow pred) (Slow pred))
+
+    (Main) = (Slow 
+      (O(O(O(O (O(O(O(O
+      (O(O(O(O (O(O(O(O
+      (O(O(O(O (O(O(O(O
+      (E)
+      )))) ))))
+      )))) ))))
+      )))) ))))
+    )
   ");
 
   println!("{}", norm);
-  println!("- rwts: {}", cost);
+  println!("- rwts: {} ({:.2} rwt/s)", cost, (cost as f64) / (time as f64));
 }
 
 // Evaluates a Lambolt term to normal form
-fn eval(main: &str, code: &str) -> (String, u64) {
+fn eval(main: &str, code: &str) -> (String, u64, u64) {
   // Creates a new Runtime worker
   let mut worker = runtime::new_worker();
 
@@ -42,11 +54,13 @@ fn eval(main: &str, code: &str) -> (String, u64) {
   let host = dynfun::alloc_term(&mut worker, &book, &main);
 
   // Normalizes it
-  runtime::normal(&mut worker, host, &funs);
+  let init = Instant::now();
+  runtime::normal(&mut worker, host, &funs, Some(&book.id_to_name));
+  let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string
-  let norm = readback::as_code(&worker, &book, host);
+  let norm = readback::as_code(&worker, &Some(book), host);
 
   // Returns the normal form and the gas cost
-  (norm, worker.cost)
+  (norm, worker.cost, time)
 }

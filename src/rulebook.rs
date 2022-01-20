@@ -61,9 +61,9 @@ pub fn gen_rulebook(file: &lb::File) -> RuleBook {
                 *fresh += 1;
               }
             }
-            for arg in args {
-              find_ctrs(arg, table, fresh);
-            }
+          }
+          for arg in args {
+            find_ctrs(arg, table, fresh);
           }
         }
         _ => (),

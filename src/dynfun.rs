@@ -286,6 +286,7 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
         let mut dups = 0;
 
         // Builds the right-hand side term (ex: `(Succ (Add a b))`)
+        //println!("building {:?}", &dynrule.body);
         let done = build_dynterm(mem, &dynrule.body, &mut vars, &mut dups);
 
         // Links the host location to it
@@ -678,6 +679,7 @@ pub fn build_dynterm(mem: &mut rt::Worker, term: &DynTerm, vars: &mut Vec<u64>, 
   match term {
     DynTerm::Var { bidx } => {
       if *bidx < vars.len() as u64 {
+        //println!("got var {} {}", bidx, rt::show_lnk(vars[*bidx as usize]));
         vars[*bidx as usize]
       } else {
         panic!("Unbound variable.");
@@ -748,7 +750,7 @@ pub fn build_dynterm(mem: &mut rt::Worker, term: &DynTerm, vars: &mut Vec<u64>, 
       let val0 = build_dynterm(mem, val0, vars, dups);
       rt::link(mem, node + 0, val0);
       let val1 = build_dynterm(mem, val1, vars, dups);
-      rt::link(mem, node + 1, val0);
+      rt::link(mem, node + 1, val1);
       rt::Op2(*oper, node)
     }
   }

@@ -11,7 +11,7 @@ use std::fmt;
 
 /// Reads back a Lambolt term from Runtime's memory
 // TODO: we should readback as a lambolt::Term, not as a string
-pub fn as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String {
+pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
     names: &'a mut HashMap<Lnk, String>,
@@ -77,7 +77,7 @@ pub fn as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String {
 
   struct CtxGo<'a> {
     mem: &'a Worker,
-    comp: &'a rb::RuleBook,
+    comp: &'a Option<rb::RuleBook>,
     names: &'a HashMap<Lnk, String>,
     seen: &'a HashSet<Lnk>,
     // count: &'a mut u32,
@@ -207,12 +207,10 @@ pub fn as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String {
           })
           .map(|x| format!(" {}", x))
           .collect::<String>();
-        let name = ctx
-          .comp
-          .id_to_name
-          .get(&func)
-          .map(String::to_string)
-          .unwrap_or_else(|| format!("${}", func));
+        let name = match ctx.comp {
+          None => format!("${}", func),
+          Some(x) => x.id_to_name.get(&func).map(String::to_string).unwrap_or_else(|| format!("${}", func)),
+        };
         format!("({}{})", name, args_txt)
       }
       rt::VAR => ctx
