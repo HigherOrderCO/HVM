@@ -31,11 +31,11 @@ pub enum DynTerm {
   },
   Cal {
     func: u64,
-    args: Vec<DynTerm>,
+    args: Vec<Box<DynTerm>>,
   },
   Ctr {
     func: u64,
-    args: Vec<DynTerm>,
+    args: Vec<Box<DynTerm>>,
   },
   U32 {
     numb: u32,
@@ -47,22 +47,25 @@ pub enum DynTerm {
   },
 }
 
+#[derive(Debug)]
 pub struct DynVar {
-  param: u64,
-  field: Option<u64>,
-  erase: bool,
+  pub param: u64,
+  pub field: Option<u64>,
+  pub erase: bool,
 }
 
+#[derive(Debug)]
 pub struct DynRule {
-  cond: Vec<rt::Lnk>,
-  vars: Vec<DynVar>,
-  body: DynTerm,
-  free: Vec<(u64, u64)>,
+  pub cond: Vec<rt::Lnk>,
+  pub vars: Vec<DynVar>,
+  pub body: DynTerm,
+  pub free: Vec<(u64, u64)>,
 }
 
+#[derive(Debug)]
 pub struct DynFun {
-  redex: Vec<bool>,
-  rules: Vec<DynRule>,
+  pub redex: Vec<bool>,
+  pub rules: Vec<DynRule>,
 }
 
 // Given a RuleBook file and a function name, builds a dynamic Rust closure that applies that
@@ -222,20 +225,23 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> DynFun {
 
 pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
+  println!("dynfun: {:?}", dynfun);
+
   let stricts = dynfun.redex.clone();
 
   let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
 
     // Gets the left-hand side arguments (ex: `(Succ a)` and `b`)
-    let mut args = Vec::new();
-    for i in 0 .. dynfun.redex.len() {
-      args.push(rt::ask_arg(mem, term, i as u64));
-    }
+    //let mut args = Vec::new();
+    //for i in 0 .. dynfun.redex.len() {
+      //args.push(rt::ask_arg(mem, term, i as u64));
+    //}
 
     // For each argument, if it is redexand a PAR, apply the cal_par rule
     for i in 0 .. dynfun.redex.len() {
-      if dynfun.redex[i as usize] && rt::get_tag(args[i as usize]) == rt::PAR {
-        rt::cal_par(mem, host, term, args[i as usize], i as u64);
+      let i = i as u64;
+      if dynfun.redex[i as usize] && rt::get_tag(rt::ask_arg(mem,term,i)) == rt::PAR {
+        rt::cal_par(mem, host, term, rt::ask_arg(mem,term,i), i as u64);
         return true;
       }
     }
@@ -248,17 +254,18 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
       // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
       //println!(">> testing conditions... total: {} conds", dynrule.cond.len());
       for (i, cond) in dynrule.cond.iter().enumerate() {
+        let i = i as u64;
         match rt::get_tag(*cond) {
           rt::U32 => {
             //println!(">>> cond demands U32 {} at {}", rt::get_val(*cond), i);
-            let same_tag = rt::get_tag(args[i]) == rt::U32;
-            let same_val = rt::get_val(args[i]) == rt::get_val(*cond);
+            let same_tag = rt::get_tag(rt::ask_arg(mem,term,i)) == rt::U32;
+            let same_val = rt::get_val(rt::ask_arg(mem,term,i)) == rt::get_val(*cond);
             matched = matched && same_tag && same_val;
           }
           rt::CTR => {
             //println!(">>> cond demands CTR {} at {}", rt::get_ext(*cond), i);
-            let same_tag = rt::get_tag(args[i]) == rt::CTR;
-            let same_ext = rt::get_ext(args[i]) == rt::get_ext(*cond);
+            let same_tag = rt::get_tag(rt::ask_arg(mem,term,i)) == rt::CTR;
+            let same_ext = rt::get_ext(rt::ask_arg(mem,term,i)) == rt::get_ext(*cond);
             matched = matched && same_tag && same_ext;
           }
           _ => {}
@@ -276,8 +283,8 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
         let mut vars = Vec::new();
         for DynVar {param, field, erase} in &dynrule.vars {
           match field {
-            Some(i) => { vars.push(rt::ask_arg(mem, args[*param as usize], *i)) }
-            None    => { vars.push(args[*param as usize]) }
+            Some(i) => { vars.push(rt::ask_arg(mem, rt::ask_arg(mem,term,*param), *i)) }
+            None    => { vars.push(rt::ask_arg(mem,term,*param)) }
           }
         }
 
@@ -295,7 +302,8 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
         // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
         rt::clear(mem, rt::get_loc(term, 0), dynfun.redex.len() as u64);
         for (i, arity) in &dynrule.free {
-          rt::clear(mem, rt::get_loc(args[*i as usize], 0), *arity);
+          let i = *i as u64;
+          rt::clear(mem, rt::get_loc(rt::ask_arg(mem,term,i), 0), *arity);
         }
 
         // Collects unused variables (none in this example)
@@ -396,9 +404,9 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
       }
       lb::Term::Ctr { name, args } => {
         let term_func = comp.name_to_id[name];
-        let mut term_args: Vec<DynTerm> = Vec::new();
+        let mut term_args: Vec<Box<DynTerm>> = Vec::new();
         for arg in args {
-          term_args.push(convert_term(arg, comp, depth + 0, vars));
+          term_args.push(Box::new(convert_term(arg, comp, depth + 0, vars)));
         }
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
           DynTerm::Cal {
