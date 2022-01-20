@@ -32,7 +32,7 @@ pub const LAM: u64 = 0x5;
 pub const APP: u64 = 0x6;
 pub const PAR: u64 = 0x7;
 pub const CTR: u64 = 0x8;
-pub const FUN: u64 = 0x9;
+pub const CAL: u64 = 0x9;
 pub const OP2: u64 = 0xA;
 pub const U32: u64 = 0xB;
 pub const F32: u64 = 0xC;
@@ -63,40 +63,6 @@ const _SLOW: u64 = 1;
 // -----
 
 pub type Lnk = u64;
-
-#[derive(Debug)]
-pub enum Term {
-  Var {
-    bidx: u64,
-  },
-  Dup {
-    expr: Box<Term>,
-    body: Box<Term>,
-  },
-  Let {
-    expr: Box<Term>,
-    body: Box<Term>,
-  },
-  Lam {
-    body: Box<Term>,
-  },
-  App {
-    func: Box<Term>,
-    argm: Box<Term>,
-  },
-  Ctr {
-    func: u64,
-    args: Vec<Term>,
-  },
-  U32 {
-    numb: u32,
-  },
-  Op2 {
-    oper: u64,
-    val0: Box<Term>,
-    val1: Box<Term>,
-  },
-}
 
 pub type Rewriter = Box<dyn Fn(&mut Worker, u64, Lnk) -> bool>;
 
@@ -178,7 +144,7 @@ pub fn Ctr(ari: u64, fun: u64, pos: u64) -> Lnk {
 }
 
 pub fn Cal(ari: u64, fun: u64, pos: u64) -> Lnk {
-  (FUN * TAG) | (ari * ARI) | (fun * EXT) | pos
+  (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos
 }
 
 pub fn Out(arg: u64, fld: u64) -> Lnk {
@@ -248,10 +214,8 @@ pub fn alloc(mem: &mut Worker, size: u64) -> u64 {
   if size == 0 {
     0
   } else {
-    if size < 16 {
-      if let Some(reuse) = mem.free[size as usize].pop() {
-        return reuse;
-      }
+    if let Some(reuse) = mem.free[size as usize].pop() {
+      return reuse;
     }
     let loc = mem.size;
     mem.size += size;
@@ -298,7 +262,7 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
       collect(mem, ask_arg(mem, term, 1));
     }
     U32 => {}
-    CTR | FUN => {
+    CTR | CAL => {
       let arity = get_ari(term);
       for i in 0..arity {
         collect(mem, ask_arg(mem, term, i));
@@ -350,7 +314,7 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk
   done
 }
 
-pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Lnk {
+pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64, opt_id_to_name: Option<&HashMap<u64,String>>) -> Lnk {
   let mut stack: Vec<u64> = Vec::new();
 
   let mut init = 1;
@@ -358,6 +322,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
 
   loop {
     let term = ask_lnk(mem, host);
+    //println!("reduce {}", show_term(mem, ask_lnk(mem, root), opt_id_to_name));
 
     if init == 1 {
       match get_tag(term) {
@@ -378,15 +343,15 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
           host = get_loc(term, 1);
           continue;
         }
-        FUN => {
+        CAL => {
           let fun = get_ext(term);
           let ari = get_ari(term);
           if let Some(f) = funcs.get(&fun) {
-            println!("match func {}", fun);
             let len = f.stricts.len() as u64;
             if len == 0 {
               init = 0;
             } else {
+              stack.push(host);
               for (i, x) in f.stricts.iter().enumerate() {
                 if i < f.stricts.len() - 1 && *x {
                   stack.push(get_loc(term, i as u64) | 0x80000000);
@@ -397,18 +362,6 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
             }
             continue;
           }
-          //match fun {
-          //_SLOW => {
-          //stack.push(host);
-          //host = get_loc(term, 0);
-          //continue;
-          //}
-          //_MAIN => {
-          //init = 0;
-          //continue;
-          //}
-          //_ => {}
-          //}
         }
         _ => {}
       }
@@ -606,7 +559,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
             link(mem, host, done);
           }
         }
-        FUN => {
+        CAL => {
           let fun = get_ext(term);
           let ari = get_ari(term);
           if let Some(f) = funcs.get(&fun) {
@@ -616,82 +569,6 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
               continue;
             }
           }
-          //match fun {
-          //_SLOW => {
-          //let LOC_0: u64 = get_loc(term, 0);
-          //let LNK_0: u64 = ask_arg(mem, term, 0);
-          //if (get_tag(LNK_0) == PAR) {
-          //cal_par(mem, host, term, LNK_0, 0);
-          //}
-          //if (get_tag(LNK_0) == U32 && get_val(LNK_0) == 0) {
-          //inc_cost(mem);
-          //link(mem, host, U_32(1));
-          //clear(mem, get_loc(term, 0), 1);
-          //host = host;
-          //init = 1;
-          //continue;
-          //}
-          //inc_cost(mem);
-          //let loc_0: u64 = LOC_0;
-          //let lnk_1: u64 = LNK_0;
-          //let dup_2: u64 = alloc(mem, 3);
-          //let col_3: u64 = 0;
-          //link(mem, dup_2 + 0, Era());
-          //link(mem, dup_2 + 1, Era());
-          //link(mem, dup_2 + 2, lnk_1);
-          //let ret_6: u64;
-          //let op2_7: u64 = alloc(mem, 2);
-          //link(mem, op2_7 + 0, Dp0(col_3, dup_2));
-          //link(mem, op2_7 + 1, U_32(1));
-          //ret_6 = Op2(SUB, op2_7);
-          //let ctr_8: u64 = alloc(mem, 1);
-          //link(mem, ctr_8 + 0, ret_6);
-          //let ret_9: u64;
-          //let op2_10: u64 = alloc(mem, 2);
-          //link(mem, op2_10 + 0, Dp1(col_3, dup_2));
-          //link(mem, op2_10 + 1, U_32(1));
-          //ret_9 = Op2(SUB, op2_10);
-          //let ctr_11: u64 = alloc(mem, 1);
-          //link(mem, ctr_11 + 0, ret_9);
-          //let ret_4: u64;
-          //let op2_5: u64 = alloc(mem, 2);
-          //link(mem, op2_5 + 0, Cal(1, _SLOW, ctr_8));
-          //link(mem, op2_5 + 1, Cal(1, _SLOW, ctr_11));
-          //ret_4 = Op2(ADD, op2_5);
-          //link(mem, host, ret_4);
-          //clear(mem, get_loc(term, 0), 1);
-          //host = host;
-          //init = 1;
-          //continue;
-          //}
-          //_MAIN => {
-          //inc_cost(mem);
-          //let dup_0: u64 = alloc(mem, 3);
-          //let col_1: u64 = 0;
-          ////OP2:0:5|ARG:0:4|U32:0:2|~      |DP1:0:0|FUN:1:3|FUN:1:4|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|
-          //link(mem, dup_0 + 0, Era());
-          //link(mem, dup_0 + 1, Era());
-          //link(mem, dup_0 + 2, U_32(25));
-          //let ctr_4: u64 = alloc(mem, 1);
-          //link(mem, ctr_4 + 0, Dp0(col_1, dup_0));
-          //let ctr_5: u64 = alloc(mem, 1);
-          //link(mem, ctr_5 + 0, Dp1(col_1, dup_0));
-          //let ret_2: u64;
-          //let op2_3: u64 = alloc(mem, 2);
-          //link(mem, op2_3 + 0, Cal(1, _SLOW, ctr_4));
-          //link(mem, op2_3 + 1, Cal(1, _SLOW, ctr_5));
-          //ret_2 = Op2(ADD, op2_3);
-          //link(mem, host, ret_2);
-          //clear(mem, get_loc(term, 0), 0);
-          //host = host;
-          //init = 1;
-          //continue;
-          //}
-          //_ => {
-          ////let_fun();
-          //break;
-          //}
-          //}
         }
         _ => {}
       }
@@ -722,12 +599,13 @@ pub fn normal_go(
   funcs: &HashMap<u64, Function>,
   host: u64,
   seen: &mut [u64],
+  opt_id_to_name: Option<&HashMap<u64, String>>,
 ) -> Lnk {
   let term = ask_lnk(mem, host);
   if get_bit(seen, host) {
     term
   } else {
-    let term = reduce(mem, funcs, host);
+    let term = reduce(mem, funcs, host, opt_id_to_name);
     set_bit(seen, host);
     let mut rec_locs = Vec::with_capacity(16);
     match get_tag(term) {
@@ -748,7 +626,7 @@ pub fn normal_go(
       DP1 => {
         rec_locs.push(get_loc(term, 2));
       }
-      CTR | FUN => {
+      CTR | CAL => {
         let arity = get_ari(term);
         for i in 0..arity {
           rec_locs.push(get_loc(term, i));
@@ -757,16 +635,16 @@ pub fn normal_go(
       _ => {}
     }
     for loc in rec_locs {
-      let lnk: Lnk = normal_go(mem, funcs, loc, seen);
+      let lnk: Lnk = normal_go(mem, funcs, loc, seen, opt_id_to_name);
       link(mem, loc, lnk);
     }
     term
   }
 }
 
-pub fn normal(mem: &mut Worker, host: u64, funcs: &HashMap<u64, Function>) -> Lnk {
+pub fn normal(mem: &mut Worker, host: u64, funcs: &HashMap<u64, Function>, opt_id_to_name: Option<&HashMap<u64,String>>) -> Lnk {
   let mut seen = vec![0; 4194304];
-  return normal_go(mem, funcs, host, &mut seen);
+  return normal_go(mem, funcs, host, &mut seen, opt_id_to_name);
 }
 
 // Debug
@@ -779,6 +657,11 @@ pub fn show_lnk(x: Lnk) -> String {
     let tag = get_tag(x);
     let ext = get_ext(x);
     let val = get_val(x);
+    let ari = match tag {
+      CTR => format!("{}", get_ari(x)),
+      CAL => format!("{}", get_ari(x)),
+      _   => String::from(""),
+    };
     let tgs = match tag {
       DP0 => "DP0",
       DP1 => "DP1",
@@ -789,7 +672,7 @@ pub fn show_lnk(x: Lnk) -> String {
       APP => "APP",
       PAR => "PAR",
       CTR => "CTR",
-      FUN => "FUN",
+      CAL => "CAL",
       OP2 => "OP2",
       U32 => "U32",
       F32 => "F32",
@@ -797,7 +680,7 @@ pub fn show_lnk(x: Lnk) -> String {
       NIL => "NIL",
       _ => "???",
     };
-    format!("{}:{:x}:{:x}", tgs, ext, val)
+    format!("{}{}:{:x}:{:x}", tgs, ari, ext, val)
   }
 }
 
@@ -811,84 +694,141 @@ pub fn show_mem(worker: &Worker) -> String {
   s
 }
 
-// Dynamic functions
-// -----------------
-
-// Writes a Term represented as a Rust enum on the Runtime's memory.
-pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>, dups: &mut u64) -> Lnk {
-  //println!("make_term {:?}", term);
-  match term {
-    Term::Var { bidx } => {
-      if *bidx < vars.len() as u64 {
-        vars[*bidx as usize]
-      } else {
-        panic!("Unbound variable.");
+pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, String>>) -> String {
+  let mut lets : HashMap<u64, u64> = HashMap::new();
+  let mut kinds : HashMap<u64, u64> = HashMap::new();
+  let mut names : HashMap<u64, String> = HashMap::new();
+  let mut count : u64 = 0;
+  fn find_lets(mem: &Worker, term: Lnk, lets: &mut HashMap<u64, u64>, kinds: &mut HashMap<u64, u64>, names: &mut HashMap<u64, String>, count: &mut u64) {
+    match get_tag(term) {
+      LAM => {
+        names.insert(get_loc(term,0), format!("{}", count));
+        *count += 1;
+        find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
       }
-    }
-    Term::Dup { expr, body } => {
-      let node = alloc(mem, 3);
-      let dupk = *dups;
-      *dups += 1;
-      link(mem, node + 0, Era());
-      link(mem, node + 1, Era());
-      let expr = make_term(mem, expr, vars, dups);
-      link(mem, node + 2, expr);
-      vars.push(Dp0(dupk, node));
-      vars.push(Dp1(dupk, node));
-      let body = make_term(mem, body, vars, dups);
-      vars.pop();
-      vars.pop();
-      body
-    }
-    Term::Let { expr, body } => {
-      let expr = make_term(mem, expr, vars, dups);
-      vars.push(expr);
-      let body = make_term(mem, body, vars, dups);
-      vars.pop();
-      body
-    }
-    Term::Lam { body } => {
-      let node = alloc(mem, 2);
-      link(mem, node + 0, Era());
-      vars.push(Var(node));
-      let body = make_term(mem, body, vars, dups);
-      link(mem, node + 1, body);
-      vars.pop();
-      Lam(node)
-    }
-    Term::App { func, argm } => {
-      let node = alloc(mem, 2);
-      let func = make_term(mem, func, vars, dups);
-      link(mem, node + 0, func);
-      let argm = make_term(mem, argm, vars, dups);
-      link(mem, node + 1, argm);
-      App(node)
-    }
-    Term::Ctr { func, args } => {
-      let size = args.len() as u64;
-      let node = alloc(mem, size);
-      for (i, arg) in args.iter().enumerate() {
-        let arg_lnk = make_term(mem, arg, vars, dups);
-        link(mem, node + i as u64, arg_lnk);
+      APP => {
+        find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
+        find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
       }
-      Ctr(size, *func, node)
-    }
-    Term::U32 { numb } => U_32(*numb as u64),
-    Term::Op2 { oper, val0, val1 } => {
-      let node = alloc(mem, 2);
-      let val0 = make_term(mem, val0, vars, dups);
-      link(mem, node + 0, val0);
-      let val1 = make_term(mem, val1, vars, dups);
-      link(mem, node + 1, val0);
-      Op2(*oper, node)
+      PAR => {
+        find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
+        find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
+      }
+      DP0 => {
+        if !lets.contains_key(&get_loc(term,0)) {
+          names.insert(get_loc(term,0), format!("{}", count));
+          *count += 1;
+          kinds.insert(get_loc(term,0), get_ext(term));
+          lets.insert(get_loc(term,0), get_loc(term,0));
+          find_lets(mem, ask_arg(mem, term, 2), lets, kinds, names, count);
+        }
+      }
+      DP1 => {
+        if !lets.contains_key(&get_loc(term,0)) {
+          names.insert(get_loc(term,0), format!("{}", count));
+          *count += 1;
+          kinds.insert(get_loc(term,0), get_ext(term));
+          lets.insert(get_loc(term,0), get_loc(term,0));
+          find_lets(mem, ask_arg(mem, term, 2), lets, kinds, names, count);
+        }
+      }
+       OP2 => {
+        find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
+        find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
+      }
+      CTR | CAL => {
+        let arity = get_ari(term);
+        for i in 0 .. arity {
+          find_lets(mem, ask_arg(mem, term, i), lets, kinds, names, count);
+        }
+      }
+      _ => {}
     }
   }
-}
-
-pub fn alloc_term(mem: &mut Worker, term: &Term) -> u64 {
-  let mut dups = 0;
-  let host = alloc(mem, 1);
-  let term = make_term(mem, term, &mut Vec::new(), &mut dups);
-  link(mem, host, term);
-  host
+  fn go(mem: &Worker, term: Lnk, names: &HashMap<u64, String>, opt_id_to_name: Option<&HashMap<u64, String>>) -> String {
+    match get_tag(term) {
+      DP0 => {
+        return format!("a{}", names.get(&get_loc(term,0)).unwrap_or(&String::from("?")));
+      }
+      DP1 => {
+        return format!("b{}", names.get(&get_loc(term,0)).unwrap_or(&String::from("?")));
+      }
+      VAR => {
+        return format!("x{}", names.get(&get_loc(term,0)).unwrap_or(&String::from("?")));
+      }
+      LAM => {
+        let name = format!("x{}", names.get(&get_loc(term,0)).unwrap_or(&String::from("?")));
+        return format!("λ{} {}", name, go(mem, ask_arg(mem, term, 1), names, opt_id_to_name));
+      }
+      APP => {
+        let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name);
+        let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name);
+        return format!("({} {})", func, argm);
+      }
+      PAR => {
+        let kind = get_ext(term);
+        let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name);
+        let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name);
+        return format!("&{}<{} {}>", kind, func, argm);
+      }
+      OP2 => {
+        let oper = get_ext(term);
+        let val0 = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name);
+        let val1 = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name);
+        let symb;
+        match oper {
+          0x00 => { symb = "+"; }
+          0x01 => { symb = "-"; }
+          0x02 => { symb = "*"; }
+          0x03 => { symb = "/"; }
+          0x04 => { symb = "%"; }
+          0x05 => { symb = "&"; }
+          0x06 => { symb = "|"; }
+          0x07 => { symb = "^"; }
+          0x08 => { symb = "<<"; }
+          0x09 => { symb = ">>"; }
+          0x10 => { symb = "<"; }
+          0x11 => { symb = "<="; }
+          0x12 => { symb = "="; }
+          0x13 => { symb = ">="; }
+          0x14 => { symb = ">"; }
+          0x15 => { symb = "!="; }
+          _    => { symb = "?"; }
+        }
+        return format!("({} {} {})", symb, val0, val1);
+      }
+      U32 => {
+        return format!("{}", get_val(term));
+      }
+      CTR | CAL => {
+        let func = get_ext(term);
+        let arit = get_ari(term);
+        let mut args = Vec::new();
+        for i in 0 .. arit {
+          args.push(go(mem, ask_arg(mem, term, i), names, opt_id_to_name));
+        }
+        let name : String;
+        if let Some(id_to_name) = opt_id_to_name {
+          name = id_to_name.get(&func).unwrap_or(&String::from("?")).clone();
+        } else {
+          name = format!("{}{}", if get_tag(term) < CAL { String::from("C") } else { String::from("F") }, func);
+        }
+        return format!("({}{})", name, args.iter().map(|x| format!(" {}",x)).collect::<Vec<String>>().join(""));
+      }
+      _ => {
+        return String::from("?");
+      }
+    }
+  }
+  find_lets(mem, term, &mut lets, &mut kinds, &mut names, &mut count);
+  let mut text = go(mem, term, &names, opt_id_to_name);
+  for (key, pos) in lets { // todo: reverse
+    let what = String::from("?");
+    let kind = kinds.get(&key).unwrap_or(&0);
+    let name = names.get(&pos).unwrap_or(&what);
+    let nam0 = if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+    let nam1 = if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+    text.push_str(&format!(" !{}<{} {}> = {};", kind, nam0 ,nam1, go(mem, ask_lnk(mem, pos + 2), &names, opt_id_to_name)));
+  }
+  return text;
 }
