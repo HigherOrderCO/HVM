@@ -1,6 +1,14 @@
 // re-implementing from:
 // https://github.com/Kindelia/LambdaVM/blob/new_v2/src/Compile/Compile.ts
 
+// TODO: in a future, we should compile from a `Vec<DynFun>` to a `Vec<Function>`. This will
+// greatly decrease the size of this work, since most of the logic here is to shared by the
+// `build_dynfun` function on `dynfun.rs`. The JIT compiler should also start from `DynFun`.
+// So, the ideal compilation pipeline would be:
+// LamboltCode -> LamboltFile -> RuleBook -> Vec<DynFun> -> Vec<RuntimeFunction> (interpreted)
+//                                                       -> Vec<RuntimeFunction> (JIT-compiled)
+//                                                       -> CLangFile            (compiled)
+
 use std::collections::{HashMap, HashSet};
 
 use askama::Template;
