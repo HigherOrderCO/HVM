@@ -6,9 +6,10 @@
 
 mod compilable;
 mod compiler;
-mod convert;
+mod dynfun;
 mod lambolt;
 mod parser;
+mod readback;
 mod runtime;
 
 fn main() {
@@ -34,23 +35,17 @@ fn eval(main: &str, code: &str) -> (String, u64) {
   let comp = compilable::gen_compilable(&file);
 
   // Builds dynamic functions
-  let funs = convert::build_dynamic_functions(&comp);
+  let funs = dynfun::build_runtime_functions(&comp);
 
   // Builds a runtime "(Main)" term
-  let term = lambolt::Term::Ctr {
-    name: String::from("Main"),
-    args: Vec::new(),
-  };
-  let term = convert::to_runtime_term(&comp, &term, 0);
-
-  // Allocs it on the Runtime's memory
-  let host = runtime::alloc_term(&mut worker, &term);
+  let main = lambolt::read_term("(Main)");
+  let host = dynfun::alloc_term(&mut worker, &comp, &main);
 
   // Normalizes it
   runtime::normal(&mut worker, host, &funs);
 
   // Reads it back to a Lambolt string
-  let norm = convert::readback_as_code(&worker, &comp, host);
+  let norm = readback::as_code(&worker, &comp, host);
 
   // Returns the normal form and the gas cost
   (norm, worker.cost)

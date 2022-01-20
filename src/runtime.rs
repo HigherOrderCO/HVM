@@ -64,44 +64,6 @@ const _SLOW: u64 = 1;
 
 pub type Lnk = u64;
 
-#[derive(Debug)]
-pub enum Term {
-  Var {
-    bidx: u64,
-  },
-  Dup {
-    expr: Box<Term>,
-    body: Box<Term>,
-  },
-  Let {
-    expr: Box<Term>,
-    body: Box<Term>,
-  },
-  Lam {
-    body: Box<Term>,
-  },
-  App {
-    func: Box<Term>,
-    argm: Box<Term>,
-  },
-  Cal {
-    func: u64,
-    args: Vec<Term>,
-  },
-  Ctr {
-    func: u64,
-    args: Vec<Term>,
-  },
-  U32 {
-    numb: u32,
-  },
-  Op2 {
-    oper: u64,
-    val0: Box<Term>,
-    val1: Box<Term>,
-  },
-}
-
 pub type Rewriter = Box<dyn Fn(&mut Worker, u64, Lnk) -> bool>;
 
 pub struct Function {
@@ -401,18 +363,6 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
             }
             continue;
           }
-          //match fun {
-          //_SLOW => {
-          //stack.push(host);
-          //host = get_loc(term, 0);
-          //continue;
-          //}
-          //_MAIN => {
-          //init = 0;
-          //continue;
-          //}
-          //_ => {}
-          //}
         }
         _ => {}
       }
@@ -620,82 +570,6 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64) -> Ln
               continue;
             }
           }
-          //match fun {
-          //_SLOW => {
-          //let LOC_0: u64 = get_loc(term, 0);
-          //let LNK_0: u64 = ask_arg(mem, term, 0);
-          //if (get_tag(LNK_0) == PAR) {
-          //cal_par(mem, host, term, LNK_0, 0);
-          //}
-          //if (get_tag(LNK_0) == U32 && get_val(LNK_0) == 0) {
-          //inc_cost(mem);
-          //link(mem, host, U_32(1));
-          //clear(mem, get_loc(term, 0), 1);
-          //host = host;
-          //init = 1;
-          //continue;
-          //}
-          //inc_cost(mem);
-          //let loc_0: u64 = LOC_0;
-          //let lnk_1: u64 = LNK_0;
-          //let dup_2: u64 = alloc(mem, 3);
-          //let col_3: u64 = 0;
-          //link(mem, dup_2 + 0, Era());
-          //link(mem, dup_2 + 1, Era());
-          //link(mem, dup_2 + 2, lnk_1);
-          //let ret_6: u64;
-          //let op2_7: u64 = alloc(mem, 2);
-          //link(mem, op2_7 + 0, Dp0(col_3, dup_2));
-          //link(mem, op2_7 + 1, U_32(1));
-          //ret_6 = Op2(SUB, op2_7);
-          //let ctr_8: u64 = alloc(mem, 1);
-          //link(mem, ctr_8 + 0, ret_6);
-          //let ret_9: u64;
-          //let op2_10: u64 = alloc(mem, 2);
-          //link(mem, op2_10 + 0, Dp1(col_3, dup_2));
-          //link(mem, op2_10 + 1, U_32(1));
-          //ret_9 = Op2(SUB, op2_10);
-          //let ctr_11: u64 = alloc(mem, 1);
-          //link(mem, ctr_11 + 0, ret_9);
-          //let ret_4: u64;
-          //let op2_5: u64 = alloc(mem, 2);
-          //link(mem, op2_5 + 0, Cal(1, _SLOW, ctr_8));
-          //link(mem, op2_5 + 1, Cal(1, _SLOW, ctr_11));
-          //ret_4 = Op2(ADD, op2_5);
-          //link(mem, host, ret_4);
-          //clear(mem, get_loc(term, 0), 1);
-          //host = host;
-          //init = 1;
-          //continue;
-          //}
-          //_MAIN => {
-          //inc_cost(mem);
-          //let dup_0: u64 = alloc(mem, 3);
-          //let col_1: u64 = 0;
-          ////OP2:0:5|ARG:0:4|U32:0:2|~      |DP1:0:0|CAL:1:3|CAL:1:4|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|~|
-          //link(mem, dup_0 + 0, Era());
-          //link(mem, dup_0 + 1, Era());
-          //link(mem, dup_0 + 2, U_32(25));
-          //let ctr_4: u64 = alloc(mem, 1);
-          //link(mem, ctr_4 + 0, Dp0(col_1, dup_0));
-          //let ctr_5: u64 = alloc(mem, 1);
-          //link(mem, ctr_5 + 0, Dp1(col_1, dup_0));
-          //let ret_2: u64;
-          //let op2_3: u64 = alloc(mem, 2);
-          //link(mem, op2_3 + 0, Cal(1, _SLOW, ctr_4));
-          //link(mem, op2_3 + 1, Cal(1, _SLOW, ctr_5));
-          //ret_2 = Op2(ADD, op2_3);
-          //link(mem, host, ret_2);
-          //clear(mem, get_loc(term, 0), 0);
-          //host = host;
-          //init = 1;
-          //continue;
-          //}
-          //_ => {
-          ////let_fun();
-          //break;
-          //}
-          //}
         }
         _ => {}
       }
@@ -818,94 +692,4 @@ pub fn show_mem(worker: &Worker) -> String {
     s.push('|');
   }
   s
-}
-
-// Dynamic functions
-// -----------------
-
-// Writes a Term represented as a Rust enum on the Runtime's memory.
-pub fn make_term(mem: &mut Worker, term: &Term, vars: &mut Vec<u64>, dups: &mut u64) -> Lnk {
-  match term {
-    Term::Var { bidx } => {
-      if *bidx < vars.len() as u64 {
-        vars[*bidx as usize]
-      } else {
-        panic!("Unbound variable.");
-      }
-    }
-    Term::Dup { expr, body } => {
-      let node = alloc(mem, 3);
-      let dupk = *dups;
-      *dups += 1;
-      link(mem, node + 0, Era());
-      link(mem, node + 1, Era());
-      let expr = make_term(mem, expr, vars, dups);
-      link(mem, node + 2, expr);
-      vars.push(Dp0(dupk, node));
-      vars.push(Dp1(dupk, node));
-      let body = make_term(mem, body, vars, dups);
-      vars.pop();
-      vars.pop();
-      body
-    }
-    Term::Let { expr, body } => {
-      let expr = make_term(mem, expr, vars, dups);
-      vars.push(expr);
-      let body = make_term(mem, body, vars, dups);
-      vars.pop();
-      body
-    }
-    Term::Lam { body } => {
-      let node = alloc(mem, 2);
-      link(mem, node + 0, Era());
-      vars.push(Var(node));
-      let body = make_term(mem, body, vars, dups);
-      link(mem, node + 1, body);
-      vars.pop();
-      Lam(node)
-    }
-    Term::App { func, argm } => {
-      let node = alloc(mem, 2);
-      let func = make_term(mem, func, vars, dups);
-      link(mem, node + 0, func);
-      let argm = make_term(mem, argm, vars, dups);
-      link(mem, node + 1, argm);
-      App(node)
-    }
-    Term::Cal { func, args } => {
-      let size = args.len() as u64;
-      let node = alloc(mem, size);
-      for (i, arg) in args.iter().enumerate() {
-        let arg_lnk = make_term(mem, arg, vars, dups);
-        link(mem, node + i as u64, arg_lnk);
-      }
-      Cal(size, *func, node)
-    }
-    Term::Ctr { func, args } => {
-      let size = args.len() as u64;
-      let node = alloc(mem, size);
-      for (i, arg) in args.iter().enumerate() {
-        let arg_lnk = make_term(mem, arg, vars, dups);
-        link(mem, node + i as u64, arg_lnk);
-      }
-      Ctr(size, *func, node)
-    }
-    Term::U32 { numb } => U_32(*numb as u64),
-    Term::Op2 { oper, val0, val1 } => {
-      let node = alloc(mem, 2);
-      let val0 = make_term(mem, val0, vars, dups);
-      link(mem, node + 0, val0);
-      let val1 = make_term(mem, val1, vars, dups);
-      link(mem, node + 1, val0);
-      Op2(*oper, node)
-    }
-  }
-}
-
-pub fn alloc_term(mem: &mut Worker, term: &Term) -> u64 {
-  let mut dups = 0;
-  let host = alloc(mem, 1);
-  let term = make_term(mem, term, &mut Vec::new(), &mut dups);
-  link(mem, host, term);
-  host
 }

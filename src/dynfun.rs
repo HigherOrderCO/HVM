@@ -9,14 +9,60 @@ use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-pub fn build_dynamic_functions(comp: &cm::Compilable) -> HashMap<u64, rt::Function> {
-  let mut fns: HashMap<u64, rt::Function> = HashMap::new();
-  for (name, rules) in &comp.func_rules {
-    let id = comp.name_to_id.get(name).unwrap_or(&0);
-    let ff = build_dynamic_function(comp, rules);
-    fns.insert(*id, ff);
-  }
-  return fns;
+#[derive(Debug)]
+pub enum DynTerm {
+  Var {
+    bidx: u64,
+  },
+  Dup {
+    expr: Box<DynTerm>,
+    body: Box<DynTerm>,
+  },
+  Let {
+    expr: Box<DynTerm>,
+    body: Box<DynTerm>,
+  },
+  Lam {
+    body: Box<DynTerm>,
+  },
+  App {
+    func: Box<DynTerm>,
+    argm: Box<DynTerm>,
+  },
+  Cal {
+    func: u64,
+    args: Vec<DynTerm>,
+  },
+  Ctr {
+    func: u64,
+    args: Vec<DynTerm>,
+  },
+  U32 {
+    numb: u32,
+  },
+  Op2 {
+    oper: u64,
+    val0: Box<DynTerm>,
+    val1: Box<DynTerm>,
+  },
+}
+
+pub struct DynVar {
+  param: u64,
+  field: Option<u64>,
+  erase: bool,
+}
+
+pub struct DynRule {
+  cond: Vec<rt::Lnk>,
+  vars: Vec<DynVar>,
+  body: DynTerm,
+  free: Vec<(u64, u64)>,
+}
+
+pub struct DynFun {
+  redex: Vec<bool>,
+  rules: Vec<DynRule>,
 }
 
 // Given a Compilable file and a function name, builds a dynamic Rust closure that applies that
@@ -24,26 +70,24 @@ pub fn build_dynamic_functions(comp: &cm::Compilable) -> HashMap<u64, rt::Functi
 // comments here. All comments will be based on the following Lambolt example:
 //   (Add (Succ a) b) = (Succ (Add a b))
 //   (Add (Zero)   b) = b
-pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> rt::Function {
-  type VarInfo = (u64, Option<u64>, bool); // Argument index, field index, is it used?
-
-  // This is an aux function that makes the stricts vector. It specifies which arguments need
+pub fn build_dynfun(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> DynFun {
+  // This is an aux function that makes the redex vector. It specifies which arguments need
   // reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument must be
-  // reduced. The stricts vector will be: `[true, false]`.
-  fn make_stricts(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<bool> {
-    let mut stricts = Vec::new();
+  // reduced. The redex vector will be: `[true, false]`.
+  fn make_redex(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<bool> {
+    let mut redex = Vec::new();
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        while stricts.len() < args.len() {
-          stricts.push(false);
+        while redex.len() < args.len() {
+          redex.push(false);
         }
         for (i, arg) in args.iter().enumerate() {
           match **arg {
             lb::Term::Ctr { .. } => {
-              stricts[i] = true;
+              redex[i] = true;
             }
             lb::Term::U32 { .. } => {
-              stricts[i] = true;
+              redex[i] = true;
             }
             _ => {}
           }
@@ -52,15 +96,15 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
         panic!("Invalid left-hand side: {}", rule.lhs);
       }
     }
-    return stricts;
+    return redex;
   }
 
   // This is an aux function that makes the vectors used to determine if certain rule matched.
   // That vector will contain Lnks with the proper constructor tag, for each strict argument, and
   // 0, for each variable argument. For example, on `(Add (Succ a) b) = ...`, we only need to
   // match one constructor, `Succ`. The resulting vector will be: `[rt::Ctr(SUCC,1,0), 0]`.
-  fn make_conds(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<rt::Lnk>> {
-    let mut conds = Vec::new();
+  fn make_cond_vec(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<rt::Lnk>> {
+    let mut cond_vec = Vec::new();
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
         let mut lnks: Vec<rt::Lnk> = Vec::new();
@@ -76,128 +120,134 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
             _ => 0,
           })
         }
-        conds.push(lnks);
+        cond_vec.push(lnks);
       } else {
         panic!("Invalid left-hand side: {}", rule.lhs);
       }
     }
-    return conds;
+    return cond_vec;
   }
 
   // This is an aux function that makes the vars vectors, which is used to locate left-hand side
   // variables. For example, on `(Add (Succ a) b) = ...`, we have two variables, one on the first
   // field of the first argument, and one is the second argument. Both variables are used. The vars
   // vector for it is: `[(0,Some(0),true), (1,None,true)]`
-  fn make_varss(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<VarInfo>> {
-    let mut varss = Vec::new();
+  fn make_vars_vec(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<DynVar>> {
+    let mut vars_vec = Vec::new();
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        let mut vars: Vec<VarInfo> = Vec::new();
+        let mut vars: Vec<DynVar> = Vec::new();
         for (i, arg) in args.iter().enumerate() {
           match &**arg {
             lb::Term::Ctr { name, args } => {
               for j in 0..args.len() {
                 match *args[j] {
                   lb::Term::Var { ref name } => {
-                    vars.push((i as u64, Some(j as u64), name != "*"));
+                    vars.push(DynVar {
+                      param: i as u64,
+                      field: Some(j as u64),
+                      erase: name == "*",
+                    });
                   }
                   _ => {
-                    panic!(
-                      "Argument {}, constructor {}, field {}, is not a variable.",
-                      i, name, j
-                    );
+                    panic!("Argument {}, constructor {}, field {}, is not a variable.", i, name, j);
                   }
                 }
               }
             }
             lb::Term::Var { name } => {
-              vars.push((i as u64, None, name != "*"));
+              vars.push(DynVar {
+                param: i as u64,
+                field: None,
+                erase: name == "*",
+              });
             }
             _ => {}
           }
         }
-        varss.push(vars);
+        vars_vec.push(vars);
       } else {
         panic!("Invalid left-hand side: {}", rule.lhs);
       }
     }
-    return varss;
+    return vars_vec;
   }
 
-  // This is an aux function that makes the clears vector. It specifies which arguments need to
+  // This is an aux function that makes the free vector. It specifies which arguments need to
   // be freed after reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument
-  // is a constructor that can be freed. The clears vector will be: `[(0,1)]`. The first value is
+  // is a constructor that can be freed. The free vector will be: `[(0,1)]`. The first value is
   // the argument index, the second value is the ctor arity.
-  fn make_clears(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<(u64, u64)> {
-    let mut clears = Vec::new();
+  fn make_free_vec(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> Vec<Vec<(u64, u64)>> {
+    let mut free_vec = Vec::new();
     for rule in rules {
+      let mut rule_free = Vec::new();
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
         for (i, arg) in args.iter().enumerate() {
           match **arg {
             lb::Term::Ctr { ref args, .. } => {
-              clears.push((i as u64, args.len() as u64));
+              rule_free.push((i as u64, args.len() as u64));
             }
             _ => {}
           }
         }
+        free_vec.push(rule_free);
       } else {
         panic!("Invalid left-hand side: {}", rule.lhs);
       }
     }
-    return clears;
+    return free_vec;
   }
 
-  // Makes the bodies vector.
-  fn make_bodies(comp: &cm::Compilable, rules: &Vec<lb::Rule>, varss: &Vec<Vec<VarInfo>>) -> Vec<rt::Term> {
-    let mut bodies = Vec::new();
+  // Makes the terms vector.
+  fn make_body_vec(comp: &cm::Compilable, rules: &Vec<lb::Rule>, vars_vec: &Vec<Vec<DynVar>>) -> Vec<DynTerm> {
+    let mut body_vec = Vec::new();
     for i in 0 .. rules.len() {
-      bodies.push(to_runtime_term(comp, &rules[i].rhs, varss[i].len() as u64));
+      body_vec.push(term_to_dynterm(comp, &rules[i].rhs, vars_vec[i].len() as u64));
     }
-    return bodies;
+    return body_vec;
   }
 
   // Builds the static objects
-  let stricts = make_stricts(comp, &rules);
-  let conds = make_conds(comp, &rules);
-  let varss = make_varss(comp, &rules);
-  let bodies = make_bodies(comp, &rules, &varss);
-  let clears = make_clears(comp, &rules);
-  let count = rules.len() as u64;
-  let arity = stricts.len() as u64;
+  let redex = make_redex(comp, &rules);
+  let cond_vec = make_cond_vec(comp, &rules);
+  let vars_vec = make_vars_vec(comp, &rules);
+  let body_vec = make_body_vec(comp, &rules, &vars_vec);
+  let free_vec = make_free_vec(comp, &rules);
+  let mut dynrules = Vec::new();
+  for (((cond, vars), body), free) in cond_vec.into_iter().zip(vars_vec).zip(body_vec).zip(free_vec) {
+    dynrules.push(DynRule { cond, vars, body, free });
+  }
+  return DynFun { redex, rules: dynrules };
+}
 
-  // Builds the returned stricts vector.
-  let stricts_ret = stricts.clone();
+pub fn build_runtime_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> rt::Function {
+  let dynfun = build_dynfun(comp, rules);
+  let stricts = dynfun.redex.clone();
 
-  // Builds the returned rewriter function.
   let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
-    //println!("> rewriter");
 
     // Gets the left-hand side arguments (ex: `(Succ a)` and `b`)
     let mut args = Vec::new();
-    for i in 0..arity {
-      args.push(rt::ask_arg(mem, term, i));
+    for i in 0 .. dynfun.redex.len() {
+      args.push(rt::ask_arg(mem, term, i as u64));
     }
 
-    // For each argument, if it is strict and a PAR, apply the cal_par rule
-    for i in 0..arity {
-      if stricts[i as usize] && rt::get_tag(args[i as usize]) == rt::PAR {
-        rt::cal_par(mem, host, term, args[i as usize], i);
+    // For each argument, if it is redexand a PAR, apply the cal_par rule
+    for i in 0 .. dynfun.redex.len() {
+      if dynfun.redex[i as usize] && rt::get_tag(args[i as usize]) == rt::PAR {
+        rt::cal_par(mem, host, term, args[i as usize], i as u64);
         return true;
       }
     }
 
     // For each rule condition vector
-    for rule_index in 0..count {
-      let rule_cond = &conds[rule_index as usize];
-      let rule_vars = &varss[rule_index as usize];
-      let rule_body = &bodies[rule_index as usize];
-
+    for dynrule in &dynfun.rules {
       // Check if the rule matches
       let mut matched = true;
 
       // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
-      //println!(">> testing conditions... total: {} conds", rule_cond.len());
-      for (i, cond) in rule_cond.iter().enumerate() {
+      //println!(">> testing conditions... total: {} conds", dynrule.cond.len());
+      for (i, cond) in dynrule.cond.iter().enumerate() {
         match rt::get_tag(*cond) {
           rt::U32 => {
             //println!(">>> cond demands U32 {} at {}", rt::get_val(*cond), i);
@@ -207,7 +257,6 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
           }
           rt::CTR => {
             //println!(">>> cond demands CTR {} at {}", rt::get_ext(*cond), i);
-            //println!(">>> got: {} {}", rt::get_tag(args[i]), rt::get_ext(args[i]));
             let same_tag = rt::get_tag(args[i]) == rt::CTR;
             let same_ext = rt::get_ext(args[i]) == rt::get_ext(*cond);
             matched = matched && same_tag && same_ext;
@@ -225,10 +274,10 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
         
         // Gets all the left-hand side vars (ex: `a` and `b`).
         let mut vars = Vec::new();
-        for (i, may_j, used) in rule_vars {
-          match *may_j {
-            Some(j) => vars.push(rt::ask_arg(mem, args[*i as usize], j)),
-            None => vars.push(args[*i as usize]),
+        for DynVar {param, field, erase} in &dynrule.vars {
+          match field {
+            Some(i) => { vars.push(rt::ask_arg(mem, args[*param as usize], *i)) }
+            None    => { vars.push(args[*param as usize]) }
           }
         }
 
@@ -237,20 +286,20 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
         let mut dups = 0;
 
         // Builds the right-hand side term (ex: `(Succ (Add a b))`)
-        let done = rt::make_term(mem, &bodies[rule_index as usize], &mut vars, &mut dups);
+        let done = build_dynterm(mem, &dynrule.body, &mut vars, &mut dups);
 
         // Links the host location to it
         rt::link(mem, host, done);
 
         // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-        rt::clear(mem, rt::get_loc(term, 0), arity);
-        for (i, arity) in &clears {
+        rt::clear(mem, rt::get_loc(term, 0), dynfun.redex.len() as u64);
+        for (i, arity) in &dynrule.free {
           rt::clear(mem, rt::get_loc(args[*i as usize], 0), *arity);
         }
 
         // Collects unused variables (none in this example)
-        for (i, (_, _, used)) in rule_vars.iter().enumerate() {
-          if !used {
+        for (i, DynVar {param, field, erase}) in dynrule.vars.iter().enumerate() {
+          if *erase {
             rt::collect(mem, vars[i]);
           }
         }
@@ -261,14 +310,21 @@ pub fn build_dynamic_function(comp: &cm::Compilable, rules: &Vec<lb::Rule>) -> r
     return false;
   });
 
-  return rt::Function {
-    stricts: stricts_ret,
-    rewriter,
-  };
+  return rt::Function { stricts, rewriter };
+}
+
+pub fn build_runtime_functions(comp: &cm::Compilable) -> HashMap<u64, rt::Function> {
+  let mut fns: HashMap<u64, rt::Function> = HashMap::new();
+  for (name, rules) in &comp.func_rules {
+    let id = comp.name_to_id.get(name).unwrap_or(&0);
+    let ff = build_runtime_function(comp, rules);
+    fns.insert(*id, ff);
+  }
+  return fns;
 }
 
 /// Converts a Lambolt Term to a Runtime Term
-pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term, free_vars: u64) -> rt::Term {
+pub fn term_to_dynterm(comp: &cm::Compilable, term: &lb::Term, free_vars: u64) -> DynTerm {
   fn convert_oper(oper: &lb::Oper) -> u64 {
     match oper {
       lb::Oper::Add => rt::ADD,
@@ -294,13 +350,13 @@ pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term, free_vars: u64) -
     comp: &cm::Compilable,
     depth: u64,
     vars: &mut Vec<String>,
-  ) -> rt::Term {
+  ) -> DynTerm {
     match term {
       lb::Term::Var { name } => {
         for i in 0 .. vars.len() {
           let j = vars.len() - i - 1;
           if vars[j] == *name {
-            return rt::Term::Var { bidx: j as u64 }
+            return DynTerm::Var { bidx: j as u64 }
           }
         }
         panic!("Unbound variable: '{}'.", name);
@@ -317,50 +373,50 @@ pub fn to_runtime_term(comp: &cm::Compilable, term: &lb::Term, free_vars: u64) -
         let body = Box::new(convert_term(body, comp, depth + 2, vars));
         vars.pop();
         vars.pop();
-        rt::Term::Dup { expr, body }
+        DynTerm::Dup { expr, body }
       }
       lb::Term::Lam { name, body } => {
         vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.pop();
-        rt::Term::Lam { body }
+        DynTerm::Lam { body }
       }
       lb::Term::Let { name, expr, body } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.pop();
-        rt::Term::Let { expr, body }
+        DynTerm::Let { expr, body }
       }
       lb::Term::App { func, argm } => {
         let func = Box::new(convert_term(func, comp, depth + 0, vars));
         let argm = Box::new(convert_term(argm, comp, depth + 0, vars));
-        rt::Term::App { func, argm }
+        DynTerm::App { func, argm }
       }
       lb::Term::Ctr { name, args } => {
         let term_func = comp.name_to_id[name];
-        let mut term_args: Vec<rt::Term> = Vec::new();
+        let mut term_args: Vec<DynTerm> = Vec::new();
         for arg in args {
           term_args.push(convert_term(arg, comp, depth + 0, vars));
         }
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
-          rt::Term::Cal {
+          DynTerm::Cal {
             func: term_func,
             args: term_args,
           }
         } else {
-          rt::Term::Ctr {
+          DynTerm::Ctr {
             func: term_func,
             args: term_args,
           }
         }
       }
-      lb::Term::U32 { numb } => rt::Term::U32 { numb: *numb },
+      lb::Term::U32 { numb } => DynTerm::U32 { numb: *numb },
       lb::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, comp, depth + 0, vars));
         let val1 = Box::new(convert_term(val1, comp, depth + 1, vars));
-        rt::Term::Op2 { oper, val0, val1 }
+        DynTerm::Op2 { oper, val0, val1 }
       }
     }
   }
@@ -615,4 +671,97 @@ pub fn readback_as_code(mem: &Worker, comp: &cm::Compilable, host: u64) -> Strin
   let stacks = Stacks::new();
 
   go(ctx, stacks, term, 0)
+}
+
+// Writes a Term represented as a Rust enum on the Runtime's memory.
+pub fn build_dynterm(mem: &mut rt::Worker, term: &DynTerm, vars: &mut Vec<u64>, dups: &mut u64) -> rt::Lnk {
+  match term {
+    DynTerm::Var { bidx } => {
+      if *bidx < vars.len() as u64 {
+        vars[*bidx as usize]
+      } else {
+        panic!("Unbound variable.");
+      }
+    }
+    DynTerm::Dup { expr, body } => {
+      let node = rt::alloc(mem, 3);
+      let dupk = *dups;
+      *dups += 1;
+      rt::link(mem, node + 0, rt::Era());
+      rt::link(mem, node + 1, rt::Era());
+      let expr = build_dynterm(mem, expr, vars, dups);
+      rt::link(mem, node + 2, expr);
+      vars.push(rt::Dp0(dupk, node));
+      vars.push(rt::Dp1(dupk, node));
+      let body = build_dynterm(mem, body, vars, dups);
+      vars.pop();
+      vars.pop();
+      body
+    }
+    DynTerm::Let { expr, body } => {
+      let expr = build_dynterm(mem, expr, vars, dups);
+      vars.push(expr);
+      let body = build_dynterm(mem, body, vars, dups);
+      vars.pop();
+      body
+    }
+    DynTerm::Lam { body } => {
+      let node = rt::alloc(mem, 2);
+      rt::link(mem, node + 0, rt::Era());
+      vars.push(rt::Var(node));
+      let body = build_dynterm(mem, body, vars, dups);
+      rt::link(mem, node + 1, body);
+      vars.pop();
+      rt::Lam(node)
+    }
+    DynTerm::App { func, argm } => {
+      let node = rt::alloc(mem, 2);
+      let func = build_dynterm(mem, func, vars, dups);
+      rt::link(mem, node + 0, func);
+      let argm = build_dynterm(mem, argm, vars, dups);
+      rt::link(mem, node + 1, argm);
+      rt::App(node)
+    }
+    DynTerm::Cal { func, args } => {
+      let size = args.len() as u64;
+      let node = rt::alloc(mem, size);
+      for (i, arg) in args.iter().enumerate() {
+        let arg_lnk = build_dynterm(mem, arg, vars, dups);
+        rt::link(mem, node + i as u64, arg_lnk);
+      }
+      rt::Cal(size, *func, node)
+    }
+    DynTerm::Ctr { func, args } => {
+      let size = args.len() as u64;
+      let node = rt::alloc(mem, size);
+      for (i, arg) in args.iter().enumerate() {
+        let arg_lnk = build_dynterm(mem, arg, vars, dups);
+        rt::link(mem, node + i as u64, arg_lnk);
+      }
+      rt::Ctr(size, *func, node)
+    }
+    DynTerm::U32 { numb } => {
+      rt::U_32(*numb as u64)
+    }
+    DynTerm::Op2 { oper, val0, val1 } => {
+      let node = rt::alloc(mem, 2);
+      let val0 = build_dynterm(mem, val0, vars, dups);
+      rt::link(mem, node + 0, val0);
+      let val1 = build_dynterm(mem, val1, vars, dups);
+      rt::link(mem, node + 1, val0);
+      rt::Op2(*oper, node)
+    }
+  }
+}
+
+pub fn alloc_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
+  let mut dups = 0;
+  let host = rt::alloc(mem, 1);
+  let term = build_dynterm(mem, term, &mut Vec::new(), &mut dups);
+  rt::link(mem, host, term);
+  host
+}
+
+pub fn alloc_term(mem: &mut rt::Worker, comp: &cm::Compilable, term: &lb::Term) -> u64 {
+  return alloc_dynterm(mem, &term_to_dynterm(comp, term, 0));
 }
