@@ -324,8 +324,9 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
 
 pub fn build_runtime_functions(comp: &rb::RuleBook) -> HashMap<u64, rt::Function> {
   let mut fns: HashMap<u64, rt::Function> = HashMap::new();
-  for (name, rules) in &comp.func_rules {
+  for (name, rules_info) in &comp.func_rules {
     let id = comp.name_to_id.get(name).unwrap_or(&0);
+    let rules = &rules_info.1;
     let ff = build_runtime_function(comp, rules);
     fns.insert(*id, ff);
   }

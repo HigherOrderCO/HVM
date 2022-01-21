@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, HashMap};
 // Variables that are never used are renamed to "*".
 #[derive(Debug)]
 pub struct RuleBook {
-  pub func_rules: HashMap<String, Vec<lb::Rule>>,
+  pub func_rules: HashMap<String, (usize, Vec<lb::Rule>)>,
   pub id_to_name: HashMap<u64, String>,
   pub name_to_id: HashMap<String, u64>,
   pub ctr_is_cal: HashMap<String, bool>,
@@ -105,7 +105,7 @@ pub fn gen_rulebook(file: &lb::File) -> RuleBook {
   //   (add (zero)   (succ b)) = (succ b)
   //   (add (zero)   (zero)  ) = (zero)
   // This is a group of 4 rules starting with the "add" name.
-  pub type FuncRules = HashMap<String, Vec<lb::Rule>>;
+  pub type FuncRules = HashMap<String, (usize, Vec<lb::Rule>)>;
   pub fn gen_func_rules(rules: &[lb::Rule]) -> FuncRules {
     let mut groups: FuncRules = HashMap::new();
     for rule in rules {
@@ -114,10 +114,10 @@ pub fn gen_rulebook(file: &lb::File) -> RuleBook {
         let rule = sanitize_rule(rule).unwrap();
         match group {
           None => {
-            groups.insert(name.clone(), Vec::from([rule]));
+            groups.insert(name.clone(), (args.len(), Vec::from([rule])));
           }
-          Some(group) => {
-            group.push(rule);
+          Some((arity, rules)) => {
+            rules.push(rule);
           }
         }
       }
@@ -562,7 +562,9 @@ mod tests {
     // contains expected number of keys
     assert_eq!(rulebook.func_rules.len(), 1);
     // key contains expected number of rules
-    assert_eq!(rulebook.func_rules.get("Double").unwrap().len(), 2);
+    assert_eq!(rulebook.func_rules.get("Double").unwrap().1.len(), 2);
+    // key contains expected arity
+    assert_eq!(rulebook.func_rules.get("Double").unwrap().0, 1);
 
     // id_to_name e name_to_id testing
     // check expected length
