@@ -4,7 +4,7 @@
 #![allow(non_snake_case)]
 #![allow(clippy::identity_op)]
 
-use std::collections::HashMap;
+use std::collections::{hash_map, HashMap};
 
 // Constants
 // ---------
@@ -651,7 +651,7 @@ pub fn show_lnk(x: Lnk) -> String {
     let ari = match tag {
       CTR => format!("{}", get_ari(x)),
       CAL => format!("{}", get_ari(x)),
-      _   => String::from(""),
+      _   => String::new(),
     };
     let tgs = match tag {
       DP0 => "DP0",
@@ -706,7 +706,7 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
         find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
       }
       DP0 => {
-        if let std::collections::hash_map::Entry::Vacant(e) = lets.entry(get_loc(term,0)) {
+        if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term,0)) {
           names.insert(get_loc(term,0), format!("{}", count));
           *count += 1;
           kinds.insert(get_loc(term,0), get_ext(term));
@@ -715,7 +715,7 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
         }
       }
       DP1 => {
-        if let std::collections::hash_map::Entry::Vacant(e) = lets.entry(get_loc(term,0)) {
+        if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term,0)) {
           names.insert(get_loc(term,0), format!("{}", count));
           *count += 1;
           kinds.insert(get_loc(term,0), get_ext(term));

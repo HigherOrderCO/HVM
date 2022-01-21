@@ -61,10 +61,7 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lb::Rule]) -> DynFun {
         }
         for (i, arg) in args.iter().enumerate() {
           match **arg {
-            lb::Term::Ctr { .. } => {
-              redex[i] = true;
-            }
-            lb::Term::U32 { .. } => {
+            lb::Term::Ctr { .. } | lb::Term::U32 { .. } => {
               redex[i] = true;
             }
             _ => {}
@@ -186,8 +183,8 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lb::Rule]) -> DynFun {
   ) -> Vec<DynTerm> {
     rules
       .iter()
-      .enumerate()
-      .map(|(i, rule)| term_to_dynterm(comp, &rule.rhs, vars_vec[i].len() as u64))
+      .zip(vars_vec.iter())
+      .map(|(rule, vars)| term_to_dynterm(comp, &rule.rhs, vars.len() as u64))
       .collect()
   }
 
@@ -221,9 +218,9 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lb::Rule]) -> rt::Fu
     //}
 
     // For each argument, if it is a redex and a PAR, apply the cal_par rule
-    for i_usize in 0..dynfun.redex.len() {
-      let i = i_usize as u64;
-      if dynfun.redex[i_usize] && rt::get_tag(rt::ask_arg(mem, term, i)) == rt::PAR {
+    for (i, redex) in dynfun.redex.iter().enumerate() {
+      let i = i as u64;
+      if *redex && rt::get_tag(rt::ask_arg(mem, term, i)) == rt::PAR {
         rt::cal_par(mem, host, term, rt::ask_arg(mem, term, i), i);
         return true;
       }
@@ -310,8 +307,9 @@ pub fn build_runtime_functions(comp: &rb::RuleBook) -> HashMap<u64, rt::Function
   comp
     .func_rules
     .iter()
-    .map(|(name, rules)| {
+    .map(|(name, rules_info)| {
       let id = comp.name_to_id.get(name).unwrap_or(&0);
+      let rules = &rules_info.1;
       let ff = build_runtime_function(comp, rules);
       (*id, ff)
     })
@@ -347,15 +345,15 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
     vars: &mut Vec<String>,
   ) -> DynTerm {
     match term {
-      lb::Term::Var { name } => {
-        for i in 0..vars.len() {
-          let j = vars.len() - i - 1;
-          if vars[j] == *name {
-            return DynTerm::Var { bidx: j as u64 };
-          }
-        }
-        panic!("Unbound variable: '{}'.", name);
-      }
+      lb::Term::Var { name } => DynTerm::Var {
+        bidx: vars
+          .iter()
+          .enumerate()
+          .rev()
+          .find(|(_, var)| var == &name)
+          .unwrap_or_else(|| panic!("Unbound variable: '{}'.", name))
+          .0 as u64,
+      },
       lb::Term::Dup { nam0, nam1, expr, body } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.push(nam0.clone());

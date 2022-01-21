@@ -1,14 +1,15 @@
 {
   "cSpell.words": [
+    "dynfun",
     "lambolt",
     "oper",
-    "readback"
+    "readback",
+    "rulebook"
   ],
   "cSpell.ignoreWords": [
     "argm",
     "arit",
     "askama",
-    "cplb",
     "ctrs",
     "dups",
     "ropey"

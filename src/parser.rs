@@ -53,7 +53,7 @@ pub fn equal_at(text: &str, test: &str, i: usize) -> bool {
 }
 
 pub fn flatten(texts: &[&str]) -> String {
-  texts.join("")
+  texts.concat()
 }
 
 pub fn lines(text: &str) -> Vec<String> {

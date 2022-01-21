@@ -116,9 +116,9 @@ fn hardcoded_slow_function() -> rt::Function {
     //}
 
     // For each argument, if it is redexand a PAR, apply the cal_par rule
-    for i in 0 .. dynfun.redex.len() {
+    for (i, redex) in dynfun.redex.iter().enumerate() {
       let i = i as u64;
-      if dynfun.redex[i as usize] && rt::get_tag(rt::ask_arg(mem,term,i)) == rt::PAR {
+      if *redex && rt::get_tag(rt::ask_arg(mem,term,i)) == rt::PAR {
         rt::cal_par(mem, host, term, rt::ask_arg(mem,term,i), i as u64);
         return true;
       }
