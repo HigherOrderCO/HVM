@@ -144,15 +144,16 @@ fn emit_group_step_0(target: Target, comp: &rb::RuleBook) -> Rope {
 
   let base_idt = 6;
 
-  for (name, rules) in comp.func_rules.iter() {
+  for (name, rules_info) in comp.func_rules.iter() {
     let name = &emit_constructor_name(name);
     builder.idt(base_idt).add("case ").add(name).add(": {").ln();
-
-    let len = rules.len();
-
+    
     // let mut reduce_at: HashSet<usize> = HashSet::new();
     // let mut stricts: Vec<usize> = Vec::new();
     let mut to_reduce: Vec<usize> = Vec::new();
+
+    let arity = rules_info.0;
+    let rules = &rules_info.1;
     for rule in rules {
       if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
         for (i, arg) in args.iter().enumerate() {
@@ -219,8 +220,6 @@ fn emit_group_step_1(target: Target, comp: &rb::RuleBook) -> Rope {
   for (name, rules) in comp.func_rules.iter() {
     let name = &emit_constructor_name(name);
     line!(bd, idt, "case {}: {{", name);
-
-    // TODO
   }
   bd.finish()
 }
