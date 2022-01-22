@@ -306,7 +306,7 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk
   done
 }
 
-pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64, opt_id_to_name: Option<&HashMap<u64,String>>) -> Lnk {
+pub fn reduce(mem: &mut Worker, funcs: &[Option<Function>], root: u64, opt_id_to_name: Option<&HashMap<u64,String>>) -> Lnk {
   let mut stack: Vec<u64> = Vec::new();
 
   let mut init = 1;
@@ -315,6 +315,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64, opt_i
   loop {
     let term = ask_lnk(mem, host);
     //println!("reduce {}", show_term(mem, ask_lnk(mem, root), opt_id_to_name));
+    //println!("reduce {}", show_mem(mem));
 
     if init == 1 {
       match get_tag(term) {
@@ -338,7 +339,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64, opt_i
         CAL => {
           let fun = get_ext(term);
           let ari = get_ari(term);
-          if let Some(f) = funcs.get(&fun) {
+          if let Some(f) = &funcs[fun as usize] {
             let len = f.stricts.len() as u64;
             if len == 0 {
               init = 0;
@@ -553,7 +554,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64, opt_i
         CAL => {
           let fun = get_ext(term);
           let ari = get_ari(term);
-          if let Some(f) = funcs.get(&fun) {
+          if let Some(f) = &funcs[fun as usize] {
             if (f.rewriter)(mem, host, term) {
               host = host;
               init = 1;
@@ -587,7 +588,7 @@ pub fn get_bit(bits: &[u64], bit: u64) -> bool {
 
 pub fn normal_go(
   mem: &mut Worker,
-  funcs: &HashMap<u64, Function>,
+  funcs: &[Option<Function>],
   host: u64,
   seen: &mut [u64],
   opt_id_to_name: Option<&HashMap<u64, String>>,
@@ -633,7 +634,7 @@ pub fn normal_go(
   }
 }
 
-pub fn normal(mem: &mut Worker, host: u64, funcs: &HashMap<u64, Function>, opt_id_to_name: Option<&HashMap<u64,String>>) -> Lnk {
+pub fn normal(mem: &mut Worker, host: u64, funcs: &[Option<Function>], opt_id_to_name: Option<&HashMap<u64,String>>) -> Lnk {
   let mut seen = vec![0; 4194304];
   normal_go(mem, funcs, host, &mut seen, opt_id_to_name)
 }

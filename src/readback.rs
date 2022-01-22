@@ -203,9 +203,8 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         let args_txt = (0..arit)
           .map(|i| {
             let arg = rt::ask_arg(ctx.mem, term, i);
-            go(ctx, stacks.clone(), arg, depth + 1)
+            format!(" {}", go(ctx, stacks.clone(), arg, depth + 1))
           })
-          .map(|x| format!(" {}", x))
           .collect::<String>();
         let name = match ctx.comp {
           None => format!("${}", func),
@@ -216,7 +215,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
       rt::VAR => ctx
         .names
         .get(&term)
-        .map(|x| x.to_string())
+        .map(String::to_string)
         .unwrap_or_else(|| format!("^{}", rt::get_loc(term, 0))),
       rt::ARG => "!".to_string(),
       rt::ERA => "~".to_string(),

@@ -1,26 +1,69 @@
 // Moving Lambolt Terms to/from runtime, and building dynamic functions.
+// TODO: "dups" still needs to be moved out on alloc_body etc.
 
 #![allow(clippy::identity_op)]
 
 use crate::lambolt as lb;
 use crate::rulebook as rb;
 use crate::runtime as rt;
+use crate::readback as rd;
 use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
+use std::iter;
 use std::fmt;
+use std::time::Instant;
 
 #[derive(Debug)]
 pub enum DynTerm {
-  Var { bidx: u64 },
-  Dup { expr: Box<DynTerm>, body: Box<DynTerm> },
-  Let { expr: Box<DynTerm>, body: Box<DynTerm> },
-  Lam { body: Box<DynTerm> },
-  App { func: Box<DynTerm>, argm: Box<DynTerm> },
-  Cal { func: u64, args: Vec<DynTerm> },
-  Ctr { func: u64, args: Vec<DynTerm> },
-  U32 { numb: u32 },
-  Op2 { oper: u64, val0: Box<DynTerm>, val1: Box<DynTerm> },
+  Var {
+    bidx: u64,
+  },
+  Dup {
+    expr: Box<DynTerm>,
+    body: Box<DynTerm>,
+  },
+  Let {
+    expr: Box<DynTerm>,
+    body: Box<DynTerm>,
+  },
+  Lam {
+    body: Box<DynTerm>,
+  },
+  App {
+    func: Box<DynTerm>,
+    argm: Box<DynTerm>,
+  },
+  Cal {
+    func: u64,
+    args: Vec<DynTerm>,
+  },
+  Ctr {
+    func: u64,
+    args: Vec<DynTerm>,
+  },
+  U32 {
+    numb: u32,
+  },
+  Op2 {
+    oper: u64,
+    val0: Box<DynTerm>,
+    val1: Box<DynTerm>,
+  },
 }
+
+// The right-hand side of a rule, "digested" or "pre-filled" in a way that is almost ready to be
+// pasted into the runtime's memory, except for some minor adjustments: internal links need to be
+// adjusted taking in account the index where each node is actually allocated, and external
+// variables must be linked. This structure helps moving as much computation from the interpreter
+// to the static time (i.e., when generating the dynfun closure) as possible.
+pub type Body = (Elem,Vec<Node>);           // The pre-filled body (TODO: can the Node Vec be unboxed?)
+pub type Node = Vec<Elem>;                  // A node on the pre-filled body
+#[derive(Copy,Clone,Debug)] pub enum Elem { // An element of a node
+  Fix{value: u64},                          // Fixed value, doesn't require adjuemtn
+  Loc{value: u64, targ: u64, slot: u64},    // Local link, requires adjustment
+  Ext{index: u64},                          // Link to an external variable
+}
+
 
 #[derive(Debug)]
 pub struct DynVar {
@@ -33,7 +76,7 @@ pub struct DynVar {
 pub struct DynRule {
   pub cond: Vec<rt::Lnk>,
   pub vars: Vec<DynVar>,
-  pub body: DynTerm,
+  pub body: Body,
   pub free: Vec<(u64, u64)>,
 }
 
@@ -49,233 +92,127 @@ pub struct DynFun {
 //   (Add (Succ a) b) = (Succ (Add a b))
 //   (Add (Zero)   b) = b
 pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lb::Rule]) -> DynFun {
-  // This is an aux function that makes the redex vector. It specifies which arguments need
-  // reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument must be
-  // reduced. The redex vector will be: `[true, false]`.
-  fn make_redex(comp: &rb::RuleBook, rules: &[lb::Rule]) -> Vec<bool> {
-    let mut redex = Vec::new();
-    for rule in rules {
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        if redex.len() < args.len() {
-          redex.resize(args.len(), false);
-        }
-        for (i, arg) in args.iter().enumerate() {
-          match **arg {
-            lb::Term::Ctr { .. } | lb::Term::U32 { .. } => {
-              redex[i] = true;
+  let mut redex = if let lb::Term::Ctr { ref name, ref args } = *rules[0].lhs {
+    vec![false; args.len()]
+  } else {
+    panic!("Invalid left-hand side: {}", rules[0].lhs);
+  };
+  let mut dynrules = rules.iter().filter_map(|rule| 
+    if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
+      let mut cond = Vec::new();
+      let mut vars = Vec::new();
+      let mut free = Vec::new();
+      for ((i, arg), redex) in args.iter().enumerate().zip(redex.iter_mut()) {
+        match &**arg {
+          lb::Term::Ctr { name, args } => {
+            *redex = true;
+            cond.push(rt::Ctr(args.len() as u64, *comp.name_to_id.get(&*name).unwrap_or(&0), 0));
+            free.push((i as u64, args.len() as u64));
+            for (j, arg) in args.iter().enumerate() {
+              if let lb::Term::Var { ref name } = **arg {
+                vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*", });
+              }
             }
-            _ => {}
           }
+          lb::Term::U32 { numb } => {
+            *redex = true;
+            cond.push(rt::U_32(*numb as u64));
+          }
+          lb::Term::Var { name } => {
+            vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
+          }
+          _ => {}
         }
-      } else {
-        panic!("Invalid left-hand side: {}", rule.lhs);
       }
-    }
-    redex
-  }
 
-  // This is an aux function that makes the vectors used to determine if certain rule matched.
-  // That vector will contain Lnks with the proper constructor tag, for each strict argument, and
-  // 0, for each variable argument. For example, on `(Add (Succ a) b) = ...`, we only need to
-  // match one constructor, `Succ`. The resulting vector will be: `[rt::Ctr(SUCC,1,0), 0]`.
-  fn make_cond_vec(comp: &rb::RuleBook, rules: &[lb::Rule]) -> Vec<Vec<rt::Lnk>> {
-    rules
-      .iter()
-      .map(|rule| {
-        if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-          args
-            .iter()
-            .map(|arg| match **arg {
-              lb::Term::Ctr { ref name, ref args } => {
-                let ari = args.len() as u64;
-                let fun = comp.name_to_id.get(&*name).unwrap_or(&0);
-                let pos = 0;
-                rt::Ctr(ari, *fun, pos)
-              }
-              lb::Term::U32 { ref numb } => rt::U_32(*numb as u64),
-              _ => 0,
-            })
-            .collect()
-        } else {
-          panic!("Invalid left-hand side: {}", rule.lhs);
-        }
-      })
-      .collect()
-  }
+      let term = term_to_dynterm(comp, &rule.rhs, vars.len() as u64);
+      let body = build_body(&term, vars.len() as u64);
 
-  // This is an aux function that makes the vars vectors, which is used to locate left-hand side
-  // variables. For example, on `(Add (Succ a) b) = ...`, we have two variables, one on the first
-  // field of the first argument, and one is the second argument. Both variables are used. The vars
-  // vector for it is: `[(0,Some(0),true), (1,None,true)]`
-  fn make_vars_vec(comp: &rb::RuleBook, rules: &[lb::Rule]) -> Vec<Vec<DynVar>> {
-    rules
-      .iter()
-      .map(|rule| {
-        if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-          let mut vars: Vec<DynVar> = Vec::new();
-          for (i, arg) in args.iter().enumerate() {
-            match &**arg {
-              lb::Term::Ctr { name, args } => {
-                for (j, arg) in args.iter().enumerate() {
-                  match **arg {
-                    lb::Term::Var { ref name } => {
-                      vars.push(DynVar {
-                        param: i as u64,
-                        field: Some(j as u64),
-                        erase: name == "*",
-                      });
-                    }
-                    _ => {
-                      panic!(
-                        "Argument {}, constructor {}, field {}, is not a variable.",
-                        i, name, j
-                      );
-                    }
-                  }
-                }
-              }
-              lb::Term::Var { name } => {
-                vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
-              }
-              _ => {}
-            }
-          }
-          vars
-        } else {
-          panic!("Invalid left-hand side: {}", rule.lhs);
-        }
-      })
-      .collect()
-  }
-
-  // This is an aux function that makes the free vector. It specifies which arguments need to
-  // be freed after reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument
-  // is a constructor that can be freed. The free vector will be: `[(0,1)]`. The first value is
-  // the argument index, the second value is the ctor arity.
-  fn make_free_vec(comp: &rb::RuleBook, rules: &[lb::Rule]) -> Vec<Vec<(u64, u64)>> {
-    rules
-      .iter()
-      .map(|rule| {
-        if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-          args
-            .iter()
-            .enumerate()
-            .filter_map(|(i, arg)| {
-              if let lb::Term::Ctr { ref args, .. } = **arg {
-                Some((i as u64, args.len() as u64))
-              } else {
-                None
-              }
-            })
-            .collect()
-        } else {
-          panic!("Invalid left-hand side: {}", rule.lhs);
-        }
-      })
-      .collect()
-  }
-
-  // Makes the terms vector.
-  fn make_body_vec(
-    comp: &rb::RuleBook,
-    rules: &[lb::Rule],
-    vars_vec: &[Vec<DynVar>],
-  ) -> Vec<DynTerm> {
-    rules
-      .iter()
-      .zip(vars_vec.iter())
-      .map(|(rule, vars)| term_to_dynterm(comp, &rule.rhs, vars.len() as u64))
-      .collect()
-  }
-
-  // Builds the static objects
-  let redex = make_redex(comp, rules);
-  let cond_vec = make_cond_vec(comp, rules);
-  let vars_vec = make_vars_vec(comp, rules);
-  let body_vec = make_body_vec(comp, rules, &vars_vec);
-  let free_vec = make_free_vec(comp, rules);
-  let dynrules = cond_vec
-    .into_iter()
-    .zip(vars_vec)
-    .zip(body_vec)
-    .zip(free_vec)
-    .map(|(((cond, vars), body), free)| DynRule { cond, vars, body, free })
-    .collect();
+      Some(DynRule { cond, vars, body, free })
+    } else {
+      None
+    }).collect();
   DynFun { redex, rules: dynrules }
+}
+
+fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
+  let DynVar {param, field, erase} = var;
+  match field {
+    Some(i) => { rt::ask_arg(mem, rt::ask_arg(mem, term, *param), *i) }
+    None    => { rt::ask_arg(mem, term, *param) }
+  }
+}
+
+// This is used to color fan nodes. We need a globally unique color for each generated node. Right
+// now, we just increment this counter every time we generate a node. Node that this is done at
+// compile-time, so, calling the same function will always return the same fan node colors. That
+// is, colors are only globally unique across different functions, not across different function
+// calls. We could move this to the runtime, though, which would make Lambolt somewhat more
+// expressive. For example:
+// (Two)  = λf λx (f (f x))
+// (Main) = ((Two) (Two))
+// Isn't admissible in the current runtime, but it would if we generated new fan nodes per each
+// global function call.
+static mut DUPS_COUNT : u64 = 0;
+
+pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
+  unsafe { DUPS_COUNT = 0; }
+  let mut funcs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect();
+  for (name, rules_info) in &comp.func_rules {
+    let fnid = comp.name_to_id.get(name).unwrap_or(&0);
+    let func = build_runtime_function(comp, &rules_info.1);
+    funcs[*fnid as usize] = Some(func);
+  }
+  funcs
 }
 
 pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lb::Rule]) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
-  println!("dynfun: {:?}", dynfun);
 
   let stricts = dynfun.redex.clone();
 
   let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
-    // Gets the left-hand side arguments (ex: `(Succ a)` and `b`)
-    //let mut args = Vec::new();
-    //for i in 0 .. dynfun.redex.len() {
-    //args.push(rt::ask_arg(mem, term, i as u64));
-    //}
 
     // For each argument, if it is a redex and a PAR, apply the cal_par rule
     for (i, redex) in dynfun.redex.iter().enumerate() {
       let i = i as u64;
-      if *redex && rt::get_tag(rt::ask_arg(mem, term, i)) == rt::PAR {
-        rt::cal_par(mem, host, term, rt::ask_arg(mem, term, i), i);
+      if *redex && rt::get_tag(rt::ask_arg(mem,term,i)) == rt::PAR {
+        rt::cal_par(mem, host, term, rt::ask_arg(mem,term,i), i);
         return true;
       }
     }
 
     // For each rule condition vector
     for dynrule in &dynfun.rules {
+
       // Check if the rule matches
       let mut matched = true;
 
       // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
-      //println!(">> testing conditions... total: {} conds", dynrule.cond.len());
       for (i, cond) in dynrule.cond.iter().enumerate() {
         let i = i as u64;
         match rt::get_tag(*cond) {
           rt::U32 => {
-            //println!(">>> cond demands U32 {} at {}", rt::get_val(*cond), i);
-            let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::U32;
-            let same_val = rt::get_val(rt::ask_arg(mem, term, i)) == rt::get_val(*cond);
+            let same_tag = rt::get_tag(rt::ask_arg(mem,term,i)) == rt::U32;
+            let same_val = rt::get_val(rt::ask_arg(mem,term,i)) == rt::get_val(*cond);
             matched = matched && same_tag && same_val;
           }
           rt::CTR => {
-            //println!(">>> cond demands CTR {} at {}", rt::get_ext(*cond), i);
-            let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR;
-            let same_ext = rt::get_ext(rt::ask_arg(mem, term, i)) == rt::get_ext(*cond);
+            let same_tag = rt::get_tag(rt::ask_arg(mem,term,i)) == rt::CTR;
+            let same_ext = rt::get_ext(rt::ask_arg(mem,term,i)) == rt::get_ext(*cond);
             matched = matched && same_tag && same_ext;
           }
           _ => {}
         }
       }
 
-      //println!(">> matched? {}", matched);
-
       // If all conditions are satisfied, the rule matched, so we must apply it
       if matched {
         // Increments the gas count
         rt::inc_cost(mem);
-
-        // Gets all the left-hand side vars (ex: `a` and `b`).
-        let mut vars = dynrule
-          .vars
-          .iter()
-          .map(|DynVar { param, field, erase }| match field {
-            Some(i) => rt::ask_arg(mem, rt::ask_arg(mem, term, *param), *i),
-            None => rt::ask_arg(mem, term, *param),
-          })
-          .collect();
-
-        // FIXME: `dups` must be global to properly color the fan nodes, but Rust complains about
-        // mutating borrowed variables. Until this is fixed, the language will be very restrict.
-        let mut dups = 0;
-
+        
         // Builds the right-hand side term (ex: `(Succ (Add a b))`)
-        //println!("building {:?}", &dynrule.body);
-        let done = build_dynterm(mem, &dynrule.body, &mut vars, &mut dups);
+        let done = alloc_body(mem, term, &dynrule.body, &dynrule.vars);
 
         // Links the host location to it
         rt::link(mem, host, done);
@@ -284,13 +221,13 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lb::Rule]) -> rt::Fu
         rt::clear(mem, rt::get_loc(term, 0), dynfun.redex.len() as u64);
         for (i, arity) in &dynrule.free {
           let i = *i as u64;
-          rt::clear(mem, rt::get_loc(rt::ask_arg(mem, term, i), 0), *arity);
+          rt::clear(mem, rt::get_loc(rt::ask_arg(mem,term,i), 0), *arity);
         }
 
         // Collects unused variables (none in this example)
-        for (i, DynVar { param, field, erase }) in dynrule.vars.iter().enumerate() {
+        for dynvar @ DynVar {param, field, erase} in dynrule.vars.iter() {
           if *erase {
-            rt::collect(mem, vars[i]);
+            rt::collect(mem, get_var(mem, term, dynvar));
           }
         }
 
@@ -303,19 +240,6 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lb::Rule]) -> rt::Fu
   rt::Function { stricts, rewriter }
 }
 
-pub fn build_runtime_functions(comp: &rb::RuleBook) -> HashMap<u64, rt::Function> {
-  comp
-    .func_rules
-    .iter()
-    .map(|(name, rules_info)| {
-      let id = comp.name_to_id.get(name).unwrap_or(&0);
-      let rules = &rules_info.1;
-      let ff = build_runtime_function(comp, rules);
-      (*id, ff)
-    })
-    .collect()
-}
-
 /// Converts a Lambolt Term to a Runtime Term
 pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> DynTerm {
   fn convert_oper(oper: &lb::Oper) -> u64 {
@@ -326,7 +250,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
       lb::Oper::Div => rt::DIV,
       lb::Oper::Mod => rt::MOD,
       lb::Oper::And => rt::AND,
-      lb::Oper::Or => rt::OR,
+      lb::Oper::Or  => rt::OR,
       lb::Oper::Xor => rt::XOR,
       lb::Oper::Shl => rt::SHL,
       lb::Oper::Shr => rt::SHR,
@@ -354,7 +278,12 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
           .unwrap_or_else(|| panic!("Unbound variable: '{}'.", name))
           .0 as u64,
       },
-      lb::Term::Dup { nam0, nam1, expr, body } => {
+      lb::Term::Dup {
+        nam0,
+        nam1,
+        expr,
+        body,
+      } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
@@ -385,9 +314,15 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
         let term_func = comp.name_to_id[name];
         let term_args = args.iter().map(|arg| convert_term(arg, comp, depth + 0, vars)).collect();
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
-          DynTerm::Cal { func: term_func, args: term_args }
+          DynTerm::Cal {
+            func: term_func,
+            args: term_args,
+          }
         } else {
-          DynTerm::Ctr { func: term_func, args: term_args }
+          DynTerm::Ctr {
+            func: term_func,
+            args: term_args,
+          }
         }
       }
       lb::Term::U32 { numb } => DynTerm::U32 { numb: *numb },
@@ -488,7 +423,9 @@ pub fn readback_as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String 
 
   impl Stacks {
     fn new() -> Stacks {
-      Stacks { stacks: HashMap::new() }
+      Stacks {
+        stacks: HashMap::new(),
+      }
     }
     fn get(&self, col: Lnk) -> Option<&Vec<bool>> {
       self.stacks.get(&col)
@@ -569,7 +506,7 @@ pub fn readback_as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String 
           rt::DIV => "/",
           rt::MOD => "%",
           rt::AND => "&",
-          rt::OR => "|",
+          rt::OR  => "|",
           rt::XOR => "^",
           rt::SHL => "<<",
           rt::SHR => ">>",
@@ -596,9 +533,8 @@ pub fn readback_as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String 
         let args_txt = (0..arit)
           .map(|i| {
             let arg = rt::ask_arg(ctx.mem, term, i);
-            go(ctx, stacks.clone(), arg, depth + 1)
+            format!(" {}", go(ctx, stacks.clone(), arg, depth + 1))
           })
-          .map(|x| format!(" {}", x))
           .collect::<String>();
         let name = ctx
           .comp
@@ -611,7 +547,7 @@ pub fn readback_as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String 
       rt::VAR => ctx
         .names
         .get(&term)
-        .map(|x| x.to_string())
+        .map(String::to_string)
         .unwrap_or_else(|| format!("^{}", rt::get_loc(term, 0))),
       rt::ARG => "!".to_string(),
       rt::ERA => "~".to_string(),
@@ -628,108 +564,206 @@ pub fn readback_as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String 
   let mut seen = HashSet::<Lnk>::new();
   let mut count: u32 = 0;
 
-  let ctx = &mut CtxName { mem, names: &mut names, seen: &mut seen, count: &mut count };
+  let ctx = &mut CtxName {
+    mem,
+    names: &mut names,
+    seen: &mut seen,
+    count: &mut count,
+  };
   name(ctx, term, 0);
 
-  let ctx = &mut CtxGo { mem, comp, names: &names, seen: &seen };
+  let ctx = &mut CtxGo {
+    mem,
+    comp,
+    names: &names,
+    seen: &seen,
+  };
   let stacks = Stacks::new();
 
   go(ctx, stacks, term, 0)
 }
 
-// Writes a Term represented as a Rust enum on the Runtime's memory.
-pub fn build_dynterm(
-  mem: &mut rt::Worker,
-  term: &DynTerm,
-  vars: &mut Vec<u64>,
-  dups: &mut u64,
-) -> rt::Lnk {
-  match term {
-    DynTerm::Var { bidx } => {
-      if *bidx < vars.len() as u64 {
-        //println!("got var {} {}", bidx, rt::show_lnk(vars[*bidx as usize]));
-        vars[*bidx as usize]
-      } else {
-        panic!("Unbound variable.");
+pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
+  fn link(nodes: &mut Vec<Node>, targ: u64, slot: u64, elem: Elem) {
+    nodes[targ as usize][slot as usize] = elem;
+    if let Elem::Loc{value, targ: var_targ, slot: var_slot} = elem {
+      let tag = rt::get_tag(value);
+      if tag <= rt::VAR {
+        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] = Elem::Loc{value: rt::Arg(0), targ, slot};
       }
     }
-    DynTerm::Dup { expr, body } => {
-      let node = rt::alloc(mem, 3);
-      let dupk = *dups;
-      *dups += 1;
-      rt::link(mem, node + 0, rt::Era());
-      rt::link(mem, node + 1, rt::Era());
-      let expr = build_dynterm(mem, expr, vars, dups);
-      rt::link(mem, node + 2, expr);
-      vars.push(rt::Dp0(dupk, node));
-      vars.push(rt::Dp1(dupk, node));
-      let body = build_dynterm(mem, body, vars, dups);
-      vars.pop();
-      vars.pop();
-      body
-    }
-    DynTerm::Let { expr, body } => {
-      let expr = build_dynterm(mem, expr, vars, dups);
-      vars.push(expr);
-      let body = build_dynterm(mem, body, vars, dups);
-      vars.pop();
-      body
-    }
-    DynTerm::Lam { body } => {
-      let node = rt::alloc(mem, 2);
-      rt::link(mem, node + 0, rt::Era());
-      vars.push(rt::Var(node));
-      let body = build_dynterm(mem, body, vars, dups);
-      rt::link(mem, node + 1, body);
-      vars.pop();
-      rt::Lam(node)
-    }
-    DynTerm::App { func, argm } => {
-      let node = rt::alloc(mem, 2);
-      let func = build_dynterm(mem, func, vars, dups);
-      rt::link(mem, node + 0, func);
-      let argm = build_dynterm(mem, argm, vars, dups);
-      rt::link(mem, node + 1, argm);
-      rt::App(node)
-    }
-    DynTerm::Cal { func, args } => {
-      let size = args.len() as u64;
-      let node = rt::alloc(mem, size);
-      for (i, arg) in args.iter().enumerate() {
-        let arg_lnk = build_dynterm(mem, arg, vars, dups);
-        rt::link(mem, node + i as u64, arg_lnk);
+  }
+  fn go(term: &DynTerm, vars: &mut Vec<Elem>, nodes: &mut Vec<Node>) -> Elem {
+    match term {
+      DynTerm::Var { bidx } => {
+        if *bidx < vars.len() as u64 {
+          vars[*bidx as usize]
+        } else {
+          panic!("Unbound variable.");
+        }
       }
-      rt::Cal(size, *func, node)
-    }
-    DynTerm::Ctr { func, args } => {
-      let size = args.len() as u64;
-      let node = rt::alloc(mem, size);
-      for (i, arg) in args.iter().enumerate() {
-        let arg_lnk = build_dynterm(mem, arg, vars, dups);
-        rt::link(mem, node + i as u64, arg_lnk);
+      DynTerm::Dup { expr, body } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![Elem::Fix{value: 0}; 3]);
+        let dupk;
+        unsafe {
+          dupk = DUPS_COUNT;
+          DUPS_COUNT += 1;
+        }
+        link(nodes, targ, 0, Elem::Fix{value: rt::Era()});
+        link(nodes, targ, 1, Elem::Fix{value: rt::Era()});
+        let expr = go(expr, vars, nodes);
+        link(nodes, targ, 2, expr);
+        vars.push(Elem::Loc{value: rt::Dp0(dupk, 0), targ, slot: 0});
+        vars.push(Elem::Loc{value: rt::Dp1(dupk, 0), targ, slot: 0});
+        let body = go(body, vars, nodes);
+        vars.pop();
+        vars.pop();
+        body
       }
-      rt::Ctr(size, *func, node)
+      DynTerm::Let { expr, body } => {
+        let expr = go(expr, vars, nodes);
+        vars.push(expr);
+        let body = go(body, vars, nodes);
+        vars.pop();
+        body
+      }
+      DynTerm::Lam { body } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![Elem::Fix{value: 0}; 2]);
+        link(nodes, targ, 0, Elem::Fix{value: rt::Era()});
+        vars.push(Elem::Loc{value: rt::Var(0), targ, slot: 0});
+        let body = go(body, vars, nodes);
+        link(nodes, targ, 1, body);
+        vars.pop();
+        Elem::Loc{value: rt::Lam(0), targ, slot: 0}
+      }
+      DynTerm::App { func, argm } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![Elem::Fix{value: 0}; 2]);
+        let func = go(func, vars, nodes);
+        link(nodes, targ, 0, func);
+        let argm = go(argm, vars, nodes);
+        link(nodes, targ, 1, argm);
+        Elem::Loc{value: rt::App(0), targ, slot: 0}
+      }
+      DynTerm::Cal { func, args } => {
+        if !args.is_empty() {
+          let targ = nodes.len() as u64;
+          nodes.push(vec![Elem::Fix{value: 0}; args.len() as usize]);
+          for (i, arg) in args.iter().enumerate() {
+            let arg = go(arg, vars, nodes);
+            link(nodes, targ, i as u64, arg);
+          }
+          Elem::Loc{value: rt::Cal(args.len() as u64, *func, 0), targ, slot: 0}
+        } else {
+          Elem::Fix{value: rt::Cal(0, *func, 0)}
+        }
+      }
+      DynTerm::Ctr { func, args } => {
+        if !args.is_empty() {
+          let targ = nodes.len() as u64;
+          nodes.push(vec![Elem::Fix{value: 0}; args.len() as usize]);
+          for (i, arg) in args.iter().enumerate() {
+            let arg = go(arg, vars, nodes);
+            link(nodes, targ, i as u64, arg);
+          }
+          Elem::Loc{value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0}
+        } else {
+          Elem::Fix{value: rt::Ctr(0, *func, 0)}
+        }
+      }
+      DynTerm::U32 { numb } => {
+        Elem::Fix{value: rt::U_32(*numb as u64)}
+      }
+      DynTerm::Op2 { oper, val0, val1 } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![Elem::Fix{value: 0}; 2]);
+        let val0 = go(val0, vars, nodes);
+        link(nodes, targ, 0, val0);
+        let val1 = go(val1, vars, nodes);
+        link(nodes, targ, 1, val1);
+        Elem::Loc{value: rt::Op2(*oper, 0), targ, slot: 0}
+      }
     }
-    DynTerm::U32 { numb } => rt::U_32(*numb as u64),
-    DynTerm::Op2 { oper, val0, val1 } => {
-      let node = rt::alloc(mem, 2);
-      let val0 = build_dynterm(mem, val0, vars, dups);
-      rt::link(mem, node + 0, val0);
-      let val1 = build_dynterm(mem, val1, vars, dups);
-      rt::link(mem, node + 1, val1);
-      rt::Op2(*oper, node)
+  }
+  let mut nodes : Vec<Node> = Vec::new();
+  let mut vars: Vec<Elem> = (0..free_vars).map(|i| Elem::Ext{index: i}).collect();
+  let elem = go(term, &mut vars, &mut nodes);
+  (elem, nodes)
+}
+
+static mut ALLOC_BODY_WORKSPACE : &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
+pub fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar]) -> rt::Lnk {
+  unsafe {
+    let (elem, nodes) = body;
+    let mut hosts = &mut ALLOC_BODY_WORKSPACE;
+    nodes.iter().enumerate().for_each(|(i, node)| {
+      hosts[i] = rt::alloc(mem, node.len() as u64);
+    });
+    nodes.iter().enumerate().for_each(|(i, node)| {
+      let host = hosts[i] as usize;
+      node.iter().enumerate().for_each(|(j, elem)| match elem {
+        Elem::Fix{value} => {
+          mem.node[host + j] = *value;
+        }
+        Elem::Ext{index} => {
+          rt::link(mem, (host + j) as u64, get_var(mem, term, &vars[*index as usize]));
+        }
+        Elem::Loc{value, targ, slot} => {
+          mem.node[host + j] = value + hosts[*targ as usize] + slot;
+        }
+      });
+    });
+    match elem {
+      Elem::Fix{value} => *value,
+      Elem::Ext{index} => get_var(mem, term, &vars[*index as usize]),
+      Elem::Loc{value, targ, slot} => value + hosts[*targ as usize] + slot,
     }
   }
 }
 
-pub fn alloc_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
-  let mut dups = 0;
+pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   let host = rt::alloc(mem, 1);
-  let term = build_dynterm(mem, term, &mut Vec::new(), &mut dups);
+  let body = build_body(term, 0);
+  let term = alloc_body(mem, 0, &body, &[]);
   rt::link(mem, host, term);
   host
 }
 
 pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lb::Term) -> u64 {
-  alloc_dynterm(mem, &term_to_dynterm(comp, term, 0))
+  alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
+}
+
+// Evaluates a Lambolt term to normal form
+pub fn eval_code(main: &str, code: &str) -> (String, u64, u64) {
+  // Creates a new Runtime worker
+  let mut worker = rt::new_worker();
+
+  // Parses and reads the input file
+  let file = lb::read_file(code);
+
+  // Converts the Lambolt file to a rulebook file
+  let book = rb::gen_rulebook(&file);
+
+  // Builds dynamic functions
+  let mut funs = build_runtime_functions(&book);
+
+  // FIXME: I'm using this to optimize dynfuns! Remove later.
+  //funs.insert(0, hardcoded_slow_function());
+
+  // Builds a runtime "(Main)" term
+  let main = lb::read_term("(Main)");
+  let host = alloc_term(&mut worker, &book, &main);
+
+  // Normalizes it
+  let init = Instant::now();
+  rt::normal(&mut worker, host, &funs, Some(&book.id_to_name));
+  let time = init.elapsed().as_millis() as u64;
+
+  // Reads it back to a Lambolt string
+  let norm = rd::as_code(&worker, &Some(book), host);
+
+  // Returns the normal form and the gas cost
+  (norm, worker.cost, time)
 }
