@@ -5,16 +5,16 @@
 #![allow(unused_imports)]
 #![allow(unused_mut)]
 
-mod rulebook;
-mod compiler;
-mod dynfun;
+mod compiled;
+mod dynamic;
 mod lambolt;
 mod parser;
 mod readback;
+mod rulebook;
 mod runtime;
 
 fn main() {
-  let (norm, cost, time) = dynfun::eval_code("Main", "
+  let (norm, cost, time) = dynamic::eval_code("Main", "
     //(Main) = (λf λx (f (f x)) λf λx (f (f x)))
 
     (Slow (Z))      = 1
