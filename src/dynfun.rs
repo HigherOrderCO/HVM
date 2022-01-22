@@ -1,4 +1,5 @@
 // Moving Lambolt Terms to/from runtime, and building dynamic functions.
+// TODO: "dups" still needs to be moved out on alloc_body etc.
 
 #![allow(clippy::identity_op)]
 
@@ -47,6 +48,20 @@ pub enum DynTerm {
   },
 }
 
+// The right-hand side of a rule, "digested" or "pre-filled" in a way that is almost ready to be
+// pasted into the runtime's memory, except for some minor adjustments: internal links need to be
+// adjusted taking in account the index where each node is actually allocated, and external
+// variables must be linked. This structure helps moving as much computation from the interpreter
+// to the static time (i.e., when generating the dynfun closure) as possible.
+pub type Body = (Elem,Vec<Node>);           // The pre-filled body (TODO: can the Node Vec be unboxed?)
+pub type Node = Vec<Elem>;                  // A node on the pre-filled body
+#[derive(Copy,Clone,Debug)] pub enum Elem { // An element of a node
+  Fix{value: u64},                          // Fixed value, doesn't require adjuemtn
+  Loc{value: u64, targ: u64, slot: u64},    // Local link, requires adjustment
+  Ext{index: u64},                          // Link to an external variable
+}
+
+
 #[derive(Debug)]
 pub struct DynVar {
   pub param: u64,
@@ -58,7 +73,7 @@ pub struct DynVar {
 pub struct DynRule {
   pub cond: Vec<rt::Lnk>,
   pub vars: Vec<DynVar>,
-  pub body: DynTerm,
+  pub body: Body,
   pub free: Vec<(u64, u64)>,
 }
 
@@ -75,7 +90,12 @@ pub struct DynFun {
 //   (Add (Zero)   b) = b
 pub fn build_dynfun(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> DynFun {
 
-  let mut redex = Vec::new();
+  let mut redex;
+  if let lb::Term::Ctr { ref name, ref args } = *rules[0].lhs {
+    redex = vec![false; args.len()];
+  } else {
+    panic!("Invalid left-hand side: {}", rules[0].lhs);
+  }
 
   let mut cond_vec = Vec::new();
   let mut vars_vec = Vec::new();
@@ -84,56 +104,40 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> DynFun {
 
   for rule in rules {
     if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-
       let mut cond = Vec::new();
       let mut vars = Vec::new();
       let mut free = Vec::new();
-
-      while redex.len() < args.len() {
-        redex.push(false);
-      }
-
       for (i, arg) in args.iter().enumerate() {
         match &**arg {
           lb::Term::Ctr { name, args } => {
             redex[i] = true;
-
-            let ari = args.len() as u64;
-            let fun = comp.name_to_id.get(&*name).unwrap_or(&0);
-            let pos = 0;
-            cond.push(rt::Ctr(ari, *fun, pos));
-
+            cond.push(rt::Ctr(args.len() as u64, *comp.name_to_id.get(&*name).unwrap_or(&0), 0));
             free.push((i as u64, args.len() as u64));
-
             for j in 0..args.len() {
               if let lb::Term::Var { ref name } = *args[j] {
                 vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*", });
               }
             }
-
           }
-
           lb::Term::U32 { numb } => {
             redex[i] = true;
             cond.push(rt::U_32(*numb as u64));
           }
-
           lb::Term::Var { name } => {
             vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
           }
-
           _ => {}
         }
-
       }
 
-      body_vec.push(term_to_dynterm(comp, &rule.rhs, vars.len() as u64));
+      let mut dups = 0;
+      let term = term_to_dynterm(comp, &rule.rhs, vars.len() as u64);
+      let body = build_body(&term, vars.len() as u64, &mut dups);
+      
+      body_vec.push(body);
       cond_vec.push(cond);
       vars_vec.push(vars);
       free_vec.push(free);
-
-    } else {
-      panic!("Invalid left-hand side: {}", rule.lhs);
     }
   }
 
@@ -146,7 +150,6 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> DynFun {
 
 pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
-  println!("dynfun: {:?}", dynfun);
 
   let stricts = dynfun.redex.clone();
 
@@ -215,7 +218,8 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
 
         // Builds the right-hand side term (ex: `(Succ (Add a b))`)
         //println!("building {:?}", &dynrule.body);
-        let done = build_dynterm(mem, &dynrule.body, &mut vars, &mut dups);
+        //let done = alloc_dynterm(mem, &dynrule.body, &mut vars, &mut dups);
+        let done = alloc_body(mem, &dynrule.body, &mut vars);
 
         // Links the host location to it
         rt::link(mem, host, done);
@@ -604,97 +608,246 @@ pub fn readback_as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String 
   go(ctx, stacks, term, 0)
 }
 
-// Writes a Term represented as a Rust enum on the Runtime's memory.
-pub fn build_dynterm(mem: &mut rt::Worker, term: &DynTerm, vars: &mut Vec<u64>, dups: &mut u64) -> rt::Lnk {
-  match term {
-    DynTerm::Var { bidx } => {
-      if *bidx < vars.len() as u64 {
-        //println!("got var {} {}", bidx, rt::show_lnk(vars[*bidx as usize]));
-        vars[*bidx as usize]
-      } else {
-        panic!("Unbound variable.");
+pub fn build_body(term: &DynTerm, free_vars: u64, dups: &mut u64) -> Body {
+  fn link(nodes: &mut Vec<Node>, targ: u64, slot: u64, elem: Elem) {
+    nodes[targ as usize][slot as usize] = elem;
+    if let Elem::Loc{value, targ: var_targ, slot: var_slot} = elem {
+      let tag = rt::get_tag(value);
+      if tag <= rt::VAR {
+        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] = Elem::Loc{value: rt::Arg(0), targ, slot};
       }
     }
-    DynTerm::Dup { expr, body } => {
-      let node = rt::alloc(mem, 3);
-      let dupk = *dups;
-      *dups += 1;
-      rt::link(mem, node + 0, rt::Era());
-      rt::link(mem, node + 1, rt::Era());
-      let expr = build_dynterm(mem, expr, vars, dups);
-      rt::link(mem, node + 2, expr);
-      vars.push(rt::Dp0(dupk, node));
-      vars.push(rt::Dp1(dupk, node));
-      let body = build_dynterm(mem, body, vars, dups);
-      vars.pop();
-      vars.pop();
-      body
-    }
-    DynTerm::Let { expr, body } => {
-      let expr = build_dynterm(mem, expr, vars, dups);
-      vars.push(expr);
-      let body = build_dynterm(mem, body, vars, dups);
-      vars.pop();
-      body
-    }
-    DynTerm::Lam { body } => {
-      let node = rt::alloc(mem, 2);
-      rt::link(mem, node + 0, rt::Era());
-      vars.push(rt::Var(node));
-      let body = build_dynterm(mem, body, vars, dups);
-      rt::link(mem, node + 1, body);
-      vars.pop();
-      rt::Lam(node)
-    }
-    DynTerm::App { func, argm } => {
-      let node = rt::alloc(mem, 2);
-      let func = build_dynterm(mem, func, vars, dups);
-      rt::link(mem, node + 0, func);
-      let argm = build_dynterm(mem, argm, vars, dups);
-      rt::link(mem, node + 1, argm);
-      rt::App(node)
-    }
-    DynTerm::Cal { func, args } => {
-      let size = args.len() as u64;
-      let node = rt::alloc(mem, size);
-      for (i, arg) in args.iter().enumerate() {
-        let arg_lnk = build_dynterm(mem, arg, vars, dups);
-        rt::link(mem, node + i as u64, arg_lnk);
+  }
+  fn go(term: &DynTerm, vars: &mut Vec<Elem>, dups: &mut u64, nodes: &mut Vec<Node>) -> Elem {
+    match term {
+      DynTerm::Var { bidx } => {
+        if *bidx < vars.len() as u64 {
+          vars[*bidx as usize].clone()
+        } else {
+          panic!("Unbound variable.");
+        }
       }
-      rt::Cal(size, *func, node)
-    }
-    DynTerm::Ctr { func, args } => {
-      let size = args.len() as u64;
-      let node = rt::alloc(mem, size);
-      for (i, arg) in args.iter().enumerate() {
-        let arg_lnk = build_dynterm(mem, arg, vars, dups);
-        rt::link(mem, node + i as u64, arg_lnk);
+      DynTerm::Dup { expr, body } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![Elem::Fix{value: 0}; 3]);
+        let dupk = *dups;
+        *dups += 1;
+        link(nodes, targ, 0, Elem::Fix{value: rt::Era()});
+        link(nodes, targ, 1, Elem::Fix{value: rt::Era()});
+        let expr = go(expr, vars, dups, nodes);
+        link(nodes, targ, 2, expr);
+        vars.push(Elem::Loc{value: rt::Dp0(dupk, 0), targ, slot: 0});
+        vars.push(Elem::Loc{value: rt::Dp1(dupk, 0), targ, slot: 0});
+        let body = go(body, vars, dups, nodes);
+        vars.pop();
+        vars.pop();
+        body
       }
-      rt::Ctr(size, *func, node)
+      DynTerm::Let { expr, body } => {
+        let expr = go(expr, vars, dups, nodes);
+        vars.push(expr);
+        let body = go(body, vars, dups, nodes);
+        vars.pop();
+        body
+      }
+      DynTerm::Lam { body } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![Elem::Fix{value: 0}; 2]);
+        link(nodes, targ, 0, Elem::Fix{value: rt::Era()});
+        vars.push(Elem::Loc{value: rt::Var(0), targ, slot: 0});
+        let body = go(body, vars, dups, nodes);
+        link(nodes, targ, 1, body);
+        vars.pop();
+        Elem::Loc{value: rt::Lam(0), targ, slot: 0}
+      }
+      DynTerm::App { func, argm } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![Elem::Fix{value: 0}; 2]);
+        let func = go(func, vars, dups, nodes);
+        link(nodes, targ, 0, func);
+        let argm = go(argm, vars, dups, nodes);
+        link(nodes, targ, 1, argm);
+        Elem::Loc{value: rt::App(0), targ, slot: 0}
+      }
+      DynTerm::Cal { func, args } => {
+        if args.len() > 0 {
+          let targ = nodes.len() as u64;
+          nodes.push(vec![Elem::Fix{value: 0}; args.len() as usize]);
+          for (i, arg) in args.iter().enumerate() {
+            let arg = go(arg, vars, dups, nodes);
+            link(nodes, targ, i as u64, arg);
+          }
+          Elem::Loc{value: rt::Cal(args.len() as u64, *func, 0), targ, slot: 0}
+        } else {
+          Elem::Fix{value: rt::Cal(0, *func, 0)}
+        }
+      }
+      DynTerm::Ctr { func, args } => {
+        if args.len() > 0 {
+          let targ = nodes.len() as u64;
+          nodes.push(vec![Elem::Fix{value: 0}; args.len() as usize]);
+          for (i, arg) in args.iter().enumerate() {
+            let arg = go(arg, vars, dups, nodes);
+            link(nodes, targ, i as u64, arg);
+          }
+          Elem::Loc{value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0}
+        } else {
+          Elem::Fix{value: rt::Ctr(0, *func, 0)}
+        }
+      }
+      DynTerm::U32 { numb } => {
+        Elem::Fix{value: rt::U_32(*numb as u64)}
+      }
+      DynTerm::Op2 { oper, val0, val1 } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![Elem::Fix{value: 0}; 2]);
+        let val0 = go(val0, vars, dups, nodes);
+        link(nodes, targ, 0, val0);
+        let val1 = go(val1, vars, dups, nodes);
+        link(nodes, targ, 1, val1);
+        Elem::Loc{value: rt::Op2(*oper, 0), targ, slot: 0}
+      }
     }
-    DynTerm::U32 { numb } => {
-      rt::U_32(*numb as u64)
+  }
+  let mut nodes : Vec<Node> = Vec::new();
+  let mut vars : Vec<Elem> = Vec::new();
+  for i in 0 .. free_vars {
+    vars.push(Elem::Ext{index: i});
+  }
+  let elem = go(term, &mut vars, dups, &mut nodes);
+  return (elem, nodes);
+}
+
+pub fn alloc_body(mem: &mut rt::Worker, body: &Body, vars: &[rt::Lnk]) -> rt::Lnk {
+  let (elem, nodes) = body;
+  let mut hosts = vec![0; nodes.len()];
+  for i in 0 .. nodes.len() {
+    hosts[i] = rt::alloc(mem, nodes[i].len() as u64);
+  }
+  for i in 0 .. nodes.len() as u64 {
+    let node = &nodes[i as usize];
+    let host = hosts[i as usize];
+    for j in 0 .. node.len() as u64 {
+      match &node[j as usize] {
+        Elem::Fix{value} => {
+          mem.node[(host + j) as usize] = *value;
+        }
+        Elem::Ext{index} => {
+          let lnk = vars[*index as usize];
+          mem.node[(host + j) as usize] = lnk;
+          if rt::get_tag(lnk) <= rt::VAR {
+            mem.node[rt::get_loc(lnk, rt::get_tag(lnk) & 0x01) as usize] = rt::Arg(host + j);
+          }
+          //rt::link(mem, host + j, value);
+        }
+        Elem::Loc{value, targ, slot} => {
+          mem.node[(host + j) as usize] = value + hosts[*targ as usize] + slot;
+        }
+      }
     }
-    DynTerm::Op2 { oper, val0, val1 } => {
-      let node = rt::alloc(mem, 2);
-      let val0 = build_dynterm(mem, val0, vars, dups);
-      rt::link(mem, node + 0, val0);
-      let val1 = build_dynterm(mem, val1, vars, dups);
-      rt::link(mem, node + 1, val1);
-      rt::Op2(*oper, node)
-    }
+  }
+  match elem {
+    Elem::Fix{value} => *value,
+    Elem::Ext{index} => *index,
+    Elem::Loc{value, targ, slot} => value + hosts[*targ as usize] + slot,
   }
 }
 
-pub fn alloc_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
+pub fn alloc_dynterm(mem: &mut rt::Worker, term: &DynTerm, vars: &mut Vec<u64>, dups: &mut u64) -> rt::Lnk {
+  let body = build_body(term, vars.len() as u64, dups);
+  return alloc_body(mem, &body, vars);
+}
+
+pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   let mut dups = 0;
   let host = rt::alloc(mem, 1);
-  let term = build_dynterm(mem, term, &mut Vec::new(), &mut dups);
+  let term = alloc_dynterm(mem, term, &mut Vec::new(), &mut dups);
   rt::link(mem, host, term);
   host
 }
 
 pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lb::Term) -> u64 {
-  return alloc_dynterm(mem, &term_to_dynterm(comp, term, 0));
+  return alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0));
 }
+
+// This function isn't needed anymore; I'll leave it as a comment for a few commits
+//pub fn old_alloc_dynterm(mem: &mut rt::Worker, term: &DynTerm, vars: &mut Vec<u64>, dups: &mut u64) -> rt::Lnk {
+  //match term {
+    //DynTerm::Var { bidx } => {
+      //if *bidx < vars.len() as u64 {
+        //vars[*bidx as usize]
+      //} else {
+        //panic!("Unbound variable.");
+      //}
+    //}
+    //DynTerm::Dup { expr, body } => {
+      //let node = rt::alloc(mem, 3);
+      //let dupk = *dups;
+      //*dups += 1;
+      //rt::link(mem, node + 0, rt::Era());
+      //rt::link(mem, node + 1, rt::Era());
+      //let expr = alloc_dynterm(mem, expr, vars, dups);
+      //rt::link(mem, node + 2, expr);
+      //vars.push(rt::Dp0(dupk, node));
+      //vars.push(rt::Dp1(dupk, node));
+      //let body = alloc_dynterm(mem, body, vars, dups);
+      //vars.pop();
+      //vars.pop();
+      //body
+    //}
+    //DynTerm::Let { expr, body } => {
+      //let expr = alloc_dynterm(mem, expr, vars, dups);
+      //vars.push(expr);
+      //let body = alloc_dynterm(mem, body, vars, dups);
+      //vars.pop();
+      //body
+    //}
+    //DynTerm::Lam { body } => {
+      //let node = rt::alloc(mem, 2);
+      //rt::link(mem, node + 0, rt::Era());
+      //vars.push(rt::Var(node));
+      //let body = alloc_dynterm(mem, body, vars, dups);
+      //rt::link(mem, node + 1, body);
+      //vars.pop();
+      //rt::Lam(node)
+    //}
+    //DynTerm::App { func, argm } => {
+      //let node = rt::alloc(mem, 2);
+      //let func = alloc_dynterm(mem, func, vars, dups);
+      //rt::link(mem, node + 0, func);
+      //let argm = alloc_dynterm(mem, argm, vars, dups);
+      //rt::link(mem, node + 1, argm);
+      //rt::App(node)
+    //}
+    //DynTerm::Cal { func, args } => {
+      //let size = args.len() as u64;
+      //let node = rt::alloc(mem, size);
+      //for (i, arg) in args.iter().enumerate() {
+        //let arg_lnk = alloc_dynterm(mem, arg, vars, dups);
+        //rt::link(mem, node + i as u64, arg_lnk);
+      //}
+      //rt::Cal(size, *func, node)
+    //}
+    //DynTerm::Ctr { func, args } => {
+      //let size = args.len() as u64;
+      //let node = rt::alloc(mem, size);
+      //for (i, arg) in args.iter().enumerate() {
+        //let arg_lnk = alloc_dynterm(mem, arg, vars, dups);
+        //rt::link(mem, node + i as u64, arg_lnk);
+      //}
+      //rt::Ctr(size, *func, node)
+    //}
+    //DynTerm::U32 { numb } => {
+      //rt::U_32(*numb as u64)
+    //}
+    //DynTerm::Op2 { oper, val0, val1 } => {
+      //let node = rt::alloc(mem, 2);
+      //let val0 = alloc_dynterm(mem, val0, vars, dups);
+      //rt::link(mem, node + 0, val0);
+      //let val1 = alloc_dynterm(mem, val1, vars, dups);
+      //rt::link(mem, node + 1, val1);
+      //rt::Op2(*oper, node)
+    //}
+  //}
+//}
 

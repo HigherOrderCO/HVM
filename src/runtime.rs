@@ -323,6 +323,7 @@ pub fn reduce(mem: &mut Worker, funcs: &HashMap<u64, Function>, root: u64, opt_i
   loop {
     let term = ask_lnk(mem, host);
     //println!("reduce {}", show_term(mem, ask_lnk(mem, root), opt_id_to_name));
+    //println!("reduce {}", show_mem(mem));
 
     if init == 1 {
       match get_tag(term) {
