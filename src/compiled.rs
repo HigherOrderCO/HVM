@@ -39,9 +39,7 @@ struct CodeBuilder {
 
 impl CodeBuilder {
   pub fn new() -> Self {
-    CodeBuilder {
-      rope_builder: RopeBuilder::new(),
-    }
+    CodeBuilder { rope_builder: RopeBuilder::new() }
   }
 
   // Append a string
@@ -147,7 +145,7 @@ fn emit_group_step_0(target: Target, comp: &rb::RuleBook) -> Rope {
   for (name, rules_info) in comp.func_rules.iter() {
     let name = &emit_constructor_name(name);
     builder.idt(base_idt).add("case ").add(name).add(": {").ln();
-    
+
     // let mut reduce_at: HashSet<usize> = HashSet::new();
     // let mut stricts: Vec<usize> = Vec::new();
     let mut to_reduce: Vec<usize> = Vec::new();
@@ -171,10 +169,7 @@ fn emit_group_step_0(target: Target, comp: &rb::RuleBook) -> Rope {
       builder.idt(base_idt + 1).add("init = 0;").ln();
       builder.idt(base_idt + 1).add("continue;").ln();
     } else {
-      builder
-        .idt(base_idt + 1)
-        .add("stk_push(&stack, host);")
-        .ln();
+      builder.idt(base_idt + 1).add("stk_push(&stack, host);").ln();
       for (i, pos) in to_reduce.iter().enumerate() {
         let pos = &pos.to_string();
         if i < to_reduce.len() - 1 {
@@ -185,12 +180,7 @@ fn emit_group_step_0(target: Target, comp: &rb::RuleBook) -> Rope {
             .add(") | 0x80000000);")
             .ln();
         } else {
-          builder
-            .idt(base_idt + 1)
-            .add("host = get_loc(term, ")
-            .add(pos)
-            .add(");")
-            .ln();
+          builder.idt(base_idt + 1).add("host = get_loc(term, ").add(pos).add(");").ln();
         }
       }
       builder.idt(base_idt + 1).add("continue;").ln();
@@ -204,11 +194,11 @@ fn emit_group_step_0(target: Target, comp: &rb::RuleBook) -> Rope {
 
 struct Step1Ctx {
   // locs: {[name: string]: string} = {};
-  // args: {[name: string]: string} = {};
-  // uses: {[name: string]: number} = {};
-  // dups = 0;
-  // text = "";
-  // size = 0;
+// args: {[name: string]: string} = {};
+// uses: {[name: string]: number} = {};
+// dups = 0;
+// text = "";
+// size = 0;
 }
 
 fn emit_group_step_1(target: Target, comp: &rb::RuleBook) -> Rope {
