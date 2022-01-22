@@ -3,12 +3,14 @@
 
 #![allow(clippy::identity_op)]
 
-use crate::rulebook as rb;
 use crate::lambolt as lb;
+use crate::rulebook as rb;
 use crate::runtime as rt;
+use crate::readback as rd;
 use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::time::Instant;
 
 #[derive(Debug)]
 pub enum DynTerm {
@@ -199,22 +201,20 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
 
     // For each rule condition vector
     for dynrule in &dynfun.rules {
+
       // Check if the rule matches
       let mut matched = true;
 
       // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
-      //println!(">> testing conditions... total: {} conds", dynrule.cond.len());
       for (i, cond) in dynrule.cond.iter().enumerate() {
         let i = i as u64;
         match rt::get_tag(*cond) {
           rt::U32 => {
-            //println!(">>> cond demands U32 {} at {}", rt::get_val(*cond), i);
             let same_tag = rt::get_tag(rt::ask_arg(mem,term,i)) == rt::U32;
             let same_val = rt::get_val(rt::ask_arg(mem,term,i)) == rt::get_val(*cond);
             matched = matched && same_tag && same_val;
           }
           rt::CTR => {
-            //println!(">>> cond demands CTR {} at {}", rt::get_ext(*cond), i);
             let same_tag = rt::get_tag(rt::ask_arg(mem,term,i)) == rt::CTR;
             let same_ext = rt::get_ext(rt::ask_arg(mem,term,i)) == rt::get_ext(*cond);
             matched = matched && same_tag && same_ext;
@@ -223,15 +223,12 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
         }
       }
 
-      //println!(">> matched? {}", matched);
-
       // If all conditions are satisfied, the rule matched, so we must apply it
       if matched {
         // Increments the gas count
         rt::inc_cost(mem);
         
         // Builds the right-hand side term (ex: `(Succ (Add a b))`)
-        //let done = alloc_dynterm(mem, &dynrule.body, &mut vars, &mut dups);
         let done = alloc_body(mem, term, &dynrule.body, &dynrule.vars);
 
         // Links the host location to it
@@ -766,4 +763,37 @@ pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
 
 pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lb::Term) -> u64 {
   return alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0));
+}
+
+// Evaluates a Lambolt term to normal form
+pub fn eval_code(main: &str, code: &str) -> (String, u64, u64) {
+  // Creates a new Runtime worker
+  let mut worker = rt::new_worker();
+
+  // Parses and reads the input file
+  let file = lb::read_file(code);
+
+  // Converts the Lambolt file to a rulebook file
+  let book = rb::gen_rulebook(&file);
+
+  // Builds dynamic functions
+  let mut funs = build_runtime_functions(&book);
+
+  // FIXME: I'm using this to optimize dynfuns! Remove later.
+  //funs.insert(0, hardcoded_slow_function());
+
+  // Builds a runtime "(Main)" term
+  let main = lb::read_term("(Main)");
+  let host = alloc_term(&mut worker, &book, &main);
+
+  // Normalizes it
+  let init = Instant::now();
+  rt::normal(&mut worker, host, &funs, Some(&book.id_to_name));
+  let time = init.elapsed().as_millis() as u64;
+
+  // Reads it back to a Lambolt string
+  let norm = rd::as_code(&worker, &Some(book), host);
+
+  // Returns the normal form and the gas cost
+  (norm, worker.cost, time)
 }
