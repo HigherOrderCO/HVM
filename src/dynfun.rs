@@ -74,148 +74,69 @@ pub struct DynFun {
 //   (Add (Succ a) b) = (Succ (Add a b))
 //   (Add (Zero)   b) = b
 pub fn build_dynfun(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> DynFun {
-  // This is an aux function that makes the redex vector. It specifies which arguments need
-  // reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument must be
-  // reduced. The redex vector will be: `[true, false]`.
-  fn make_redex(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> Vec<bool> {
-    let mut redex = Vec::new();
-    for rule in rules {
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        while redex.len() < args.len() {
-          redex.push(false);
-        }
-        for (i, arg) in args.iter().enumerate() {
-          match **arg {
-            lb::Term::Ctr { .. } => {
-              redex[i] = true;
-            }
-            lb::Term::U32 { .. } => {
-              redex[i] = true;
-            }
-            _ => {}
-          }
-        }
-      } else {
-        panic!("Invalid left-hand side: {}", rule.lhs);
-      }
-    }
-    return redex;
-  }
 
-  // This is an aux function that makes the vectors used to determine if certain rule matched.
-  // That vector will contain Lnks with the proper constructor tag, for each strict argument, and
-  // 0, for each variable argument. For example, on `(Add (Succ a) b) = ...`, we only need to
-  // match one constructor, `Succ`. The resulting vector will be: `[rt::Ctr(SUCC,1,0), 0]`.
-  fn make_cond_vec(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> Vec<Vec<rt::Lnk>> {
-    let mut cond_vec = Vec::new();
-    for rule in rules {
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        let mut lnks: Vec<rt::Lnk> = Vec::new();
-        for arg in args {
-          lnks.push(match **arg {
-            lb::Term::Ctr { ref name, ref args } => {
-              let ari = args.len() as u64;
-              let fun = comp.name_to_id.get(&*name).unwrap_or(&0);
-              let pos = 0;
-              rt::Ctr(ari, *fun, pos)
-            }
-            lb::Term::U32 { ref numb } => rt::U_32(*numb as u64),
-            _ => 0,
-          })
-        }
-        cond_vec.push(lnks);
-      } else {
-        panic!("Invalid left-hand side: {}", rule.lhs);
-      }
-    }
-    return cond_vec;
-  }
+  let mut redex = Vec::new();
 
-  // This is an aux function that makes the vars vectors, which is used to locate left-hand side
-  // variables. For example, on `(Add (Succ a) b) = ...`, we have two variables, one on the first
-  // field of the first argument, and one is the second argument. Both variables are used. The vars
-  // vector for it is: `[(0,Some(0),true), (1,None,true)]`
-  fn make_vars_vec(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> Vec<Vec<DynVar>> {
-    let mut vars_vec = Vec::new();
-    for rule in rules {
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        let mut vars: Vec<DynVar> = Vec::new();
-        for (i, arg) in args.iter().enumerate() {
-          match &**arg {
-            lb::Term::Ctr { name, args } => {
-              for j in 0..args.len() {
-                match *args[j] {
-                  lb::Term::Var { ref name } => {
-                    vars.push(DynVar {
-                      param: i as u64,
-                      field: Some(j as u64),
-                      erase: name == "*",
-                    });
-                  }
-                  _ => {
-                    panic!("Argument {}, constructor {}, field {}, is not a variable.", i, name, j);
-                  }
-                }
+  let mut cond_vec = Vec::new();
+  let mut vars_vec = Vec::new();
+  let mut free_vec = Vec::new();
+  let mut body_vec = Vec::new();
+
+  for rule in rules {
+    if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
+
+      let mut cond = Vec::new();
+      let mut vars = Vec::new();
+      let mut free = Vec::new();
+
+      while redex.len() < args.len() {
+        redex.push(false);
+      }
+
+      for (i, arg) in args.iter().enumerate() {
+        match &**arg {
+          lb::Term::Ctr { name, args } => {
+            redex[i] = true;
+
+            let ari = args.len() as u64;
+            let fun = comp.name_to_id.get(&*name).unwrap_or(&0);
+            let pos = 0;
+            cond.push(rt::Ctr(ari, *fun, pos));
+
+            free.push((i as u64, args.len() as u64));
+
+            for j in 0..args.len() {
+              if let lb::Term::Var { ref name } = *args[j] {
+                vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*", });
               }
             }
-            lb::Term::Var { name } => {
-              vars.push(DynVar {
-                param: i as u64,
-                field: None,
-                erase: name == "*",
-              });
-            }
-            _ => {}
+
           }
-        }
-        vars_vec.push(vars);
-      } else {
-        panic!("Invalid left-hand side: {}", rule.lhs);
-      }
-    }
-    return vars_vec;
-  }
 
-  // This is an aux function that makes the free vector. It specifies which arguments need to
-  // be freed after reduction. For example, on `(Add (Succ a) b) = ...`, only the first argument
-  // is a constructor that can be freed. The free vector will be: `[(0,1)]`. The first value is
-  // the argument index, the second value is the ctor arity.
-  fn make_free_vec(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> Vec<Vec<(u64, u64)>> {
-    let mut free_vec = Vec::new();
-    for rule in rules {
-      let mut rule_free = Vec::new();
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        for (i, arg) in args.iter().enumerate() {
-          match **arg {
-            lb::Term::Ctr { ref args, .. } => {
-              rule_free.push((i as u64, args.len() as u64));
-            }
-            _ => {}
+          lb::Term::U32 { numb } => {
+            redex[i] = true;
+            cond.push(rt::U_32(*numb as u64));
           }
+
+          lb::Term::Var { name } => {
+            vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
+          }
+
+          _ => {}
         }
-        free_vec.push(rule_free);
-      } else {
-        panic!("Invalid left-hand side: {}", rule.lhs);
+
       }
+
+      body_vec.push(term_to_dynterm(comp, &rule.rhs, vars.len() as u64));
+      cond_vec.push(cond);
+      vars_vec.push(vars);
+      free_vec.push(free);
+
+    } else {
+      panic!("Invalid left-hand side: {}", rule.lhs);
     }
-    return free_vec;
   }
 
-  // Makes the terms vector.
-  fn make_body_vec(comp: &rb::RuleBook, rules: &Vec<lb::Rule>, vars_vec: &Vec<Vec<DynVar>>) -> Vec<DynTerm> {
-    let mut body_vec = Vec::new();
-    for i in 0 .. rules.len() {
-      body_vec.push(term_to_dynterm(comp, &rules[i].rhs, vars_vec[i].len() as u64));
-    }
-    return body_vec;
-  }
-
-  // Builds the static objects
-  let redex = make_redex(comp, &rules);
-  let cond_vec = make_cond_vec(comp, &rules);
-  let vars_vec = make_vars_vec(comp, &rules);
-  let body_vec = make_body_vec(comp, &rules, &vars_vec);
-  let free_vec = make_free_vec(comp, &rules);
   let mut dynrules = Vec::new();
   for (((cond, vars), body), free) in cond_vec.into_iter().zip(vars_vec).zip(body_vec).zip(free_vec) {
     dynrules.push(DynRule { cond, vars, body, free });
@@ -776,3 +697,4 @@ pub fn alloc_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
 pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lb::Term) -> u64 {
   return alloc_dynterm(mem, &term_to_dynterm(comp, term, 0));
 }
+
