@@ -22,9 +22,7 @@ fn main() {
     (Slow (Z))      = 1
     (Slow (S pred)) = (+ (Slow pred) (Slow pred))
     
-    //(Main) = (Slow (S (S (S (Z)))))
-
-    (Main) = (Slow (S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) ))) )
+    (Main) = (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
   ");
 
   println!("{}", norm);
