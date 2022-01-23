@@ -173,9 +173,10 @@ pub fn compile_code(code: &str) -> String {
 
 pub fn clang_runtime_template(c_ids: &str, inits: &str, codes: &str) -> String {
   return format!(r#"
-#include <stdlib.h>
-#include <stdio.h>
 #include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/time.h>
 
 #define PARALLEL
 
@@ -225,7 +226,7 @@ const u64 LAM = 0x5;
 const u64 APP = 0x6;
 const u64 PAR = 0x7;
 const u64 CTR = 0x8;
-const u64 FUN = 0x9;
+const u64 CAL = 0x9;
 const u64 OP2 = 0xA;
 const u64 U32 = 0xB;
 const u64 F32 = 0xC;
@@ -292,8 +293,8 @@ typedef struct {{
 
 Worker workers[MAX_WORKERS];
 
-const u64 seen_size = 4194304; // uses 32 MB, covers heaps up to 2 GB
-u64 seen_data[seen_size]; 
+const u64 seen_mcap = 4194304; // uses 32 MB, covers heaps up to 2 GB
+u64 seen_data[seen_mcap]; 
 
 // Array
 // -----
@@ -341,6 +342,15 @@ u64 stk_pop(Stk* stack) {{
   }} else {{
     return -1;
   }}
+}}
+
+u64 stk_find(Stk* stk, u64 val) {{
+  for (u64 i = 0; i < stk->size; ++i) {{
+    if (stk->data[i] == val) {{
+      return i;
+    }}
+  }}
+  return -1;
 }}
 
 // Memory
@@ -395,7 +405,7 @@ Lnk Ctr(u64 ari, u64 fun, u64 pos) {{
 }}
 
 Lnk Cal(u64 ari, u64 fun, u64 pos) {{ 
-  return (FUN * TAG) | (ari * ARI) | (fun * EXT) | pos;
+  return (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos;
 }}
 
 Lnk Out(u64 arg, u64 fld) {{
@@ -478,7 +488,7 @@ void debug_print_lnk(Lnk x) {{
     case APP: printf("APP"); break;
     case PAR: printf("PAR"); break;
     case CTR: printf("CTR"); break;
-    case FUN: printf("FUN"); break;
+    case CAL: printf("CAL"); break;
     case OP2: printf("OP2"); break;
     case U32: printf("U32"); break;
     case F32: printf("F32"); break;
@@ -536,7 +546,7 @@ void collect(Worker* mem, Lnk term) {{
     case U32: {{
       break;
     }}
-    case CTR: case FUN: {{
+    case CTR: case CAL: {{
       u64 arity = get_ari(term);
       for (u64 i = 0; i < arity; ++i) {{
         collect(mem, ask_arg(mem,term,i));
@@ -631,7 +641,7 @@ Lnk reduce(Worker* mem, u64 root, u64 depth) {{
           host = get_loc(term, 1);
           continue;
         }}
-        case FUN: {{
+        case CAL: {{
           u64 fun = get_ext(term);
           u64 ari = get_ari(term);
           
@@ -844,7 +854,7 @@ Lnk reduce(Worker* mem, u64 root, u64 depth) {{
           }}
           break;
         }}
-        case FUN: {{
+        case CAL: {{
           u64 fun = get_ext(term);
           u64 ari = get_ari(term);
 
@@ -923,7 +933,7 @@ Lnk normal(Worker* mem, u64 host) {{
         rec_locs[rec_size++] = get_loc(term,2);
         break;
       }}
-      case CTR: case FUN: {{
+      case CTR: case CAL: {{
         u64 arity = (u64)get_ari(term);
         for (u64 i = 0; i < arity; ++i) {{
           rec_locs[rec_size++] = get_loc(term,i);
@@ -1011,7 +1021,7 @@ u64 ffi_size;
 void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
 
   // Inits seen
-  for (u64 i = 0; i < seen_size; ++i) {{
+  for (u64 i = 0; i < seen_mcap; ++i) {{
     seen_data[i] = 0;
   }}
 
@@ -1069,20 +1079,265 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
   }}
 }}
 
+// Readback
+// --------
+
+void readback_vars(Stk* vars, Worker* mem, Lnk term, u64* seen) {{
+  //printf("- readback_vars "); debug_print_lnk(term); printf("\n");
+  if (get_bit(seen, get_loc(term,0))) {{
+    return;
+  }} else {{
+    set_bit(seen, get_loc(term,0));
+    switch (get_tag(term)) {{
+      case LAM: {{
+        u64 argm = ask_arg(mem, term, 0);
+        u64 body = ask_arg(mem, term, 1);
+        if (get_tag(argm) != ERA) {{
+          stk_push(vars, Var(get_loc(term, 0)));
+        }};
+        readback_vars(vars, mem, body, seen);
+        break;
+      }}
+      case APP: {{
+        u64 lam = ask_arg(mem, term, 0);
+        u64 arg = ask_arg(mem, term, 1);
+        readback_vars(vars, mem, lam, seen);
+        readback_vars(vars, mem, arg, seen);
+        break;
+      }}
+      case PAR: {{
+        u64 arg0 = ask_arg(mem, term, 0);
+        u64 arg1 = ask_arg(mem, term, 1);
+        readback_vars(vars, mem, arg0, seen);
+        readback_vars(vars, mem, arg1, seen);
+        break;
+      }}
+      case DP0: {{
+        u64 arg = ask_arg(mem, term, 2);
+        readback_vars(vars, mem, arg, seen);
+        break;
+      }}
+      case DP1: {{
+        u64 arg = ask_arg(mem, term, 2);
+        readback_vars(vars, mem, arg, seen);
+        break;
+      }}
+      case OP2: {{
+        u64 arg0 = ask_arg(mem, term, 0);
+        u64 arg1 = ask_arg(mem, term, 1);
+        readback_vars(vars, mem, arg0, seen);
+        readback_vars(vars, mem, arg1, seen);
+        break;
+      }}
+      case CTR: case CAL: {{
+        u64 arity = get_ari(term);
+        for (u64 i = 0; i < arity; ++i) {{
+          readback_vars(vars, mem, ask_arg(mem, term, i), seen);
+        }}
+        break;
+      }}
+    }}
+  }}
+}}
+
+void readback_decimal_go(Stk* chrs, u64 n) {{
+  //printf("--- A %llu\n", n);
+  if (n > 0) {{
+    readback_decimal_go(chrs, n / 10);
+    stk_push(chrs, '0' + (n % 10));
+  }}
+}}
+
+void readback_decimal(Stk* chrs, u64 n) {{
+  if (n == 0) {{
+    stk_push(chrs, '0');
+  }} else {{
+    readback_decimal_go(chrs, n);
+  }}
+}}
+
+void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk** dirs) {{
+  //printf("- readback_term: "); debug_print_lnk(term); printf("\n");
+  switch (get_tag(term)) {{
+    case LAM: {{
+      stk_push(chrs, '%');
+      if (get_tag(ask_arg(mem, term, 0)) == ERA) {{
+        stk_push(chrs, '~');
+      }} else {{
+        stk_push(chrs, 'x');
+        readback_decimal(chrs, stk_find(vars, Var(get_loc(term, 0))));
+      }};
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs);
+      break;
+    }}
+    case APP: {{
+      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs);
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs);
+      break;
+    }}
+    case PAR: {{
+      u64 col = get_ext(term);
+      u64 idx = stk_find(cols, col);
+      if (idx != -1) {{
+        u64 dir = stk_pop(dirs[idx]);
+        readback_term(chrs, mem, ask_arg(mem, term, dir), vars, cols, dirs);
+      }} else {{
+        stk_push(chrs, '<');
+        readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs);
+        stk_push(chrs, ' ');
+        readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs);
+        stk_push(chrs, '>');
+      }}
+      break;
+    }}
+    case DP0: case DP1: {{
+      u64 col = get_ext(term);
+      u64 val = ask_arg(mem, term, 2);
+      u64 idx = stk_find(cols, col);
+      if (idx == -1) {{
+        idx = cols->size;
+        stk_push(cols, col);
+      }}
+      stk_push(dirs[idx], term == DP0 ? 0 : 1);
+      readback_term(chrs, mem, ask_arg(mem, term, 2), vars, cols, dirs);
+      stk_pop(dirs[idx]);
+      break;
+    }}
+    case OP2: {{
+      stk_push(chrs, '(');
+      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs);
+      switch (get_ext(term)) {{
+        case ADD: {{ stk_push(chrs, '+'); break; }}
+        case SUB: {{ stk_push(chrs, '-'); break; }}
+        case MUL: {{ stk_push(chrs, '*'); break; }}
+        case DIV: {{ stk_push(chrs, '/'); break; }}
+        case MOD: {{ stk_push(chrs, '%'); break; }}
+        case AND: {{ stk_push(chrs, '&'); break; }}
+        case OR: {{ stk_push(chrs, '|'); break; }}
+        case XOR: {{ stk_push(chrs, '^'); break; }}
+        case SHL: {{ stk_push(chrs, '<'); stk_push(chrs, '<'); break; }}
+        case SHR: {{ stk_push(chrs, '>'); stk_push(chrs, '>'); break; }}
+        case LTN: {{ stk_push(chrs, '<'); break; }}
+        case LTE: {{ stk_push(chrs, '<'); stk_push(chrs, '='); break; }}
+        case EQL: {{ stk_push(chrs, '='); stk_push(chrs, '='); break; }}
+        case GTE: {{ stk_push(chrs, '>'); stk_push(chrs, '='); break; }}
+        case GTN: {{ stk_push(chrs, '>'); break; }}
+        case NEQ: {{ stk_push(chrs, '!'); stk_push(chrs, '='); break; }}
+      }}
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs);
+      stk_push(chrs, ')');
+      break;
+    }}
+    case U32: {{
+      //printf("- u32\n");
+      readback_decimal(chrs, get_val(term));
+      //printf("- u32 done\n");
+      break;
+    }}
+    case CTR: case CAL: {{
+      u64 func = get_ext(term);
+      u64 arit = get_ari(term);
+      stk_push(chrs, '(');
+      readback_decimal(chrs, func); // TODO: function names
+      for (u64 i = 0; i < arit; ++i) {{
+        stk_push(chrs, ' ');
+        readback_term(chrs, mem, ask_arg(mem, term, i), vars, cols, dirs);
+      }}
+      break;
+    }}
+    case VAR: {{
+      stk_push(chrs, 'x');
+      readback_decimal(chrs, stk_find(vars, term));
+      break;
+    }}
+    default: {{
+      stk_push(chrs, '?');
+      break;
+    }}
+  }}
+}}
+
+void readback(Worker* mem, Lnk term, char* code_data, u64 code_mcap) {{
+  //printf("reading back\n");
+
+  // Constants
+  const u64 dirs_mcap = 65536; // max different colors we're able to readback
+  const u64 seen_mcap = 4194304; // uses 32 MB, covers heaps up to 2 GB
+
+  // Used vars
+  Stk chrs;
+  Stk vars;
+  Stk cols;
+  Stk* dirs;
+  u64* seen;
+
+  // Initialization
+  stk_init(&chrs);
+  stk_init(&vars);
+  stk_init(&cols);
+  dirs = (Stk*)malloc(sizeof(Stk) * dirs_mcap);
+  for (u64 i = 0; i < dirs_mcap; ++i) {{
+    stk_init(&dirs[i]);
+  }}
+  seen = (u64*)malloc(sizeof(u64) * seen_mcap); 
+  for (u64 i = 0; i < seen_mcap; ++i) {{
+    seen[i] = 0;
+  }}
+
+  // Readback
+  readback_vars(&vars, mem, term, seen);
+  readback_term(&chrs, mem, term, &vars, &cols, &dirs);
+
+  // Generates C string
+  for (u64 i = 0; i < chrs.size && i < code_mcap; ++i) {{
+    code_data[i] = chrs.data[i];
+  }}
+  code_data[chrs.size < code_mcap ? chrs.size : code_mcap] = '\0';
+
+  // Cleanup
+  stk_free(&chrs);
+  stk_free(&vars);
+  stk_free(&cols);
+  for (u64 i = 0; i < dirs_mcap; ++i) {{
+    stk_free(&dirs[i]);
+  }}
+}}
+
 // Main
 // ----
 
 // Uncomment to test without Deno FFI
 int main() {{
+
   Worker mem;
+  struct timeval stop, start;
+
+  // Allocs data
   mem.size = 1;
   mem.node = (u64*)malloc(2 * 268435456 * sizeof(u64)); // 4gb
   mem.node[0] = Cal(0, MAIN, 0);
-  printf("Reducing...\n");
+
+  // Reduces and benchmarks
+  printf("Reducing.\n");
+  gettimeofday(&start, NULL);
   ffi_normal((u8*)mem.node, mem.size, 0);
-  printf("Done!\n");
+  gettimeofday(&stop, NULL);
+
+  // Prints result statistics
+  u64 delta_time = (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec;
+  double rw_per_sec = (double)ffi_cost / (double)delta_time;
+  printf("Rewrites: %llu (%.2f rw/s).\n", ffi_cost, rw_per_sec);
+
+  // Prints result normal form
+  const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
+  char* code_data = (char*)malloc(code_mcap * sizeof(char)); 
+  readback(&mem, mem.node[0], code_data, code_mcap);
+  printf("%s\n", code_data);
+
+  // Cleanup
+  free(code_data);
   free(mem.node);
-  printf("rwt: %llu\n", ffi_cost);
 }}
+
   "#, c_ids, inits,  codes);
 }

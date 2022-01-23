@@ -42,10 +42,10 @@ fn main() -> std::io::Result<()> {
   println!("Compiled to 'main.c'.");
 
   // Evaluates with interpreter
-  println!("Running interpreter...");
+  println!("Reducing with interpreter.");
   let (norm, cost, time) = dynamic::eval_code("Main", code);
+  println!("Rewrites: {} ({:.2} rw/s)", cost, (cost as f64) / (time as f64));
   println!("{}", norm);
-  println!("- rwts: {} ({:.2} rwt/s)", cost, (cost as f64) / (time as f64));
 
   return Ok(());
 }
