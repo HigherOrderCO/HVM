@@ -7,6 +7,10 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
   let mut c_ids = String::new();
   let mut inits = String::new();
   let mut codes = String::new(); 
+  let mut id2nm = String::new();
+  for (id, name) in &comp.id_to_name {
+    line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
+  }
   for (name, (arity, rules)) in &comp.func_rules {
     let (init, code) = compile_func(comp, &rules, 7);
 
@@ -24,7 +28,7 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
 
   }
 
-  return clang_runtime_template(&c_ids, &inits, &codes);
+  return clang_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64);
 }
 
 pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lb::Rule>, tab: u64) -> (String, String) {
@@ -171,7 +175,7 @@ pub fn compile_code(code: &str) -> String {
   return compile_book(&book);
 }
 
-pub fn clang_runtime_template(c_ids: &str, inits: &str, codes: &str) -> String {
+pub fn clang_runtime_template(c_ids: &str, inits: &str, codes: &str, id2nm: &str, names_count: u64) -> String {
   return format!(r#"
 #include <pthread.h>
 #include <stdio.h>
@@ -1156,7 +1160,7 @@ void readback_decimal(Stk* chrs, u64 n) {{
   }}
 }}
 
-void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk** dirs) {{
+void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk** dirs, char** id_to_name_data, u64 id_to_name_mcap) {{
   //printf("- readback_term: "); debug_print_lnk(term); printf("\n");
   switch (get_tag(term)) {{
     case LAM: {{
@@ -1167,12 +1171,12 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
         stk_push(chrs, 'x');
         readback_decimal(chrs, stk_find(vars, Var(get_loc(term, 0))));
       }};
-      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs);
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
       break;
     }}
     case APP: {{
-      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs);
-      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs);
+      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
       break;
     }}
     case PAR: {{
@@ -1180,12 +1184,12 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
       u64 idx = stk_find(cols, col);
       if (idx != -1) {{
         u64 dir = stk_pop(dirs[idx]);
-        readback_term(chrs, mem, ask_arg(mem, term, dir), vars, cols, dirs);
+        readback_term(chrs, mem, ask_arg(mem, term, dir), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
       }} else {{
         stk_push(chrs, '<');
-        readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs);
+        readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
         stk_push(chrs, ' ');
-        readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs);
+        readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
         stk_push(chrs, '>');
       }}
       break;
@@ -1199,13 +1203,13 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
         stk_push(cols, col);
       }}
       stk_push(dirs[idx], term == DP0 ? 0 : 1);
-      readback_term(chrs, mem, ask_arg(mem, term, 2), vars, cols, dirs);
+      readback_term(chrs, mem, ask_arg(mem, term, 2), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
       stk_pop(dirs[idx]);
       break;
     }}
     case OP2: {{
       stk_push(chrs, '(');
-      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs);
+      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
       switch (get_ext(term)) {{
         case ADD: {{ stk_push(chrs, '+'); break; }}
         case SUB: {{ stk_push(chrs, '-'); break; }}
@@ -1224,7 +1228,7 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
         case GTN: {{ stk_push(chrs, '>'); break; }}
         case NEQ: {{ stk_push(chrs, '!'); stk_push(chrs, '='); break; }}
       }}
-      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs);
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
       stk_push(chrs, ')');
       break;
     }}
@@ -1238,11 +1242,19 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
       u64 func = get_ext(term);
       u64 arit = get_ari(term);
       stk_push(chrs, '(');
-      readback_decimal(chrs, func); // TODO: function names
+      if (func < id_to_name_mcap && id_to_name_data[func] != NULL) {{
+        for (u64 i = 0; id_to_name_data[func][i] != '\0'; ++i) {{
+          stk_push(chrs, id_to_name_data[func][i]);
+        }}
+      }} else {{
+        stk_push(chrs, '$');
+        readback_decimal(chrs, func); // TODO: function names
+      }}
       for (u64 i = 0; i < arit; ++i) {{
         stk_push(chrs, ' ');
-        readback_term(chrs, mem, ask_arg(mem, term, i), vars, cols, dirs);
+        readback_term(chrs, mem, ask_arg(mem, term, i), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
       }}
+      stk_push(chrs, ')');
       break;
     }}
     case VAR: {{
@@ -1257,7 +1269,7 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
   }}
 }}
 
-void readback(Worker* mem, Lnk term, char* code_data, u64 code_mcap) {{
+void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_to_name_data, u64 id_to_name_mcap) {{
   //printf("reading back\n");
 
   // Constants
@@ -1286,7 +1298,7 @@ void readback(Worker* mem, Lnk term, char* code_data, u64 code_mcap) {{
 
   // Readback
   readback_vars(&vars, mem, term, seen);
-  readback_term(&chrs, mem, term, &vars, &cols, &dirs);
+  readback_term(&chrs, mem, term, &vars, &cols, &dirs, id_to_name_data, id_to_name_mcap);
 
   // Generates C string
   for (u64 i = 0; i < chrs.size && i < code_mcap; ++i) {{
@@ -1317,6 +1329,11 @@ int main() {{
   mem.node = (u64*)malloc(2 * 268435456 * sizeof(u64)); // 4gb
   mem.node[0] = Cal(0, MAIN, 0);
 
+  // Id-to-Name map
+  const u64 id_to_name_mcap = {};
+  char* id_to_name_data[id_to_name_mcap];
+{}
+
   // Reduces and benchmarks
   printf("Reducing.\n");
   gettimeofday(&start, NULL);
@@ -1331,7 +1348,7 @@ int main() {{
   // Prints result normal form
   const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
   char* code_data = (char*)malloc(code_mcap * sizeof(char)); 
-  readback(&mem, mem.node[0], code_data, code_mcap);
+  readback(code_data, code_mcap, &mem, mem.node[0], id_to_name_data, id_to_name_mcap);
   printf("%s\n", code_data);
 
   // Cleanup
@@ -1339,5 +1356,5 @@ int main() {{
   free(mem.node);
 }}
 
-  "#, c_ids, inits,  codes);
+  "#, c_ids, inits, codes, names_count, id2nm);
 }
