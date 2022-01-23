@@ -129,12 +129,7 @@ pub fn gen_rulebook(file: &lb::File) -> RuleBook {
   let name_to_id = gen_name_to_id(&file.rules);
   let id_to_name = invert(&name_to_id);
   let ctr_is_cal = gen_ctr_is_cal(&file.rules);
-  RuleBook {
-    func_rules,
-    name_to_id,
-    id_to_name,
-    ctr_is_cal,
-  }
+  RuleBook { func_rules, name_to_id, id_to_name, ctr_is_cal }
 }
 
 // Sanitize
@@ -217,22 +212,14 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
           } else {
             // var is not used in rhs
             // delete its name
-            Box::new(lb::Term::Var {
-              name: "*".to_string(),
-            })
+            Box::new(lb::Term::Var { name: "*".to_string() })
           }
         } else {
           // create a var with the name generated before
           // concatenated with '.{{times_used}}'
           let gen_name = tbl.get(name);
           if let Some(name) = gen_name {
-            let used = {
-              *ctx
-                .uses
-                .entry(name.clone())
-                .and_modify(|x| *x += 1)
-                .or_insert(1)
-            };
+            let used = { *ctx.uses.entry(name.clone()).and_modify(|x| *x += 1).or_insert(1) };
             let name = format!("{}.{}", name, used - 1);
             Box::new(lb::Term::Var { name })
           } else {
@@ -240,12 +227,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
           }
         }
       }
-      lb::Term::Dup {
-        expr,
-        body,
-        nam0,
-        nam1,
-      } => {
+      lb::Term::Dup { expr, body, nam0, nam1 } => {
         let new_nam0 = (ctx.fresh)();
         let new_nam1 = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
@@ -255,12 +237,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
         let body = sanitize_term(body, lhs, tbl, ctx)?;
         let nam0 = format!("{}.0", new_nam0);
         let nam1 = format!("{}.0", new_nam1);
-        let term = lb::Term::Dup {
-          nam0,
-          nam1,
-          expr,
-          body,
-        };
+        let term = lb::Term::Dup { nam0, nam1, expr, body };
         Box::new(term)
       }
       lb::Term::Let { name, expr, body } => {
@@ -276,15 +253,10 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
         tbl.insert(name.clone(), new_name.clone());
         let body = {
           let body = sanitize_term(body, lhs, tbl, ctx)?;
-          let expr = Box::new(lb::Term::Var {
-            name: new_name.clone(),
-          });
+          let expr = Box::new(lb::Term::Var { name: new_name.clone() });
           duplicator(&new_name, expr, body, ctx.uses)
         };
-        let term = lb::Term::Lam {
-          name: new_name,
-          body,
-        };
+        let term = lb::Term::Lam { name: new_name, body };
         Box::new(term)
       }
       lb::Term::App { func, argm } => {
@@ -294,25 +266,18 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
         Box::new(term)
       }
       lb::Term::Ctr { name, args } => {
-        let mut n_args = vec![];
+        let mut n_args = Vec::with_capacity(args.len());
         for arg in args {
           let arg = sanitize_term(arg, lhs, tbl, ctx)?;
           n_args.push(arg);
         }
-        let term = lb::Term::Ctr {
-          name: name.clone(),
-          args: n_args,
-        };
+        let term = lb::Term::Ctr { name: name.clone(), args: n_args };
         Box::new(term)
       }
       lb::Term::Op2 { oper, val0, val1 } => {
         let val0 = sanitize_term(val0, lhs, tbl, ctx)?;
         let val1 = sanitize_term(val1, lhs, tbl, ctx)?;
-        let term = lb::Term::Op2 {
-          oper: *oper,
-          val0,
-          val1,
-        };
+        let term = lb::Term::Op2 { oper: *oper, val0, val1 };
         Box::new(term)
       }
       lb::Term::U32 { numb } => {
@@ -326,26 +291,12 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
 
   // Renames unused variables to "*"
   fn rename_unused(term: &mut lb::Term, uses: &HashMap<String, u64>) {
-    match term {
-      lb::Term::Var { name } => {
-        if let Some(x) = uses.get(name) {
-          if *x == 0 {
-            *name = "*".to_string();
-          }
+    if let lb::Term::Var { name } = term {
+      if let Some(x) = uses.get(name) {
+        if *x == 0 {
+          *name = "*".to_string();
         }
       }
-      lb::Term::Dup {
-        expr,
-        body,
-        nam0,
-        nam1,
-      } => {}
-      lb::Term::Let { name, expr, body } => {}
-      lb::Term::Lam { name, body } => {}
-      lb::Term::App { func, argm } => {}
-      lb::Term::Ctr { name, args } => {}
-      lb::Term::Op2 { oper, val0, val1 } => {}
-      lb::Term::U32 { numb } => {}
     }
   }
 
@@ -369,11 +320,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
           std::cmp::Ordering::Less => body,
           // if used once just make a let then
           std::cmp::Ordering::Equal => {
-            let term = lb::Term::Let {
-              name: format!("{}.0", name),
-              expr,
-              body,
-            };
+            let term = lb::Term::Let { name: format!("{}.0", name), expr, body };
             Box::new(term)
           }
           // if used more then once duplicate
@@ -424,9 +371,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
     } else {
       let nam0 = vars.pop().unwrap();
       let nam1 = vars.pop().unwrap();
-      let exp0 = Box::new(lb::Term::Var {
-        name: format!("c.{}", i - 1),
-      });
+      let exp0 = Box::new(lb::Term::Var { name: format!("c.{}", i - 1) });
       Box::new(lb::Term::Dup {
         nam0,
         nam1,
@@ -452,10 +397,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
   let table = create_fresh(rule, &mut fresh)?;
 
   // create context for sanitize_term
-  let mut ctx = CtxSanitizeTerm {
-    uses: &mut uses,
-    fresh: &mut fresh,
-  };
+  let mut ctx = CtxSanitizeTerm { uses: &mut uses, fresh: &mut fresh };
 
   // sanitize left and right sides
   let mut rhs = sanitize_term(&rule.rhs, false, &mut table.clone(), &mut ctx)?;
@@ -463,9 +405,7 @@ pub fn sanitize_rule(rule: &lb::Rule) -> Result<lb::Rule, String> {
 
   // duplicate right side variables that are used more than once
   for (key, value) in table {
-    let expr = Box::new(lb::Term::Var {
-      name: value.clone(),
-    });
+    let expr = Box::new(lb::Term::Var { name: value.clone() });
     rhs = duplicator(&value, expr, rhs, &uses);
   }
 

@@ -53,7 +53,7 @@ pub fn equal_at(text: &str, test: &str, i: usize) -> bool {
 }
 
 pub fn flatten(texts: &[&str]) -> String {
-  texts.join("")
+  texts.concat()
 }
 
 pub fn lines(text: &str) -> Vec<String> {
@@ -95,19 +95,13 @@ pub fn tail(state: State) -> State {
     Some(c) => c.len_utf8(),
     None => 0,
   };
-  State {
-    code: state.code,
-    index: state.index + add,
-  }
+  State { code: state.code, index: state.index + add }
 }
 
 pub fn get_char(state: State) -> Answer<char> {
   let (state, skipped) = skip(state)?;
   if let Some(got) = head(state) {
-    let state = State {
-      code: state.code,
-      index: state.index + got.len_utf8(),
-    };
+    let state = State { code: state.code, index: state.index + got.len_utf8() };
     Ok((state, got))
   } else {
     Ok((state, '\0'))
@@ -180,10 +174,7 @@ pub fn skip_parser<'a>() -> Parser<'a, bool> {
 // Returns true if successful. Consumes string.
 pub fn text_here<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
   if equal_at(state.code, pat, state.index) {
-    let state = State {
-      code: state.code,
-      index: state.index + pat.len(),
-    };
+    let state = State { code: state.code, index: state.index + pat.len() };
     Ok((state, true))
   } else {
     Ok((state, false))
@@ -451,13 +442,8 @@ pub fn highlight(from_index: usize, to_index: usize, code: &str) -> String {
 // =====
 
 pub enum Testree {
-  Node {
-    lft: Box<Testree>,
-    rgt: Box<Testree>,
-  },
-  Leaf {
-    val: String,
-  },
+  Node { lft: Box<Testree>, rgt: Box<Testree> },
+  Leaf { val: String },
 }
 
 pub fn testree_show(tt: &Testree) -> String {

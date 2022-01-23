@@ -14,40 +14,14 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub enum Term {
-  Var {
-    name: String,
-  },
-  Dup {
-    nam0: String,
-    nam1: String,
-    expr: BTerm,
-    body: BTerm,
-  },
-  Let {
-    name: String,
-    expr: BTerm,
-    body: BTerm,
-  },
-  Lam {
-    name: String,
-    body: BTerm,
-  },
-  App {
-    func: BTerm,
-    argm: BTerm,
-  },
-  Ctr {
-    name: String,
-    args: Vec<BTerm>,
-  },
-  U32 {
-    numb: u32,
-  },
-  Op2 {
-    oper: Oper,
-    val0: BTerm,
-    val1: BTerm,
-  },
+  Var { name: String },
+  Dup { nam0: String, nam1: String, expr: BTerm, body: BTerm },
+  Let { name: String, expr: BTerm, body: BTerm },
+  Lam { name: String, body: BTerm },
+  App { func: BTerm, argm: BTerm },
+  Ctr { name: String, args: Vec<BTerm> },
+  U32 { numb: u32 },
+  Op2 { oper: Oper, val0: BTerm, val1: BTerm },
 }
 
 pub type BTerm = Box<Term>;
@@ -127,21 +101,15 @@ impl fmt::Display for Term {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
       Self::Var { name } => write!(f, "{}", name),
-      Self::Dup {
-        nam0,
-        nam1,
-        expr,
-        body,
-      } => write!(f, "dup {} {} = {}; {}", nam0, nam1, expr, body),
+      Self::Dup { nam0, nam1, expr, body } => {
+        write!(f, "dup {} {} = {}; {}", nam0, nam1, expr, body)
+      }
       Self::Let { name, expr, body } => write!(f, "let {} = {}; {}", name, expr, body),
       Self::Lam { name, body } => write!(f, "λ{} {}", name, body),
       Self::App { func, argm } => write!(f, "({} {})", func, argm),
-      Self::Ctr { name, args } => write!(
-        f,
-        "({}{})",
-        name,
-        args.iter().map(|x| format!(" {}", x)).collect::<String>()
-      ),
+      Self::Ctr { name, args } => {
+        write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
+      }
       Self::U32 { numb } => write!(f, "{}", numb),
       Self::Op2 { oper, val0, val1 } => write!(f, "({} {} {})", oper, val0, val1),
     }
@@ -165,12 +133,7 @@ impl fmt::Display for File {
     write!(
       f,
       "{}",
-      self
-        .rules
-        .iter()
-        .map(|rule| format!("{}", rule))
-        .collect::<Vec<String>>()
-        .join("\n")
+      self.rules.iter().map(|rule| format!("{}", rule)).collect::<Vec<String>>().join("\n")
     )
   }
 }
@@ -205,15 +168,7 @@ pub fn parse_dup(state: parser::State) -> parser::Answer<Option<BTerm>> {
       let (state, expr) = parse_term(state)?;
       let (state, skp2) = parser::text(";", state)?;
       let (state, body) = parse_term(state)?;
-      Ok((
-        state,
-        Box::new(Term::Dup {
-          nam0,
-          nam1,
-          expr,
-          body,
-        }),
-      ))
+      Ok((state, Box::new(Term::Dup { nam0, nam1, expr, body })))
     }),
     state,
   );
@@ -243,10 +198,7 @@ pub fn parse_app(state: parser::State) -> parser::Answer<Option<BTerm>> {
         Box::new(parse_term),
         Box::new(|args| {
           if !args.is_empty() {
-            args
-              .into_iter()
-              .reduce(|a, b| Box::new(Term::App { func: a, argm: b }))
-              .unwrap()
+            args.into_iter().reduce(|a, b| Box::new(Term::App { func: a, argm: b })).unwrap()
           } else {
             Box::new(Term::U32 { numb: 0 })
           }
@@ -284,12 +236,7 @@ pub fn parse_u32(state: parser::State) -> parser::Answer<Option<BTerm>> {
     Box::new(|state| {
       let (state, numb) = parser::name1(state)?;
       if !numb.is_empty() {
-        Ok((
-          state,
-          Box::new(Term::U32 {
-            numb: numb.parse::<u32>().unwrap(),
-          }),
-        ))
+        Ok((state, Box::new(Term::U32 { numb: numb.parse::<u32>().unwrap() })))
       } else {
         Ok((state, Box::new(Term::U32 { numb: 0 })))
       }

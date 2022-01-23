@@ -2,8 +2,8 @@
 
 #![allow(clippy::identity_op)]
 
-use crate::rulebook as rb;
 use crate::lambolt as lb;
+use crate::rulebook as rb;
 use crate::runtime as rt;
 use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
@@ -93,9 +93,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
 
   impl Stacks {
     fn new() -> Stacks {
-      Stacks {
-        stacks: HashMap::new(),
-      }
+      Stacks { stacks: HashMap::new() }
     }
     fn get(&self, col: Lnk) -> Option<&Vec<bool>> {
       self.stacks.get(&col)
@@ -176,7 +174,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
           rt::DIV => "/",
           rt::MOD => "%",
           rt::AND => "&",
-          rt::OR  => "|",
+          rt::OR => "|",
           rt::XOR => "^",
           rt::SHL => "<<",
           rt::SHR => ">>",
@@ -203,20 +201,21 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         let args_txt = (0..arit)
           .map(|i| {
             let arg = rt::ask_arg(ctx.mem, term, i);
-            go(ctx, stacks.clone(), arg, depth + 1)
+            format!(" {}", go(ctx, stacks.clone(), arg, depth + 1))
           })
-          .map(|x| format!(" {}", x))
           .collect::<String>();
         let name = match ctx.comp {
           None => format!("${}", func),
-          Some(x) => x.id_to_name.get(&func).map(String::to_string).unwrap_or_else(|| format!("${}", func)),
+          Some(x) => {
+            x.id_to_name.get(&func).map(String::to_string).unwrap_or_else(|| format!("${}", func))
+          }
         };
         format!("({}{})", name, args_txt)
       }
       rt::VAR => ctx
         .names
         .get(&term)
-        .map(|x| x.to_string())
+        .map(String::to_string)
         .unwrap_or_else(|| format!("^{}", rt::get_loc(term, 0))),
       rt::ARG => "!".to_string(),
       rt::ERA => "~".to_string(),
@@ -233,20 +232,10 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
   let mut seen = HashSet::<Lnk>::new();
   let mut count: u32 = 0;
 
-  let ctx = &mut CtxName {
-    mem,
-    names: &mut names,
-    seen: &mut seen,
-    count: &mut count,
-  };
+  let ctx = &mut CtxName { mem, names: &mut names, seen: &mut seen, count: &mut count };
   name(ctx, term, 0);
 
-  let ctx = &mut CtxGo {
-    mem,
-    comp,
-    names: &names,
-    seen: &seen,
-  };
+  let ctx = &mut CtxGo { mem, comp, names: &names, seen: &seen };
   let stacks = Stacks::new();
 
   go(ctx, stacks, term, 0)
