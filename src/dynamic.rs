@@ -191,8 +191,7 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> rt:
   let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
 
     // For each argument, if it is redexand a PAR, apply the cal_par rule
-    for i in 0 .. dynfun.redex.len() {
-      let i = i as u64;
+    for i in 0 .. dynfun.redex.len() as u64 {
       if dynfun.redex[i as usize] && rt::get_tag(rt::ask_arg(mem,term,i)) == rt::PAR {
         rt::cal_par(mem, host, term, rt::ask_arg(mem,term,i), i as u64);
         return true;
@@ -778,9 +777,6 @@ pub fn eval_code(main: &str, code: &str) -> (String, u64, u64) {
 
   // Builds dynamic functions
   let mut funs = build_runtime_functions(&book);
-
-  // FIXME: I'm using this to optimize dynfuns! Remove later.
-  //funs.insert(0, hardcoded_slow_function());
 
   // Builds a runtime "(Main)" term
   let main = lb::read_term("(Main)");

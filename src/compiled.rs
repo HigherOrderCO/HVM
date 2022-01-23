@@ -1,302 +1,137 @@
-// re-implementing from:
-// https://github.com/Kindelia/LambdaVM/blob/new_v2/src/Compile/Compile.ts
-
-// Note: in a future, we should compile from a `Vec<DynFun>` to a `Vec<Function>`. This will
-// greatly decrease the size of this work, since most of the logic here is to shared by the
-// `build_dynfun` function on `dynfun.rs`. The JIT compiler should also start from `DynFun`.
-// So, the ideal compilation pipeline would be:
-// LamboltCode -> LamboltFile -> RuleBook -> Vec<DynFun> -> Vec<RuntimeFunction> (interpreted)
-//                                                       -> Vec<RuntimeFunction> (JIT-compiled)
-//                                                       -> CLangFile            (compiled)
-
-use std::collections::{HashMap, HashSet};
-use std::fmt;
-
-use askama::Template;
-use ropey::{Rope, RopeBuilder};
-
-use crate::lambolt as lb;
 use crate::rulebook as rb;
+use crate::dynamic as dn;
+use crate::lambolt as lb;
 use crate::runtime as rt;
 
-const INDENT: &str = "  ";
-const LINE_BREAK: &str = "\n";
-
-#[derive(Template)]
-#[template(path = "runtime.c", escape = "none", syntax = "c")]
-struct CodeTemplate<'a> {
-  use_dynamic_flag: &'a str,
-  use_static_flag: &'a str,
-  constructor_ids: &'a str,
-  rewrite_rules_step_0: &'a str,
-  rewrite_rules_step_1: &'a str,
+pub fn compile_book(comp: &rb::RuleBook) -> String {
+  let mut code = String::new(); 
+  for (name, (arity, rules)) in &comp.func_rules {
+    code.push_str(&format!("\n:: {}\n", name));
+    code.push_str(&compile_rule(comp, &rules));
+  }
+  return code;
 }
 
-#[derive(Default)]
-struct CodeBuilder {
-  rope_builder: RopeBuilder,
-}
+pub fn compile_rule(comp: &rb::RuleBook, rules: &Vec<lb::Rule>) -> String {
+  let dynfun = dn::build_dynfun(comp, rules);
 
-impl CodeBuilder {
-  pub fn new() -> Self {
-    CodeBuilder {
-      rope_builder: RopeBuilder::new(),
+  let mut code = String::new();
+  let mut tab = 0;
+
+  for i in 0 .. dynfun.redex.len() as u64 {
+    if dynfun.redex[i as usize] {
+      line(&mut code, tab + 0, &format!("if (get_tag(ask_arg(mem,term,{})) == PAR) {{", i));
+      line(&mut code, tab + 1, &format!("cal_par(mem, host, term, ask_arg(mem, term, {}), {});", i, i));
+      line(&mut code, tab + 0, &format!("}}"));
     }
   }
 
-  // Append a string
-  pub fn add(&mut self, chunk: &str) -> &mut Self {
-    self.rope_builder.append(chunk);
-    self
-  }
+  // For each rule condition vector
+  for dynrule in &dynfun.rules {
 
-  // Append given number of indentation
-  pub fn idt(&mut self, idt: u32) -> &mut Self {
-    for _ in 0..idt {
-      self.add(INDENT);
+    let mut matched : Vec<String> = Vec::new();
+
+    // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
+    for (i, cond) in dynrule.cond.iter().enumerate() {
+      let i = i as u64;
+      if rt::get_tag(*cond) == rt::U32 {
+        let same_tag = format!("get_tag(ask_arg(mem, term, {})) == U32", i);
+        let same_val = format!("get_val(ask_arg(mem, term, {})) == {}", i, rt::get_val(*cond));
+        matched.push(format!("({} && {})", same_tag, same_val));
+      }
+      if rt::get_tag(*cond) == rt::CTR {
+        let some_tag = format!("get_tag(ask_arg(mem, term, {})) == CTR", i);
+        let some_ext = format!("get_ext(ask_arg(mem, term, {})) == {}", i, rt::get_ext(*cond));
+        matched.push(format!("({} && {})", some_tag, some_ext));
+      }
     }
-    self
+
+    line(&mut code, tab + 0, &format!("if ({}) {{", matched.join(" && ")));
+
+      // Increments the gas count
+    line(&mut code, tab + 1, &format!("inc_cost(mem);"));
+      
+    // Builds the right-hand side term (ex: `(Succ (Add a b))`)
+    let done = compile_body(&mut code, tab + 1, &dynrule.body, &dynrule.vars);
+
+    // Links the host location to it
+    line(&mut code, tab + 1, &format!("link(mem, host, done);"));
+
+
+    // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
+    line(&mut code, tab + 1, &format!("clear(mem, get_loc(term, 0), {});", dynfun.redex.len()));
+    for (i, arity) in &dynrule.free {
+      let i = *i as u64;
+      line(&mut code, tab + 1, &format!("clear(mem, get_loc(ask_arg(mem, term, {}), 0), {});", i, arity));
+    }
+
+    // Collects unused variables (none in this example)
+    for (i, dn::DynVar {param, field, erase}) in dynrule.vars.iter().enumerate() {
+      if *erase {
+        line(&mut code, tab + 1, &format!("collect(mem, {});", get_var(&dynrule.vars[i])));
+      }
+    }
+
+    line(&mut code, tab + 0, &format!("}}"));
   }
 
-  // Append line break
-  pub fn ln(&mut self) -> &mut Self {
-    self.add(LINE_BREAK)
+  return code;
+}
+
+pub fn compile_body(code: &mut String, tab: u64, body: &dn::Body, vars: &[dn::DynVar]) -> String {
+  let (elem, nodes) = body;
+  for i in 0 .. nodes.len() {
+    line(code, tab + 0, &format!("u64 loc_{} = alloc(mem, {});", i, nodes[i].len()));
   }
-
-  // pub fn nope(&self) {}
-
-  pub fn finish(self) -> Rope {
-    self.rope_builder.finish()
-  }
-}
-
-impl fmt::Write for CodeBuilder {
-  fn write_str(&mut self, txt: &str) -> fmt::Result {
-    self.add(txt);
-    Ok(())
-  }
-}
-
-#[macro_export]
-macro_rules! line {
-  ($b:expr, $idt:expr, $($arg:tt)*) => {{
-    use std::fmt::Write;
-    $b.idt($idt);
-    $b.write_fmt(format_args!($($arg)*)).unwrap();
-    $b.ln();
-  }}
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum Target {
-  C,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum Mode {
-  Dynamic,
-  Static,
-}
-
-pub fn compile(rulebook: &rb::RuleBook, target: Target, mode: Mode) -> String {
-  let use_dynamic_flag = emit_use_dynamic(target, matches!(mode, Mode::Dynamic));
-  let use_static_flag = emit_use_static(target, matches!(mode, Mode::Static));
-
-  let constructor_ids = emit_constructor_ids(target, &rulebook.name_to_id);
-  let rewrite_rules_step_0 = emit_group_step_0(target, rulebook);
-  let rewrite_rules_step_1 = emit_group_step_1(target, rulebook);
-
-  let constructor_ids = &constructor_ids.to_string();
-  let rewrite_rules_step_0 = &rewrite_rules_step_0.to_string();
-  let rewrite_rules_step_1 = &rewrite_rules_step_1.to_string();
-
-  let template = CodeTemplate {
-    use_dynamic_flag,
-    use_static_flag,
-    constructor_ids,
-    rewrite_rules_step_0,
-    rewrite_rules_step_1,
-  };
-  template.render().unwrap()
-}
-
-fn emit_constructor_name(name: &str) -> String {
-  format!("${}", name.to_uppercase().replace(".", "$"))
-}
-
-fn emit_constructor_ids(target: Target, name_to_id: &HashMap<String, u64>) -> Rope {
-  let mut builder = CodeBuilder::new();
-
-  for (name, id) in name_to_id.iter() {
-    builder.add(emit_const(target));
-    builder.add(" ");
-    builder.add(&emit_constructor_name(name));
-    builder.add(" = ");
-    builder.add(&emit_u64(target, *id));
-    builder.add(";\n");
-  }
-
-  builder.finish()
-}
-
-fn emit_group_step_0(target: Target, comp: &rb::RuleBook) -> Rope {
-  let mut builder = CodeBuilder::new();
-
-  let base_idt = 6;
-
-  for (name, rules_info) in comp.func_rules.iter() {
-    let name = &emit_constructor_name(name);
-    builder.idt(base_idt).add("case ").add(name).add(": {").ln();
-    
-    // let mut reduce_at: HashSet<usize> = HashSet::new();
-    // let mut stricts: Vec<usize> = Vec::new();
-    let mut to_reduce: Vec<usize> = Vec::new();
-
-    let arity = rules_info.0;
-    let rules = &rules_info.1;
-    for rule in rules {
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
-        for (i, arg) in args.iter().enumerate() {
-          match &**arg {
-            lb::Term::Ctr { .. } | lb::Term::U32 { .. } => {
-              to_reduce.push(i);
-            }
-            default => {}
-          }
+  for i in 0 .. nodes.len() as u64 {
+    let node = &nodes[i as usize];
+    for j in 0 .. node.len() as u64 {
+      match &node[j as usize] {
+        dn::Elem::Fix{value} => {
+          //mem.node[(host + j) as usize] = *value;
+          line(code, tab + 0, &format!("mem.node[loc_{} + {}] = {:#x};", i, j, value));
+        }
+        dn::Elem::Ext{index} => {
+          //rt::link(mem, host + j, get_var(mem, term, &vars[*index as usize]));
+          line(code, tab + 0, &format!("link(mem, loc_{} + {}, {});", i, j, get_var(&vars[*index as usize])));
+          //line(code, tab + 0, &format!("u64 lnk = {};", get_var(&vars[*index as usize])));
+          //line(code, tab + 0, &format!("u64 tag = get_tag(lnk);"));
+          //line(code, tab + 0, &format!("mem.node[loc_{} + {}] = lnk;", i, j));
+          //line(code, tab + 0, &format!("if (tag <= VAR) mem.node[get_loc(lnk, tag & 1)] = Arg(loc_{} + {});", i, j));
+        }
+        dn::Elem::Loc{value, targ, slot} => {
+          //mem.node[(host + j) as usize] = value + hosts[*targ as usize] + slot;
+          line(code, tab + 0, &format!("mem.node[loc_{} + {}] = {:#x} + loc_{} + {};", i, j, value, targ, slot));
         }
       }
     }
-
-    if to_reduce.is_empty() {
-      builder.idt(base_idt + 1).add("init = 0;").ln();
-      builder.idt(base_idt + 1).add("continue;").ln();
-    } else {
-      builder
-        .idt(base_idt + 1)
-        .add("stk_push(&stack, host);")
-        .ln();
-      for (i, pos) in to_reduce.iter().enumerate() {
-        let pos = &pos.to_string();
-        if i < to_reduce.len() - 1 {
-          builder
-            .idt(base_idt + 1)
-            .add("stk_push(&stack, get_loc(term, ")
-            .add(pos)
-            .add(") | 0x80000000);")
-            .ln();
-        } else {
-          builder
-            .idt(base_idt + 1)
-            .add("host = get_loc(term, ")
-            .add(pos)
-            .add(");")
-            .ln();
-        }
-      }
-      builder.idt(base_idt + 1).add("continue;").ln();
-    }
-
-    builder.idt(base_idt).add("}").ln();
   }
-
-  builder.finish()
-}
-
-struct Step1Ctx {
-  // locs: {[name: string]: string} = {};
-  // args: {[name: string]: string} = {};
-  // uses: {[name: string]: number} = {};
-  // dups = 0;
-  // text = "";
-  // size = 0;
-}
-
-fn emit_group_step_1(target: Target, comp: &rb::RuleBook) -> Rope {
-  let mut bd = CodeBuilder::new();
-  let mut ctx = Step1Ctx {};
-
-  let idt = 6;
-
-  for (name, rules) in comp.func_rules.iter() {
-    let name = &emit_constructor_name(name);
-    line!(bd, idt, "case {}: {{", name);
-  }
-  bd.finish()
-}
-
-fn emit_const(target: Target) -> &'static str {
-  match target {
-    Target::C => "const u64",
+  match elem {
+    dn::Elem::Fix{value} => format!("{}", value),
+    dn::Elem::Ext{index} => get_var(&vars[*index as usize]),
+    dn::Elem::Loc{value, targ, slot} => format!("({} + loc_{} + {})", value, targ, slot),
   }
 }
 
-fn emit_var(target: Target) -> &'static str {
-  match target {
-    Target::C => "u64",
+fn get_var(var: &dn::DynVar) -> String {
+  let dn::DynVar {param, field, erase} = var;
+  match field {
+    Some(i) => { format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, i) }
+    None    => { format!("ask_arg(mem, term, {})", param) }
   }
 }
 
-fn emit_u64(target: Target, num: u64) -> String {
-  match target {
-    Target::C => format!("{}", num),
+fn line(code: &mut String, tab: u64, line: &str) {
+  for i in 0 .. tab {
+    code.push_str("  ");
   }
+  code.push_str(line);
+  code.push('\n');
 }
 
-fn emit_gas(target: Target) -> &'static str {
-  match target {
-    Target::C => "inc_cost(mem)",
-  }
-}
-
-fn emit_use_dynamic(target: Target, use_dynamic: bool) -> &'static str {
-  match target {
-    Target::C => {
-      if use_dynamic {
-        "#define USE_DYNAMIC"
-      } else {
-        "#undef USE_DYNAMIC"
-      }
-    }
-  }
-}
-
-fn emit_use_static(target: Target, use_static: bool) -> &'static str {
-  match target {
-    Target::C => {
-      if use_static {
-        "#define USE_STATIC"
-      } else {
-        "#undef USE_STATIC"
-      }
-    }
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  use crate::lambolt;
-  use crate::rulebook;
-
-  #[test]
-  fn test_emit_constructor_name() {
-    let original = "Some.Test.Term";
-    let emitted = emit_constructor_name(original);
-    assert_eq!(emitted, "$SOME$TEST$TERM");
-  }
-
-  #[test]
-  fn test() {
-    // let code = "(Main) = ((λf λx (f (f x))) (λf λx (f (f x))))";
-    let code = "
-      (Double (Succ pred)) = (Succ (Succ (Double pred)))
-      (Double (Zero))      = (Zero)
-      (Foo a b)            = λc λd (Ue a b c d)
-      (Main)               = (Double (Zero))
-    ";
-    let file = lambolt::read_file(code);
-    let comp = rulebook::gen_rulebook(&file);
-    let result = super::compile(&comp, Target::C, Mode::Static);
-    println!("{}", result);
-  }
+pub fn compile_code(code: &str) -> String {
+  let file = lb::read_file(code);
+  let book = rb::gen_rulebook(&file);
+  let funs = dn::build_runtime_functions(&book);
+  return compile_book(&book);
 }

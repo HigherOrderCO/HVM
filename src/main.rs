@@ -14,14 +14,18 @@ mod rulebook;
 mod runtime;
 
 fn main() {
-  let (norm, cost, time) = dynamic::eval_code("Main", "
+  let code = "
     //(Main) = (λf λx (f (f x)) λf λx (f (f x)))
 
     (Slow (Z))      = 1
     (Slow (S pred)) = (+ (Slow pred) (Slow pred))
     
     (Main) = (Slow (S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )) )
-  ");
+  ";
+
+  println!("{}", compiled::compile_code(code));
+
+  let (norm, cost, time) = dynamic::eval_code("Main", code);
 
   println!("{}", norm);
   println!("- rwts: {} ({:.2} rwt/s)", cost, (cost as f64) / (time as f64));
