@@ -13,20 +13,39 @@ mod readback;
 mod rulebook;
 mod runtime;
 
-fn main() {
+use std::io::Write;
+
+fn main() -> std::io::Result<()> {
+  // Source code
   let code = "
     //(Main) = (λf λx (f (f x)) λf λx (f (f x)))
-
+    
     (Slow (Z))      = 1
     (Slow (S pred)) = (+ (Slow pred) (Slow pred))
-    
-    (Main) = (Slow (S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )) )
+
+    (Main) = (Tuple
+      (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
+      (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
+      (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
+      (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
+      (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
+      (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
+      (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
+      (Slow (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (S(S(S(S (Z) )))) )))) )))) )))) )))) )))) )
+    )
   ";
 
-  println!("{}", compiled::compile_code(code));
+  // Compiles to C and saves as 'main.c'
+  let as_clang = compiled::compile_code(code);
+  let mut file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open("./main.c")?;
+  file.write_all(&as_clang.as_bytes())?;
+  println!("Compiled to 'main.c'.");
 
+  // Evaluates with interpreter
+  println!("Running interpreter...");
   let (norm, cost, time) = dynamic::eval_code("Main", code);
-
   println!("{}", norm);
   println!("- rwts: {} ({:.2} rwt/s)", cost, (cost as f64) / (time as f64));
+
+  return Ok(());
 }
