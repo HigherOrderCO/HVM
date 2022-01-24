@@ -14,8 +14,8 @@ mod rulebook;
 mod runtime;
 
 fn main() -> std::io::Result<()> {
-  //run_cli()?;
-  run_example()?;
+  run_cli()?;
+  //run_example()?;
   return Ok(());
 }
 
