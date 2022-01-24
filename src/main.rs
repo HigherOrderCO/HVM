@@ -14,12 +14,12 @@ mod rulebook;
 mod runtime;
 
 fn main() -> std::io::Result<()> {
-  cli_main()?;
+  run_cli()?;
   //run_example()?;
   return Ok(());
 }
 
-fn cli_main() -> std::io::Result<()> {
+fn run_cli() -> std::io::Result<()> {
   let mut args : Vec<String> = std::env::args().collect();
 
   if args.len() <= 1 {
@@ -82,6 +82,21 @@ fn run_example() -> std::io::Result<()> {
   // Source code
   let code = "(Main) = (λf λx (f (f x)) λf λx (f (f x)))";
 
+  let code = "
+    (Fn 0) = 1
+    (Fn n) = (+ (Fn (- n 1)) (Fn (- n 1)))
+    (Main) = (Fn 20)
+  ";
+
+  let code = "
+    // Applies a function to all elements in a list
+    (Map fn (Nil))            = (Nil)
+    (Map fn (Cons head tail)) = (Cons (fn head) (Map fn tail))
+
+    // Increments all numbers on [1,2,3]
+    (Main) = (Map λx(+ x 1) (Cons 1 (Cons 2 (Cons 3 (Nil)))))
+  ";
+
   // Compiles to C and saves as 'main.c'
   compiler::compile_code_and_save(code, "main.c")?;
   println!("Compiled to 'main.c'.");
@@ -89,8 +104,10 @@ fn run_example() -> std::io::Result<()> {
   // Evaluates with interpreter
   println!("Reducing with interpreter.");
   let (norm, cost, time) = builder::eval_code("Main", code);
-  println!("Rewrites: {} ({:.2} rw/s)", cost, (cost as f64) / (time as f64));
+  println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / ((time as f64) / 1000.0) / 1000000.0);
+  println!("");
   println!("{}", norm);
+  println!("");
 
   return Ok(());
 }

@@ -1,0 +1,3 @@
+(Fn 0) = 1
+(Fn n) = (+ (Fn (- n 1)) (Fn (- n 1)))
+(Main) = (Tuple (Fn 26) (Fn 26) (Fn 26) (Fn 26) (Fn 26) (Fn 26) (Fn 26) (Fn 26))

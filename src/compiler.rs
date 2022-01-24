@@ -49,6 +49,7 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
 pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lang::Rule>, tab: u64) -> (String, String) {
   let dynfun = bd::build_dynfun(comp, rules);
 
+  let mut dups = 0;
   let mut init = String::new();
   let mut code = String::new();
 
@@ -102,7 +103,8 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lang::Rule>, tab: u64) -> (
     line(&mut code, tab + 1, &format!("inc_cost(mem);"));
       
     // Builds the right-hand side term (ex: `(Succ (Add a b))`)
-    let done = compile_func_rule_body(&mut code, tab + 1, &dynrule.body, &dynrule.vars);
+    //let done = compile_func_rule_body(&mut code, tab + 1, &dynrule.body, &dynrule.vars);
+    let done = compile_func_rule_term(&mut code, tab + 1, &dynrule.term, &dynrule.vars, &mut dups);
     line(&mut code, tab + 1, &format!("u64 done = {};", done));
 
     // Links the host location to it
@@ -132,6 +134,200 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lang::Rule>, tab: u64) -> (
   return (init, code);
 }
 
+pub fn compile_func_rule_term(code: &mut String, tab: u64, term: &bd::DynTerm, vars: &[bd::DynVar], dups: &mut u64) -> String {
+  fn go(
+    code: &mut String,
+    tab: u64,
+    term: &bd::DynTerm,
+    vars: &mut Vec<String>,
+    nams: &mut u64,
+    dups: &mut u64,
+  ) -> String {
+    let INLINE_NUMBERS = true;
+    //println!("compile {:?}", term);
+    //println!("- vars: {:?}", vars);
+    match term {
+      bd::DynTerm::Var { bidx } => {
+        if *bidx < vars.len() as u64 {
+          vars[*bidx as usize].clone()
+        } else {
+          panic!("Unbound variable.");
+        }
+      }
+      bd::DynTerm::Dup { eras, expr, body } => {
+        //if INLINE_NUMBERS {
+          //line(code, tab + 0, &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1));
+        //}
+
+        let copy = fresh(nams, &"cpy");
+        let dup0 = fresh(nams, &"dp0");
+        let dup1 = fresh(nams, &"dp1");
+        let expr = go(code, tab, expr, vars, nams, dups);
+        line(code, tab, &format!("u64 {} = {};", copy, expr));
+        line(code, tab, &format!("u64 {};", dup0));
+        line(code, tab, &format!("u64 {};", dup1));
+        if INLINE_NUMBERS {
+          line(code, tab+0, &format!("if (get_tag({}) == U32) {{", copy));
+          line(code, tab+1, &format!("inc_cost(mem);"));
+          line(code, tab+1, &format!("{} = {};", dup0, copy));
+          line(code, tab+1, &format!("{} = {};", dup1, copy));
+          line(code, tab+0, &format!("}} else {{"));
+        }
+        let name = fresh(nams, &"dup");
+        let coln = fresh(nams, &"col");
+        let colx = *dups;
+        *dups += 1;
+        line(code, tab+1, &format!("u64 {} = alloc(mem, 3);", name));
+        line(code, tab+1, &format!("u64 {} = {};", coln, colx));
+        if (eras.0) {
+          line(code, tab+1, &format!("link(mem, {} + 0, Era());", name));
+        }
+        if (eras.1) {
+          line(code, tab+1, &format!("link(mem, {} + 1, Era());", name));
+        }
+        line(code, tab+1, &format!("link(mem, {} + 2, {});", name, copy));
+        line(code, tab+1, &format!("{} = Dp0({}, {});", dup0, colx, name));
+        line(code, tab+1, &format!("{} = Dp1({}, {});", dup1, colx, name));
+        if INLINE_NUMBERS {
+          line(code, tab+0, &format!("}}"));
+        }
+        vars.push(format!("{}", dup0));
+        vars.push(format!("{}", dup1));
+        let body = go(code, tab+0, body, vars, nams, dups);
+        vars.pop();
+        vars.pop();
+        return body;
+      }
+      bd::DynTerm::Let { expr, body } => {
+        let expr = go(code, tab, expr, vars, nams, dups);
+        vars.push(format!("{}", expr));
+        let body = go(code, tab, body, vars, nams, dups);
+        vars.pop();
+        return body;
+      }
+      bd::DynTerm::Lam { eras, body } => {
+        let name = fresh(nams, &"lam");
+        line(code, tab, &format!("u64 {} = alloc(mem, 2);", name));
+        vars.push(format!("Var({})", name));
+        let body = go(code, tab, body, vars, nams, dups);
+        if *eras {
+          line(code, tab, &format!("link(mem, {} + 0, Era());", name));
+        }
+        line(code, tab, &format!("link(mem, {} + 1, {});", name, body));
+        return format!("Lam({})", name);
+      }
+      bd::DynTerm::App { func, argm } => {
+        let name = fresh(nams, &"app");
+        let func = go(code, tab, func, vars, nams, dups);
+        let argm = go(code, tab, argm, vars, nams, dups);
+        line(code, tab, &format!("u64 {} = alloc(mem, 2);", name));
+        line(code, tab, &format!("link(mem, {} + 0, {});", name, func));
+        line(code, tab, &format!("link(mem, {} + 1, {});", name, argm));
+        return format!("App({})", name);
+      }
+      bd::DynTerm::Ctr { func, args } => {
+        let ctr_args: Vec<String> = args.iter().map(|arg| go(code, tab, arg, vars, nams, dups)).collect();
+        let name = fresh(nams, &"ctr");
+        line(code, tab, &format!("u64 {} = alloc(mem, {});", name, ctr_args.len()));
+        for (i, arg) in ctr_args.iter().enumerate() {
+          line(code, tab, &format!("link(mem, {} + {}, {});", name, i, arg));
+        }
+        return format!("Ctr({}, {}, {})", ctr_args.len(), func, name);
+      }
+      bd::DynTerm::Cal { func, args } => {
+        let cal_args: Vec<String> = args.iter().map(|arg| go(code, tab, arg, vars, nams, dups)).collect();
+        let name = fresh(nams, &"cal");
+        line(code, tab, &format!("u64 {} = alloc(mem, {});", name, cal_args.len()));
+        for (i, arg) in cal_args.iter().enumerate() {
+          line(code, tab, &format!("link(mem, {} + {}, {});", name, i, arg));
+        }
+        return format!("Cal({}, {}, {})", cal_args.len(), func, name);
+      }
+      bd::DynTerm::U32 { numb } => {
+        return format!("U_32({})", numb);
+      }
+      bd::DynTerm::Op2 { oper, val0, val1 } => {
+        let retx = fresh(nams, &"ret");
+        let name = fresh(nams, &"op2");
+        let val0 = go(code, tab, val0, vars, nams, dups);
+        let val1 = go(code, tab, val1, vars, nams, dups);
+        line(code, tab + 0, &format!("u64 {};", retx));
+        // Optimization: do inline operation, avoiding Op2 allocation, when operands are already number
+        if INLINE_NUMBERS {
+          line(code, tab + 0, &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1));
+          let a = format!("get_val({})", val0);
+          let b = format!("get_val({})", val1);
+          match *oper {
+            rt::ADD => line(code, tab + 1, &format!("{} = U_32({} + {});", retx, a, b)),
+            rt::SUB => line(code, tab + 1, &format!("{} = U_32({} - {});", retx, a, b)),
+            rt::MUL => line(code, tab + 1, &format!("{} = U_32({} * {});", retx, a, b)),
+            rt::DIV => line(code, tab + 1, &format!("{} = U_32({} / {});", retx, a, b)),
+            rt::MOD => line(code, tab + 1, &format!("{} = U_32({} % {});", retx, a, b)),
+            rt::AND => line(code, tab + 1, &format!("{} = U_32({} & {});", retx, a, b)),
+            rt::OR  => line(code, tab + 1, &format!("{} = U_32({} | {});", retx, a, b)),
+            rt::XOR => line(code, tab + 1, &format!("{} = U_32({} ^ {});", retx, a, b)),
+            rt::SHL => line(code, tab + 1, &format!("{} = U_32({} << {});", retx, a, b)),
+            rt::SHR => line(code, tab + 1, &format!("{} = U_32({} >> {});", retx, a, b)),
+            rt::LTN => line(code, tab + 1, &format!("{} = U_32({} <  {} ? 1 : 0);", retx, a, b)),
+            rt::LTE => line(code, tab + 1, &format!("{} = U_32({} <= {} ? 1 : 0);", retx, a, b)),
+            rt::EQL => line(code, tab + 1, &format!("{} = U_32({} == {} ? 1 : 0);", retx, a, b)),
+            rt::GTE => line(code, tab + 1, &format!("{} = U_32({} >= {} ? 1 : 0);", retx, a, b)),
+            rt::GTN => line(code, tab + 1, &format!("{} = U_32({} >  {} ? 1 : 0);", retx, a, b)),
+            rt::NEQ => line(code, tab + 1, &format!("{} = U_32({} != {} ? 1 : 0);", retx, a, b)),
+            _       => line(code, tab + 1, &format!("{} = ?;", retx)),
+          }
+          line(code, tab + 1, &format!("inc_cost(mem);"));
+          line(code, tab + 0, &format!("}} else {{"));
+        }
+        line(code, tab + 1, &format!("u64 {} = alloc(mem, 2);", name));
+        line(code, tab + 1, &format!("link(mem, {} + 0, {});", name, val0));
+        line(code, tab + 1, &format!("link(mem, {} + 1, {});", name, val1));
+        let oper_name = match *oper {
+          rt::ADD => "ADD",
+          rt::SUB => "SUB",
+          rt::MUL => "MUL",
+          rt::DIV => "DIV",
+          rt::MOD => "MOD",
+          rt::AND => "AND",
+          rt::OR  => "OR",
+          rt::XOR => "XOR",
+          rt::SHL => "SHL",
+          rt::SHR => "SHR",
+          rt::LTN => "LTN",
+          rt::LTE => "LTE",
+          rt::EQL => "EQL",
+          rt::GTE => "GTE",
+          rt::GTN => "GTN",
+          rt::NEQ => "NEQ",
+          _       => "?",
+        };
+        line(code, tab + 1, &format!("{} = Op2({}, {});", retx, oper_name, name));
+        if (INLINE_NUMBERS) {
+          line(code, tab + 0, &"}");
+        }
+        return retx;
+      }
+    }
+  }
+  fn fresh(nams: &mut u64, name: &str) -> String {
+    let name = format!("{}_{}", name, nams);
+    *nams += 1;
+    return name;
+  }
+  let mut nams = 0;
+  let mut vars: Vec<String> = vars.iter().map(|var| {
+    let bd::DynVar {param, field, erase} = var;
+    match field {
+      Some(field) => { format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, field) }
+      None        => { format!("ask_arg(mem, term, {})", param) }
+    }
+  }).collect();
+  return go(code, tab, term, &mut vars, &mut nams, dups);
+}
+
+// This isn't used, but it is an alternative way to compile right-hand side bodies. It results in
+// slightly different code that might be faster since it inlines many memory writes. But it doesn't
+// optimize numeric operations to avoid extra rules, so that may make it slower, depending.
 pub fn compile_func_rule_body(code: &mut String, tab: u64, body: &bd::Body, vars: &[bd::DynVar]) -> String {
   let (elem, nodes) = body;
   for i in 0 .. nodes.len() {
@@ -1168,7 +1364,7 @@ void readback_decimal(Stk* chrs, u64 n) {{
   }}
 }}
 
-void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk** dirs, char** id_to_name_data, u64 id_to_name_mcap) {{
+void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char** id_to_name_data, u64 id_to_name_mcap) {{
   //printf("- readback_term: "); debug_print_lnk(term); printf("\n");
   switch (get_tag(term)) {{
     case LAM: {{
@@ -1179,25 +1375,32 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
         stk_push(chrs, 'x');
         readback_decimal(chrs, stk_find(vars, Var(get_loc(term, 0))));
       }};
-      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+      stk_push(chrs, ' ');
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
       break;
     }}
     case APP: {{
-      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
-      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+      stk_push(chrs, '(');
+      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
+      stk_push(chrs, ' ');
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
+      stk_push(chrs, ')');
       break;
     }}
     case PAR: {{
       u64 col = get_ext(term);
-      u64 idx = stk_find(cols, col);
-      if (idx != -1) {{
-        u64 dir = stk_pop(dirs[idx]);
-        readback_term(chrs, mem, ask_arg(mem, term, dir), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+      if (dirs[col].size > 0) {{
+        u64 head = stk_pop(&dirs[col]);
+        if (head == 0) {{
+          readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
+        }} else {{
+          readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
+        }}
       }} else {{
         stk_push(chrs, '<');
-        readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+        readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
         stk_push(chrs, ' ');
-        readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+        readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
         stk_push(chrs, '>');
       }}
       break;
@@ -1205,19 +1408,14 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
     case DP0: case DP1: {{
       u64 col = get_ext(term);
       u64 val = ask_arg(mem, term, 2);
-      u64 idx = stk_find(cols, col);
-      if (idx == -1) {{
-        idx = cols->size;
-        stk_push(cols, col);
-      }}
-      stk_push(dirs[idx], term == DP0 ? 0 : 1);
-      readback_term(chrs, mem, ask_arg(mem, term, 2), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
-      stk_pop(dirs[idx]);
+      stk_push(&dirs[col], get_tag(term) == DP0 ? 0 : 1);
+      readback_term(chrs, mem, ask_arg(mem, term, 2), vars, dirs, id_to_name_data, id_to_name_mcap);
+      stk_pop(&dirs[col]);
       break;
     }}
     case OP2: {{
       stk_push(chrs, '(');
-      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+      readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
       switch (get_ext(term)) {{
         case ADD: {{ stk_push(chrs, '+'); break; }}
         case SUB: {{ stk_push(chrs, '-'); break; }}
@@ -1236,7 +1434,7 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
         case GTN: {{ stk_push(chrs, '>'); break; }}
         case NEQ: {{ stk_push(chrs, '!'); stk_push(chrs, '='); break; }}
       }}
-      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+      readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
       stk_push(chrs, ')');
       break;
     }}
@@ -1260,7 +1458,7 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* cols, Stk**
       }}
       for (u64 i = 0; i < arit; ++i) {{
         stk_push(chrs, ' ');
-        readback_term(chrs, mem, ask_arg(mem, term, i), vars, cols, dirs, id_to_name_data, id_to_name_mcap);
+        readback_term(chrs, mem, ask_arg(mem, term, i), vars, dirs, id_to_name_data, id_to_name_mcap);
       }}
       stk_push(chrs, ')');
       break;
@@ -1287,14 +1485,12 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
   // Used vars
   Stk chrs;
   Stk vars;
-  Stk cols;
   Stk* dirs;
   u64* seen;
 
   // Initialization
   stk_init(&chrs);
   stk_init(&vars);
-  stk_init(&cols);
   dirs = (Stk*)malloc(sizeof(Stk) * dirs_mcap);
   for (u64 i = 0; i < dirs_mcap; ++i) {{
     stk_init(&dirs[i]);
@@ -1306,7 +1502,7 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
 
   // Readback
   readback_vars(&vars, mem, term, seen);
-  readback_term(&chrs, mem, term, &vars, &cols, &dirs, id_to_name_data, id_to_name_mcap);
+  readback_term(&chrs, mem, term, &vars, dirs, id_to_name_data, id_to_name_mcap);
 
   // Generates C string
   for (u64 i = 0; i < chrs.size && i < code_mcap; ++i) {{
@@ -1317,7 +1513,6 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
   // Cleanup
   stk_free(&chrs);
   stk_free(&vars);
-  stk_free(&cols);
   for (u64 i = 0; i < dirs_mcap; ++i) {{
     stk_free(&dirs[i]);
   }}
@@ -1350,8 +1545,9 @@ int main() {{
 
   // Prints result statistics
   u64 delta_time = (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec;
-  double rw_per_sec = (double)ffi_cost / (double)delta_time;
-  printf("Rewrites: %llu (%.2f rw/s).\n", ffi_cost, rw_per_sec);
+  double rwt_per_sec = (double)ffi_cost / (double)delta_time;
+  printf("Rewrites: %llu (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
+  printf("\n");
 
   // Prints result normal form
   const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB

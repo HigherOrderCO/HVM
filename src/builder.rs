@@ -16,9 +16,9 @@ use std::time::Instant;
 #[derive(Debug)]
 pub enum DynTerm {
   Var { bidx: u64 },
-  Dup { expr: Box<DynTerm>, body: Box<DynTerm> },
+  Dup { eras: (bool, bool), expr: Box<DynTerm>, body: Box<DynTerm> },
   Let { expr: Box<DynTerm>, body: Box<DynTerm> },
-  Lam { body: Box<DynTerm> },
+  Lam { eras: bool, body: Box<DynTerm> },
   App { func: Box<DynTerm>, argm: Box<DynTerm> },
   Cal { func: u64, args: Vec<DynTerm> },
   Ctr { func: u64, args: Vec<DynTerm> },
@@ -52,6 +52,7 @@ pub struct DynVar {
 pub struct DynRule {
   pub cond: Vec<rt::Lnk>,
   pub vars: Vec<DynVar>,
+  pub term: DynTerm,
   pub body: Body,
   pub free: Vec<(u64, u64)>,
 }
@@ -89,6 +90,8 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
               for (j, arg) in args.iter().enumerate() {
                 if let lang::Term::Var { ref name } = **arg {
                   vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
+                } else {
+                  panic!("Sorry, left-hand sides can't have nested constructors yet.");
                 }
               }
             }
@@ -97,16 +100,19 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
               cond.push(rt::U_32(*numb as u64));
             }
             lang::Term::Var { name } => {
+              cond.push(0);
               vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
             }
-            _ => {}
+            _ => {
+              panic!("Invalid left-hand side.");
+            }
           }
         }
 
         let term = term_to_dynterm(comp, &rule.rhs, vars.len() as u64);
         let body = build_body(&term, vars.len() as u64);
 
-        Some(DynRule { cond, vars, body, free })
+        Some(DynRule { cond, vars, term, body, free })
       } else {
         None
       }
@@ -173,11 +179,13 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
         let i = i as u64;
         match rt::get_tag(*cond) {
           rt::U32 => {
+            //println!("Didn't match because of U32. i={} {} {}", i, rt::get_val(rt::ask_arg(mem, term, i)), rt::get_val(*cond));
             let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::U32;
             let same_val = rt::get_val(rt::ask_arg(mem, term, i)) == rt::get_val(*cond);
             matched = matched && same_tag && same_val;
           }
           rt::CTR => {
+            //println!("Didn't match because of CTR. i={} {} {}", i, rt::get_tag(rt::ask_arg(mem, term, i)), rt::get_val(*cond));
             let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR;
             let same_ext = rt::get_ext(rt::ask_arg(mem, term, i)) == rt::get_ext(*cond);
             matched = matched && same_tag && same_ext;
@@ -259,19 +267,21 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
           .0 as u64,
       },
       lang::Term::Dup { nam0, nam1, expr, body } => {
+        let eras = (nam0 == &"*", nam1 == &"*");
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
         let body = Box::new(convert_term(body, comp, depth + 2, vars));
         vars.pop();
         vars.pop();
-        DynTerm::Dup { expr, body }
+        DynTerm::Dup { eras, expr, body }
       }
       lang::Term::Lam { name, body } => {
+        let eras = name == &"*";
         vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.pop();
-        DynTerm::Lam { body }
+        DynTerm::Lam { eras, body }
       }
       lang::Term::Let { name, expr, body } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
@@ -328,7 +338,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
           panic!("Unbound variable.");
         }
       }
-      DynTerm::Dup { expr, body } => {
+      DynTerm::Dup { eras, expr, body } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 3]);
         let dupk;
@@ -354,7 +364,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
         vars.pop();
         body
       }
-      DynTerm::Lam { body } => {
+      DynTerm::Lam { eras, body } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
         link(nodes, targ, 0, Elem::Fix { value: rt::Era() });
