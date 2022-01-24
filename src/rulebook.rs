@@ -244,6 +244,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         Box::new(term)
       }
       lang::Term::Let { name, expr, body } => {
+        println!("sanitize lam {}", term);
         let new_name = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
         let got_name = tbl.remove(name);
@@ -295,13 +296,49 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
 
   // Renames unused variables to "*"
   fn rename_unused(term: &mut lang::Term, uses: &HashMap<String, u64>) {
-    if let lang::Term::Var { name } = term {
+    fn try_erase(name: &mut String, uses: &HashMap<String, u64>) {
       if let Some(x) = uses.get(name) {
-        if *x == 0 {
-          *name = "*".to_string();
+        if *x != 0 {
+          return;
         }
       }
+      *name = "*".to_string();
     }
+    match term {
+      lang::Term::Var { name } => {
+        try_erase(name, uses);
+      }
+      lang::Term::Dup { expr, body, nam0, nam1 } => {
+        try_erase(nam0, uses);
+        try_erase(nam1, uses);
+        rename_unused(expr, uses);
+        rename_unused(expr, uses);
+      }
+      lang::Term::Let { name, expr, body } => {
+        try_erase(name, uses);
+        rename_unused(expr, uses);
+        rename_unused(body, uses);
+      }
+      lang::Term::Lam { name, body } => {
+        try_erase(name, uses);
+        rename_unused(body, uses);
+      }
+      lang::Term::App { func, argm } => {
+        rename_unused(func, uses);
+        rename_unused(argm, uses);
+      }
+      lang::Term::Ctr { name, args } => {
+        for arg in args {
+          rename_unused(arg, uses);
+        }
+      }
+      lang::Term::Op2 { oper, val0, val1 } => {
+        rename_unused(val0, uses);
+        rename_unused(val1, uses);
+      }
+      lang::Term::U32 { numb } => {
+      }
+    };
   }
 
   // Duplicates all variables that are used more than once.

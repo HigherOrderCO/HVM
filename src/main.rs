@@ -122,6 +122,10 @@ fn run_example() -> std::io::Result<()> {
     (Main)    = 42
   ";
 
+  let code = "
+    (Main) = (λx(x 4 5) λa λb b)
+  ";
+
   // Compiles to C and saves as 'main.c'
   compiler::compile_code_and_save(code, "main.c")?;
   println!("Compiled to 'main.c'.");
