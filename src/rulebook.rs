@@ -231,10 +231,13 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         let new_nam0 = (ctx.fresh)();
         let new_nam1 = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
+        let got_nam0 = tbl.remove(nam0);
+        let got_nam1 = tbl.remove(nam1);
         tbl.insert(nam0.clone(), new_nam0.clone());
         tbl.insert(nam1.clone(), new_nam1.clone());
-
         let body = sanitize_term(body, lhs, tbl, ctx)?;
+        if let Some(x) = got_nam0 { tbl.insert(nam0.clone(), x); }
+        if let Some(x) = got_nam1 { tbl.insert(nam1.clone(), x); }
         let nam0 = format!("{}.0", new_nam0);
         let nam1 = format!("{}.0", new_nam1);
         let term = lang::Term::Dup { nam0, nam1, expr, body };
@@ -243,19 +246,20 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
       lang::Term::Let { name, expr, body } => {
         let new_name = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
+        let got_name = tbl.remove(name);
         tbl.insert(name.clone(), new_name.clone());
-
         let body = sanitize_term(body, lhs, tbl, ctx)?;
+        if let Some(x) = got_name { tbl.insert(name.clone(), x); }
         duplicator(&new_name, expr, body, ctx.uses)
       }
       lang::Term::Lam { name, body } => {
         let new_name = (ctx.fresh)();
+        let got_name = tbl.remove(name);
         tbl.insert(name.clone(), new_name.clone());
-        let body = {
-          let body = sanitize_term(body, lhs, tbl, ctx)?;
-          let expr = Box::new(lang::Term::Var { name: new_name.clone() });
-          duplicator(&new_name, expr, body, ctx.uses)
-        };
+        let body = sanitize_term(body, lhs, tbl, ctx)?;
+        if let Some(x) = got_name { tbl.insert(name.clone(), x); }
+        let expr = Box::new(lang::Term::Var { name: new_name.clone() });
+        let body = duplicator(&new_name, expr, body, ctx.uses);
         let term = lang::Term::Lam { name: new_name, body };
         Box::new(term)
       }

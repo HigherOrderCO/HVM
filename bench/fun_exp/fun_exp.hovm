@@ -1,4 +1,0 @@
-(FunExp 0 fn) = fn
-(FunExp n fn) = (FunExp (- n 1) λx(fn (fn x)))
-
-(Main) = ((FunExp 30 (λx x)) 42)
