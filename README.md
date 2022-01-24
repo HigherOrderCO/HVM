@@ -59,6 +59,10 @@ clang -O2 main.c -o main -lpthread # compiles C to executable
 ./main                             # runs the executable
 ```
 
+#### For Nix users
+
+[See Nix usage documentation here](./NIX.md).
+
 The program above runs in about **6.4 seconds** in a modern 8-core processor,
 while the identical Haskell code takes about **19.2 seconds** in the same
 machine with GHC. Notice how there are no parallelism annotations! You write a
