@@ -61,8 +61,10 @@ fn show_help() {
 
 fn run_code(code: &str) -> std::io::Result<()> {
   println!("Reducing.");
-  let (norm, cost, time) = builder::eval_code("Main", code);
+  let (norm, cost, size, time) = builder::eval_code("Main", code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  println!("Mem.Size: {}", size);
+  println!("");
   println!("{}", norm);
   return Ok(());
 }
@@ -126,8 +128,9 @@ fn run_example() -> std::io::Result<()> {
 
   // Evaluates with interpreter
   println!("Reducing with interpreter.");
-  let (norm, cost, time) = builder::eval_code("Main", code);
+  let (norm, cost, size, time) = builder::eval_code("Main", code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  println!("Mem.Size: {}", size);
   println!("");
   println!("{}", norm);
   println!("");
