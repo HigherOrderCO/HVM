@@ -1,4 +1,8 @@
 /target/
 *.out.c
+*.hi
+*.o
+*.tmp
+*.out
 
 ~*
