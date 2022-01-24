@@ -116,7 +116,8 @@ fn run_example() -> std::io::Result<()> {
   ";
 
   let code = "
-    (Main) = Foo
+    (Foo arg) = λx (arg (λx x) x)
+    (Main)    = 42
   ";
 
   // Compiles to C and saves as 'main.c'
