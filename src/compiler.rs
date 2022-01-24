@@ -422,7 +422,7 @@ const u64 MAX_WORKERS = 1;
 #endif
 const u64 MAX_DYNFUNS = 65536;
 const u64 MAX_ARITY = 16;
-const u64 MEM_SPACE = U64_PER_GB / 2;
+const u64 MEM_SPACE = U64_PER_GB; // each worker has 1 GB of the 8 GB total
 
 // Terms
 // -----
@@ -510,7 +510,7 @@ typedef struct {{
 
 Worker workers[MAX_WORKERS];
 
-const u64 seen_mcap = 4194304; // uses 32 MB, covers heaps up to 2 GB
+const u64 seen_mcap = 16777216; // uses 128 MB, covers heaps up to 8 GB
 u64 seen_data[seen_mcap]; 
 
 // Array
@@ -671,11 +671,9 @@ u64 alloc(Worker* mem, u64 size) {{
   if (UNLIKELY(size == 0)) {{
     return 0;
   }} else {{
-    if (size < 16) {{
-      u64 reuse = stk_pop(&mem->free[size]);
-      if (reuse != -1) {{
-        return reuse;
-      }}
+    u64 reuse = stk_pop(&mem->free[size]);
+    if (reuse != -1) {{
+      return reuse;
     }}
     u64 loc = mem->size;
     mem->size += size;
@@ -1535,7 +1533,7 @@ int main() {{
 
   // Allocs data
   mem.size = 1;
-  mem.node = (u64*)malloc(2 * 268435456 * sizeof(u64)); // 4gb
+  mem.node = (u64*)malloc(8 * 134217728 * sizeof(u64)); // 8gb
   mem.node[0] = Cal(0, MAIN, 0);
 
   // Id-to-Name map
@@ -1553,6 +1551,7 @@ int main() {{
   u64 delta_time = (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec;
   double rwt_per_sec = (double)ffi_cost / (double)delta_time;
   printf("Rewrites: %llu (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
+  printf("Mem.Size: %llu words.\n", ffi_size);
   printf("\n");
 
   // Prints result normal form
