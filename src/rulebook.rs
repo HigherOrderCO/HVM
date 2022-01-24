@@ -156,7 +156,10 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
   // BTree is used here for determinism (HashMap does not maintain
   // order among executions)
   type NameTable = BTreeMap<String, String>;
-  fn create_fresh(rule: &lang::Rule, fresh: &mut dyn FnMut() -> String) -> Result<NameTable, String> {
+  fn create_fresh(
+    rule: &lang::Rule,
+    fresh: &mut dyn FnMut() -> String,
+  ) -> Result<NameTable, String> {
     let mut table = BTreeMap::new();
 
     let lhs = &rule.lhs;

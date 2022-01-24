@@ -248,18 +248,18 @@ pub fn parse_u32(state: parser::State) -> parser::Answer<Option<BTerm>> {
 pub fn parse_op2(state: parser::State) -> parser::Answer<Option<BTerm>> {
   fn is_op_char(chr: char) -> bool {
     false
-    || chr == '+'
-    || chr == '-'
-    || chr == '*'
-    || chr == '/'
-    || chr == '%'
-    || chr == '&'
-    || chr == '|'
-    || chr == '^'
-    || chr == '<'
-    || chr == '>'
-    || chr == '='
-    || chr == '!'
+      || chr == '+'
+      || chr == '-'
+      || chr == '*'
+      || chr == '/'
+      || chr == '%'
+      || chr == '&'
+      || chr == '|'
+      || chr == '^'
+      || chr == '<'
+      || chr == '>'
+      || chr == '='
+      || chr == '!'
   }
   fn parse_oper(state: parser::State) -> parser::Answer<Oper> {
     fn op<'a>(symbol: &'static str, oper: Oper) -> parser::Parser<'a, Option<Oper>> {
@@ -268,23 +268,27 @@ pub fn parse_op2(state: parser::State) -> parser::Answer<Option<BTerm>> {
         Ok((state, if done { Some(oper) } else { None }))
       })
     }
-    parser::grammar("Oper", &[
-      op("+"  , Oper::Add),
-      op("-"  , Oper::Sub),
-      op("*"  , Oper::Mul),
-      op("%"  , Oper::Mod),
-      op("&"  , Oper::And),
-      op("|"  , Oper::Or) ,
-      op("^"  , Oper::Xor),
-      op("<<" , Oper::Shl),
-      op(">>" , Oper::Shr),
-      op("<"  , Oper::Ltn),
-      op("<=" , Oper::Lte),
-      op("==" , Oper::Eql),
-      op("=>" , Oper::Gte),
-      op(">"  , Oper::Gtn),
-      op("!=" , Oper::Neq),
-    ], state)
+    parser::grammar(
+      "Oper",
+      &[
+        op("+", Oper::Add),
+        op("-", Oper::Sub),
+        op("*", Oper::Mul),
+        op("%", Oper::Mod),
+        op("&", Oper::And),
+        op("|", Oper::Or),
+        op("^", Oper::Xor),
+        op("<<", Oper::Shl),
+        op(">>", Oper::Shr),
+        op("<", Oper::Ltn),
+        op("<=", Oper::Lte),
+        op("==", Oper::Eql),
+        op("=>", Oper::Gte),
+        op(">", Oper::Gtn),
+        op("!=", Oper::Neq),
+      ],
+      state,
+    )
   }
   parser::guard(
     Box::new(|state| {

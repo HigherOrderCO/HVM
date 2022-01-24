@@ -20,7 +20,7 @@ fn main() -> std::io::Result<()> {
 }
 
 fn run_cli() -> std::io::Result<()> {
-  let mut args : Vec<String> = std::env::args().collect();
+  let mut args: Vec<String> = std::env::args().collect();
 
   if args.len() <= 1 {
     show_help();
@@ -75,7 +75,8 @@ fn compile_code(code: &str, name: &str) -> std::io::Result<()> {
 }
 
 fn load_file_code(file_name: &str) -> String {
-  return std::fs::read_to_string(file_name).expect(&format!("Error reading file: '{}'.", file_name));
+  return std::fs::read_to_string(file_name)
+    .expect(&format!("Error reading file: '{}'.", file_name));
 }
 
 fn run_example() -> std::io::Result<()> {

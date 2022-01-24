@@ -113,7 +113,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
 
   fn go(ctx: &mut CtxGo, stacks: Stacks, term: Lnk, depth: u32) -> String {
     //println!("readback term {}", rt::show_lnk(term));
-    
+
     // TODO: seems like the "seen" map isn't used anymore here?
     // Should investigate if it is needed or not.
 
