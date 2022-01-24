@@ -216,7 +216,7 @@ In general, if the composition of a function `f` has a constant-size normal
 form, then `f^(2^n)(x)` is constant-time (`O(n)`) on HOVM, and exponential-time
 (`O(2^n)`) on GHC.
 
-For example, the composition of `id = λx. x + 1` has a constant-size normal
+For example, the composition of `id = λx. x` has a constant-size normal
 form, since `id^N(x) = λx. x`, for any `N`. Because of that, `id^(2^30)(x)` is
 instantaneous on HOVM, yet it takes about 5 seconds on GHC. 
 
