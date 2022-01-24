@@ -276,6 +276,7 @@ pub fn parse_op2(state: parser::State) -> parser::Answer<Option<BTerm>> {
       op("+"  , Oper::Add),
       op("-"  , Oper::Sub),
       op("*"  , Oper::Mul),
+      op("/"  , Oper::Div),
       op("%"  , Oper::Mod),
       op("&"  , Oper::And),
       op("|"  , Oper::Or) ,
