@@ -12,5 +12,5 @@ instantaneous on HOVM.
 
 This holds as long as the composed function doesn't grow in size when
 self-composed. If it does grow in size, then the asymptotics will be the same.
-Interestingly, Lambolt still beats GHC even in these cases, probably because
-Lambolt lambdas are more lightweight than GHC lambdas.
+Interestingly, HOVM still beats GHC even in these cases, probably because HOVM
+lambdas are more lightweight than GHC lambdas.
