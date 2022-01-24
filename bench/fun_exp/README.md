@@ -6,7 +6,7 @@ function `f`, and a number `n`, it computes `f . f . f . f . (...)`, for a total
 of `n` compositions. For example, `FunExp 8 (λx -> x + 1)` is equivalent to `(λx
 -> x + 256)`.
 
-This is a classic example where HOVM beats Haskell **asymptotically*. For
+This is a classic example where HOVM beats Haskell **asymptotically**. For
 example, `(xFunExp 30 (\x -> x)) 42` takes 5 seconds to compute Haskell, and is
 instantaneous on HOVM.
 
