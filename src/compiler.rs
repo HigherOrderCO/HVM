@@ -1,7 +1,22 @@
 use crate::rulebook as rb;
-use crate::dynamic as dn;
-use crate::lambolt as lb;
+use crate::builder as bd;
+use crate::language as lang;
 use crate::runtime as rt;
+use std::io::Write;
+
+pub fn compile_code_and_save(code: &str, file_name: &str) -> std::io::Result<()> {
+  let as_clang = compile_code(code);
+  let mut file = std::fs::OpenOptions::new().read(true).write(true).create(true).truncate(true).open(file_name)?;
+  file.write_all(&as_clang.as_bytes())?;
+  return Ok(());
+}
+
+pub fn compile_code(code: &str) -> String {
+  let file = lang::read_file(code);
+  let book = rb::gen_rulebook(&file);
+  let funs = bd::build_runtime_functions(&book);
+  return compile_book(&book);
+}
 
 pub fn compile_book(comp: &rb::RuleBook) -> String {
   let mut c_ids = String::new();
@@ -31,8 +46,8 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
   return clang_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64);
 }
 
-pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lb::Rule>, tab: u64) -> (String, String) {
-  let dynfun = dn::build_dynfun(comp, rules);
+pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lang::Rule>, tab: u64) -> (String, String) {
+  let dynfun = bd::build_dynfun(comp, rules);
 
   let mut init = String::new();
   let mut code = String::new();
@@ -102,7 +117,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lb::Rule>, tab: u64) -> (St
     }
 
     // Collects unused variables (none in this example)
-    for (i, dn::DynVar {param, field, erase}) in dynrule.vars.iter().enumerate() {
+    for (i, bd::DynVar {param, field, erase}) in dynrule.vars.iter().enumerate() {
       if *erase {
         line(&mut code, tab + 1, &format!("collect(mem, {});", get_var(&dynrule.vars[i])));
       }
@@ -117,7 +132,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lb::Rule>, tab: u64) -> (St
   return (init, code);
 }
 
-pub fn compile_func_rule_body(code: &mut String, tab: u64, body: &dn::Body, vars: &[dn::DynVar]) -> String {
+pub fn compile_func_rule_body(code: &mut String, tab: u64, body: &bd::Body, vars: &[bd::DynVar]) -> String {
   let (elem, nodes) = body;
   for i in 0 .. nodes.len() {
     line(code, tab + 0, &format!("u64 loc_{} = alloc(mem, {});", i, nodes[i].len()));
@@ -126,11 +141,11 @@ pub fn compile_func_rule_body(code: &mut String, tab: u64, body: &dn::Body, vars
     let node = &nodes[i as usize];
     for j in 0 .. node.len() as u64 {
       match &node[j as usize] {
-        dn::Elem::Fix{value} => {
+        bd::Elem::Fix{value} => {
           //mem.node[(host + j) as usize] = *value;
           line(code, tab + 0, &format!("mem->node[loc_{} + {}] = {:#x}u;", i, j, value));
         }
-        dn::Elem::Ext{index} => {
+        bd::Elem::Ext{index} => {
           //rt::link(mem, host + j, get_var(mem, term, &vars[*index as usize]));
           line(code, tab + 0, &format!("link(mem, loc_{} + {}, {});", i, j, get_var(&vars[*index as usize])));
           //line(code, tab + 0, &format!("u64 lnk = {};", get_var(&vars[*index as usize])));
@@ -138,7 +153,7 @@ pub fn compile_func_rule_body(code: &mut String, tab: u64, body: &dn::Body, vars
           //line(code, tab + 0, &format!("mem.node[loc_{} + {}] = lnk;", i, j));
           //line(code, tab + 0, &format!("if (tag <= VAR) mem.node[get_loc(lnk, tag & 1)] = Arg(loc_{} + {});", i, j));
         }
-        dn::Elem::Loc{value, targ, slot} => {
+        bd::Elem::Loc{value, targ, slot} => {
           //mem.node[(host + j) as usize] = value + hosts[*targ as usize] + slot;
           line(code, tab + 0, &format!("mem->node[loc_{} + {}] = {:#x}u + loc_{} + {};", i, j, value, targ, slot));
         }
@@ -146,14 +161,14 @@ pub fn compile_func_rule_body(code: &mut String, tab: u64, body: &dn::Body, vars
     }
   }
   match elem {
-    dn::Elem::Fix{value} => format!("{}u", value),
-    dn::Elem::Ext{index} => get_var(&vars[*index as usize]),
-    dn::Elem::Loc{value, targ, slot} => format!("({}u + loc_{} + {})", value, targ, slot),
+    bd::Elem::Fix{value} => format!("{}u", value),
+    bd::Elem::Ext{index} => get_var(&vars[*index as usize]),
+    bd::Elem::Loc{value, targ, slot} => format!("({}u + loc_{} + {})", value, targ, slot),
   }
 }
 
-fn get_var(var: &dn::DynVar) -> String {
-  let dn::DynVar {param, field, erase} = var;
+fn get_var(var: &bd::DynVar) -> String {
+  let bd::DynVar {param, field, erase} = var;
   match field {
     Some(i) => { format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, i) }
     None    => { format!("ask_arg(mem, term, {})", param) }
@@ -166,13 +181,6 @@ fn line(code: &mut String, tab: u64, line: &str) {
   }
   code.push_str(line);
   code.push('\n');
-}
-
-pub fn compile_code(code: &str) -> String {
-  let file = lb::read_file(code);
-  let book = rb::gen_rulebook(&file);
-  let funs = dn::build_runtime_functions(&book);
-  return compile_book(&book);
 }
 
 pub fn clang_runtime_template(c_ids: &str, inits: &str, codes: &str, id2nm: &str, names_count: u64) -> String {

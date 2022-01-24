@@ -3,7 +3,7 @@
 
 #![allow(clippy::identity_op)]
 
-use crate::lambolt as lb;
+use crate::language as lang;
 use crate::readback as rd;
 use crate::rulebook as rb;
 use crate::runtime as rt;
@@ -67,8 +67,8 @@ pub struct DynFun {
 // comments here. All comments will be based on the following Lambolt example:
 //   (Add (Succ a) b) = (Succ (Add a b))
 //   (Add (Zero)   b) = b
-pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lb::Rule]) -> DynFun {
-  let mut redex = if let lb::Term::Ctr { ref name, ref args } = *rules[0].lhs {
+pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
+  let mut redex = if let lang::Term::Ctr { ref name, ref args } = *rules[0].lhs {
     vec![false; args.len()]
   } else {
     panic!("Invalid left-hand side: {}", rules[0].lhs);
@@ -76,27 +76,27 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lb::Rule]) -> DynFun {
   let mut dynrules = rules
     .iter()
     .filter_map(|rule| {
-      if let lb::Term::Ctr { ref name, ref args } = *rule.lhs {
+      if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
         let mut cond = Vec::new();
         let mut vars = Vec::new();
         let mut free = Vec::new();
         for ((i, arg), redex) in args.iter().enumerate().zip(redex.iter_mut()) {
           match &**arg {
-            lb::Term::Ctr { name, args } => {
+            lang::Term::Ctr { name, args } => {
               *redex = true;
               cond.push(rt::Ctr(args.len() as u64, *comp.name_to_id.get(&*name).unwrap_or(&0), 0));
               free.push((i as u64, args.len() as u64));
               for (j, arg) in args.iter().enumerate() {
-                if let lb::Term::Var { ref name } = **arg {
+                if let lang::Term::Var { ref name } = **arg {
                   vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
                 }
               }
             }
-            lb::Term::U32 { numb } => {
+            lang::Term::U32 { numb } => {
               *redex = true;
               cond.push(rt::U_32(*numb as u64));
             }
-            lb::Term::Var { name } => {
+            lang::Term::Var { name } => {
               vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
             }
             _ => {}
@@ -148,7 +148,7 @@ pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>>
   funcs
 }
 
-pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lb::Rule]) -> rt::Function {
+pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
 
   let stricts = dynfun.redex.clone();
@@ -221,35 +221,35 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lb::Rule]) -> rt::Fu
 }
 
 /// Converts a Lambolt Term to a Runtime Term
-pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> DynTerm {
-  fn convert_oper(oper: &lb::Oper) -> u64 {
+pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
+  fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
-      lb::Oper::Add => rt::ADD,
-      lb::Oper::Sub => rt::SUB,
-      lb::Oper::Mul => rt::MUL,
-      lb::Oper::Div => rt::DIV,
-      lb::Oper::Mod => rt::MOD,
-      lb::Oper::And => rt::AND,
-      lb::Oper::Or => rt::OR,
-      lb::Oper::Xor => rt::XOR,
-      lb::Oper::Shl => rt::SHL,
-      lb::Oper::Shr => rt::SHR,
-      lb::Oper::Ltn => rt::LTN,
-      lb::Oper::Lte => rt::LTE,
-      lb::Oper::Eql => rt::EQL,
-      lb::Oper::Gte => rt::GTE,
-      lb::Oper::Gtn => rt::GTN,
-      lb::Oper::Neq => rt::NEQ,
+      lang::Oper::Add => rt::ADD,
+      lang::Oper::Sub => rt::SUB,
+      lang::Oper::Mul => rt::MUL,
+      lang::Oper::Div => rt::DIV,
+      lang::Oper::Mod => rt::MOD,
+      lang::Oper::And => rt::AND,
+      lang::Oper::Or => rt::OR,
+      lang::Oper::Xor => rt::XOR,
+      lang::Oper::Shl => rt::SHL,
+      lang::Oper::Shr => rt::SHR,
+      lang::Oper::Ltn => rt::LTN,
+      lang::Oper::Lte => rt::LTE,
+      lang::Oper::Eql => rt::EQL,
+      lang::Oper::Gte => rt::GTE,
+      lang::Oper::Gtn => rt::GTN,
+      lang::Oper::Neq => rt::NEQ,
     }
   }
   fn convert_term(
-    term: &lb::Term,
+    term: &lang::Term,
     comp: &rb::RuleBook,
     depth: u64,
     vars: &mut Vec<String>,
   ) -> DynTerm {
     match term {
-      lb::Term::Var { name } => DynTerm::Var {
+      lang::Term::Var { name } => DynTerm::Var {
         bidx: vars
           .iter()
           .enumerate()
@@ -258,7 +258,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
           .unwrap_or_else(|| panic!("Unbound variable: '{}'.", name))
           .0 as u64,
       },
-      lb::Term::Dup { nam0, nam1, expr, body } => {
+      lang::Term::Dup { nam0, nam1, expr, body } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
@@ -267,25 +267,25 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
         vars.pop();
         DynTerm::Dup { expr, body }
       }
-      lb::Term::Lam { name, body } => {
+      lang::Term::Lam { name, body } => {
         vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.pop();
         DynTerm::Lam { body }
       }
-      lb::Term::Let { name, expr, body } => {
+      lang::Term::Let { name, expr, body } => {
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.pop();
         DynTerm::Let { expr, body }
       }
-      lb::Term::App { func, argm } => {
+      lang::Term::App { func, argm } => {
         let func = Box::new(convert_term(func, comp, depth + 0, vars));
         let argm = Box::new(convert_term(argm, comp, depth + 0, vars));
         DynTerm::App { func, argm }
       }
-      lb::Term::Ctr { name, args } => {
+      lang::Term::Ctr { name, args } => {
         let term_func = comp.name_to_id[name];
         let term_args = args.iter().map(|arg| convert_term(arg, comp, depth + 0, vars)).collect();
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
@@ -294,8 +294,8 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
           DynTerm::Ctr { func: term_func, args: term_args }
         }
       }
-      lb::Term::U32 { numb } => DynTerm::U32 { numb: *numb },
-      lb::Term::Op2 { oper, val0, val1 } => {
+      lang::Term::U32 { numb } => DynTerm::U32 { numb: *numb },
+      lang::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, comp, depth + 0, vars));
         let val1 = Box::new(convert_term(val1, comp, depth + 1, vars));
@@ -306,238 +306,6 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lb::Term, free_vars: u64) -> 
 
   let mut vars = (0..free_vars).map(|i| format!("x{}", i)).collect();
   convert_term(term, comp, 0, &mut vars)
-}
-
-/// Reads back a Lambolt term from Runtime's memory
-// TODO: we should readback as a lambolt::Term, not as a string
-pub fn readback_as_code(mem: &Worker, comp: &rb::RuleBook, host: u64) -> String {
-  struct CtxName<'a> {
-    mem: &'a Worker,
-    names: &'a mut HashMap<Lnk, String>,
-    seen: &'a mut HashSet<Lnk>,
-    count: &'a mut u32,
-  }
-
-  fn name(ctx: &mut CtxName, term: Lnk, depth: u32) {
-    if ctx.seen.contains(&term) {
-      return;
-    };
-
-    ctx.seen.insert(term);
-
-    match rt::get_tag(term) {
-      rt::LAM => {
-        let param = rt::ask_arg(ctx.mem, term, 0);
-        let body = rt::ask_arg(ctx.mem, term, 1);
-        if rt::get_tag(param) != rt::ERA {
-          let var = rt::Var(rt::get_loc(term, 0));
-          *ctx.count += 1;
-          ctx.names.insert(var, format!("x{}", *ctx.count));
-        };
-        name(ctx, body, depth + 1);
-      }
-      rt::APP => {
-        let lam = rt::ask_arg(ctx.mem, term, 0);
-        let arg = rt::ask_arg(ctx.mem, term, 1);
-        name(ctx, lam, depth + 1);
-        name(ctx, arg, depth + 1);
-      }
-      rt::PAR => {
-        let arg0 = rt::ask_arg(ctx.mem, term, 0);
-        let arg1 = rt::ask_arg(ctx.mem, term, 1);
-        name(ctx, arg0, depth + 1);
-        name(ctx, arg1, depth + 1);
-      }
-      rt::DP0 => {
-        let arg = rt::ask_arg(ctx.mem, term, 2);
-        name(ctx, arg, depth + 1);
-      }
-      rt::DP1 => {
-        let arg = rt::ask_arg(ctx.mem, term, 2);
-        name(ctx, arg, depth + 1);
-      }
-      rt::OP2 => {
-        let arg0 = rt::ask_arg(ctx.mem, term, 0);
-        let arg1 = rt::ask_arg(ctx.mem, term, 1);
-        name(ctx, arg0, depth + 1);
-        name(ctx, arg1, depth + 1);
-      }
-      rt::U32 => {}
-      rt::CTR | rt::CAL => {
-        let arity = rt::get_ari(term);
-        for i in 0..arity {
-          let arg = rt::ask_arg(ctx.mem, term, i);
-          name(ctx, arg, depth + 1);
-        }
-      }
-      default => {}
-    }
-  }
-
-  struct CtxGo<'a> {
-    mem: &'a Worker,
-    comp: &'a rb::RuleBook,
-    names: &'a HashMap<Lnk, String>,
-    seen: &'a HashSet<Lnk>,
-    // count: &'a mut u32,
-  }
-
-  // TODO: more efficient, immutable data structure
-  // Note: Because of clone? Use a bit-string:
-  // struct BitString { O{...}, I{...}, E }
-  #[derive(Clone)]
-  struct Stacks {
-    stacks: HashMap<Lnk, Vec<bool>>,
-  }
-
-  impl Stacks {
-    fn new() -> Stacks {
-      Stacks { stacks: HashMap::new() }
-    }
-    fn get(&self, col: Lnk) -> Option<&Vec<bool>> {
-      self.stacks.get(&col)
-    }
-    fn pop(&self, col: Lnk) -> Stacks {
-      let mut stacks = self.stacks.clone();
-      let stack = stacks.entry(col).or_insert_with(Vec::new);
-      stack.pop();
-      Stacks { stacks }
-    }
-    fn push(&self, col: Lnk, val: bool) -> Stacks {
-      let mut stacks = self.stacks.clone();
-      let stack = stacks.entry(col).or_insert_with(Vec::new);
-      stack.push(val);
-      Stacks { stacks }
-    }
-  }
-
-  fn go(ctx: &mut CtxGo, stacks: Stacks, term: Lnk, depth: u32) -> String {
-    // TODO: seems like the "seen" map isn't used anymore here?
-    // Should investigate if it is needed or not.
-
-    //if ctx.seen.contains(&term) {
-    //"@".to_string()
-    //} else {
-    match rt::get_tag(term) {
-      rt::LAM => {
-        let body = rt::ask_arg(ctx.mem, term, 1);
-        let body_txt = go(ctx, stacks, body, depth + 1);
-        let arg = rt::ask_arg(ctx.mem, term, 0);
-        let name_txt = if rt::get_tag(arg) == rt::ERA {
-          "~"
-        } else {
-          let var = rt::Var(rt::get_loc(term, 0));
-          ctx.names.get(&var).map(|s| s as &str).unwrap_or("?")
-        };
-        format!("λ{} {}", name_txt, body_txt)
-      }
-      rt::APP => {
-        let func = rt::ask_arg(ctx.mem, term, 0);
-        let argm = rt::ask_arg(ctx.mem, term, 1);
-        let func_txt = go(ctx, stacks.clone(), func, depth + 1);
-        let argm_txt = go(ctx, stacks, argm, depth + 1);
-        format!("({} {})", func_txt, argm_txt)
-      }
-      rt::PAR => {
-        let col = rt::get_ext(term);
-        let empty = &Vec::new();
-        let stack = stacks.get(col).unwrap_or(empty);
-        if let Some(val) = stack.last() {
-          let arg_idx = *val as u64;
-          let val = rt::ask_arg(ctx.mem, term, arg_idx);
-          go(ctx, stacks.pop(col), val, depth + 1)
-        } else {
-          let val0 = rt::ask_arg(ctx.mem, term, 0);
-          let val1 = rt::ask_arg(ctx.mem, term, 1);
-          let val0_txt = go(ctx, stacks.clone(), val0, depth + 1);
-          let val1_txt = go(ctx, stacks, val1, depth + 1);
-          format!("<{} {}>", val0_txt, val1_txt)
-        }
-      }
-      rt::DP0 => {
-        let col = rt::get_ext(term);
-        let val = rt::ask_arg(ctx.mem, term, 2);
-        go(ctx, stacks.push(col, false), val, depth + 1)
-      }
-      rt::DP1 => {
-        let col = rt::get_ext(term);
-        let val = rt::ask_arg(ctx.mem, term, 2);
-        go(ctx, stacks.push(col, true), val, depth + 1)
-      }
-      rt::OP2 => {
-        let op = rt::get_ext(term);
-        let op_txt = match op {
-          rt::ADD => "+",
-          rt::SUB => "-",
-          rt::MUL => "*",
-          rt::DIV => "/",
-          rt::MOD => "%",
-          rt::AND => "&",
-          rt::OR => "|",
-          rt::XOR => "^",
-          rt::SHL => "<<",
-          rt::SHR => ">>",
-          rt::LTN => "<",
-          rt::LTE => "<=",
-          rt::EQL => "==",
-          rt::GTE => ">=",
-          rt::GTN => ">",
-          rt::NEQ => "!=",
-          default => panic!("unknown operation"),
-        };
-        let val0 = rt::ask_arg(ctx.mem, term, 0);
-        let val1 = rt::ask_arg(ctx.mem, term, 1);
-        let val0_txt = go(ctx, stacks.clone(), val0, depth + 1);
-        let val1_txt = go(ctx, stacks, val1, depth + 1);
-        format!("({} {} {})", op_txt, val0_txt, val1_txt)
-      }
-      rt::U32 => {
-        format!("{}", rt::get_val(term))
-      }
-      rt::CTR | rt::CAL => {
-        let func = rt::get_ext(term);
-        let arit = rt::get_ari(term);
-        let args_txt = (0..arit)
-          .map(|i| {
-            let arg = rt::ask_arg(ctx.mem, term, i);
-            format!(" {}", go(ctx, stacks.clone(), arg, depth + 1))
-          })
-          .collect::<String>();
-        let name = ctx
-          .comp
-          .id_to_name
-          .get(&func)
-          .map(String::to_string)
-          .unwrap_or_else(|| format!("${}", func));
-        format!("({}{})", name, args_txt)
-      }
-      rt::VAR => ctx
-        .names
-        .get(&term)
-        .map(String::to_string)
-        .unwrap_or_else(|| format!("^{}", rt::get_loc(term, 0))),
-      rt::ARG => "!".to_string(),
-      rt::ERA => "~".to_string(),
-      default => {
-        format!("?({})", rt::get_tag(term))
-      }
-    }
-    //}
-  }
-
-  let term = rt::ask_lnk(mem, host);
-
-  let mut names = HashMap::<Lnk, String>::new();
-  let mut seen = HashSet::<Lnk>::new();
-  let mut count: u32 = 0;
-
-  let ctx = &mut CtxName { mem, names: &mut names, seen: &mut seen, count: &mut count };
-  name(ctx, term, 0);
-
-  let ctx = &mut CtxGo { mem, comp, names: &names, seen: &seen };
-  let stacks = Stacks::new();
-
-  go(ctx, stacks, term, 0)
 }
 
 pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
@@ -687,7 +455,7 @@ pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   host
 }
 
-pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lb::Term) -> u64 {
+pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) -> u64 {
   alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
 }
 
@@ -697,7 +465,7 @@ pub fn eval_code(main: &str, code: &str) -> (String, u64, u64) {
   let mut worker = rt::new_worker();
 
   // Parses and reads the input file
-  let file = lb::read_file(code);
+  let file = lang::read_file(code);
 
   // Converts the Lambolt file to a rulebook file
   let book = rb::gen_rulebook(&file);
@@ -706,7 +474,7 @@ pub fn eval_code(main: &str, code: &str) -> (String, u64, u64) {
   let mut funs = build_runtime_functions(&book);
 
   // Builds a runtime "(Main)" term
-  let main = lb::read_term("(Main)");
+  let main = lang::read_term("(Main)");
   let host = alloc_term(&mut worker, &book, &main);
 
   // Normalizes it

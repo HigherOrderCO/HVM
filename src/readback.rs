@@ -2,15 +2,14 @@
 
 #![allow(clippy::identity_op)]
 
-use crate::lambolt as lb;
 use crate::rulebook as rb;
 use crate::runtime as rt;
 use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 
-/// Reads back a Lambolt term from Runtime's memory
-// TODO: we should readback as a lambolt::Term, not as a string
+/// Reads back a term from Runtime's memory
+// TODO: we should readback as a language::Term, not as a string
 pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
