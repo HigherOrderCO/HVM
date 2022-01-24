@@ -67,7 +67,7 @@ pub type Lnk = u64;
 pub type Rewriter = Box<dyn Fn(&mut Worker, u64, Lnk) -> bool>;
 
 pub struct Function {
-  pub stricts: Vec<bool>,
+  pub stricts: Vec<u64>,
   pub rewriter: Rewriter,
 }
 
@@ -345,11 +345,11 @@ pub fn reduce(
               init = 0;
             } else {
               stack.push(host);
-              for (i, x) in f.stricts.iter().enumerate() {
-                if i < f.stricts.len() - 1 && *x {
-                  stack.push(get_loc(term, i as u64) | 0x80000000);
+              for i in &f.stricts {
+                if *i < f.stricts.len() as u64 - 1 {
+                  stack.push(get_loc(term, *i as u64) | 0x80000000);
                 } else {
-                  host = get_loc(term, i as u64);
+                  host = get_loc(term, *i as u64);
                 }
               }
             }

@@ -53,14 +53,23 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lang::Rule>, tab: u64) -> (
   let mut init = String::new();
   let mut code = String::new();
 
+  // Converts redex vector to stricts vector
+  // TODO: avoid code duplication, this same algo is on builder.rs
+  let mut stricts = Vec::new();
+  for (i, is_redex) in dynfun.redex.iter().enumerate() {
+    if *is_redex {
+      stricts.push(i as u64);
+    }
+  }
+
   // Computes the initializer, which calls reduce recursivelly
-  if dynfun.redex.len() == 0 {
+  if stricts.len() == 0 {
     line(&mut init, tab + 0, &format!("init = 0;"));
   } else {
     line(&mut init, tab + 0, &format!("stk_push(&stack, host);"));
-    for (i, x) in dynfun.redex.iter().enumerate() {
-      if i < dynfun.redex.len() - 1 && *x {
-        line(&mut init, tab + 0, &format!("stk_push(&stack, get_loc(term, {}) | 0x80000000)", i));
+    for i in &stricts {
+      if *i < stricts.len() as u64 - 1 {
+        line(&mut init, tab + 0, &format!("stk_push(&stack, get_loc(term, {}) | 0x80000000);", i));
       } else {
         line(&mut init, tab + 0, &format!("host = get_loc(term, {});", i));
       }
@@ -109,7 +118,6 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lang::Rule>, tab: u64) -> (
 
     // Links the host location to it
     line(&mut code, tab + 1, &format!("link(mem, host, done);"));
-
 
     // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
     line(&mut code, tab + 1, &format!("clear(mem, get_loc(term, 0), {});", dynfun.redex.len()));
@@ -210,6 +218,7 @@ pub fn compile_func_rule_term(code: &mut String, tab: u64, term: &bd::DynTerm, v
         line(code, tab, &format!("u64 {} = alloc(mem, 2);", name));
         vars.push(format!("Var({})", name));
         let body = go(code, tab, body, vars, nams, dups);
+        vars.pop();
         if *eras {
           line(code, tab, &format!("link(mem, {} + 0, Era());", name));
         }
@@ -1290,12 +1299,12 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
 // Readback
 // --------
 
-void readback_vars(Stk* vars, Worker* mem, Lnk term, u64* seen) {{
-  //printf("- readback_vars "); debug_print_lnk(term); printf("\n");
-  if (get_bit(seen, get_loc(term,0))) {{
+void readback_vars(Stk* vars, Worker* mem, Lnk term, Stk* seen) {{
+  //printf("- readback_vars %llu ", get_loc(term,0)); debug_print_lnk(term); printf("\n");
+  if (stk_find(seen, term) != -1) {{ // FIXME: probably very slow, change to a proper hashmap
     return;
   }} else {{
-    set_bit(seen, get_loc(term,0));
+    stk_push(seen, term);
     switch (get_tag(term)) {{
       case LAM: {{
         u64 argm = ask_arg(mem, term, 0);
@@ -1480,28 +1489,24 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
 
   // Constants
   const u64 dirs_mcap = 65536; // max different colors we're able to readback
-  const u64 seen_mcap = 4194304; // uses 32 MB, covers heaps up to 2 GB
 
   // Used vars
+  Stk seen;
   Stk chrs;
   Stk vars;
   Stk* dirs;
-  u64* seen;
 
   // Initialization
+  stk_init(&seen);
   stk_init(&chrs);
   stk_init(&vars);
   dirs = (Stk*)malloc(sizeof(Stk) * dirs_mcap);
   for (u64 i = 0; i < dirs_mcap; ++i) {{
     stk_init(&dirs[i]);
   }}
-  seen = (u64*)malloc(sizeof(u64) * seen_mcap); 
-  for (u64 i = 0; i < seen_mcap; ++i) {{
-    seen[i] = 0;
-  }}
 
   // Readback
-  readback_vars(&vars, mem, term, seen);
+  readback_vars(&vars, mem, term, &seen);
   readback_term(&chrs, mem, term, &vars, dirs, id_to_name_data, id_to_name_mcap);
 
   // Generates C string
@@ -1511,6 +1516,7 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
   code_data[chrs.size < code_mcap ? chrs.size : code_mcap] = '\0';
 
   // Cleanup
+  stk_free(&seen);
   stk_free(&chrs);
   stk_free(&vars);
   for (u64 i = 0; i < dirs_mcap; ++i) {{

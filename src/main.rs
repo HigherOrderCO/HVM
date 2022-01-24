@@ -62,7 +62,7 @@ fn show_help() {
 fn run_code(code: &str) -> std::io::Result<()> {
   println!("Reducing.");
   let (norm, cost, time) = builder::eval_code("Main", code);
-  println!("Rewrites: {} ({:.2} rw/s)", cost, (cost as f64) / (time as f64));
+  println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("{}", norm);
   return Ok(());
 }
@@ -97,6 +97,24 @@ fn run_example() -> std::io::Result<()> {
     (Main) = (Map λx(+ x 1) (Cons 1 (Cons 2 (Cons 3 (Nil)))))
   ";
 
+  let code = "
+    (Filter fn (Cons x xs)) = (Filter_Cons (fn x) fn x xs)
+      (Filter_Cons 1 fn x xs) = (Cons x (Filter fn xs))
+      (Filter_Cons 0 fn x xs) = (Filter fn xs)
+    (Filter fn (Nil)) = (Nil)
+
+    (Concat (Nil) b)        = b
+    (Concat (Cons ah at) b) = (Cons ah (Concat at b))
+
+    (Quicksort (Nil)) = (Nil)
+    (Quicksort (Cons h t)) =
+      let min = (Filter λx(< x h) t)
+      let max = (Filter λx(> x h) t)
+      (Concat (Quicksort min) (Cons h (Quicksort max)))
+
+    (Main) = (Quicksort (Cons 3 (Cons 1 (Cons 2 (Cons 4 (Nil))))))
+  ";
+
   // Compiles to C and saves as 'main.c'
   compiler::compile_code_and_save(code, "main.c")?;
   println!("Compiled to 'main.c'.");
@@ -104,7 +122,7 @@ fn run_example() -> std::io::Result<()> {
   // Evaluates with interpreter
   println!("Reducing with interpreter.");
   let (norm, cost, time) = builder::eval_code("Main", code);
-  println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / ((time as f64) / 1000.0) / 1000000.0);
+  println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("");
   println!("{}", norm);
   println!("");

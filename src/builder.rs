@@ -157,7 +157,12 @@ pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>>
 pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
 
-  let stricts = dynfun.redex.clone();
+  let mut stricts = Vec::new();
+  for (i, is_redex) in dynfun.redex.iter().enumerate() {
+    if *is_redex {
+      stricts.push(i as u64);
+    }
+  }
 
   let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
     // For each argument, if it is a redex and a PAR, apply the cal_par rule

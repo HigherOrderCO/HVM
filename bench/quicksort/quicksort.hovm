@@ -1,0 +1,30 @@
+(Sum (Nil))       = 0
+(Sum (Cons x xs)) = (+ x (Sum xs))
+
+(Filter fn (Cons x xs)) = (Filter_Cons (fn x) fn x xs)
+  (Filter_Cons 1 fn x xs) = (Cons x (Filter fn xs))
+  (Filter_Cons 0 fn x xs) = (Filter fn xs)
+(Filter fn (Nil)) = (Nil)
+
+(Concat (Nil) b)        = b
+(Concat (Cons ah at) b) = (Cons ah (Concat at b))
+
+(Quicksort (Nil)) = (Nil)
+(Quicksort (Cons h t)) =
+  let min = (Filter λx(< x h) t)
+  let max = (Filter λx(> x h) t)
+  (Concat (Quicksort min) (Cons h (Quicksort max)))
+
+(Randoms seed 0   ) = (Nil)
+(Randoms seed size) = (Cons seed (Randoms (+ (* seed 1664525) 1013904223) (- size 1)))
+
+(Main) = (Tuple
+  (Sum (Quicksort (Randoms 0 100000)))
+  (Sum (Quicksort (Randoms 1 100000)))
+  (Sum (Quicksort (Randoms 2 100000)))
+  (Sum (Quicksort (Randoms 3 100000)))
+  (Sum (Quicksort (Randoms 4 100000)))
+  (Sum (Quicksort (Randoms 5 100000)))
+  (Sum (Quicksort (Randoms 6 100000)))
+  (Sum (Quicksort (Randoms 7 100000)))
+)
