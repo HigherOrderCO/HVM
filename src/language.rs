@@ -218,9 +218,13 @@ pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<BTerm>> {
       Ok((state, ('A'..='Z').contains(&head) || head == '.'))
     }),
     Box::new(|state| {
-      let (state, skp0) = parser::text("(", state)?;
+      let (state, open) = parser::text("(", state)?;
       let (state, name) = parser::name1(state)?;
-      let (state, args) = parser::until(parser::text_parser(")"), Box::new(parse_term), state)?;
+      let (state, args) = if open {
+        parser::until(parser::text_parser(")"), Box::new(parse_term), state)?
+      } else {
+        (state, Vec::new())
+      };
       Ok((state, Box::new(Term::Ctr { name, args })))
     }),
     state,

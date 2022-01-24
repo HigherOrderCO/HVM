@@ -14,8 +14,8 @@ mod rulebook;
 mod runtime;
 
 fn main() -> std::io::Result<()> {
-  run_cli()?;
-  //run_example()?;
+  //run_cli()?;
+  run_example()?;
   return Ok(());
 }
 
@@ -113,6 +113,10 @@ fn run_example() -> std::io::Result<()> {
       (Concat (Quicksort min) (Cons h (Quicksort max)))
 
     (Main) = (Quicksort (Cons 3 (Cons 1 (Cons 2 (Cons 4 (Nil))))))
+  ";
+
+  let code = "
+    (Main) = Foo
   ";
 
   // Compiles to C and saves as 'main.c'
