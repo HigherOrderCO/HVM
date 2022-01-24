@@ -1,13 +1,6 @@
-// Numeric if-then-else
-(If 0 t f) = f
-(If n t f) = t
+// Applies a function 2^N times to an argument
+(Pow 0 f x) = (f x)
+(Pow n f x) = (Pow (- n 1) λk(f (f k)) x)
 
-// Applies a function N times to an argument
-(Apply 0 f x) = x
-(Apply n f x) = (Apply (/ n 2) λk(f (f k)) ((If (% n 2) f (λx x)) x))
-
-// Applies `id` 1k times to an argument
-(Kid x) = (Apply 1000 λx(x) x)
-
-// Applies `Kid` 10m times to 42
-(Main) = (Apply 10000000 λx(Kid x) 42)
+// Applies `id` many times
+(Main) = (Pow 32 λx(x) 0)

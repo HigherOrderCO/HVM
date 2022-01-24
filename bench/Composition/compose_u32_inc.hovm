@@ -1,0 +1,3 @@
+(Pow 0 f x) = (f x)
+(Pow n f x) = (Pow (- n 1) λk(f (f k)) x)
+(Main)      = (Pow 26 λx(+ x 1) 0)
