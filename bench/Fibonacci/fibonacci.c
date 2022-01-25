@@ -1,3 +1,4 @@
+const int N = 30;
 #include <stdio.h>
 
 int fib(int n, int z) {
@@ -11,12 +12,12 @@ int fib(int n, int z) {
 }
 
 int main() {
-  printf("%d ", fib(40, 0));
-  printf("%d ", fib(40, 1));
-  printf("%d ", fib(40, 2));
-  printf("%d ", fib(40, 3));
-  printf("%d ", fib(40, 4));
-  printf("%d ", fib(40, 5));
-  printf("%d ", fib(40, 6));
-  printf("%d ", fib(40, 7));
+  printf("%d ", fib(N, 0));
+  printf("%d ", fib(N, 1));
+  printf("%d ", fib(N, 2));
+  printf("%d ", fib(N, 3));
+  printf("%d ", fib(N, 4));
+  printf("%d ", fib(N, 5));
+  printf("%d ", fib(N, 6));
+  printf("%d ", fib(N, 7));
 }
