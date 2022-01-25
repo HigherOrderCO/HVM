@@ -257,13 +257,11 @@ This is again similar to the previous benchmark, except that, this time, instead
 of using built-in datatypes to represent the BitString, we're using the [Scott
 Encoding](https://kseo.github.io/posts/2016-12-13-scott-encoding.html), which is
 a way to represent data using lambdas. Doing so causes HOVM to be exponentially
-faster than GHC.
-
-This result looks wrong; after all, we shouldn't be able to call `inc` a
-quadrillion times instantaneously. But that's exactly what happens. What is
-going on is that, since the composition of *inc* has a small normal form, this
-causes it to be slowly morphed into an "add with carry function" as the program
-executes. This effect is what I call "runtime fusion".
+faster than GHC. This result looks wrong; after all, we shouldn't be able to
+call `inc` a quadrillion times instantaneously. But that's exactly what happens.
+What is going on is that, since the composition of *inc* has a small normal
+form, this causes it to be slowly morphed into an "add with carry function" as
+the program executes. This effect is what I call "runtime fusion".
 
 Haskell programmers aren't unfamiliar with λ-encodings being used for
 optimization. For example, the widely used [Free Monads
