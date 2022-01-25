@@ -1,22 +1,8 @@
 What is HOVM, and why it matters?
 =================================
 
-Is it possible to have a high-order functional language, like Haskell, with the
-memory efficiency of Rust, and the parallelism of CUDA? After years of research,
-the High-Order Virtual Machine (HOVM) is my ultimate answer to that question. In
-this post, I'll make my case as to why I think either HOVM, or something very
-similar to it, will inevitably take over the market, all the way to a point
-when CPUs will be designed aroud it.
-
-What is HOVM?
--------------
-
-HOVM is the next-gen successor of the old optimal runtime used by
-[Kind-Lang](https://github.com/kind-lang/kind) (Formality). Due to a
-breakthrough that made it up to 50 times faster, it was separated as a
-general-purpose compile target. In essence, HOVM is just a machine that takes,
-as its input, a functional program that looks like untyped Haskell, and outputs
-its evaluated result.
+In essence, HOVM is just a machine that takes, as its input, a functional
+program that looks like untyped Haskell, and outputs its evaluated result.
 
 For example, given the following input:
 
@@ -27,16 +13,16 @@ For example, given the following input:
 (Main)           = (Fn (Cons 1 (Cons 2 (Cons 3 Nil))))
 ```
 
-HOVM outputs `(Cons 2 (Cons 4 (Cons 6 Nil)))`. **And that's it.** What makes it
-special, though, is how it does that.
+HOVM outputs `(Cons 2 (Cons 4 (Cons 6 Nil)))`. That's it. What makes it special,
+though, is **how** it does that.
 
 What makes HOVM special?
 ------------------------
 
-HOVM is very different from most conventional runtimes, because it is lazy, like
-Haskell. It is, though, very different from Haskell itself, because it is based
-on a new model of computation, interaction nets, that give it outstanding
-characteristics, such as:
+HOVM is based on a new, mathematically beautiful model of computation, the
+Interaction Net, which is like the perfert child of the Lambda Calculus with the
+Turing Machine. In a way, it is very similar to Haskell's STG, but with key
+differences that give it outstanding characteristics, such as:
 
 - Being **beta-optimal**: it is exponentially faster for many inputs.
 
@@ -46,29 +32,35 @@ characteristics, such as:
 
 - Being **strongly confluent**: it has a solid "gas cost" model.
 
-In a way, HOVM is to Haskell as Haskell is to Scheme. It can be seen as a "hyper
-lazy" runtime. A language compiled to HOVM can be as expressive as Haskell, as
-memory-efficient as Rust, all while having the potential to run in thousands of
-cores, like CUDA. These are extraordinary claims, so I'll back them up with
-extraordinary evidence.
+In other words, thanks to this elegant underlying model, a language compiled to
+HOVM can be as expressive as Haskell, as memory-efficient as Rust, all while
+having the potential to run in thousands of cores, like CUDA. If these look like
+extraordinary claims, that's because they are. But don't worry, I'll back them
+up with extraordinary evidence, and explain how each one of these is possible,
+in a friendly, intuitive way.
 
-Note that these things were all true for the old Formality runtime, but, up to
-until a few months ago, the real-world efficiency was still 20-30x behind GHC,
-which negated its theoretical advantages. Thanks to a recent breakthrough in the
-memory layout, we were able to completely redesign the runtime, and reach a peak
-speed of **2.5 billion rewrites per second** on my machine. That's **50x** more
-than the previous implementation, and enough to compete with GHC.
+If you know me, you'll be aware the idea for HOVM existed before (Formality's
+old runtime), but, up to a few months ago, the real-world efficiency of its
+implementations was still 20-30x behind GHC, which negated the theoretical
+advantages listed above. Thanks to a recent breakthrough in the memory layout,
+we were able to completely redesign the runtime, and reach a peak speed of **2.5
+billion rewrites per second** on my machine. That's **50x** more than the
+previous implementation, and enough to compete with GHC.
 
 Benchmarks
 ----------
 
-I'll present benchmarks against Haskell's GHC, since it is the must mature lazy
-functional runtime. In some benchmarks, HOVM is exponentially faster due to
-optimality. In others, it is faster due to parallelism. In others, it is either
-faster or slower by a constant factor. I'm not claiming HOVM is always faster
-than GHC, today; after all, we're comparing a 1-month prototype to a mature
-compiler. But I **am** claiming its current design is ready to scale, and become
-the uncontestable fastest runtime in the world.
+Before we get technical, let's see some benchmarks against Haskell's GHC. Note
+that HOVM's current implementation is a proof-of-concept implemented in about 1
+month by 4 part-time devs. It obviously can't compete with the most mature
+functional runtime in the world... or can it?
+
+In some of the tests below, HOVM obliterates GHC due to optimality; but that's
+not new. After all, a mergesort in Python is faster than a bubblesort in C. What
+is notable, though, is that even in cases where optimality plays no role, HOVM
+stands its ground. I'm not claiming HOVM is faster than GHC, but I **am**
+claiming that the current design is ready to scale and become the undisputed
+fastest runtime in the world.
 
 Haskell was measured with:
 
@@ -159,12 +151,7 @@ main      = print $ pow n (\x -> x + 1) (0 :: Int)
 The composition of `u32_inc = λx. x + 1` does NOT have a constant-size normal
 form. For example, `u32_inc^4(x) = λx. x + 1 + 1 + 1 + 1`, and the size grows as
 `N` grows. Because of that, both HOVM and GHC have the same asymptotics here.
-
-For some reason, though, HOVM is about 2 faster, even single-thread. To be
-honest, this surprised me. I've annotated the Haskell benchmark with `Int` to
-make sure `Integer` wasn't involved, but the result still holds. In general, I
-expect HOVM (of today) to be slightly slower than GHC when there is no
-parallelism nor better asymptotics, but in this case it is just faster.
+To my surprise, though, HOVM is about 2x faster, even single-threaded.
 
 ### compose_inc_ctr
 
@@ -219,9 +206,8 @@ main        = print $ toInt (comp n inc (zero 32))
 This benchmark is similar to the previous, except that, instead of incrementing
 a machine integer `2^N` times, we increment a BitString represented as an
 algebraic datatype. The purpose of this benchmark is to stress-test how fast the
-runtime can perform pattern-matching and recursion. There is NO asymptotical
-gain on the HOVM side, it does the exact same work as GHC. Despite that, it is
-still considerably faster; again, to my surprise.
+runtime can perform pattern-matching and recursion. There is no asymptotical
+gain on the HOVM side, yet it is faster here (again, to my surprise).
 
 ### compose_inc_lam
 
@@ -293,6 +279,7 @@ unexplored algorithms based on runtime fusion. I'd not be surprised if
 there are solutions to hard problems lying there.
 
 
+
 TODOS
 =====
 
@@ -335,3 +322,5 @@ since it can lead to computing the same expression twice. explain how Haskell
 solves this problem via sharing (memoization of redexes). explain how it isn't
 capable of sharing computations inside lambda binders. and that's when HOVM is
 superior to Haskell, asymptotically
+
+**[TODO]** remember the intuitive explanation of why it doesn't need a gc
