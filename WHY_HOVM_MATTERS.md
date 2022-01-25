@@ -52,31 +52,23 @@ memory-efficient as Rust, all while having the potential to run in thousands of
 cores, like CUDA. These are extraordinary claims, so I'll back them up with
 extraordinary evidence.
 
-What changed since Formality?
------------------------------
-
-Up to until a few months ago, the real-world efficiency was still 20-30x behind
-GHC, V8 and ChezScheme, which negated its theoretical advantages. Thanks to a
-recent breakthrough in the memory layout, though, we were able to completely
-redesign the runtime, and reach a peak speed of **2.5 billion rewrites per
-second** on my machine. That's **50x** more than the previous implementation,
-and enough to compete with GHC.
-
-Note that I am NOT claiming HOVM is always faster than GHC; obviously. GHC is a
-mature compiler. HOVM is just prototype developed over the past month. The main
-point, though, is that - and I want to make it very clear - **I'm confident
-HOVM's current design is ready to scale and become the fastest runtime in the
-world.  And I can convince some of you to join me on this endeavour!**
+Note that these things were all true for the old Formality runtime, but, up to
+until a few months ago, the real-world efficiency was still 20-30x behind GHC,
+which negated its theoretical advantages. Thanks to a recent breakthrough in the
+memory layout, we were able to completely redesign the runtime, and reach a peak
+speed of **2.5 billion rewrites per second** on my machine. That's **50x** more
+than the previous implementation, and enough to compete with GHC.
 
 Benchmarks
 ----------
 
-I'll present benchmarks against Haskell's GHC, since it is the reference when it
-comes to lazy functional evaluation. Notice that, in some of these benchmarks,
-HOVM is **exponentially faster**. In others, it is **faster when
-multi-threaded**. In others, it is **either faster or slower by a small constant
-factor**. Note that it is never asymptotically slower, nor slower by an
-unreasonably large constant factor. For each case, I'll explain why it happens.
+I'll present benchmarks against Haskell's GHC, since it is the must mature lazy
+functional runtime. In some benchmarks, HOVM is exponentially faster due to
+optimality. In others, it is faster due to parallelism. In others, it is either
+faster or slower by a constant factor. I'm not claiming HOVM is always faster
+than GHC, today; after all, we're comparing a 1-month prototype to a mature
+compiler. But I **am** claiming its current design is ready to scale, and become
+the uncontestable fastest runtime in the world.
 
 Haskell was measured with:
 
