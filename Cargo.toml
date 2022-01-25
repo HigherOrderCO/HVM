@@ -18,3 +18,7 @@ cranelift-native = "0.80.0"
 
 [profile.release]
 opt-level = 3
+
+[profile.bench]
+opt-level = 3
+debug = 2

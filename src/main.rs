@@ -5,13 +5,7 @@
 #![allow(unused_imports)]
 #![allow(unused_mut)]
 
-mod builder;
-mod compiler;
-mod language;
-mod parser;
-mod readback;
-mod rulebook;
-mod runtime;
+use hovm::{builder, compiler};
 
 fn main() -> std::io::Result<()> {
   run_cli()?;
