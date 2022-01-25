@@ -54,8 +54,9 @@ that HOVM's current release is a proof-of-concept implemented in about 1 month
 by 4 part-time devs. It obviously won't always beat the most mature functional
 runtime in the world. In some of the tests below, HOVM obliterates GHC due to
 better asymptotics; but that's not new, due to asymptotics (after all, Python
-QuickSort > C BubbleSort). What is notable, though, is that even in cases where
-optimality plays no role, HOVM still does fairly well.
+QuickSort > C BubbleSort). In others, it performs worse. What is notable,
+though, is that even in cases where optimality plays no role, HOVM still does
+fairly well.
 
 Haskell was measured with:
 
