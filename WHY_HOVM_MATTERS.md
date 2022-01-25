@@ -40,11 +40,11 @@ breakthrough , we were able to completely redesign the runtime, and reach a peak
 speed of **2.5 billion rewrites per second** on common CPUs. That's **50x** more
 than the previous implementation, and enough to compete with GHC today.
 
-Given its efficiency, and the naturally superior properties of interaction nets,
-**I firmly believe HOVM's current design is ready to scale and become the
-undisputed fastest runtime in the world**; yes, faster than C, Rust, Haskell;
-and I hope I can convince you to join me on my journey towards the inevitable
-parallel, functional future of computation!
+Given this recent efficiency bump, and the naturally superior properties of
+interaction nets, **I firmly believe HOVM's current design is ready to scale and
+become the undisputed fastest runtime in the world**; yes, faster than C, Rust,
+Haskell; and I hope I can convince you to join me on my journey towards the
+inevitable parallel, functional future of computation!
 
 Benchmarks
 ==========
