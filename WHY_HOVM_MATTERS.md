@@ -195,7 +195,6 @@ parallelism nor better asymptotics, but in this case it is just faster.
 
 **Applies the `Inc` function `2^N` times to BitString datatype.**
 
-
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
 <tr>
@@ -238,6 +237,8 @@ main        = print $ toInt (comp n inc (zero 32))
 </tr>
 </table>
 
+// TODO: CHART HERE
+
 #### Comment
 
 This benchmark is similar to the previous, except that, instead of incrementing
@@ -247,9 +248,75 @@ runtime can perform pattern-matching and recursion. There is NO asymptotical
 gain on the HOVM side, it does the exact same work as GHC. Despite that, it is
 still considerably faster; again, to my surprise.
 
-For example, the composition of `id = λx. x` has a constant-size normal form,
-since `id^N(x) = λx. x`, for any `N`. Because of that, `id^(2^30)(x)` is
-instantaneous on HOVM, yet it takes about 5 seconds on GHC. 
+### compose_inc_lam
+
+**Applies the `Inc` function `2^N` times to λ-Encoded BitString datatype.**
+
+<table>
+<tr> <td>HOVM</td> <td>Haskell</td> </tr>
+<tr>
+<td>
+
+```javascript
+(N)          = 24
+(Comp 0 f x) = (f x)
+(Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
+(E)          = λe λo λi e
+(O pred)     = λe λo λi (o pred)
+(I pred)     = λe λo λi (i pred)
+(Inc bs)     = λe λo λi (bs e i λpred(o (Inc pred)))
+(Zero 0)     = (E)
+(Zero n)     = (O (Zero (- n 1)))
+(ToInt bs)   = (bs 0 λn(* (ToInt n) 2) λn(+ (* (ToInt n) 2) 1))
+(Main)       = (ToInt (Comp N λx(Inc x) (Zero 64)))
+```
+
+</td>
+<td>
+
+```haskell
+newtype BS = BS { get :: forall a. a -> (BS -> a) -> (BS -> a) -> a }
+comp 0 f x = f x
+comp n f x = comp (n - 1) (\k -> f (f k)) x
+e          = BS (\e -> \o -> \i -> e)
+o pred     = BS (\e -> \o -> \i -> o pred)
+i pred     = BS (\e -> \o -> \i -> i pred)
+inc bs     = BS (\e -> \o -> \i -> get bs e i (\pred -> o (inc pred)))
+zero 0     = e
+zero n     = o (zero (n - 1))
+toInt bs   = get bs 0 (\n -> toInt n * 2) (\n -> toInt n * 2 + 1)
+main       = print $ toInt (comp n (\x -> inc x) (zero 64))
+```
+
+</td>
+</tr>
+</table>
+
+// TODO: CHART HERE
+
+#### Comment
+
+This is again similar to the previous benchmark, except that, this time, instead
+of using built-in datatypes to represent the BitString, we're using the [Scott
+Encoding](https://kseo.github.io/posts/2016-12-13-scott-encoding.html), which is
+a way to represent data using lambdas. Doing so causes HOVM to be exponentially
+faster than GHC.
+
+This result looks wrong; after all, we shouldn't be able to call `inc` a
+quadrillion times instantaneously. But that's exactly what happens. What is
+going on is that, since the composition of *inc* has a small normal form, this
+causes it to be slowly morphed into an "add with carry function" as the program
+executes. This effect is what I call "runtime fusion".
+
+Haskell programmers aren't unfamiliar with λ-encodings being used for
+optimization. For example, the widely used [Free Monads
+library](https://hackage.haskell.org/package/free-5.1.7/docs/Control-Monad-Free-Church.html)
+has an entire version that replaces native datatypes by λ-encodings, and it is
+much faster that way. But, since GHC isn't optimal, the application of this
+technique is very limited in Haskell. HOVM opens doors for an entire field of
+unexplored algorithms based on runtime fusion. I'd not be surprised if
+there are solutions to hard problems lying there.
+
 
 TODOS
 =====
