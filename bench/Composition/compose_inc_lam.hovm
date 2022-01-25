@@ -1,0 +1,11 @@
+(N)          = 32
+(Comp 0 f x) = (f x)
+(Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
+(E)          = λe λo λi e
+(O pred)     = λe λo λi (o pred)
+(I pred)     = λe λo λi (i pred)
+(Inc bs)     = λe λo λi (bs e i λpred(o (Inc pred)))
+(Zero 0)     = (E)
+(Zero n)     = (O (Zero (- n 1)))
+(ToInt bs)   = (bs 0 λn(* (ToInt n) 2) λn(+ (* (ToInt n) 2) 1))
+(Main)       = λa λb a

@@ -5,7 +5,7 @@ Is it possible to have a high-order functional language, like Haskell, with the
 memory efficiency of Rust, and the parallelism of CUDA? After years of research,
 the High-Order Virtual Machine (HOVM) is my ultimate answer to that question. In
 this post, I'll make my case as to why I think either HOVM, or something very
-similar to it, will **inevitably** take over the market, all the way to a point
+similar to it, will inevitably take over the market, all the way to a point
 when CPUs will be designed aroud it.
 
 What is HOVM?
@@ -27,8 +27,8 @@ For example, given the following input:
 (Main)           = (Fn (Cons 1 (Cons 2 (Cons 3 Nil))))
 ```
 
-HOVM outputs `(Cons 2 (Cons 4 (Cons 6 Nil)))`. **And that's it.** HOVM just
-evaluates expressions. What makes it special, though, is how it does that.
+HOVM outputs `(Cons 2 (Cons 4 (Cons 6 Nil)))`. **And that's it.** What makes it
+special, though, is how it does that.
 
 What makes HOVM special?
 ------------------------
@@ -50,14 +50,12 @@ characteristics, such as:
 
 In a way, HOVM is to Haskell as Haskell is to Scheme. It can be seen as a "hyper
 lazy" runtime, that is capable of doing novel things that simply weren't
-possible before.
-
-A language compiled to HOVM can be as expressive as Haskell, as memory-efficient
-as Rust, can be cost-measured like the EVM, can compute algorithms that were
-previously unfeasible, all while having the potential to run in thousands of
-cores, like CUDA. If that looks like an extraordinary claim, it is. But if that
-possibility makes you dreamy, keep reading, as I'll pack this post with an
-extraordinary amount of evidences to convince you that's feasible!
+possible before. A language compiled to HOVM can be as expressive as Haskell, as
+memory-efficient as Rust, can be cost-measured like the EVM, can compute
+algorithms that were previously unfeasible, all while having the potential to
+run in thousands of cores, like CUDA. If that looks like an extraordinary claim,
+it is. But if that possibility makes you dreamy, keep reading, as I'll pack this
+post with an extraordinary amount of evidences to convince you that's feasible!
 
 What is the recent breakthrough?
 --------------------------------
@@ -70,15 +68,15 @@ of beta-optimality, parallelism, GC-freedom, etc. That's why
 target, until optimal runtimes matured. A few months ago, though, I started a
 brand new implementation, based 2 major optimizations:
 
-1. A new memory format, based on [SIC](https://github.com/VictorTaelin/Symmetric-Interaction-Calculus).
+1. A new memory format, based on [SIC](https://github.com/VictorTaelin/Symmetric-Interaction-Calculus), that reduces footprint by 50%.
 
 2. User-defined rewrite rules, similar to Haskell equations.
 
 These improvements allowed further optimizations, such as inlining numeric
-duplications and using pthreads, and the result is mind-blowing: HOVM now peaks
-at *2.5 billion rewrites per second* on my machine. The previous best
-implementation barely reachesd *50 million*, on the same machine. That's a 50x
-speedup!
+duplications and using pthreads. The result is mind-blowing: HOVM now peaks
+at **2.5 billion rewrites per second** on my machine. The previous best
+implementation barely reached **50 million**, on the same machine. That's a **50x
+speedup**!
 
 Note that I am NOT claiming HOVM is faster than GHC today. It is a prototype
 that has been in developement for about a month. It is obvious that, for many
@@ -94,9 +92,8 @@ I'll present benchmarks against Haskell's GHC, since it is the reference when it
 comes to lazy functional evaluation. Notice that, in some of these benchmarks,
 HOVM is **exponentially faster**. In others, it is **faster when
 multi-threaded**. In others, it is **either faster or slower by a small constant
-factor**.  Note that it is never asymptotically slower, nor slower by an
-unreasonably large constant factor. In the upcoming section, I'll explain why
-each case happens.
+factor**. Note that it is never asymptotically slower, nor slower by an
+unreasonably large constant factor. For each case, I'll explain why it happens.
 
 Haskell was measured with:
 
@@ -115,7 +112,46 @@ time ./main
 
 ### compose_id
 
-Applies the identity function `2^N` times to an input.
+**Applies the identity function `2^N` times to 0.**
+
+<table>
+<tr> <td>HOVM</td> <td>Haskell</td> </tr>
+<tr>
+<td>
+
+```javascript
+(Comp 0 f x) = (f x)
+(Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
+(Main)       = (Comp N λx(x) 0)
+```
+
+</td>
+<td>
+
+```haskell
+comp 0 f x = f x
+comp n f x = comp (n - 1) (\x -> f (f x)) x
+main       = print$ comp n (\x->x) (0::Int)
+```
+
+</td>
+</tr>
+</table>
+
+// TODO: CHART HERE
+
+#### Comment
+
+Function composition is one of cornerstones of functional programming, and,
+amazingly, it is one of the cases where GHC performs poorly. In general, if the
+composition of a function `f` has a constant-size normal form, then `f^N(x)` is
+constant-time (`O(L)`) on HOVM, and exponential-time (`O(2^L)`) on GHC, where
+`L` is the bit-size of `N`. Since the normal form of `id . id` is just `id`,
+this program is exponentially faster in HOVM.
+
+### compose_inc_u32
+
+**Applies the `λx -> x + 1` function `2^N` times to 0.**
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -125,7 +161,7 @@ Applies the identity function `2^N` times to an input.
 ```javascript
 (Pow 0 f x) = (f x)
 (Pow n f x) = (Pow (- n 1) λk(f (f k)) x)
-(Main)      = (Pow 32 λx(x) 0)
+(Main)      = (Pow N λx(+ x 1) 0)
   ```
 
 </td>
@@ -134,7 +170,7 @@ Applies the identity function `2^N` times to an input.
 ```haskell
 pow 0 f x = f x
 pow n f x = pow (n - 1) (\x -> f (f x)) x
-main      = print$ pow (32::Int) (\x->x) (0::Int)
+main      = print $ pow n (\x -> x + 1) (0 :: Int)
 ```
 
 </td>
@@ -143,9 +179,22 @@ main      = print$ pow (32::Int) (\x->x) (0::Int)
 
 // TODO: CHART HERE
 
-### compose_u32_inc
+#### Comment
 
-Applies the `λx -> x + 1` function `2^N` times to an input.
+The composition of `u32_inc = λx. x + 1` does NOT have a constant-size normal
+form. For example, `u32_inc^4(x) = λx. x + 1 + 1 + 1 + 1`, and the size grows as
+`N` grows. Because of that, both HOVM and GHC have the same asymptotics here.
+
+For some reason, though, HOVM is about 2 faster, even single-thread. To be
+honest, this surprised me. I've annotated the Haskell benchmark with `Int` to
+make sure `Integer` wasn't involved, but the result still holds. In general, I
+expect HOVM (of today) to be slightly slower than GHC when there is no
+parallelism nor better asymptotics, but in this case it is just faster.
+
+### compose_inc_ctr
+
+**Applies the `Inc` function `2^N` times to BitString datatype.**
+
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -153,76 +202,54 @@ Applies the `λx -> x + 1` function `2^N` times to an input.
 <td>
 
 ```javascript
-(Pow 0 f x) = (f x)
-(Pow n f x) = (Pow (- n 1) λk(f (f k)) x)
-(Main)      = (Pow 26 λx(+ x 1) 0)
-  ```
+(N)           = 26
+(Comp 0 f x)  = (f x)
+(Comp n f x)  = (Comp (- n 1) λk(f (f k)) x)
+(Inc (E))     = (E)
+(Inc (O bs))  = (I bs)
+(Inc (I bs))  = (O (Inc bs))
+(Zero 0)      = (E)
+(Zero n)      = (O (Zero (- n 1)))
+(ToInt (E))   = 0
+(ToInt (O n)) = (* (ToInt n) 2)
+(ToInt (I n)) = (+ (* (ToInt n) 2) 1)
+(Main)        = (ToInt (Comp N λx(Inc x) (Zero 32)))
+```
 
 </td>
 <td>
 
 ```haskell
-pow 0 f x = f x
-pow n f x = pow (n - 1) (\x -> f (f x)) x
-main      = print $ pow (26 :: Int) (\x -> x + 1) (0 :: Int)
+data Bits   = E | O Bits | I Bits deriving Show
+comp 0 f x  = f x
+comp n f x  = comp (n - 1) (\k -> f (f k)) x
+inc E       = E
+inc (O bs)  = I bs
+inc (I bs)  = O (inc bs)
+zero 0      = E
+zero n      = O (zero (n - 1))
+toInt (E)   = 0
+toInt (O n) = toInt n * 2
+toInt (I n) = toInt n * 2 + 1
+main        = print $ toInt (comp n inc (zero 32))
 ```
 
 </td>
 </tr>
 </table>
 
-// TODO: CHART HERE
+#### Comment
 
-Explaining the results
-======================
+This benchmark is similar to the previous, except that, instead of incrementing
+a machine integer `2^N` times, we increment a BitString represented as an
+algebraic datatype. The purpose of this benchmark is to stress-test how fast the
+runtime can perform pattern-matching and recursion. There is NO asymptotical
+gain on the HOVM side, it does the exact same work as GHC. Despite that, it is
+still considerably faster; again, to my surprise.
 
-TODO: I'll reword/reduce this section, leaving here for now
 
-What is beta-optimality, and why it matters?
---------------------------------------------
 
-Beta-optimality is the characteristic of a functional runtime that does the
-minimal amount of beta-reductions required to 
 
-runtime is extremely helpful when designing functional
-algorithms, because certain programs run *exponentially* faster than they would
-in any alternative.
-
-### Is it even useful in practice?
-
-Some people have the impression that beta-optimality only helps in "artificial"
-situations, like λ-encoded datatypes, that don't show up in practice. That is
-not true! There are countless common programming patterns on which HOVM
-outperforms traditional runtimes. For example, function composition is one of
-the most important operations in functional programming, and, in some cases,
-it is exponentially faster in HOVM!
-
-Similarly, there are vastly complex fusion optimizations performed by GHC to
-prevent wasteful intermediate structures in common high-order functions like
-`map` and `filter`, but these optimizations only work for a bunch of hard-coded
-datatypes like Lists and Vectors. In HOVM, fusion is a natural consequence of
-the runtime! As such, it can be implemented as a library, for any user-defined
-datatype, without compile-time rewrites. Even better, it can take place at
-runtime, which is impossible in Haskell.
-
-Composition
-===========
-
-This micro-benchmark computes `f^(2^n)(x)`. I.e., it applies a function `2^n`
-times to an argument. This is a classic example where HOVM beats Haskell
-*asymptotically*, depending on the function.
-
-In general, if the composition of a function `f` has a constant-size normal
-form, then `f^(2^n)(x)` is constant-time (`O(n)`) on HOVM, and exponential-time
-(`O(2^n)`) on GHC.
-
-For example, the composition of `id = λx. x + 1` has a constant-size normal
-form, since `id^N(x) = λx. x`, for any `N`. Because of that, `id^(2^30)(x)` is
-instantaneous on HOVM, yet it takes about 5 seconds on GHC. 
-
-The composition of `u32_inc = λx. x + 1`, though, doesn't have a constant-size
-normal form. For example, `u32_inc^4(x) = λx. x + 1 + 1 + 1 + 1`, and the size
-grows the higher `N` is. Because of that, 
 
 
 

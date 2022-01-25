@@ -1,0 +1,12 @@
+(N)           = 26
+(Comp 0 f x)  = (f x)
+(Comp n f x)  = (Comp (- n 1) λk(f (f k)) x)
+(Inc (E))     = (E)
+(Inc (O bs))  = (I bs)
+(Inc (I bs))  = (O (Inc bs))
+(Zero 0)      = (E)
+(Zero n)      = (O (Zero (- n 1)))
+(ToInt (E))   = 0
+(ToInt (O n)) = (* (ToInt n) 2)
+(ToInt (I n)) = (+ (* (ToInt n) 2) 1)
+(Main)        = (ToInt (Comp N λx(Inc x) (Zero 32)))

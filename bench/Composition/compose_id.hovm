@@ -1,6 +1,4 @@
-// Applies a function 2^N times to an argument
-(Pow 0 f x) = (f x)
-(Pow n f x) = (Pow (- n 1) λk(f (f k)) x)
-
-// Applies `id` many times
-(Main) = (Pow 32 λx(x) 0)
+(N)          = 32
+(Comp 0 f x) = (f x)
+(Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
+(Main)       = (Comp N λx(x) 0)

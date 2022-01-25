@@ -200,20 +200,17 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
     tbl: &mut NameTable,
     ctx: &mut CtxSanitizeTerm,
   ) -> Result<Box<lang::Term>, String> {
+    fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
+      if !(uses.get(name).copied() > Some(0)) {
+        *name = "*".to_string();
+      }
+    }
     let term = match term {
       lang::Term::Var { name } => {
         if lhs {
-          let name = tbl.get(name).unwrap_or(name);
-          let amount = ctx.uses.get(name).copied();
-          if amount > Some(0) {
-            // var is used in rhs
-            // create a var with the name generated before
-            Box::new(lang::Term::Var { name: name.clone() })
-          } else {
-            // var is not used in rhs
-            // delete its name
-            Box::new(lang::Term::Var { name: "*".to_string() })
-          }
+          let mut name = tbl.get(name).unwrap_or(name).clone();
+          rename_erased(&mut name, ctx.uses);
+          Box::new(lang::Term::Var { name })
         } else {
           // create a var with the name generated before
           // concatenated with '.{{times_used}}'
@@ -244,7 +241,6 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         Box::new(term)
       }
       lang::Term::Let { name, expr, body } => {
-        println!("sanitize lam {}", term);
         let new_name = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
         let got_name = tbl.remove(name);
@@ -254,13 +250,14 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         duplicator(&new_name, expr, body, ctx.uses)
       }
       lang::Term::Lam { name, body } => {
-        let new_name = (ctx.fresh)();
+        let mut new_name = (ctx.fresh)();
         let got_name = tbl.remove(name);
         tbl.insert(name.clone(), new_name.clone());
         let body = sanitize_term(body, lhs, tbl, ctx)?;
         if let Some(x) = got_name { tbl.insert(name.clone(), x); }
         let expr = Box::new(lang::Term::Var { name: new_name.clone() });
         let body = duplicator(&new_name, expr, body, ctx.uses);
+        rename_erased(&mut new_name, &ctx.uses);
         let term = lang::Term::Lam { name: new_name, body };
         Box::new(term)
       }
@@ -292,53 +289,6 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
     };
 
     Ok(term)
-  }
-
-  // Renames unused variables to "*"
-  fn rename_unused(term: &mut lang::Term, uses: &HashMap<String, u64>) {
-    fn try_erase(name: &mut String, uses: &HashMap<String, u64>) {
-      if let Some(x) = uses.get(name) {
-        if *x != 0 {
-          return;
-        }
-      }
-      *name = "*".to_string();
-    }
-    match term {
-      lang::Term::Var { name } => {
-        try_erase(name, uses);
-      }
-      lang::Term::Dup { expr, body, nam0, nam1 } => {
-        try_erase(nam0, uses);
-        try_erase(nam1, uses);
-        rename_unused(expr, uses);
-        rename_unused(expr, uses);
-      }
-      lang::Term::Let { name, expr, body } => {
-        try_erase(name, uses);
-        rename_unused(expr, uses);
-        rename_unused(body, uses);
-      }
-      lang::Term::Lam { name, body } => {
-        try_erase(name, uses);
-        rename_unused(body, uses);
-      }
-      lang::Term::App { func, argm } => {
-        rename_unused(func, uses);
-        rename_unused(argm, uses);
-      }
-      lang::Term::Ctr { name, args } => {
-        for arg in args {
-          rename_unused(arg, uses);
-        }
-      }
-      lang::Term::Op2 { oper, val0, val1 } => {
-        rename_unused(val0, uses);
-        rename_unused(val1, uses);
-      }
-      lang::Term::U32 { numb } => {
-      }
-    };
   }
 
   // Duplicates all variables that are used more than once.
@@ -449,10 +399,6 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
     let expr = Box::new(lang::Term::Var { name: value.clone() });
     rhs = duplicator(&value, expr, rhs, &uses);
   }
-
-  // renames unused variables to "*"
-  rename_unused(&mut lhs, &uses);
-  rename_unused(&mut rhs, &uses);
 
   // returns the sanitized rule
   Ok(lang::Rule { lhs, rhs })
