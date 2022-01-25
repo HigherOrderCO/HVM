@@ -61,8 +61,10 @@ fn show_help() {
 
 fn run_code(code: &str) -> std::io::Result<()> {
   println!("Reducing.");
-  let (norm, cost, time) = builder::eval_code("Main", code);
+  let (norm, cost, size, time) = builder::eval_code("Main", code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  println!("Mem.Size: {}", size);
+  println!("");
   println!("{}", norm);
   return Ok(());
 }
@@ -116,14 +118,24 @@ fn run_example() -> std::io::Result<()> {
     (Main) = (Quicksort (Cons 3 (Cons 1 (Cons 2 (Cons 4 (Nil))))))
   ";
 
+  let code = "
+    (Foo arg) = λx (arg (λx x) x)
+    (Main)    = 42
+  ";
+
+  let code = "
+    (Main) = (λx(x 4 5) λa λb b)
+  ";
+
   // Compiles to C and saves as 'main.c'
   compiler::compile_code_and_save(code, "main.c")?;
   println!("Compiled to 'main.c'.");
 
   // Evaluates with interpreter
   println!("Reducing with interpreter.");
-  let (norm, cost, time) = builder::eval_code("Main", code);
+  let (norm, cost, size, time) = builder::eval_code("Main", code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  println!("Mem.Size: {}", size);
   println!("");
   println!("{}", norm);
   println!("");

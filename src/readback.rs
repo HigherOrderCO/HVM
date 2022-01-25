@@ -97,21 +97,17 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
     fn get(&self, col: Lnk) -> Option<&Vec<bool>> {
       self.stacks.get(&col)
     }
-    fn pop(&self, col: Lnk) -> Stacks {
-      let mut stacks = self.stacks.clone();
-      let stack = stacks.entry(col).or_insert_with(Vec::new);
+    fn pop(&mut self, col: Lnk) {
+      let stack = self.stacks.entry(col).or_insert_with(Vec::new);
       stack.pop();
-      Stacks { stacks }
     }
-    fn push(&self, col: Lnk, val: bool) -> Stacks {
-      let mut stacks = self.stacks.clone();
-      let stack = stacks.entry(col).or_insert_with(Vec::new);
+    fn push(&mut self, col: Lnk, val: bool) {
+      let stack = self.stacks.entry(col).or_insert_with(Vec::new);
       stack.push(val);
-      Stacks { stacks }
     }
   }
 
-  fn go(ctx: &mut CtxGo, stacks: Stacks, term: Lnk, depth: u32) -> String {
+  fn go(ctx: &mut CtxGo, stacks: &mut Stacks, term: Lnk, depth: u32) -> String {
     //println!("readback term {}", rt::show_lnk(term));
 
     // TODO: seems like the "seen" map isn't used anymore here?
@@ -136,7 +132,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
       rt::APP => {
         let func = rt::ask_arg(ctx.mem, term, 0);
         let argm = rt::ask_arg(ctx.mem, term, 1);
-        let func_txt = go(ctx, stacks.clone(), func, depth + 1);
+        let func_txt = go(ctx, stacks, func, depth + 1);
         let argm_txt = go(ctx, stacks, argm, depth + 1);
         format!("({} {})", func_txt, argm_txt)
       }
@@ -147,11 +143,12 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         if let Some(val) = stack.last() {
           let arg_idx = *val as u64;
           let val = rt::ask_arg(ctx.mem, term, arg_idx);
-          go(ctx, stacks.pop(col), val, depth + 1)
+          stacks.pop(col);
+          go(ctx, stacks, val, depth + 1)
         } else {
           let val0 = rt::ask_arg(ctx.mem, term, 0);
           let val1 = rt::ask_arg(ctx.mem, term, 1);
-          let val0_txt = go(ctx, stacks.clone(), val0, depth + 1);
+          let val0_txt = go(ctx, stacks, val0, depth + 1);
           let val1_txt = go(ctx, stacks, val1, depth + 1);
           format!("<{} {}>", val0_txt, val1_txt)
         }
@@ -159,12 +156,18 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
       rt::DP0 => {
         let col = rt::get_ext(term);
         let val = rt::ask_arg(ctx.mem, term, 2);
-        go(ctx, stacks.push(col, false), val, depth + 1)
+        stacks.push(col, false);
+        let result = go(ctx, stacks, val, depth + 1);
+        stacks.pop(col);
+        result
       }
       rt::DP1 => {
         let col = rt::get_ext(term);
         let val = rt::ask_arg(ctx.mem, term, 2);
-        go(ctx, stacks.push(col, true), val, depth + 1)
+        stacks.push(col, true);
+        let result = go(ctx, stacks, val, depth + 1);
+        stacks.pop(col);
+        result
       }
       rt::OP2 => {
         let op = rt::get_ext(term);
@@ -189,7 +192,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         };
         let val0 = rt::ask_arg(ctx.mem, term, 0);
         let val1 = rt::ask_arg(ctx.mem, term, 1);
-        let val0_txt = go(ctx, stacks.clone(), val0, depth + 1);
+        let val0_txt = go(ctx, stacks, val0, depth + 1);
         let val1_txt = go(ctx, stacks, val1, depth + 1);
         format!("({} {} {})", op_txt, val0_txt, val1_txt)
       }
@@ -202,7 +205,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         let args_txt = (0..arit)
           .map(|i| {
             let arg = rt::ask_arg(ctx.mem, term, i);
-            format!(" {}", go(ctx, stacks.clone(), arg, depth + 1))
+            format!(" {}", go(ctx, stacks, arg, depth + 1))
           })
           .collect::<String>();
         let name = match ctx.comp {
@@ -237,7 +240,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
   name(ctx, term, 0);
 
   let ctx = &mut CtxGo { mem, comp, names: &names, seen: &seen };
-  let stacks = Stacks::new();
+  let mut stacks = Stacks::new();
 
-  go(ctx, stacks, term, 0)
+  go(ctx, &mut stacks, term, 0)
 }

@@ -1,0 +1,15 @@
+(N) = 20
+(Fib 0 z) = z
+(Fib 1 z) = (+ z 1)
+(Fib n z) = (+ (Fib (- n 1) z) (Fib (- n 2) z))
+
+(Main) = (Tuple
+  (Fib (N) 0)
+  (Fib (N) 1)
+  (Fib (N) 2)
+  (Fib (N) 3)
+  (Fib (N) 4)
+  (Fib (N) 5)
+  (Fib (N) 6)
+  (Fib (N) 7)
+)
