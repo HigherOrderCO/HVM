@@ -42,48 +42,31 @@ characteristics, such as:
 
 - Being **inherently parallel**: it can be evaluated in thousands of cores.
 
-- Being **garbage-collection free**: no "stop the world" GC is required.
-
-- Being **memory-efficient**: mutable datatypes don't compromise purity.
+- Being **memory-efficient**: no garbage collection, pure mutable datatypes.
 
 - Being **strongly confluent**: it has a solid "gas cost" model.
 
 In a way, HOVM is to Haskell as Haskell is to Scheme. It can be seen as a "hyper
-lazy" runtime, that is capable of doing novel things that simply weren't
-possible before. A language compiled to HOVM can be as expressive as Haskell, as
-memory-efficient as Rust, can be cost-measured like the EVM, can compute
-algorithms that were previously unfeasible, all while having the potential to
-run in thousands of cores, like CUDA. If that looks like an extraordinary claim,
-it is. But if that possibility makes you dreamy, keep reading, as I'll pack this
-post with an extraordinary amount of evidences to convince you that's feasible!
+lazy" runtime. A language compiled to HOVM can be as expressive as Haskell, as
+memory-efficient as Rust, all while having the potential to run in thousands of
+cores, like CUDA. These are extraordinary claims, so I'll back them up with
+extraordinary evidence.
 
-What is the recent breakthrough?
---------------------------------
+What changed since Formality?
+-----------------------------
 
-While the above facts have always been true, up to until a few months ago, the
-real-world (not theoretical) efficiency of existing implementations was still
-20-30x behind GHC, V8, ChezScheme and similar, which negated all the advantages
-of beta-optimality, parallelism, GC-freedom, etc. That's why
-[Kind-Lang](https://github.com/Kind-Lang) had to use JavaScript as its main
-target, until optimal runtimes matured. A few months ago, though, I started a
-brand new implementation, based 2 major optimizations:
+Up to until a few months ago, the real-world efficiency was still 20-30x behind
+GHC, V8 and ChezScheme, which negated its theoretical advantages. Thanks to a
+recent breakthrough in the memory layout, though, we were able to completely
+redesign the runtime, and reach a peak speed of **2.5 billion rewrites per
+second** on my machine. That's **50x** more than the previous implementation,
+and enough to compete with GHC.
 
-1. A new memory format, based on [SIC](https://github.com/VictorTaelin/Symmetric-Interaction-Calculus), that reduces footprint by 50%.
-
-2. User-defined rewrite rules, similar to Haskell equations.
-
-These improvements allowed further optimizations, such as inlining numeric
-duplications and using pthreads. The result is mind-blowing: HOVM now peaks
-at **2.5 billion rewrites per second** on my machine. The previous best
-implementation barely reached **50 million**, on the same machine. That's a **50x
-speedup**!
-
-Note that I am NOT claiming HOVM is faster than GHC today. It is a prototype
-that has been in developement for about a month. It is obvious that, for many
-inputs, it won't beat a mature compiler. The main point, though, is that - and I
-want to make it very clear - **HOVM's current design is ready to scale and
-become the fastest runtime in the world. And I to convince YOU to join me on
-this endeavour!**
+Note that I am NOT claiming HOVM is always faster than GHC; obviously. GHC is a
+mature compiler. HOVM is just prototype developed over the past month. The main
+point, though, is that - and I want to make it very clear - **I'm confident
+HOVM's current design is ready to scale and become the fastest runtime in the
+world.  And I can convince some of you to join me on this endeavour!**
 
 Benchmarks
 ----------
