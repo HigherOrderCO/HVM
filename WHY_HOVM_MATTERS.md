@@ -31,19 +31,20 @@ differences that give it outstanding characteristics, such as:
 
 - Being **strongly confluent**: it has a solid "gas cost" model.
 
-In other words, thanks to this elegant underlying model, a language compiled to
-HOVM can be as expressive as Haskell, as memory-efficient as Rust, all while
-having the potential to run in thousands of cores, like CUDA.
+In other words, in theory, a language compiled to this model could be as
+expressive as Haskell, as memory-efficient as Rust, all while having the
+potential to run in thousands of cores, like CUDA. Up to a few months ago,
+though, the best implementations were still 20-30x slower than GHC in practice,
+which negated its theoretical advantages. Now, thanks to a recent memory layout
+breakthrough , we were able to completely redesign the runtime, and reach a peak
+speed of **2.5 billion rewrites per second** on common CPUs. That's **50x** more
+than the previous implementation, and enough to compete with GHC today.
 
-The idea for HOVM existed before (Formality's old runtime), but, up to a few
-months ago, the real-world efficiency was still 20-30x behind GHC, mostly due to
-pointer overload, which negated its theoretical advantages. Thanks to a recent
-breakthrough in the memory layout, we were able to completely redesign the
-runtime, and reach a peak speed of **2.5 billion rewrites per second** on my
-machine. That's **50x** more than the previous implementation, and enough to
-compete with GHC today. Given its efficiency, and the naturally superior
-properties of the Interaction Net, I firmly believe HOVM's current design is
-ready to scale and become the undisputed fastest runtime in the world.
+Given its efficiency, and the naturally superior properties of interaction nets,
+**I firmly believe HOVM's current design is ready to scale and become the
+undisputed fastest runtime in the world**; yes, faster than C, Rust, Haskell;
+and I hope I can convince you to join me on my journey towards the inevitable
+parallel, functional future of computation!
 
 Benchmarks
 ==========
@@ -275,41 +276,25 @@ unexplored algorithms based on runtime fusion. I'd not be surprised if
 there are solutions to hard problems lying there.
 
 
+// TODO: MORE BENCHMARKS
+========================
 
-TODOS
-=====
+TODO!
 
-Before we get started, let's dive into some benchmarks.
+How is that possible?
+=====================
 
-**[TODO]** benchmarks where HOVM greatly outperforms GHC due to beta-optimality:
-function exponentiation, map fusion, lambda encoding arithmetic, etc. 'HOVM is
-to GHC as GHC is to C"
-
-**[TODO]** benchmarks where HOVM greatly outperforms GHC due to parallelism:
-sorting, rendering, parsing, mendelbrot set, etc.
-
-**[TODO]** benchmarks where HOVM still underperforms GHC: numeric loops,
-in-place mutation, C-like code, etc.
-
-**[TODO]** Remark that HOVM is still on its infancy, and there are still many
-optimizations and features to add (like mutable arrays) before it is generally
-good; but stress that, on the long term, the underlying computation model paves
-the way for it to be faster than everything that exists, specially when we
-consider that 1. functional / high-order algorithms are every day more common,
-2. the future is parallel and the core count will explode as soon as we start
-using them properly
-
-**[TODO]** explain how HOVM got there, starting from optimal evaluators (absal,
-optlam, etc., which weren't as efficient as GHC in practice), models of
-computation (Turing Machines, Lambda Calculus, Interaction Nets), and how the
-new memory format plus user-defineds rewrite rules allowed HOVM to become an
-order of magnitude faster and finally get close to GHC in real-world cases
+How can it not need a garbage collector?
+----------------------------------------
 
 **[TODO]** explain how it is for that a high-level language not to be garbage
 collected. trace parallels with Rust, explaining how both languages are similar
 on their basis, yet differ when it comes to duplication, with Rust going the
 reference/borrow route, while HOVM goes the novel "lazy cloning" route, which
 allows structures to be lazily shared/copied, including lambdas
+
+When is it asymptotically superior?
+-----------------------------------
 
 **[TODO]** explain how it is asymptotically more efficient than Haskell in many
 cases, and why. begin by explaining why lazy evaluation is, intuitivelly,
@@ -319,4 +304,3 @@ solves this problem via sharing (memoization of redexes). explain how it isn't
 capable of sharing computations inside lambda binders. and that's when HOVM is
 superior to Haskell, asymptotically
 
-**[TODO]** remember the intuitive explanation of why it doesn't need a gc
