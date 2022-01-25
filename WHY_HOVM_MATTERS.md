@@ -2,9 +2,8 @@ What is HOVM, and why it matters?
 =================================
 
 In essence, HOVM is just a machine that takes, as its input, a functional
-program that looks like untyped Haskell, and outputs its evaluated result.
-
-For example, given the following input:
+program that looks like untyped Haskell, and outputs its evaluated result. For
+example, given the following input:
 
 ```javascript
 // Doubles every number in the [1, 2, 3] list
