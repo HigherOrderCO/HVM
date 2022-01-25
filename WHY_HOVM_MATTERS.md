@@ -72,10 +72,8 @@ clang -O2 main.c -o main
 time ./main
 ```
 
-Composition of Identity
------------------------
-
-**Applies the identity function `2^N` times to 0.**
+Apply id `2^N` times to the Int 0
+---------------------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -112,10 +110,8 @@ constant-time (`O(L)`) on HOVM, and exponential-time (`O(2^L)`) on GHC, where
 `L` is the bit-size of `N`. Since the normal form of `id . id` is just `id`,
 this program is exponentially faster in HOVM.
 
-Composition of Increment
-------------------------
-
-**Applies the `λx -> x + 1` function `2^N` times to 0.**
+Apply inc `2^N` times to the Int 0 
+----------------------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -150,10 +146,8 @@ form. For example, `u32_inc^4(x) = λx. x + 1 + 1 + 1 + 1`, and the size grows a
 `N` grows. Because of that, both HOVM and GHC have the same asymptotics here.
 To my surprise, though, HOVM is about 2x faster, even single-threaded.
 
-Composition of Increment (using datatypes)
-------------------------------------------
-
-**Applies the `Inc` function `2^N` times to BitString datatype.**
+Apply inc `2^N` to the BitString 0
+----------------------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -207,10 +201,8 @@ algebraic datatype. The purpose of this benchmark is to stress-test how fast the
 runtime can perform pattern-matching and recursion. There is no asymptotical
 gain on the HOVM side, yet it is faster here (again, to my surprise).
 
-Composition of Increment (using λ-encoded datatypes)
-----------------------------------------------------
-
-**Applies the `Inc` function `2^N` times to λ-Encoded BitString datatype.**
+Apply inc `2^N` to the λ-encoded BitString 0
+--------------------------------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
