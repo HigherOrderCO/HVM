@@ -247,13 +247,9 @@ runtime can perform pattern-matching and recursion. There is NO asymptotical
 gain on the HOVM side, it does the exact same work as GHC. Despite that, it is
 still considerably faster; again, to my surprise.
 
-
-
-
-
-
-
-
+For example, the composition of `id = λx. x` has a constant-size normal form,
+since `id^N(x) = λx. x`, for any `N`. Because of that, `id^(2^30)(x)` is
+instantaneous on HOVM, yet it takes about 5 seconds on GHC. 
 
 TODOS
 =====
