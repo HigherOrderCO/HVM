@@ -16,7 +16,7 @@ HOVM outputs `(Cons 2 (Cons 4 (Cons 6 Nil)))`. That's it. What makes it special,
 though, is **how** it does that.
 
 What makes HOVM special?
-------------------------
+========================
 
 HOVM is based on a new, mathematically beautiful model of computation, the
 Interaction Net, which is like the perfert child of the Lambda Calculus with the
@@ -46,7 +46,7 @@ speed of **2.5 billion rewrites per second** on my machine. That's **50x** more
 than the previous implementation, and enough to compete with GHC.
 
 Benchmarks
-----------
+==========
 
 Before we get technical, let's see some benchmarks against Haskell's GHC. Note
 that HOVM's current implementation is a proof-of-concept implemented in about 1
@@ -73,7 +73,8 @@ clang -O2 main.c -o main
 time ./main
 ```
 
-### compose_id
+Composition of Identity
+-----------------------
 
 **Applies the identity function `2^N` times to 0.**
 
@@ -112,7 +113,8 @@ constant-time (`O(L)`) on HOVM, and exponential-time (`O(2^L)`) on GHC, where
 `L` is the bit-size of `N`. Since the normal form of `id . id` is just `id`,
 this program is exponentially faster in HOVM.
 
-### compose_inc_u32
+Composition of Increment
+------------------------
 
 **Applies the `λx -> x + 1` function `2^N` times to 0.**
 
@@ -149,7 +151,8 @@ form. For example, `u32_inc^4(x) = λx. x + 1 + 1 + 1 + 1`, and the size grows a
 `N` grows. Because of that, both HOVM and GHC have the same asymptotics here.
 To my surprise, though, HOVM is about 2x faster, even single-threaded.
 
-### compose_inc_ctr
+Composition of Increment (using datatypes)
+------------------------------------------
 
 **Applies the `Inc` function `2^N` times to BitString datatype.**
 
@@ -205,7 +208,8 @@ algebraic datatype. The purpose of this benchmark is to stress-test how fast the
 runtime can perform pattern-matching and recursion. There is no asymptotical
 gain on the HOVM side, yet it is faster here (again, to my surprise).
 
-### compose_inc_lam
+Composition of Increment (using λ-encoded datatypes)
+----------------------------------------------------
 
 **Applies the `Inc` function `2^N` times to λ-Encoded BitString datatype.**
 
