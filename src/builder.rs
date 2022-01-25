@@ -262,16 +262,14 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
     vars: &mut Vec<String>,
   ) -> DynTerm {
     match term {
-      lang::Term::Var { name } => {
-        DynTerm::Var {
-          bidx: vars
-            .iter()
-            .enumerate()
-            .rev()
-            .find(|(_, var)| var == &name)
-            .unwrap_or_else(|| panic!("Unbound variable: '{}'.", name))
-            .0 as u64,
-        }
+      lang::Term::Var { name } => DynTerm::Var {
+        bidx: vars
+          .iter()
+          .enumerate()
+          .rev()
+          .find(|(_, var)| var == &name)
+          .unwrap_or_else(|| panic!("Unbound variable: '{}'.", name))
+          .0 as u64,
       },
       lang::Term::Dup { nam0, nam1, expr, body } => {
         let eras = (nam0 == &"*", nam1 == &"*");

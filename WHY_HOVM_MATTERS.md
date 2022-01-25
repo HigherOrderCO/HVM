@@ -31,32 +31,32 @@ differences that give it outstanding characteristics, such as:
 
 - Being **strongly confluent**: it has a solid "gas cost" model.
 
-In other words, thanks to this elegant underlying model, a language compiled to
-HOVM can be as expressive as Haskell, as memory-efficient as Rust, all while
-having the potential to run in thousands of cores, like CUDA. If these look like
-extraordinary claims, that's because they are. But don't worry, I'll back them
-up with extraordinary evidence, and explain how each one of these is possible.
+In other words, in theory, a language compiled to this model could be as
+expressive as Haskell, as memory-efficient as Rust, all while having the
+potential to run in thousands of cores, like CUDA. Up to a few months ago,
+though, the best implementations were still 20-30x slower than GHC in practice,
+which negated its theoretical advantages. Now, thanks to a recent memory layout
+breakthrough , we were able to completely redesign the runtime, and reach a peak
+speed of **2.5 billion rewrites per second** on common CPUs. That's **50x** more
+than the previous implementation, and enough to compete with GHC today.
 
-Note: if you know my work, you'll be aware the idea for HOVM existed before
-(Formality's old runtime), but, up to a few months ago, the real-world
-efficiency of its implementations was still 20-30x behind GHC, which negated the
-theoretical advantages listed above. Thanks to a recent breakthrough in the
-memory layout, we were able to completely redesign the runtime, and reach a peak
-speed of **2.5 billion rewrites per second** on my machine. That's **50x** more
-than the previous implementation, and enough to compete with GHC.
+Given this recent efficiency bump, and the naturally superior properties of
+interaction nets, **I firmly believe HOVM's current design is ready to scale and
+become the undisputed fastest runtime in the world**; yes, faster than C, Rust,
+Haskell; and I hope I can convince you to join me on my journey towards the
+inevitable parallel, functional future of computation!
 
 Benchmarks
 ==========
 
 Before we get technical, let's see some benchmarks against Haskell's GHC. Note
-that HOVM's current implementation is a proof-of-concept implemented in about 1
-month by 4 part-time devs. It obviously can't compete with the most mature
-functional runtime in the world... or can it? In some of the tests below, HOVM
-obliterates GHC due to better asymptotics; but that's not new. What is notable,
-though, is that even in cases where optimality plays no role, HOVM stands its
-ground. I'm not claiming HOVM is faster than GHC, but I **am** claiming that the
-current design is ready to scale and become the undisputed fastest runtime in
-the world.
+that HOVM's current release is a proof-of-concept implemented in about 1 month
+by 4 part-time devs. It obviously won't always beat the most mature functional
+runtime in the world. In some of the tests below, HOVM obliterates GHC due to
+better asymptotics; but that's not new, due to asymptotics (after all, Python
+QuickSort > C BubbleSort). In others, it performs worse. What is notable,
+though, is that even in cases where optimality plays no role, HOVM still does
+fairly well.
 
 Haskell was measured with:
 
@@ -73,10 +73,8 @@ clang -O2 main.c -o main
 time ./main
 ```
 
-Composition of Identity
------------------------
-
-**Applies the identity function `2^N` times to 0.**
+Apply id `2^N` times to the Int 0
+---------------------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -113,10 +111,8 @@ constant-time (`O(L)`) on HOVM, and exponential-time (`O(2^L)`) on GHC, where
 `L` is the bit-size of `N`. Since the normal form of `id . id` is just `id`,
 this program is exponentially faster in HOVM.
 
-Composition of Increment
-------------------------
-
-**Applies the `λx -> x + 1` function `2^N` times to 0.**
+Apply inc `2^N` times to the Int 0 
+----------------------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -151,10 +147,8 @@ form. For example, `u32_inc^4(x) = λx. x + 1 + 1 + 1 + 1`, and the size grows a
 `N` grows. Because of that, both HOVM and GHC have the same asymptotics here.
 To my surprise, though, HOVM is about 2x faster, even single-threaded.
 
-Composition of Increment (using datatypes)
-------------------------------------------
-
-**Applies the `Inc` function `2^N` times to BitString datatype.**
+Apply inc `2^N` to the BitString 0
+----------------------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -208,10 +202,8 @@ algebraic datatype. The purpose of this benchmark is to stress-test how fast the
 runtime can perform pattern-matching and recursion. There is no asymptotical
 gain on the HOVM side, yet it is faster here (again, to my surprise).
 
-Composition of Increment (using λ-encoded datatypes)
-----------------------------------------------------
-
-**Applies the `Inc` function `2^N` times to λ-Encoded BitString datatype.**
+Apply inc `2^N` to the λ-encoded BitString 0
+--------------------------------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -277,41 +269,25 @@ unexplored algorithms based on runtime fusion. I'd not be surprised if
 there are solutions to hard problems lying there.
 
 
+// TODO: MORE BENCHMARKS
+========================
 
-TODOS
-=====
+TODO!
 
-Before we get started, let's dive into some benchmarks.
+How is that possible?
+=====================
 
-**[TODO]** benchmarks where HOVM greatly outperforms GHC due to beta-optimality:
-function exponentiation, map fusion, lambda encoding arithmetic, etc. 'HOVM is
-to GHC as GHC is to C"
-
-**[TODO]** benchmarks where HOVM greatly outperforms GHC due to parallelism:
-sorting, rendering, parsing, mendelbrot set, etc.
-
-**[TODO]** benchmarks where HOVM still underperforms GHC: numeric loops,
-in-place mutation, C-like code, etc.
-
-**[TODO]** Remark that HOVM is still on its infancy, and there are still many
-optimizations and features to add (like mutable arrays) before it is generally
-good; but stress that, on the long term, the underlying computation model paves
-the way for it to be faster than everything that exists, specially when we
-consider that 1. functional / high-order algorithms are every day more common,
-2. the future is parallel and the core count will explode as soon as we start
-using them properly
-
-**[TODO]** explain how HOVM got there, starting from optimal evaluators (absal,
-optlam, etc., which weren't as efficient as GHC in practice), models of
-computation (Turing Machines, Lambda Calculus, Interaction Nets), and how the
-new memory format plus user-defineds rewrite rules allowed HOVM to become an
-order of magnitude faster and finally get close to GHC in real-world cases
+How can it not need a garbage collector?
+----------------------------------------
 
 **[TODO]** explain how it is for that a high-level language not to be garbage
 collected. trace parallels with Rust, explaining how both languages are similar
 on their basis, yet differ when it comes to duplication, with Rust going the
 reference/borrow route, while HOVM goes the novel "lazy cloning" route, which
 allows structures to be lazily shared/copied, including lambdas
+
+When is it asymptotically superior?
+-----------------------------------
 
 **[TODO]** explain how it is asymptotically more efficient than Haskell in many
 cases, and why. begin by explaining why lazy evaluation is, intuitivelly,
@@ -321,4 +297,3 @@ solves this problem via sharing (memoization of redexes). explain how it isn't
 capable of sharing computations inside lambda binders. and that's when HOVM is
 superior to Haskell, asymptotically
 
-**[TODO]** remember the intuitive explanation of why it doesn't need a gc
