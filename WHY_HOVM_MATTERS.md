@@ -33,30 +33,28 @@ differences that give it outstanding characteristics, such as:
 
 In other words, thanks to this elegant underlying model, a language compiled to
 HOVM can be as expressive as Haskell, as memory-efficient as Rust, all while
-having the potential to run in thousands of cores, like CUDA. If these look like
-extraordinary claims, that's because they are. But don't worry, I'll back them
-up with extraordinary evidence, and explain how each one of these is possible.
+having the potential to run in thousands of cores, like CUDA.
 
-Note: if you know my work, you'll be aware the idea for HOVM existed before
-(Formality's old runtime), but, up to a few months ago, the real-world
-efficiency of its implementations was still 20-30x behind GHC, which negated the
-theoretical advantages listed above. Thanks to a recent breakthrough in the
-memory layout, we were able to completely redesign the runtime, and reach a peak
-speed of **2.5 billion rewrites per second** on my machine. That's **50x** more
-than the previous implementation, and enough to compete with GHC.
+The idea for HOVM existed before (Formality's old runtime), but, up to a few
+months ago, the real-world efficiency was still 20-30x behind GHC, mostly due to
+pointer overload, which negated its theoretical advantages. Thanks to a recent
+breakthrough in the memory layout, we were able to completely redesign the
+runtime, and reach a peak speed of **2.5 billion rewrites per second** on my
+machine. That's **50x** more than the previous implementation, and enough to
+compete with GHC today. Given its efficiency, and the naturally superior
+properties of the Interaction Net, I firmly believe HOVM's current design is
+ready to scale and become the undisputed fastest runtime in the world.
 
 Benchmarks
 ==========
 
 Before we get technical, let's see some benchmarks against Haskell's GHC. Note
 that HOVM's current implementation is a proof-of-concept implemented in about 1
-month by 4 part-time devs. It obviously can't compete with the most mature
-functional runtime in the world... or can it? In some of the tests below, HOVM
-obliterates GHC due to better asymptotics; but that's not new. What is notable,
-though, is that even in cases where optimality plays no role, HOVM stands its
-ground. I'm not claiming HOVM is faster than GHC, but I **am** claiming that the
-current design is ready to scale and become the undisputed fastest runtime in
-the world.
+month by 4 part-time devs. It obviously won't always beat the most mature
+functional runtime in the world. In some of the tests below, HOVM obliterates
+GHC due to better asymptotics; but that's not new, due to asymptotics (after
+all, Python QuickSort > C BubbleSort). What is notable, though, is that even in
+cases where optimality plays no role, HOVM still does fairly well.
 
 Haskell was measured with:
 
