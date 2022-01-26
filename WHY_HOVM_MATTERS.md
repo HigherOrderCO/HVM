@@ -128,13 +128,12 @@ comp n f x = comp (n - 1) (\x -> f (f x)) x
 
 #### Comment
 
-Function composition is one of cornerstones of functional programming, and,
-amazingly, it is one of the cases where GHC performs poorly. In general, if the
-composition of a function `f` has a constant-size normal form, then `f^N(x)` is
-constant-time (`O(L)`) on HOVM, and exponential-time (`O(2^L)`) on GHC, where
-`L` is the bit-size of `N`. Here, `id` was applied `2^n` times to an argument.
-Since the composition of `id` has a small normal form, HOVM is exponentially
-faster than GHC here.
+HOVM is exponentially faster than GHC here, due to optimality. In general, if
+the composition of a function `f` has a constant-size normal form, then `f^N(x)`
+is constant-time (`O(L)`) on HOVM, and exponential-time (`O(2^L)`) on GHC, where
+`L` is the bit-size of `N`. This has a surprising consequence: HOVM can apply
+certain functions `2^N` times using only `N` calls. This can be highly useful
+for algorithm design (ref the Lambda Arithmetic benchmark).
 
 QuickSort
 ---------
@@ -172,11 +171,12 @@ quicksort (Cons x xs) =
 
 #### Comment
 
-This quicksort doesn't benefit from optimality nor parallelism, so this is
-basically tests the performance of allocation, pattern-matching and recursion.
-GHC is slightly faster.
+GHC is slightly faster on this test. That's because quicksort doesn't benefit
+from optimality nor parallelism, so this is basically testing the performance of
+the allocator and pattern-matcher. As HOVM matures and gains more micro
+optimizations, this small difference should disappear.
 
-TODO: use MergeSort instead
+TODO: use MergeSort instead?
 
 Binary Tree Sum
 ----------------
@@ -207,8 +207,8 @@ sun (Bin a b) = sun a + sun b
 
 #### Comment
 
-Summing a binary tree is embarassingly parallel, so HOVM outperforms Haskell
-in multi-core machines.
+HOVM outperforms Haskell, but mostly because this algorithm is embarassingly
+parallel, and the used machine has 8 cores.
 
 Lambda Arithmetic
 -----------------
@@ -245,14 +245,23 @@ mul xs ys =
 
 #### Comment
 
-This benchmark performs multiplication using
+Once again, HOVM is exponentially faster than GHC. In this test, we used fast
+function composition to design a multiplication algorithm using
 [Scott-Encoded](https://kseo.github.io/posts/2016-12-13-scott-encoding.html)
-bit-strings. This tests how well a runtime deals with very high-order programs.
-As expected, HOVM drastically outperforms GHC, due to optimality. Lambda
-encodings are important for optimizations. For example, Haskell's [Free
+bit-strings. Doing so efficiently is simply impossible in GHC.
+
+Encoding data as lambdas has deep applications. For example, Haskell's Lists are
+optimized by converting them to lambdas (foldr/build), its Free Monads library
+has an entire, faster version based on lambdas, and so on. Sadly, GHC has
+trouble evaluating programs too high-order. HOVM's optimality opens up an entire
+field of unexplored lambda encoded algorithms.
+
+
+[Free
 Monad](https://hackage.haskell.org/package/free-5.1.7/docs/Control-Monad-Free.html)
 library has an alternative version based on lambda necodings, which is much
-faster. Sadly, GHC's lack of optimality reduces the scope of this technique. 
+faster. HOVM's optimal runtime opens the doors for an entire field of unexplored
+lambda encoded algorithms.
 
 // TODO: MORE BENCHMARKS
 ========================
