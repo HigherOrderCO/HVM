@@ -880,7 +880,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
 
     u64 term = ask_lnk(mem, host);
 
-    //printf("reducing: host=%d size=%llu init=%llu ", host, size, init); debug_print_lnk(term); printf("\n");
+    //printf("reducing: host=%d size=%llu init=%llu ", host, stack.size, init); debug_print_lnk(term); printf("\n");
     //for (u64 i = 0; i < size; ++i) {{
       //printf("- %llu ", stack[i]); debug_print_lnk(ask_lnk(mem, stack[i]>>1)); printf("\n");
     //}}
@@ -908,7 +908,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
           continue;
         }}
         case OP2: {{
-          //printf("op2 %llu %llu\n", slen, size);
+          //printf("op2 %llu %llu\n", slen, stack.size);
           if (slen == 1 || stack.size > 0) {{
             stk_push(&stack, host);
             stk_push(&stack, get_loc(term, 0) | 0x80000000);
@@ -917,6 +917,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
             host = get_loc(term, 1);
             continue;
           }}
+          break;
         }}
         case CAL: {{
           u64 fun = get_ext(term);
@@ -1065,6 +1066,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
           break;
         }}
         case OP2: {{
+          //printf("! op2 %llu %llu\n", slen, stack.size);
           u64 arg0 = ask_arg(mem, term, 0);
           u64 arg1 = ask_arg(mem, term, 1);
           if (get_tag(arg0) == U32 && get_tag(arg1) == U32) {{
@@ -1234,12 +1236,15 @@ Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {{
       }}
     }}
     #ifdef PARALLEL
+
+    //printf("ue %llu %llu\n", rec_size, slen);
     
     if (rec_size >= 2 && slen >= rec_size) {{
 
       u64 space = slen / rec_size;
 
       for (u64 i = 1; i < rec_size; ++i) {{
+        //printf("spawn %llu %llu\n", sidx + i * space, space);
         normal_fork(sidx + i * space, rec_locs[i], sidx + i * space, space);
       }}
 
@@ -1634,7 +1639,7 @@ int main() {{
 {}
 
   // Reduces and benchmarks
-  printf("Reducing.\n");
+  //printf("Reducing.\n");
   gettimeofday(&start, NULL);
   ffi_normal((u8*)mem.node, mem.size, 0);
   gettimeofday(&stop, NULL);
