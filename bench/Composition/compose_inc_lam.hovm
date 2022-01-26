@@ -1,4 +1,4 @@
-(N)          = 24
+(N)          = 26
 (Comp 0 f x) = (f x)
 (Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
 (E)          = λe λo λi e
