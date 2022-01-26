@@ -479,12 +479,12 @@ const u64 U64_PER_MB = 0x20000;
 const u64 U64_PER_GB = 0x8000000;
 
 #ifdef PARALLEL
-const u64 MAX_WORKERS = 8;
+#define MAX_WORKERS (8)
 #else
-const u64 MAX_WORKERS = 1;
+#define MAX_WORKERS (1)
 #endif
 const u64 MAX_DYNFUNS = 65536;
-const u64 MAX_ARITY = 16;
+#define MAX_ARITY (16)
 const u64 MEM_SPACE = U64_PER_GB; // each worker has 1 GB of the 8 GB total
 
 // Terms
@@ -1182,7 +1182,7 @@ void normal_fork(u64 tid, u64 host, u64 sidx, u64 slen);
 u64  normal_join(u64 tid);
 #endif
 
-const u64 normal_seen_mcap = 16777216; // uses 128 MB, covers heaps up to 8 GB
+#define normal_seen_mcap (16777216) // uses 128 MB, covers heaps up to 8 GB
 u64 normal_seen_data[normal_seen_mcap];
 
 void normal_init() {{
@@ -1357,7 +1357,7 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
     workers[t].has_result = -1;
     pthread_mutex_init(&workers[t].has_result_mutex, NULL);
     pthread_cond_init(&workers[t].has_result_signal, NULL);
-    workers[t].thread = NULL;
+    // workers[t].thread = NULL;
     #endif
   }}
 
