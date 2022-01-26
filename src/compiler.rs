@@ -391,6 +391,7 @@ fn line(code: &mut String, tab: u64, line: &str) {
 pub fn clang_runtime_template(c_ids: &str, inits: &str, codes: &str, id2nm: &str, names_count: u64) -> String {
   return format!(r#"
 #include <pthread.h>
+//#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -509,9 +510,6 @@ typedef struct {{
 // -------
 
 Worker workers[MAX_WORKERS];
-
-const u64 seen_mcap = 16777216; // uses 128 MB, covers heaps up to 8 GB
-u64 seen_data[seen_mcap]; 
 
 // Array
 // -----
@@ -813,14 +811,11 @@ Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {{
   return done;
 }}
 
-Lnk reduce(Worker* mem, u64 root, u64 depth) {{
+Lnk reduce(Worker* mem, u64 root, u64 slen) {{
   Stk stack;
   stk_init(&stack);
 
-  //u32* stack = mem->stack;
-
   u64 init = 1;
-  u64 size = 1;
   u32 host = (u32)root;
 
   while (1) {{
@@ -843,18 +838,27 @@ Lnk reduce(Worker* mem, u64 root, u64 depth) {{
         }}
         case DP0:
         case DP1: {{
+          // TODO: this is the only place where two threads can collide;
+          // will probably require atomics for correctness
+          //u64 lloc = get_loc(term, 0);
+          //atomic_flag* flag = ((atomic_flag*)(mem->node + lloc)) + 6;
+          //if (atomic_flag_test_and_set(flag) != 0) {{
+            //printf("[%llu] conflict\n", mem->tid);
+          //}}
           stk_push(&stack, host);
-          //stack[size++] = host;
           host = get_loc(term, 2);
           continue;
         }}
         case OP2: {{
-          stk_push(&stack, host);
-          stk_push(&stack, get_loc(term, 0) | 0x80000000);
-          //stack[size++] = host;
-          //stack[size++] = get_loc(term, 0) | 0x80000000;
-          host = get_loc(term, 1);
-          continue;
+          //printf("op2 %llu %llu\n", slen, size);
+          if (slen == 1 || stack.size > 0) {{
+            stk_push(&stack, host);
+            stk_push(&stack, get_loc(term, 0) | 0x80000000);
+            //stack[size++] = host;
+            //stack[size++] = get_loc(term, 0) | 0x80000000;
+            host = get_loc(term, 1);
+            continue;
+          }}
         }}
         case CAL: {{
           u64 fun = get_ext(term);
@@ -1110,19 +1114,27 @@ u8 get_bit(u64* bits, u64 bit) {{
 }}
 
 #ifdef PARALLEL
-void normal_fork(u64 tid, u64 host);
+void normal_fork(u64 tid, u64 host, u64 sidx, u64 slen);
 u64  normal_join(u64 tid);
-u64 can_spawn = 1;
 #endif
 
-Lnk normal(Worker* mem, u64 host) {{
+const u64 normal_seen_mcap = 16777216; // uses 128 MB, covers heaps up to 8 GB
+u64 normal_seen_data[normal_seen_mcap];
+
+void normal_init() {{
+  for (u64 i = 0; i < normal_seen_mcap; ++i) {{
+    normal_seen_data[i] = 0;
+  }}
+}}
+
+Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {{
   Lnk term = ask_lnk(mem, host);
-  //printf("normal "); debug_print_lnk(term); printf("\n");
-  if (get_bit(seen_data, host)) {{
+  //printf("normal %llu %llu | ", sidx, slen); debug_print_lnk(term); printf("\n");
+  if (get_bit(normal_seen_data, host)) {{
     return term;
   }} else {{
-    term = reduce(mem, host, 0);
-    set_bit(seen_data, host);
+    term = reduce(mem, host, slen);
+    set_bit(normal_seen_data, host);
     u64 rec_size = 0;
     u64 rec_locs[16];
     switch (get_tag(term)) {{
@@ -1148,6 +1160,13 @@ Lnk normal(Worker* mem, u64 host) {{
         rec_locs[rec_size++] = get_loc(term,2);
         break;
       }}
+      case OP2: {{
+        if (slen > 1) {{
+          rec_locs[rec_size++] = get_loc(term,0);
+          rec_locs[rec_size++] = get_loc(term,1);
+          break;
+        }}
+      }}
       case CTR: case CAL: {{
         u64 arity = (u64)get_ari(term);
         for (u64 i = 0; i < arity; ++i) {{
@@ -1157,43 +1176,59 @@ Lnk normal(Worker* mem, u64 host) {{
       }}
     }}
     #ifdef PARALLEL
-    // TODO: create worker stack, allow re-spawning workers
-    if (can_spawn && rec_size > 1 && rec_size <= MAX_WORKERS) {{
-      can_spawn = 0;
+    
+    if (rec_size >= 2 && slen >= rec_size) {{
 
-      for (u64 tid = 1; tid < rec_size; ++tid) {{
-        //printf("[%llu] spawn %llu\n", mem->tid, tid);
-        normal_fork(tid, rec_locs[tid]);
+      u64 space = slen / rec_size;
+
+      for (u64 i = 1; i < rec_size; ++i) {{
+        normal_fork(sidx + i * space, rec_locs[i], sidx + i * space, space);
       }}
 
-      link(mem, rec_locs[0], normal(mem, rec_locs[0]));
+      link(mem, rec_locs[0], normal_go(mem, rec_locs[0], sidx, space));
 
-      for (u64 tid = 1; tid < rec_size; ++tid) {{
-        //printf("[%llu] join %llu\n", mem->tid, tid);
-        link(mem, rec_locs[tid], normal_join(tid));
+      for (u64 i = 1; i < rec_size; ++i) {{
+        link(mem, get_loc(term, i), normal_join(sidx + i * space));
       }}
 
     }} else {{
+
       for (u64 i = 0; i < rec_size; ++i) {{
-        link(mem, rec_locs[i], normal(mem, rec_locs[i]));
+        link(mem, rec_locs[i], normal_go(mem, rec_locs[i], sidx, slen));
       }}
+
     }}
     #else
+
     for (u64 i = 0; i < rec_size; ++i) {{
-      link(mem, rec_locs[i], normal(mem, rec_locs[i]));
+      link(mem, rec_locs[i], normal_go(mem, rec_locs[i], sidx, slen));
     }}
+
     #endif
 
     return term;
   }}
 }}
 
+Lnk normal(Worker* mem, u64 host, u64 sidx, u64 slen) {{
+  // In order to allow parallelization of numeric operations, reduce() will treat OP2 as a CTR if
+  // there is enough thread space. So, for example, normalizing a recursive "sum" function with 4
+  // threads might return something like `(+ (+ 64 64) (+ 64 64))`. reduce() will treat the first
+  // 2 layers as CTRs, allowing normal() to parallelize them. So, in order to finish the reduction,
+  // we call `normal_go()` a second time, with no thread space, to eliminate lasting redexes.
+  normal_init();
+  normal_go(mem, host, sidx, slen);
+  normal_init();
+  return normal_go(mem, host, 0, 1);
+}}
+
+
 #ifdef PARALLEL
 
 // Normalizes in a separate thread
-void normal_fork(u64 tid, u64 host) {{
+void normal_fork(u64 tid, u64 host, u64 sidx, u64 slen) {{
   pthread_mutex_lock(&workers[tid].has_work_mutex);
-  workers[tid].has_work = host;
+  workers[tid].has_work = (sidx << 48) | (slen << 32) | host;
   pthread_cond_signal(&workers[tid].has_work_signal);
   pthread_mutex_unlock(&workers[tid].has_work_mutex);
 }}
@@ -1220,7 +1255,11 @@ void *worker(void *arg) {{
     while (workers[tid].has_work == -1) {{
       pthread_cond_wait(&workers[tid].has_work_signal, &workers[tid].has_work_mutex);
     }}
-    workers[tid].has_result = normal(&workers[tid], workers[tid].has_work);
+    u64 work = workers[tid].has_work;
+    u64 sidx = (work >> 48) & 0xFFFF;
+    u64 slen = (work >> 32) & 0xFFFF;
+    u64 host = (work >>  0) & 0xFFFFFFFF;
+    workers[tid].has_result = normal_go(&workers[tid], host, sidx, slen);
     workers[tid].has_work = -1;
     pthread_cond_signal(&workers[tid].has_result_signal);
     pthread_mutex_unlock(&workers[tid].has_work_mutex);
@@ -1234,11 +1273,6 @@ u64 ffi_cost;
 u64 ffi_size;
 
 void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
-
-  // Inits seen
-  for (u64 i = 0; i < seen_mcap; ++i) {{
-    seen_data[i] = 0;
-  }}
 
   // Init thread objects
   for (u64 t = 0; t < MAX_WORKERS; ++t) {{
@@ -1268,7 +1302,7 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
   #endif
 
   // Normalizes trm
-  normal(&workers[0], (u64) host);
+  normal(&workers[0], (u64) host, 0, MAX_WORKERS);
   
   // Computes total cost and size
   ffi_cost = 0;
