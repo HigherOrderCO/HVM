@@ -288,7 +288,7 @@ pub fn parse_op2(state: parser::State) -> parser::Answer<Option<BTerm>> {
         op("<", Oper::Ltn),
         op("<=", Oper::Lte),
         op("==", Oper::Eql),
-        op("=>", Oper::Gte),
+        op(">=", Oper::Gte),
         op(">", Oper::Gtn),
         op("!=", Oper::Neq),
       ],
