@@ -1,0 +1,7 @@
+(Gen 0) = Tip
+(Gen n) = (Bin (Gen (- n 1)) (Gen (- n 1)))
+
+(Sum Tip)       = 1
+(Sum (Bin a b)) = (+ (Sum a) (Sum b))
+
+(Main) = (Sum (Gen 30))
