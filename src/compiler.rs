@@ -23,6 +23,10 @@ pub fn compile_code(code: &str) -> String {
   return compile_book(&book);
 }
 
+pub fn compile_name(name: &str) -> String {
+  return format!("_{}_", name.to_uppercase());
+}
+
 pub fn compile_book(comp: &rb::RuleBook) -> String {
   let mut c_ids = String::new();
   let mut inits = String::new();
@@ -37,15 +41,15 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
     line(
       &mut c_ids,
       0,
-      &format!("const u64 {} = {};", name.to_uppercase(), comp.name_to_id.get(name).unwrap_or(&0)),
+      &format!("const u64 {} = {};", &compile_name(name), comp.name_to_id.get(name).unwrap_or(&0)),
     );
 
-    line(&mut inits, 6, &format!("case {}: {{", name.to_uppercase()));
+    line(&mut inits, 6, &format!("case {}: {{", &compile_name(name)));
     inits.push_str(&init);
     line(&mut inits, 7, &format!("continue;"));
     line(&mut inits, 6, &format!("}};"));
 
-    line(&mut codes, 6, &format!("case {}: {{", name.to_uppercase()));
+    line(&mut codes, 6, &format!("case {}: {{", &compile_name(name)));
     codes.push_str(&code);
     line(&mut codes, 7, &format!("break;"));
     line(&mut codes, 6, &format!("}};"));
@@ -1631,7 +1635,7 @@ int main() {{
   // Allocs data
   mem.size = 1;
   mem.node = (u64*)malloc(8 * 134217728 * sizeof(u64)); // 8gb
-  mem.node[0] = Cal(0, MAIN, 0);
+  mem.node[0] = Cal(0, _MAIN_, 0);
 
   // Id-to-Name map
   const u64 id_to_name_mcap = {};
