@@ -45,9 +45,9 @@ below as `main.hovm`:
 * Compiled:
 
     ```bash
-    hovm compile main.hovm                     # compiles hovm to C
-    clang -O2 main.hovm.out.c -o main.hovm.out # compiles C to executable
-    ./main.hovm.out                            # runs executable
+    hovm compile main.hovm                               # compiles hovm to C
+    clang -O2 main.hovm.out.c -o main.hovm.out -lpthread # compiles C to executable
+    ./main.hovm.out                                      # runs executable
     ```
 
 *That's it!*

@@ -1,5 +1,6 @@
+(N)     = 42
 (Fib 0) = 0
 (Fib 1) = 1
 (Fib n) = (+ (Fib (- n 1)) (Fib (- n 2)))
 
-(Main) = (Fib 42)
+(Main) = (Fib N)
