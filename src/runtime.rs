@@ -67,6 +67,7 @@ pub type Lnk = u64;
 pub type Rewriter = Box<dyn Fn(&mut Worker, u64, Lnk) -> bool>;
 
 pub struct Function {
+  pub arity: u64,
   pub stricts: Vec<u64>,
   pub rewriter: Rewriter,
 }
@@ -218,11 +219,11 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
   match get_tag(term) {
     DP0 => {
       link(mem, get_loc(term, 0), Era());
-      //reduce(mem, get_loc(ask_arg(mem,term,1),0));
+      //r_educe(mem, get_loc(ask_arg(mem,term,1),0));
     }
     DP1 => {
       link(mem, get_loc(term, 1), Era());
-      //reduce(mem, get_loc(ask_arg(mem,term,0),0));
+      //r_educe(mem, get_loc(ask_arg(mem,term,0),0));
     }
     VAR => {
       link(mem, get_loc(term, 0), Era());
@@ -341,19 +342,21 @@ pub fn reduce(
           let ari = get_ari(term);
           if let Some(f) = &funcs[fun as usize] {
             let len = f.stricts.len() as u64;
-            if len == 0 {
-              init = 0;
-            } else {
-              stack.push(host);
-              for i in &f.stricts {
-                if *i < f.stricts.len() as u64 - 1 {
-                  stack.push(get_loc(term, *i as u64) | 0x80000000);
-                } else {
-                  host = get_loc(term, *i as u64);
+            if ari == f.arity {
+              if len == 0 {
+                init = 0;
+              } else {
+                stack.push(host);
+                for i in &f.stricts {
+                  if *i < f.stricts.len() as u64 - 1 {
+                    stack.push(get_loc(term, *i as u64) | 0x80000000);
+                  } else {
+                    host = get_loc(term, *i as u64);
+                  }
                 }
               }
+              continue;
             }
-            continue;
           }
         }
         _ => {}

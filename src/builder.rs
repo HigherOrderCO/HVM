@@ -157,6 +157,7 @@ pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>>
 pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
 
+  let arity = dynfun.redex.len() as u64;
   let mut stricts = Vec::new();
   for (i, is_redex) in dynfun.redex.iter().enumerate() {
     if *is_redex {
@@ -230,7 +231,7 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
     false
   });
 
-  rt::Function { stricts, rewriter }
+  rt::Function { arity, stricts, rewriter }
 }
 
 /// Converts a Lambolt Term to a Runtime Term
@@ -301,7 +302,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
         DynTerm::App { func, argm }
       }
       lang::Term::Ctr { name, args } => {
-        let term_func = comp.name_to_id[name];
+        let term_func = *comp.name_to_id.get(name).expect(&format!("Unbound symbol: {}", name));
         let term_args = args.iter().map(|arg| convert_term(arg, comp, depth + 0, vars)).collect();
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
           DynTerm::Cal { func: term_func, args: term_args }
@@ -475,7 +476,7 @@ pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) 
 }
 
 // Evaluates a Lambolt term to normal form
-pub fn eval_code(main: &str, code: &str) -> (String, u64, u64, u64) {
+pub fn eval_code(call: &lang::Term, code: &str) -> (String, u64, u64, u64) {
   // Creates a new Runtime worker
   let mut worker = rt::new_worker();
 
@@ -488,9 +489,8 @@ pub fn eval_code(main: &str, code: &str) -> (String, u64, u64, u64) {
   // Builds dynamic functions
   let mut funs = build_runtime_functions(&book);
 
-  // Builds a runtime "(Main)" term
-  let main = lang::read_term("(Main)");
-  let host = alloc_term(&mut worker, &book, &main);
+  // Allocates the main term
+  let host = alloc_term(&mut worker, &book, call);
 
   // Normalizes it
   let init = Instant::now();

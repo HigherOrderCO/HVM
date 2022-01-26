@@ -21,8 +21,8 @@ What makes HOVM special?
 ========================
 
 HOVM is based on a new, mathematically beautiful model of computation, the
-Interaction Net, which is like the perfert child of the Lambda Calculus with the
-Turing Machine. In a way, it is very similar to Haskell's STG, but with key
+Interaction Net, which is like the perfert fusion of the Lambda Calculus with
+the Turing Machine. In a way, it is very similar to Haskell's STG, but with key
 differences that give it outstanding characteristics, such as:
 
 - Being **beta-optimal**: it is exponentially faster for many inputs.
@@ -40,26 +40,29 @@ though, the best implementations were still much slower than GHC in practice,
 which negated its theoretical advantages. Now, thanks to a recent memory layout
 breakthrough , we were able to completely redesign the runtime, and reach a peak
 speed of **2.5 billion rewrites per second** on common CPUs. That's **50x** more
-than the previous implementation, and enough to compete with GHC today.
+than the previous implementation, and, at this point, things get really
+interesting.
+
+**In short, I firmly believe that, given this breakthrough, and by further
+taking advantage of this new model computation, HOVM's current design is ready
+to scale and move us into a massively parallel, functional future of computing.
+And I hope this post can convince you to join me on this endeavour!**
 
 Benchmarks
 ==========
 
-Before we get technical, let's see some benchmarks against Haskell's GHC. Note
-that HOVM's current release is a proof-of-concept implemented in about 1 month
-by 4 part-time devs. It obviously won't always beat the most mature functional
-runtime in the world. 
-
-Haskell measured with:
+Before we get technical, let's show some numbers. I'll present benchmarks
+against Haskell's GHC. Note that HOVM's current release is a proof-of-concept
+implemented in about 1 month by 4 part-time devs. It obviously won't always beat
+the most mature functional runtime in the world. But some results are
+mind-blowing. I ran these tests on Apple's M1 Max, with these commands:
 
 ```bash
+# GHC
 ghc -O2 main.hs -o main
 time ./main
-```
 
-HOVM measured with:
-
-```bash
+# HOVM
 hovm main.hovm
 clang -O2 main.c -o main
 time ./main

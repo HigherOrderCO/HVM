@@ -29,12 +29,12 @@ fn run_cli() -> std::io::Result<()> {
 
   let cmd = &args[1];
 
-  if cmd == "run" && args.len() == 3 {
+  if cmd == "run" && args.len() >= 3 {
     let file = &args[2];
     return run_code(&load_file_code(&file));
   }
 
-  if cmd == "compile" && args.len() == 3 {
+  if (cmd == "cmp" || cmd == "compile") && args.len() >= 3 {
     let file = &args[2];
     return compile_code(&load_file_code(&file), &file);
   }
@@ -53,15 +53,25 @@ fn show_help() {
   println!("");
   println!("To compile a file to C:");
   println!("");
-  println!("  hovm compile file.hovm");
+  println!("  hovm cmp file.hovm");
   println!("");
   println!("More info: https://github.com/kindelia/hovm");
   println!("");
 }
 
+fn make_call() -> language::Term {
+  let pars = &std::env::args().collect::<Vec<String>>()[3..];
+  let name = "Main".to_string();
+  let mut args = Vec::new();
+  for i in 0 .. pars.len() {
+    args.push(language::read_term(&pars[i]));
+  }
+  return language::Term::Ctr { name, args }
+}
+
 fn run_code(code: &str) -> std::io::Result<()> {
   println!("Reducing.");
-  let (norm, cost, size, time) = builder::eval_code("Main", code);
+  let (norm, cost, size, time) = builder::eval_code(&make_call(), code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
   println!("");
@@ -70,7 +80,7 @@ fn run_code(code: &str) -> std::io::Result<()> {
 }
 
 fn compile_code(code: &str, name: &str) -> std::io::Result<()> {
-  let name = format!("{}.out.c", name);
+  let name = format!("{}.c", name);
   compiler::compile_code_and_save(code, &name)?;
   println!("Compiled to '{}'.", name);
   return Ok(());
@@ -133,7 +143,11 @@ fn run_example() -> std::io::Result<()> {
 
   // Evaluates with interpreter
   println!("Reducing with interpreter.");
-  let (norm, cost, size, time) = builder::eval_code("Main", code);
+  let mut call = language::Term::Ctr {
+    name: "Main".to_string(),
+    args: Vec::new()
+  };
+  let (norm, cost, size, time) = builder::eval_code(&call, code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
   println!("");

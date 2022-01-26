@@ -1,8 +1,6 @@
-(N) = 32
-
 // Computes f^(2^n)
 (Comp 0 f x) = (f x)
 (Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
 
 // Applies identity 2^n times to 0
-(Main) = (Comp (N) λx(x) 0)
+(Main n) = (Comp n λx(x) 0)

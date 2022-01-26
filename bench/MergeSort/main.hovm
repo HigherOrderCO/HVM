@@ -19,4 +19,4 @@
   (SortAux x (Nil))      = (Cons x Nil)
   (SortAux a (Cons b c)) = (Split (Cons a (Cons b c)) 0 Nil Nil)
 
-(Main) = (Sum (Sort (Randoms 0 2000000)))
+(Main n) = (Sum (Sort (Randoms 0 n)))

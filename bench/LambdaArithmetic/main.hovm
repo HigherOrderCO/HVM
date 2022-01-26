@@ -1,5 +1,3 @@
-(N) = 32
-
 // The Scott-Encoded Bits type
 (End)  = λe λo λi e
 (B0 p) = λe λo λi (o p)
@@ -38,9 +36,9 @@
   (FromU32Put s 0 i) = (B0 (FromU32 s i))
   (FromU32Put s 1 i) = (B1 (FromU32 s i))
 
-(Main) =
+(Main n) =
   let a = (FromU32 32 100000)
-  let b = (FromU32 32 (* 100000 N))
+  let b = (FromU32 32 (* 100000 n))
   (ToU32 (Mul a b))
 
 // Note: this is a faster, but uglier, version of Mul:

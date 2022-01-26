@@ -19,4 +19,4 @@
 (Randoms seed 0   ) = (Nil)
 (Randoms seed size) = (Cons seed (Randoms (+ (* seed 1664525) 1013904223) (- size 1)))
 
-(Main) = (Sum (Quicksort (Randoms 0 400000)))
+(Main n) = (Sum (Quicksort (Randoms 0 400000)))

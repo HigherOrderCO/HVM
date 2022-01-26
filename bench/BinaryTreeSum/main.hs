@@ -12,4 +12,4 @@ sun :: Tree -> Int
 sun Tip       = 1
 sun (Bin a b) = sun a + sun b
 
-main = print $ sun (gen n)
+main = print $ sun (gen 28)

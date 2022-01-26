@@ -46,7 +46,6 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
 
     line(&mut inits, 6, &format!("case {}: {{", &compile_name(name)));
     inits.push_str(&init);
-    line(&mut inits, 7, &format!("continue;"));
     line(&mut inits, 6, &format!("}};"));
 
     line(&mut codes, 6, &format!("case {}: {{", &compile_name(name)));
@@ -67,6 +66,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lang::Rule>, tab: u64) -> (
 
   // Converts redex vector to stricts vector
   // TODO: avoid code duplication, this same algo is on builder.rs
+  let arity = dynfun.redex.len() as u64;
   let mut stricts = Vec::new();
   for (i, is_redex) in dynfun.redex.iter().enumerate() {
     if *is_redex {
@@ -75,18 +75,21 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &Vec<lang::Rule>, tab: u64) -> (
   }
 
   // Computes the initializer, which calls reduce recursivelly
+  line(&mut init, tab + 0, &format!("if (get_ari(term) == {}) {{", dynfun.redex.len()));
   if stricts.len() == 0 {
-    line(&mut init, tab + 0, &format!("init = 0;"));
+    line(&mut init, tab + 1, &format!("init = 0;"));
   } else {
-    line(&mut init, tab + 0, &format!("stk_push(&stack, host);"));
+    line(&mut init, tab + 1, &format!("stk_push(&stack, host);"));
     for i in &stricts {
       if *i < stricts.len() as u64 - 1 {
-        line(&mut init, tab + 0, &format!("stk_push(&stack, get_loc(term, {}) | 0x80000000);", i));
+        line(&mut init, tab + 1, &format!("stk_push(&stack, get_loc(term, {}) | 0x80000000);", i));
       } else {
-        line(&mut init, tab + 0, &format!("host = get_loc(term, {});", i));
+        line(&mut init, tab + 1, &format!("host = get_loc(term, {});", i));
       }
     }
   }
+  line(&mut init, tab + 1, &format!("continue;"));
+  line(&mut init, tab + 0, &format!("}}"));
 
   // Applies the cal_par rule to superposed args
   for i in 0..dynfun.redex.len() as u64 {
@@ -456,6 +459,7 @@ pub fn clang_runtime_template(
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/time.h>
 
 #define PARALLEL
@@ -1628,21 +1632,36 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
 // Main
 // ----
 
+Lnk parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {{
+  if (code[0] >= '0' && code[0] <= '9') {{
+    return U_32(strtol(code, 0, 10));
+  }} else {{
+    return U_32(0);
+  }}
+}}
+
 // Uncomment to test without Deno FFI
-int main() {{
+int main(int argc, char* argv[]) {{
 
   Worker mem;
   struct timeval stop, start;
 
-  // Allocs data
-  mem.size = 1;
-  mem.node = (u64*)malloc(8 * 134217728 * sizeof(u64)); // 8gb
-  mem.node[0] = Cal(0, _MAIN_, 0);
-
   // Id-to-Name map
-  const u64 id_to_name_mcap = {};
-  char* id_to_name_data[id_to_name_mcap];
+  const u64 id_to_name_size = {};
+  char* id_to_name_data[id_to_name_size];
 {}
+
+  // Builds main term
+  mem.size = 0;
+  mem.node = (u64*)malloc(8 * 134217728 * sizeof(u64)); // 8gb
+  if (argc <= 1) {{
+    mem.node[mem.size++] = Cal(0, _MAIN_, 0);
+  }} else {{
+    mem.node[mem.size++] = Cal(argc - 1, _MAIN_, 1);
+    for (u64 i = 1; i < argc; ++i) {{
+      mem.node[mem.size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
+    }}
+  }}
 
   // Reduces and benchmarks
   //printf("Reducing.\n");
@@ -1660,7 +1679,7 @@ int main() {{
   // Prints result normal form
   const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
   char* code_data = (char*)malloc(code_mcap * sizeof(char)); 
-  readback(code_data, code_mcap, &mem, mem.node[0], id_to_name_data, id_to_name_mcap);
+  readback(code_data, code_mcap, &mem, mem.node[0], id_to_name_data, id_to_name_size);
   printf("%s\n", code_data);
 
   // Cleanup

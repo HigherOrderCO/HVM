@@ -30,8 +30,8 @@ below as `main.hovm`:
 (Map fn (Nil))            = (Nil)
 (Map fn (Cons head tail)) = (Cons (fn head) (Map fn tail))
 
-// Increments all numbers on [1,2,3]
-(Main) = (Map λx(+ x 1) (Cons 1 (Cons 2 (Cons 3 (Nil)))))
+// Adds a number to all elements in [1,2,3]
+(Main n) = (Map λx(+ x n) (Cons 1 (Cons 2 (Cons 3 (Nil)))))
 ```
 
 #### 3. Run it
@@ -39,15 +39,15 @@ below as `main.hovm`:
 * Interpreted:
 
     ```bash
-    hovm run main.hovm
+    hovm run main.hovm 10
     ```
 
 * Compiled:
 
     ```bash
-    hovm compile main.hovm                               # compiles hovm to C
-    clang -O2 main.hovm.out.c -o main.hovm.out -lpthread # compiles C to executable
-    ./main.hovm.out                                      # runs executable
+    hovm cmp main.hovm                           # compiles hovm to C
+    clang -O2 main.hovm.c -o main.hovm -lpthread # compiles C to executable
+    ./main.hovm.out 10                           # runs executable
     ```
 
 *That's it!*
