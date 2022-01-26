@@ -1501,8 +1501,10 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char*
         u64 head = stk_pop(&dirs[col]);
         if (head == 0) {{
           readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
+          stk_push(&dirs[col], head);
         }} else {{
           readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
+          stk_push(&dirs[col], head);
         }}
       }} else {{
         stk_push(chrs, '<');

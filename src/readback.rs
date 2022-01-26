@@ -97,9 +97,9 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
     fn get(&self, col: Lnk) -> Option<&Vec<bool>> {
       self.stacks.get(&col)
     }
-    fn pop(&mut self, col: Lnk) {
+    fn pop(&mut self, col: Lnk) -> bool {
       let stack = self.stacks.entry(col).or_insert_with(Vec::new);
-      stack.pop();
+      stack.pop().unwrap_or(false)
     }
     fn push(&mut self, col: Lnk, val: bool) {
       let stack = self.stacks.entry(col).or_insert_with(Vec::new);
@@ -143,8 +143,10 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         if let Some(val) = stack.last() {
           let arg_idx = *val as u64;
           let val = rt::ask_arg(ctx.mem, term, arg_idx);
-          stacks.pop(col);
-          go(ctx, stacks, val, depth + 1)
+          let old = stacks.pop(col);
+          let got = go(ctx, stacks, val, depth + 1);
+          stacks.push(col, old);
+          got
         } else {
           let val0 = rt::ask_arg(ctx.mem, term, 0);
           let val1 = rt::ask_arg(ctx.mem, term, 1);
