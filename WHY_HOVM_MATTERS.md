@@ -138,8 +138,8 @@ is constant-time (`O(L)`) on HOVM, and exponential-time (`O(2^L)`) on GHC, where
 certain functions `2^N` times using only `N` calls. This can be highly useful
 for algorithm design (ref the Lambda Arithmetic benchmark).
 
-QuickSort
----------
+Parallel QuickSort
+------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -147,23 +147,28 @@ QuickSort
 <td>
 
 ```javascript
-(Quicksort (Nil))       = (Nil)
-(Quicksort (Cons x xs)) =
-  let min = (Filter λn(< n x) xs)
-  let max = (Filter λn(> n x) xs)
-  (Concat (Quicksort min) (Cons x (Quicksort max)))
+(Quicksort Nil)                 = Empty
+(Quicksort (Cons x xs))         = (Quicksort_ x xs)
+(Quicksort_ p Nil)              = (Single p)
+(Quicksort_ p (Cons x xs))      = (Split p (Cons p (Cons x xs)) Nil Nil)
+  (Split p Nil         min max) = (Concat (Quicksort min) (Quicksort max))
+  (Split p (Cons x xs) min max) = (Place p (< p x) x xs min max)
+  (Place p 0 x xs      min max) = (Split p xs (Cons x min) max)
+  (Place p 1 x xs      min max) = (Split p xs min (Cons x max))
 ```
 
 </td>
 <td>
 
 ```haskell
-quicksort :: List Word32 -> List Word32
-quicksort Nil         = Nil
-quicksort (Cons x xs) =
-  let min = xfilter (\n -> if n < x then 1 else 0) xs
-      max = xfilter (\n -> if n > x then 1 else 0) xs
-  in xconcat (quicksort min) (Cons x (quicksort max))
+quicksort :: List Word32 -> Tree Word32
+quicksort Nil                    = Empty
+quicksort (Cons x Nil)           = Single x
+quicksort l@(Cons p (Cons x xs)) = split p l Nil Nil where
+  split p Nil         min max    = Concat (quicksort min) (quicksort max)
+  split p (Cons x xs) min max    = place p (p < x) x xs min max
+  place p False x xs  min max    = split p xs (Cons x min) max
+  place p True  x xs  min max    = split p xs min (Cons x max)
 ```
 
 </td>
@@ -174,12 +179,10 @@ quicksort (Cons x xs) =
 
 #### Comment
 
-GHC is slightly faster on this test. That's because quicksort doesn't benefit
-from optimality nor parallelism, so this is basically testing the performance of
-the allocator and pattern-matcher. As HOVM matures and gains more micro
-optimizations, this small difference should disappear.
-
-TODO: use MergeSort instead?
+This test implements the traditional QuickSort algorithm, except that, instead
+of returning a flat list, it returns a concatenation tree. This allows HOVM to
+automatically parallelize the algorithm. Because of that, it is considerably
+faster than GHC.
 
 Binary Tree Sum
 ----------------

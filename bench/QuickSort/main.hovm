@@ -1,22 +1,20 @@
-(Sum (Nil))       = 0
-(Sum (Cons x xs)) = (+ x (Sum xs))
+// Generates a random list
+(Randoms s 0) = (Nil)
+(Randoms s l) = (Cons s (Randoms (+ (* s 1664525) 1013904223) (- l 1)))
 
-(Filter fn (Nil))       = (Nil)
-(Filter fn (Cons x xs)) = (ConsIf (fn x) x (Filter fn xs))
+// Sums all elements in a concatenation tree
+(Sum Empty)        = 0
+(Sum (Single a))   = a
+(Sum (Concat a b)) = (+ (Sum a) (Sum b))
 
-(ConsIf 0 x xs) = xs
-(ConsIf n x xs) = (Cons x xs)
+// Parallel QuickSort
+(Quicksort Nil)                 = Empty
+(Quicksort (Cons x xs))         = (Quicksort_ x xs)
+(Quicksort_ p Nil)              = (Single p)
+(Quicksort_ p (Cons x xs))      = (Split p (Cons p (Cons x xs)) Nil Nil)
+  (Split p Nil         min max) = (Concat (Quicksort min) (Quicksort max))
+  (Split p (Cons x xs) min max) = (Place p (< p x) x xs min max)
+  (Place p 0 x xs      min max) = (Split p xs (Cons x min) max)
+  (Place p 1 x xs      min max) = (Split p xs min (Cons x max))
 
-(Concat (Nil) b)       = b
-(Concat (Cons x xs) b) = (Cons x (Concat xs b))
-
-(Quicksort (Nil))      = (Nil)
-(Quicksort (Cons x xs)) =
-  let min = (Filter λn(< n x) xs)
-  let max = (Filter λn(> n x) xs)
-  (Concat (Quicksort min) (Cons x (Quicksort max)))
-
-(Randoms seed 0   ) = (Nil)
-(Randoms seed size) = (Cons seed (Randoms (+ (* seed 1664525) 1013904223) (- size 1)))
-
-(Main n) = (Sum (Quicksort (Randoms 0 400000)))
+(Main n) = (Sum (Quicksort (Randoms 1 10000000)))

@@ -1,33 +1,29 @@
 import Data.Word
 
-data List a = Nil | Cons a (List a)
+data List a = Nil | Cons a (List a) deriving Show
+data Tree a = Empty | Single a | Concat (Tree a) (Tree a) deriving Show
 
-xsum :: List Word32 -> Word32
-xsum Nil         = 0
-xsum (Cons x xs) = x + xsum xs
+-- Generates a random list
+randoms :: Word32 -> Word32 -> List Word32
+randoms seed 0    = Nil
+randoms seed size = Cons seed (randoms (seed * 1664525 + 1013904223) (size - 1))
 
-xfilter :: (a -> Word32) -> List a -> List a
-xfilter _  Nil         = Nil
-xfilter fn (Cons x xs) = consIf (fn x) x (xfilter fn xs)
+-- Sums all elements in a concatenation tree
+sun :: Tree Word32 -> Word32
+sun Empty        = 0
+sun (Single a)   = a
+sun (Concat a b) = sun a + sun b
 
-consIf :: Word32 -> a -> List a -> List a
-consIf 0 x xs = xs
-consIf n x xs = Cons x xs
-
-xconcat :: List a -> List a -> List a
-xconcat Nil b = b
-xconcat (Cons x xs) b = Cons x (xconcat xs b)
-
-quicksort :: List Word32 -> List Word32
-quicksort Nil         = Nil
-quicksort (Cons x xs) =
-  let min = xfilter (\n -> if n < x then 1 else 0) xs
-      max = xfilter (\n -> if n > x then 1 else 0) xs
-  in xconcat (quicksort min) (Cons x (quicksort max))
-
-xrandoms :: Word32 -> Word32 -> List Word32
-xrandoms seed 0    = Nil
-xrandoms seed size = Cons seed (xrandoms (seed * 1664525 + 1013904223) (size - 1))
+-- Parallel QuickSort
+quicksort :: List Word32 -> Tree Word32
+quicksort Nil                    = Empty
+quicksort (Cons x Nil)           = Single x
+quicksort l@(Cons p (Cons x xs)) = split p l Nil Nil where
+  split p Nil         min max    = Concat (quicksort min) (quicksort max)
+  split p (Cons x xs) min max    = place p (p < x) x xs min max
+  place p False x xs  min max    = split p xs (Cons x min) max
+  place p True  x xs  min max    = split p xs min (Cons x max)
 
 main :: IO ()
-main = print $ (xsum (quicksort (xrandoms 0 400000)))
+main = do
+  print $ sun $ quicksort $ randoms 1 10000000
