@@ -1,0 +1,22 @@
+(Sum (Nil))       = 0
+(Sum (Cons x xs)) = (+ x (Sum xs))
+
+(Randoms s 0) = (Nil)
+(Randoms s l) = (Cons s (Randoms (+ (* s 1664525) 1013904223) (- l 1)))
+
+(Merge Nil        ys        ) = ys
+(Merge xs         Nil       ) = xs
+(Merge (Cons a t) (Cons b u)) = (Place (< a b) a t b u)
+  (Place 0 x xs y ys)         = (Cons y (Merge (Cons x xs) ys))
+  (Place 1 x xs y ys)         = (Cons x (Merge xs (Cons y ys)))
+
+(Split Nil         m a b)   = (Merge (Sort a) (Sort b))
+(Split (Cons x xs) 0 a b)   = (Split xs 1 (Cons x a) b)
+(Split (Cons x xs) 1 a b)   = (Split xs 0 a (Cons x b))
+
+(Sort (Nil))       = (Nil)
+(Sort (Cons x xs)) = (SortAux x xs)
+  (SortAux x (Nil))      = (Cons x Nil)
+  (SortAux a (Cons b c)) = (Split (Cons a (Cons b c)) 0 Nil Nil)
+
+(Main) = (Sum (Sort (Randoms 0 2000000)))

@@ -1,4 +1,0 @@
-(N)          = 32
-(Comp 0 f x) = (f x)
-(Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
-(Main)       = (Comp (N) λx(x) 0)

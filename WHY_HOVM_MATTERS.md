@@ -2,8 +2,10 @@ What is HOVM, and why it matters?
 =================================
 
 In essence, HOVM is just a machine that takes, as its input, a functional
-program that looks like untyped Haskell, and outputs its evaluated result. For
-example, given the following input:
+program that looks like untyped Haskell, and outputs its evaluated result. It
+can be used as a compile target for functional languages, as a virtual machine
+for decentralized computers, and even as a programming language. As an example,
+given the following input:
 
 ```javascript
 // Doubles every number in the [1, 2, 3] list
@@ -34,17 +36,11 @@ differences that give it outstanding characteristics, such as:
 In other words, in theory, a language compiled to this model could be as
 expressive as Haskell, as memory-efficient as Rust, all while having the
 potential to run in thousands of cores, like CUDA. Up to a few months ago,
-though, the best implementations were still 20-30x slower than GHC in practice,
+though, the best implementations were still much slower than GHC in practice,
 which negated its theoretical advantages. Now, thanks to a recent memory layout
 breakthrough , we were able to completely redesign the runtime, and reach a peak
 speed of **2.5 billion rewrites per second** on common CPUs. That's **50x** more
 than the previous implementation, and enough to compete with GHC today.
-
-Given this recent efficiency bump, and the naturally superior properties of
-interaction nets, **I firmly believe HOVM's current design is ready to scale and
-become the undisputed fastest runtime in the world**; yes, faster than C, Rust,
-Haskell; and I hope I can convince you to join me on my journey towards the
-inevitable parallel, functional future of computation!
 
 Benchmarks
 ==========
@@ -52,20 +48,16 @@ Benchmarks
 Before we get technical, let's see some benchmarks against Haskell's GHC. Note
 that HOVM's current release is a proof-of-concept implemented in about 1 month
 by 4 part-time devs. It obviously won't always beat the most mature functional
-runtime in the world. In some of the tests below, HOVM obliterates GHC due to
-better asymptotics; but that's not new, due to asymptotics (after all, Python
-QuickSort > C BubbleSort). In others, it performs worse. What is notable,
-though, is that even in cases where optimality plays no role, HOVM still does
-fairly well.
+runtime in the world. 
 
-Haskell was measured with:
+Haskell measured with:
 
 ```bash
 ghc -O2 main.hs -o main
 time ./main
 ```
 
-HOVM was measured with:
+HOVM measured with:
 
 ```bash
 hovm main.hovm
@@ -73,8 +65,42 @@ clang -O2 main.c -o main
 time ./main
 ```
 
-Apply id `2^N` times to the Int 0
----------------------------------
+Fibonacci
+---------
+
+<table>
+<tr> <td>HOVM</td> <td>Haskell</td> </tr>
+<tr>
+<td>
+
+```javascript
+(Fib 0) = 0
+(Fib 1) = 1
+(Fib n) = (+ (Fib (- n 1)) (Fib (- n 2)))
+```
+
+</td>
+<td>
+
+```haskell
+fib 0 = 0
+fib 1 = 1
+fib n = fib (n - 1) + fib (n - 2)
+```
+
+</td>
+</tr>
+</table>
+
+// TODO: GRAPH HERE
+
+#### Comment
+
+HOVM is still not on par with GHC on predominantly numeric computations, but it
+is not too far.
+
+Function composition
+--------------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -84,7 +110,6 @@ Apply id `2^N` times to the Int 0
 ```javascript
 (Comp 0 f x) = (f x)
 (Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
-(Main)       = (Comp N λx(x) 0)
 ```
 
 </td>
@@ -93,14 +118,13 @@ Apply id `2^N` times to the Int 0
 ```haskell
 comp 0 f x = f x
 comp n f x = comp (n - 1) (\x -> f (f x)) x
-main       = print$ comp n (\x->x) (0::Int)
 ```
 
 </td>
 </tr>
 </table>
 
-// TODO: CHART HERE
+// TODO: GRAPH HERE
 
 #### Comment
 
@@ -108,11 +132,12 @@ Function composition is one of cornerstones of functional programming, and,
 amazingly, it is one of the cases where GHC performs poorly. In general, if the
 composition of a function `f` has a constant-size normal form, then `f^N(x)` is
 constant-time (`O(L)`) on HOVM, and exponential-time (`O(2^L)`) on GHC, where
-`L` is the bit-size of `N`. Since the normal form of `id . id` is just `id`,
-this program is exponentially faster in HOVM.
+`L` is the bit-size of `N`. Here, `id` was applied `2^n` times to an argument.
+Since the composition of `id` has a small normal form, HOVM is exponentially
+faster than GHC here.
 
-Apply inc `2^N` times to the Int 0 
-----------------------------------
+QuickSort
+---------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -120,18 +145,23 @@ Apply inc `2^N` times to the Int 0
 <td>
 
 ```javascript
-(Pow 0 f x) = (f x)
-(Pow n f x) = (Pow (- n 1) λk(f (f k)) x)
-(Main)      = (Pow N λx(+ x 1) 0)
-  ```
+(Quicksort (Nil))       = (Nil)
+(Quicksort (Cons x xs)) =
+  let min = (Filter λn(< n x) xs)
+  let max = (Filter λn(> n x) xs)
+  (Concat (Quicksort min) (Cons x (Quicksort max)))
+```
 
 </td>
 <td>
 
 ```haskell
-pow 0 f x = f x
-pow n f x = pow (n - 1) (\x -> f (f x)) x
-main      = print $ pow n (\x -> x + 1) (0 :: Int)
+quicksort :: List Word32 -> List Word32
+quicksort Nil         = Nil
+quicksort (Cons x xs) =
+  let min = xfilter (\n -> if n < x then 1 else 0) xs
+      max = xfilter (\n -> if n > x then 1 else 0) xs
+  in xconcat (quicksort min) (Cons x (quicksort max))
 ```
 
 </td>
@@ -142,13 +172,14 @@ main      = print $ pow n (\x -> x + 1) (0 :: Int)
 
 #### Comment
 
-The composition of `u32_inc = λx. x + 1` does NOT have a constant-size normal
-form. For example, `u32_inc^4(x) = λx. x + 1 + 1 + 1 + 1`, and the size grows as
-`N` grows. Because of that, both HOVM and GHC have the same asymptotics here.
-To my surprise, though, HOVM is about 2x faster, even single-threaded.
+This quicksort doesn't benefit from optimality nor parallelism, so this is
+basically tests the performance of allocation, pattern-matching and recursion.
+GHC is slightly faster.
 
-Apply inc `2^N` to the BitString 0
-----------------------------------
+TODO: use MergeSort instead
+
+Binary Tree Sum
+----------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -156,36 +187,16 @@ Apply inc `2^N` to the BitString 0
 <td>
 
 ```javascript
-(N)           = 26
-(Comp 0 f x)  = (f x)
-(Comp n f x)  = (Comp (- n 1) λk(f (f k)) x)
-(Inc (E))     = (E)
-(Inc (O bs))  = (I bs)
-(Inc (I bs))  = (O (Inc bs))
-(Zero 0)      = (E)
-(Zero n)      = (O (Zero (- n 1)))
-(ToInt (E))   = 0
-(ToInt (O n)) = (* (ToInt n) 2)
-(ToInt (I n)) = (+ (* (ToInt n) 2) 1)
-(Main)        = (ToInt (Comp N λx(Inc x) (Zero 32)))
+(Sum Tip)       = 1
+(Sum (Bin a b)) = (+ (Sum a) (Sum b))
 ```
 
 </td>
 <td>
 
 ```haskell
-data Bits   = E | O Bits | I Bits deriving Show
-comp 0 f x  = f x
-comp n f x  = comp (n - 1) (\k -> f (f k)) x
-inc E       = E
-inc (O bs)  = I bs
-inc (I bs)  = O (inc bs)
-zero 0      = E
-zero n      = O (zero (n - 1))
-toInt (E)   = 0
-toInt (O n) = toInt n * 2
-toInt (I n) = toInt n * 2 + 1
-main        = print $ toInt (comp n inc (zero 32))
+sun Tip       = 1
+sun (Bin a b) = sun a + sun b
 ```
 
 </td>
@@ -196,14 +207,11 @@ main        = print $ toInt (comp n inc (zero 32))
 
 #### Comment
 
-This benchmark is similar to the previous, except that, instead of incrementing
-a machine integer `2^N` times, we increment a BitString represented as an
-algebraic datatype. The purpose of this benchmark is to stress-test how fast the
-runtime can perform pattern-matching and recursion. There is no asymptotical
-gain on the HOVM side, yet it is faster here (again, to my surprise).
+Summing a binary tree is embarassingly parallel, so HOVM outperforms Haskell
+in multi-core machines.
 
-Apply inc `2^N` to the λ-encoded BitString 0
---------------------------------------------
+Lambda Arithmetic
+-----------------
 
 <table>
 <tr> <td>HOVM</td> <td>Haskell</td> </tr>
@@ -211,34 +219,22 @@ Apply inc `2^N` to the λ-encoded BitString 0
 <td>
 
 ```javascript
-(N)          = 24
-(Comp 0 f x) = (f x)
-(Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
-(E)          = λe λo λi e
-(O pred)     = λe λo λi (o pred)
-(I pred)     = λe λo λi (i pred)
-(Inc bs)     = λe λo λi (bs e i λpred(o (Inc pred)))
-(Zero 0)     = (E)
-(Zero n)     = (O (Zero (- n 1)))
-(ToInt bs)   = (bs 0 λn(* (ToInt n) 2) λn(+ (* (ToInt n) 2) 1))
-(Main)       = (ToInt (Comp N λx(Inc x) (Zero 64)))
+(Mul xs ys) = 
+  let e = End
+  let o = λp (B0 (Mul p ys))
+  let i = λp (Add ys (B0 (Mul p ys)))
+  (xs e o i)
 ```
 
 </td>
 <td>
 
 ```haskell
-newtype BS = BS { get :: forall a. a -> (BS -> a) -> (BS -> a) -> a }
-comp 0 f x = f x
-comp n f x = comp (n - 1) (\k -> f (f k)) x
-e          = BS (\e -> \o -> \i -> e)
-o pred     = BS (\e -> \o -> \i -> o pred)
-i pred     = BS (\e -> \o -> \i -> i pred)
-inc bs     = BS (\e -> \o -> \i -> get bs e i (\pred -> o (inc pred)))
-zero 0     = e
-zero n     = o (zero (n - 1))
-toInt bs   = get bs 0 (\n -> toInt n * 2) (\n -> toInt n * 2 + 1)
-main       = print $ toInt (comp n (\x -> inc x) (zero 64))
+mul xs ys = 
+  let e = end
+      o = \p -> b0 (mul p ys)
+      i = \p -> add ys (b1 (mul p ys))
+  in get xs e o i
 ```
 
 </td>
@@ -249,25 +245,14 @@ main       = print $ toInt (comp n (\x -> inc x) (zero 64))
 
 #### Comment
 
-This is again similar to the previous benchmark, except that, this time, instead
-of using built-in datatypes to represent the BitString, we're using the [Scott
-Encoding](https://kseo.github.io/posts/2016-12-13-scott-encoding.html), which is
-a way to represent data using lambdas. Doing so causes HOVM to be exponentially
-faster than GHC. This result looks wrong; after all, we shouldn't be able to
-call `inc` a quadrillion times instantaneously. But that's exactly what happens.
-What is going on is that, since the composition of *inc* has a small normal
-form, this causes it to be slowly morphed into an "add with carry function" as
-the program executes. This effect is what I call "runtime fusion".
-
-Haskell programmers aren't unfamiliar with λ-encodings being used for
-optimization. For example, the widely used [Free Monads
-library](https://hackage.haskell.org/package/free-5.1.7/docs/Control-Monad-Free-Church.html)
-has an entire version that replaces native datatypes by λ-encodings, and it is
-much faster that way. But, since GHC isn't optimal, the application of this
-technique is very limited in Haskell. HOVM opens doors for an entire field of
-unexplored algorithms based on runtime fusion. I'd not be surprised if
-there are solutions to hard problems lying there.
-
+This benchmark performs multiplication using
+[Scott-Encoded](https://kseo.github.io/posts/2016-12-13-scott-encoding.html)
+bit-strings. This tests how well a runtime deals with very high-order programs.
+As expected, HOVM drastically outperforms GHC, due to optimality. Lambda
+encodings are important for optimizations. For example, Haskell's [Free
+Monad](https://hackage.haskell.org/package/free-5.1.7/docs/Control-Monad-Free.html)
+library has an alternative version based on lambda necodings, which is much
+faster. Sadly, GHC's lack of optimality reduces the scope of this technique. 
 
 // TODO: MORE BENCHMARKS
 ========================

@@ -1,7 +1,11 @@
+N = 28
+
+// Generates a binary tree
 (Gen 0) = Tip
 (Gen n) = (Bin (Gen (- n 1)) (Gen (- n 1)))
 
+// Sums its elements
 (Sum Tip)       = 1
 (Sum (Bin a b)) = (+ (Sum a) (Sum b))
 
-(Main) = (Sum (Gen 30))
+(Main) = (Sum (Gen N))

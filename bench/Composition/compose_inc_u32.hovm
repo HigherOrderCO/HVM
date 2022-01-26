@@ -1,4 +1,0 @@
-(N)         = 26
-(Pow 0 f x) = (f x)
-(Pow n f x) = (Pow (- n 1) λk(f (f k)) x)
-(Main)      = (Pow N λx(+ x 1) 0)

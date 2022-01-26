@@ -19,13 +19,4 @@
 (Randoms seed 0   ) = (Nil)
 (Randoms seed size) = (Cons seed (Randoms (+ (* seed 1664525) 1013904223) (- size 1)))
 
-(Main) = (Tuple
-  (Sum (Quicksort (Randoms 0 400000)))
-  (Sum (Quicksort (Randoms 1 400000)))
-  (Sum (Quicksort (Randoms 2 400000)))
-  (Sum (Quicksort (Randoms 3 400000)))
-  (Sum (Quicksort (Randoms 4 400000)))
-  (Sum (Quicksort (Randoms 5 400000)))
-  (Sum (Quicksort (Randoms 6 400000)))
-  (Sum (Quicksort (Randoms 7 400000)))
-)
+(Main) = (Sum (Quicksort (Randoms 0 400000)))

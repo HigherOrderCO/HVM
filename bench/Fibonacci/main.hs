@@ -1,5 +1,6 @@
 n = 42 :: Int
 
+-- Computes nth Fibonacci number
 fib :: Int -> Int
 fib 0 = 0
 fib 1 = 1

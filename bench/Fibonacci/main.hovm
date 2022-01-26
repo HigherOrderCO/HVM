@@ -1,4 +1,6 @@
-(N)     = 42
+(N) = 42
+
+// Computes nth Fibonacci number
 (Fib 0) = 0
 (Fib 1) = 1
 (Fib n) = (+ (Fib (- n 1)) (Fib (- n 2)))
