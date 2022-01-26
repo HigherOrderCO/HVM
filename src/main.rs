@@ -34,7 +34,7 @@ fn run_cli() -> std::io::Result<()> {
     return run_code(&load_file_code(&file));
   }
 
-  if (cmd == "cmp" || cmd == "compile") && args.len() >= 3 {
+  if (cmd == "c" || cmd == "compile") && args.len() >= 3 {
     let file = &args[2];
     return compile_code(&load_file_code(&file), &file);
   }
@@ -53,7 +53,7 @@ fn show_help() {
   println!("");
   println!("To compile a file to C:");
   println!("");
-  println!("  hovm cmp file.hovm");
+  println!("  hovm c file.hovm");
   println!("");
   println!("More info: https://github.com/kindelia/hovm");
   println!("");
@@ -80,7 +80,10 @@ fn run_code(code: &str) -> std::io::Result<()> {
 }
 
 fn compile_code(code: &str, name: &str) -> std::io::Result<()> {
-  let name = format!("{}.c", name);
+  if !name.ends_with(".hovm") {
+    panic!("Input file must end with .hovm.");
+  }
+  let name = format!("{}.c", &name[0 .. name.len() - 5]);
   compiler::compile_code_and_save(code, &name)?;
   println!("Compiled to '{}'.", name);
   return Ok(());
