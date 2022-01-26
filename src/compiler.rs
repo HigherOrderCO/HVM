@@ -449,7 +449,7 @@ pub fn clang_runtime_template(
   return format!(
     r#"
 #include <pthread.h>
-//#include <stdatomic.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -896,13 +896,11 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
         }}
         case DP0:
         case DP1: {{
-          // TODO: this is the only place where two threads can collide;
-          // will probably require atomics for correctness
-          //u64 lloc = get_loc(term, 0);
-          //atomic_flag* flag = ((atomic_flag*)(mem->node + lloc)) + 6;
-          //if (atomic_flag_test_and_set(flag) != 0) {{
-            //printf("[%llu] conflict\n", mem->tid);
-          //}}
+          // TODO: reason about this, comment
+          atomic_flag* flag = ((atomic_flag*)(mem->node + get_loc(term,0))) + 6;
+          if (atomic_flag_test_and_set(flag) != 0) {{
+            continue;
+          }}
           stk_push(&stack, host);
           host = get_loc(term, 2);
           continue;
@@ -1063,6 +1061,8 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
             }}
             break;
           }}
+          atomic_flag* flag = ((atomic_flag*)(mem->node + get_loc(term,0))) + 6;
+          atomic_flag_clear(flag);
           break;
         }}
         case OP2: {{
