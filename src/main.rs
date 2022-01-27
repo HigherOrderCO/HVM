@@ -44,18 +44,18 @@ fn run_cli() -> std::io::Result<()> {
 }
 
 fn show_help() {
-  println!("High-Order Virtual Machine ({})", env!("CARGO_PKG_VERSION"));
+  println!("High-order Virtual Machine ({})", env!("CARGO_PKG_VERSION"));
   println!("==========================");
   println!("");
   println!("To run a file, interpreted:");
   println!("");
-  println!("  hovm run file.hovm");
+  println!("  hvm run file.hvm");
   println!("");
   println!("To compile a file to C:");
   println!("");
-  println!("  hovm c file.hovm");
+  println!("  hvm c file.hvm");
   println!("");
-  println!("More info: https://github.com/kindelia/hovm");
+  println!("More info: https://github.com/kindelia/hvm");
   println!("");
 }
 
@@ -80,10 +80,10 @@ fn run_code(code: &str) -> std::io::Result<()> {
 }
 
 fn compile_code(code: &str, name: &str) -> std::io::Result<()> {
-  if !name.ends_with(".hovm") {
-    panic!("Input file must end with .hovm.");
+  if !name.ends_with(".hvm") {
+    panic!("Input file must end with .hvm.");
   }
-  let name = format!("{}.c", &name[0 .. name.len() - 5]);
+  let name = format!("{}.c", &name[0 .. name.len() - 4]);
   compiler::compile_code_and_save(code, &name)?;
   println!("Compiled to '{}'.", name);
   return Ok(());

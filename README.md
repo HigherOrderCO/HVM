@@ -1,7 +1,7 @@
-High-Order Virtual Machine (HOVM)
+High-order Virtual Machine (HVM)
 =================================
 
-**High-Order Virtual Machine (HOVM)** is a pure functional compile target that
+**High-order Virtual Machine (HVM)** is a pure functional compile target that
 is **lazy**, **non-garbage-collected** and **massively parallel**. Not only
 that, it is **beta-optimal**, which means it, in several cases, can be
 exponentially faster than most functional runtime, including Haskell's GHC.
@@ -9,7 +9,7 @@ exponentially faster than most functional runtime, including Haskell's GHC.
 That is possible due to a new model of computation, the Interaction Net, which
 combines the Turing Machine with the Lambda Calculus. Up until recently, that
 model, despite elegant, was not efficient in practice. A recent breaktrough,
-though, improved its efficiency drastically, giving birth to the HOVM. Despite
+though, improved its efficiency drastically, giving birth to the HVM. Despite
 being a prototype, it already beats mature compilers in many cases, and is set
 to scale towards uncharted levels of performance.
 
@@ -23,14 +23,14 @@ Usage
 First, install [Rust](https://www.rust-lang.org/). Then, type:
 
 ```bash
-git clone git@github.com:Kindelia/HOVM
-cd HOVM
+git clone git@github.com:Kindelia/HVM
+cd HVM
 cargo install --path .
 ```
 
-#### 2. Create a HOVM file
+#### 2. Create a HVM file
 
-HOVM files look like untyped Haskell. Save the file below as `main.hovm`:
+HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 
 ```javascript
 // Creates a tree with `2^n` elements
@@ -48,13 +48,13 @@ HOVM files look like untyped Haskell. Save the file below as `main.hovm`:
 #### 3. Test it with the interpreter
 
 ```bash
-hovm run main.hovm
+hvm run main.hvm
 ```
 
 #### 4. Compile it to blazingly fast, parallel C
 
 ```bash
-hovm c main.hovm                   # compiles hovm to C
+hvm c main.hvm                   # compiles hvm to C
 clang -O2 main.c -o main -lpthread # compiles C to executable
 ./main                             # runs the executable
 ```
@@ -68,19 +68,19 @@ tip of iceberg.
 Benchmarks
 ==========
 
-HOVM has two main advantages over GHC: beta-optimality and automatic
+HVM has two main advantages over GHC: beta-optimality and automatic
 parallelism. As such, to compare the runtimes, I'll highlight 2 parallel
 benchmarks (one simple and one complex), 2 optimal benchmarks (one simple and
-one compelx) and 1 sequential benchmark. Note HOVM is still an early prototype,
+one compelx) and 1 sequential benchmark. Note HVM is still an early prototype,
 it **obviously** won't beat GHC in general, but it does quite fine already, and
 should improve steadily as optimizations are implemented. Tests were ran with
-`ghc -O2` for Haskell and `clang -O2` for HOVM, in an 8-core M1 Max processor.
+`ghc -O2` for Haskell and `clang -O2` for HVM, in an 8-core M1 Max processor.
 
 List Fold (Sequential)
 ----------------------
 
 <table>
-<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
+<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
@@ -137,14 +137,14 @@ main = do
 
 In this micro benchmark, we just build a very huge list of numbers, and fold
 over it to add them all. Since lists are sequential, and since there are no
-high-order lambdas, HOVM doesn't have any technical advantage over GHC. Because
+high-order lambdas, HVM doesn't have any technical advantage over GHC. Because
 of that, both runtimes perform very similar.
 
 Tree Sum (Parallel)
 -------------------
 
 <table>
-<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
+<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
@@ -194,7 +194,7 @@ main = do
 ![](bench/_results_/TreeSum.png)
 
 The example from the README, TreeSum recursively builds and sums all elements of
-a perfect binary tree. HOVM outperforms Haskell by a wide margin, because this
+a perfect binary tree. HVM outperforms Haskell by a wide margin, because this
 algorithm is embarassingly parallel, allowing it to fully use all the 8 cores
 available on my machine.
 
@@ -202,7 +202,7 @@ QuickSort (Parallel?)
 ---------------------
 
 <table>
-<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
+<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
@@ -259,15 +259,15 @@ main = do
 
 This test once again takes advantage of automatic parallelism by modifying the
 usual QuickSort implementation to return a concatenation tree instead of a flat
-list. This, again, allows HOVM to use multiple cores, but not fully, which is
+list. This, again, allows HVM to use multiple cores, but not fully, which is
 why it doesn't significantly outperform GHC. I'm looking for alternative sorting
-algorithms that make better use of HOVM's implicit parallelism.
+algorithms that make better use of HVM's implicit parallelism.
 
 Composition (Optimal)
 ---------------------
 
 <table>
-<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
+<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
@@ -304,10 +304,10 @@ main = do
 
 ![](bench/_results_/Composition.png)
 
-This chart isn't wrong: HOVM is *exponentially* faster for function composition,
+This chart isn't wrong: HVM is *exponentially* faster for function composition,
 due to optimality, depending on the target function. There is no parallelism
 involved here. In general, if the composition of a function `f` has a
-constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HOVM,
+constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HVM,
 and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
 functional algorithms that weren't possible before.
 
@@ -315,7 +315,7 @@ Lambda Arithmetic (Optimal)
 ---------------------------
 
 <table>
-<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
+<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
@@ -384,17 +384,17 @@ main = do
 ![](bench/_results_/LambdaArithmetic.png)
 
 This example takes advantage of beta-optimality to implement multiplication
-using lambda-encoded bit-strings. Once again, HOVM halts instantly, while GHC
+using lambda-encoded bit-strings. Once again, HVM halts instantly, while GHC
 struggles to deal with all these lambdas. Lambda encodings have wide practical
 applications. For example, Haskell's Lists are optimized by converting them to
 lambdas (foldr/build), its Free Monads library has a faster version based on
-lambdas, and so on. HOVM's optimality open doors for an entire unexplored field
+lambdas, and so on. HVM's optimality open doors for an entire unexplored field
 of lambda encoded algorithms that were simply impossible before.
 
 How is that possible?
 =====================
 
-Check [HOW.md](https://github.com/Kindelia/HOVM/blob/master/HOW.md).
+Check [HOW.md](https://github.com/Kindelia/HVM/blob/master/HOW.md).
 
 How can I help?
 ===============

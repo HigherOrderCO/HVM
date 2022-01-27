@@ -180,7 +180,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "hovm"
+name = "humansize"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02296996cb8796d7c6e3bc2d9211b7802812d36999a51bb754123ead7d37d026"
+
+[[package]]
+name = "hvm"
 version = "0.1.0"
 dependencies = [
  "askama",
@@ -190,12 +196,6 @@ dependencies = [
  "cranelift-native",
  "ropey",
 ]
-
-[[package]]
-name = "humansize"
-version = "1.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "02296996cb8796d7c6e3bc2d9211b7802812d36999a51bb754123ead7d37d026"
 
 [[package]]
 name = "libc"

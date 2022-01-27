@@ -1,7 +1,7 @@
 # cargo-features = ["const_impl_trait", "type_alias_impl_trait"]
 
 [package]
-name = "hovm"
+name = "hvm"
 version = "0.1.0"
 edition = "2018"
 

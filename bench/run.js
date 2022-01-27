@@ -24,15 +24,15 @@ const programs = {
 };
 
 const evaluators = {
-  //HovmInterpreter: {
+  //HvmInterpreter: {
     //pre: (name, file_path, temp_dir) => [],
-    //execution: (name, n, temp_dir) => `hovm run ${name} ${n}`,
-    //extension: ".hovm",
+    //execution: (name, n, temp_dir) => `hvm run ${name} ${n}`,
+    //extension: ".hvm",
   //},
-  HOVM: {
-    pre: (name, file_path) => ["hovm compile " + name, `clang -O2 ${file_path}/main.c -o .bin/hovm`],
-    execution: (name, n) => `.bin/hovm ${n}`,
-    extension: ".hovm",
+  HVM: {
+    pre: (name, file_path) => ["hvm compile " + name, `clang -O2 ${file_path}/main.c -o .bin/hvm`],
+    execution: (name, n) => `.bin/hvm ${n}`,
+    extension: ".hvm",
   },
   GHC: {
     pre: (name, file_path) => [`ghc -O2 ${name} -o .bin/ghc`],
@@ -177,4 +177,4 @@ try {
 } catch(e) {
   console.log(e);
 }
-// console.log(exec("hovm", ()));
+// console.log(exec("hvm", ()));
