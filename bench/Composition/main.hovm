@@ -2,5 +2,5 @@
 (Comp 0 f x) = (f x)
 (Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
 
-// Applies identity 2^n times to 0
+// Performs 2^n compositions
 (Main n) = (Comp n λx(x) 0)

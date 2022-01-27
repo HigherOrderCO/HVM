@@ -1,4 +1,5 @@
 import Data.Word
+import System.Environment
 
 data Tree = Node Tree Tree | Leaf Word32
 
@@ -12,5 +13,7 @@ sun :: Tree -> Word32
 sun (Leaf x)   = 1
 sun (Node a b) = sun a + sun b
 
--- Performs 2^30 additions
-main = print $ sun (gen 30)
+-- Performs 2^n additions
+main = do
+  n <- read.head <$> getArgs :: IO Word32
+  print $ sun (gen n)
