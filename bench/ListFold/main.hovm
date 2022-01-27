@@ -1,0 +1,15 @@
+(Fold Nil         c n) = n
+(Fold (Cons x xs) c n) =
+  (c x (Fold xs c n))
+
+(Range 0 xs) = xs
+(Range n xs) =
+  let m = (- n 1)
+  (Range m (Cons m xs))
+
+(Main n) =
+  let size = (* n 1000000)
+  let list = (Range size Nil)
+  (Fold λaλb(+ a b) 0)
+
+
