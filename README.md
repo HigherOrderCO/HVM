@@ -2,16 +2,16 @@ High-order Virtual Machine (HVM)
 =================================
 
 **High-order Virtual Machine (HVM)** is a pure functional compile target that
-is **lazy**, **non-garbage-collected** and **massively parallel**. Not only
-that, it is **beta-optimal**, which means that, in several cases, it can be
-exponentially faster than most functional runtimes, including Haskell's GHC.
+is **lazy**, **non-garbage-collected** and **massively parallel**. It is also
+**beta-optimal**, meaning that, in several cases, it can be exponentially
+faster than most functional runtimes, including Haskell's GHC.
 
 That is possible due to a new model of computation, the Interaction Net, which
-combines the Turing Machine with the Lambda Calculus. Up until recently, that
-model, despite elegant, was not efficient in practice. A recent breaktrough,
-though, improved its efficiency drastically, giving birth to the HVM. Despite
-being a prototype, it already beats mature compilers in many cases, and is set
-to scale towards uncharted levels of performance.
+combines the Turing Machine with the Lambda Calculus. Up until recently, this
+model, despite its elegance, was inefficient in practice. However, a recent
+breaktrough has drastically improved its efficiency, giving birth to the HVM.
+Despite being a prototype, it already beats mature compilers in many cases,
+and is set to scale towards uncharted levels of performance.
 
 **Welcome to the inevitable parallel, functional future of computers!**
 
@@ -28,7 +28,7 @@ cd HVM
 cargo install --path .
 ```
 
-#### 2. Create a HVM file
+#### 2. Create an HVM file
 
 HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 
@@ -37,7 +37,7 @@ HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 (Gen 0) = (Leaf 1)
 (Gen n) = (Node (Gen(- n 1)) (Gen(- n 1)))
 
-// Adds all elemements of a tree
+// Adds all elements of a tree
 (Sum (Leaf x))   = x
 (Sum (Node a b)) = (+ (Sum a) (Sum b))
 
@@ -71,10 +71,10 @@ Benchmarks
 HVM has two main advantages over GHC: beta-optimality and automatic parallelism.
 As such, to compare them, I've selected 2 parallel benchmarks (simple and
 complex), 2 optimal benchmarks (simple and complex) and 1 sequential benchmark.
-Keep in mind HVM is still an early prototype, it **obviously** won't beat GHC in
-general, but it does quite fine already, and should improve steadily as
-optimizations are implemented. Tests were ran with `ghc -O2` for Haskell and
-`clang -O2` for HVM, in an 8-core M1 Max processor.
+Keep in mind that HVM is still an early prototype, so it **obviously** won't
+beat GHC in general, but it does quite fine already and should improve steadily
+as optimizations are implemented. Tests were compiled with `ghc -O2` for Haskell
+and `clang -O2` for HVM, on an 8-core M1 Max processor.
 
 List Fold (Sequential)
 ----------------------
@@ -133,10 +133,10 @@ main = do
 
 ![](bench/_results_/ListFold.png)
 
-In this micro benchmark, we just build a very huge list of numbers, and fold
-over it to add them all. Since lists are sequential, and since there are no
-high-order lambdas, HVM doesn't have any technical advantage over GHC. Because
-of that, both runtimes perform very similarly.
+In this micro benchmark, we just build a huge list of numbers, and fold over
+it to sum them. Since lists are sequential, and since there are no higher-
+order lambdas, HVM doesn't have any technical advantage over GHC. As such,
+both runtimes perform very similarly.
 
 Tree Sum (Parallel)
 -------------------
@@ -192,8 +192,8 @@ main = do
 ![](bench/_results_/TreeSum.png)
 
 TreeSum recursively builds and sums all elements of a perfect binary tree. HVM
-outperforms Haskell by a wide margin, because this algorithm is embarassingly
-parallel, allowing it to fully use all the 8 cores available.
+outperforms Haskell by a wide margin because this algorithm is embarassingly
+parallel, allowing it to fully use all 8 available cores.
 
 QuickSort (Parallel?)
 ---------------------
@@ -212,7 +212,7 @@ QuickSort (Parallel?)
 (Sort (Cons x xs))  =
   (Split p (Cons p xs) Nil Nil)
 
-// Splits list in two partitions
+// Splits list into two partitions
 (Split p Nil min max) =
   let smin = (Sort min)
   let smax = (Sort max)
@@ -237,7 +237,7 @@ qsort (Cons x Nil) = Single x
 qsort (Cons p xs)  =
   split p (Cons p xs) Nil Nil
 
--- Splits list in two partitions
+-- Splits list into two partitions
 split p Nil min max =
   let smin = qsort min
       smax = qsort max
@@ -260,7 +260,7 @@ main = do
 
 This test once again takes advantage of automatic parallelism by modifying the
 usual QuickSort implementation to return a concatenation tree instead of a flat
-list. This, again, allows HVM to use multiple cores, but not fully, which is
+list. Again, this allows HVM to use multiple cores, but not fully, which is
 why it doesn't significantly outperform GHC. I'm looking for alternative sorting
 algorithms that make better use of HVM's implicit parallelism.
 
@@ -312,7 +312,7 @@ constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HVM,
 and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
 novel functional algorithms. I highly encourage you to try composing different
 functions and watching how their complexity behaves. Can you tell if it will be
-linear or exponential? How recursion affects it? That's a very insightful
+linear or exponential? Or how recursion affects it? That's a very insightful
 experience!
 
 Lambda Arithmetic (Optimal)
@@ -368,7 +368,7 @@ inc xs = Bits $ \ex -> \ox -> \ix ->
 add :: Bits -> Bits -> Bits
 add xs ys = app xs (\x -> inc x) ys
 
--- Muls two Bits
+-- Multiplies two Bits
 mul :: Bits -> Bits -> Bits
 mul xs ys = 
   let e = end
@@ -397,7 +397,7 @@ struggles to deal with all these lambdas. Lambda encodings have wide practical
 applications. For example, Haskell's Lists are optimized by converting them to
 lambdas (foldr/build), its Free Monads library has a faster version based on
 lambdas, and so on. HVM's optimality open doors for an entire unexplored field
-of lambda encoded algorithms that were simply impossible before.
+of lambda-encoded algorithms that were simply impossible before.
 
 How is that possible?
 =====================
