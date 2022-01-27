@@ -16,7 +16,7 @@ mod runtime;
 fn main() -> std::io::Result<()> {
   run_cli()?;
   //run_example()?;
-  return Ok(());
+  Ok(())
 }
 
 fn run_cli() -> std::io::Result<()> {
@@ -31,42 +31,39 @@ fn run_cli() -> std::io::Result<()> {
 
   if cmd == "run" && args.len() >= 3 {
     let file = &args[2];
-    return run_code(&load_file_code(&file));
+    return run_code(&load_file_code(file));
   }
 
   if (cmd == "c" || cmd == "compile") && args.len() >= 3 {
     let file = &args[2];
-    return compile_code(&load_file_code(&file), &file);
+    return compile_code(&load_file_code(file), file);
   }
 
   println!("Invalid arguments: {:?}.", args);
-  return Ok(());
+  Ok(())
 }
 
 fn show_help() {
   println!("High-order Virtual Machine ({})", env!("CARGO_PKG_VERSION"));
   println!("==========================");
-  println!("");
+  println!();
   println!("To run a file, interpreted:");
-  println!("");
+  println!();
   println!("  hvm run file.hvm");
-  println!("");
+  println!();
   println!("To compile a file to C:");
-  println!("");
+  println!();
   println!("  hvm c file.hvm");
-  println!("");
+  println!();
   println!("More info: https://github.com/kindelia/hvm");
-  println!("");
+  println!();
 }
 
 fn make_call() -> language::Term {
   let pars = &std::env::args().collect::<Vec<String>>()[3..];
   let name = "Main".to_string();
-  let mut args = Vec::new();
-  for i in 0 .. pars.len() {
-    args.push(language::read_term(&pars[i]));
-  }
-  return language::Term::Ctr { name, args }
+  let args = pars.iter().map(|par| language::read_term(par)).collect();
+  language::Term::Ctr { name, args }
 }
 
 fn run_code(code: &str) -> std::io::Result<()> {
@@ -74,9 +71,9 @@ fn run_code(code: &str) -> std::io::Result<()> {
   let (norm, cost, size, time) = builder::eval_code(&make_call(), code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
-  println!("");
+  println!();
   println!("{}", norm);
-  return Ok(());
+  Ok(())
 }
 
 fn compile_code(code: &str, name: &str) -> std::io::Result<()> {
@@ -86,12 +83,12 @@ fn compile_code(code: &str, name: &str) -> std::io::Result<()> {
   let name = format!("{}.c", &name[0 .. name.len() - 4]);
   compiler::compile_code_and_save(code, &name)?;
   println!("Compiled to '{}'.", name);
-  return Ok(());
+  Ok(())
 }
 
 fn load_file_code(file_name: &str) -> String {
-  return std::fs::read_to_string(file_name)
-    .expect(&format!("Error reading file: '{}'.", file_name));
+  std::fs::read_to_string(file_name)
+    .unwrap_or_else(|_| panic!("Error reading file: '{}'.", file_name))
 }
 
 fn run_example() -> std::io::Result<()> {
@@ -153,9 +150,9 @@ fn run_example() -> std::io::Result<()> {
   let (norm, cost, size, time) = builder::eval_code(&call, code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
-  println!("");
+  println!();
   println!("{}", norm);
-  println!("");
+  println!();
 
-  return Ok(());
+  Ok(())
 }
