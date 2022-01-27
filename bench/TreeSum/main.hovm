@@ -1,0 +1,10 @@
+// Creates a tree with `2^n` copies of `x`
+(Gen 0 x) = (Leaf x)
+(Gen n x) = (Node (Gen (- n 1) x) (Gen (- n 1) x))
+
+// Sums a tree in parallel
+(Sum (Leaf x))   = x
+(Sum (Node a b)) = (+ (Sum a) (Sum b))
+
+// Performs 2^30 sums
+(Main n) = (Sum (Gen 30 1))

@@ -1,4 +1,0 @@
-[[syntax]]
-name = "c"
-expr_start = "/*"
-expr_end = "*/"
