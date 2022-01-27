@@ -40,7 +40,7 @@
   (FromU32Put s 0 i) = (B0 (FromU32 s i))
   (FromU32Put s 1 i) = (B1 (FromU32 s i))
 
-// Computes (100k * 100k * n)
+// Squares (n * 100k)
 (Main n) =
   let a = (FromU32 32 (* 100000 n))
   let b = (FromU32 32 (* 100000 n))

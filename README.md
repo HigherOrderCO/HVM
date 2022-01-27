@@ -3,7 +3,7 @@ High-order Virtual Machine (HVM)
 
 **High-order Virtual Machine (HVM)** is a pure functional compile target that
 is **lazy**, **non-garbage-collected** and **massively parallel**. Not only
-that, it is **beta-optimal**, which means it, in several cases, can be
+that, it is **beta-optimal**, which means that, in several cases, it can be
 exponentially faster than most functional runtimes, including Haskell's GHC.
 
 That is possible due to a new model of computation, the Interaction Net, which
@@ -54,7 +54,7 @@ hvm run main.hvm
 #### 4. Compile it to blazingly fast, parallel C
 
 ```bash
-hvm c main.hvm                   # compiles hvm to C
+hvm c main.hvm                     # compiles hvm to C
 clang -O2 main.c -o main -lpthread # compiles C to executable
 ./main                             # runs the executable
 ```
@@ -68,13 +68,13 @@ tip of iceberg.
 Benchmarks
 ==========
 
-HVM has two main advantages over GHC: beta-optimality and automatic
-parallelism. As such, to compare the runtimes, I'll highlight 2 parallel
-benchmarks (one simple and one complex), 2 optimal benchmarks (one simple and
-one compelx) and 1 sequential benchmark. Note HVM is still an early prototype,
-it **obviously** won't beat GHC in general, but it does quite fine already, and
-should improve steadily as optimizations are implemented. Tests were ran with
-`ghc -O2` for Haskell and `clang -O2` for HVM, in an 8-core M1 Max processor.
+HVM has two main advantages over GHC: beta-optimality and automatic parallelism.
+As such, to compare them, I've selected 2 parallel benchmarks (simple and
+complex), 2 optimal benchmarks (simple and complex) and 1 sequential benchmark.
+Keep in mind HVM is still an early prototype, it **obviously** won't beat GHC in
+general, but it does quite fine already, and should improve steadily as
+optimizations are implemented. Tests were ran with `ghc -O2` for Haskell and
+`clang -O2` for HVM, in an 8-core M1 Max processor.
 
 List Fold (Sequential)
 ----------------------
@@ -87,8 +87,7 @@ List Fold (Sequential)
 ```javascript
 // Folds over a list
 (Fold Nil         c n) = n
-(Fold (Cons x xs) c n) =
-  (c x (Fold xs c n))
+(Fold (Cons x xs) c n) = (c x (Fold xs c n))
 
 // A list from 0 to n
 (Range 0 xs) = xs
@@ -110,8 +109,7 @@ List Fold (Sequential)
 -- Folds over a list
 fold :: List a -> (a -> r -> r) -> r -> r
 fold Nil         c n = n
-fold (Cons x xs) c n =
-  c x (fold xs c n)
+fold (Cons x xs) c n = c x (fold xs c n)
 
 -- A list from 0 to n
 range :: Word32 -> List Word32 -> List Word32
@@ -138,7 +136,7 @@ main = do
 In this micro benchmark, we just build a very huge list of numbers, and fold
 over it to add them all. Since lists are sequential, and since there are no
 high-order lambdas, HVM doesn't have any technical advantage over GHC. Because
-of that, both runtimes perform very similar.
+of that, both runtimes perform very similarly.
 
 Tree Sum (Parallel)
 -------------------
@@ -193,10 +191,9 @@ main = do
 
 ![](bench/_results_/TreeSum.png)
 
-The example from the README, TreeSum recursively builds and sums all elements of
-a perfect binary tree. HVM outperforms Haskell by a wide margin, because this
-algorithm is embarassingly parallel, allowing it to fully use all the 8 cores
-available on my machine.
+TreeSum recursively builds and sums all elements of a perfect binary tree. HVM
+outperforms Haskell by a wide margin, because this algorithm is embarassingly
+parallel, allowing it to fully use all the 8 cores available.
 
 QuickSort (Parallel?)
 ---------------------
@@ -207,17 +204,19 @@ QuickSort (Parallel?)
 <td>
 
 ```javascript
+(...)
+
 // Parallel QuickSort
-(Sort Nil) =
-  Empty
-(Sort (Cons x Nil)) =
-  (Single p)
-(Sort (Cons x xs)) =
+(Sort Nil)          = Empty
+(Sort (Cons x Nil)) = (Single p)
+(Sort (Cons x xs))  =
   (Split p (Cons p xs) Nil Nil)
 
 // Splits list in two partitions
 (Split p Nil min max) =
-  (Concat (Sort min) (Sort max))
+  let smin = (Sort min)
+  let smax = (Sort max)
+  (Concat smin smax)
 (Split p (Cons x xs) min max) =
   (Place p (< p x) x xs min max)
 
@@ -229,18 +228,20 @@ QuickSort (Parallel?)
 <td>
 
 ```haskell
+(...)
+
 -- Parallel QuickSort
 qsort :: List Word32 -> Tree Word32
-qsort Nil =
-  Empty
-qsort (Cons x Nil) =
-  Single x
-qsort (Cons p xs) =
+qsort Nil          = Empty
+qsort (Cons x Nil) = Single x
+qsort (Cons p xs)  =
   split p (Cons p xs) Nil Nil
 
 -- Splits list in two partitions
 split p Nil min max =
-  Concat (qsort min) (qsort max)
+  let smin = qsort min
+      smax = qsort max
+  in Concat smin smax
 split p (Cons x xs) min max =
   place p (p < x) x xs min max
 
@@ -309,7 +310,10 @@ due to optimality, depending on the target function. There is no parallelism
 involved here. In general, if the composition of a function `f` has a
 constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HVM,
 and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
-functional algorithms that weren't possible before.
+novel functional algorithms. I highly encourage you to try composing different
+functions and watching how their complexity behaves. Can you tell if it will be
+linear or exponential? How recursion affects it? That's a very insightful
+experience!
 
 Lambda Arithmetic (Optimal)
 ---------------------------
@@ -320,6 +324,8 @@ Lambda Arithmetic (Optimal)
 <td>
 
 ```javascript
+(...)
+
 // Increments a Bits by 1
 (Inc xs) = λex λox λix
   let e = ex
@@ -337,9 +343,9 @@ Lambda Arithmetic (Optimal)
   let i = λp (Add ys (B0 (Mul p ys)))
   (xs e o i)
 
-// Computes (100k * 100k * n)
+// Squares (n * 100k)
 (Main n) =
-  let a = (FromU32 32 100000)
+  let a = (FromU32 32 (* 100000 n))
   let b = (FromU32 32 (* 100000 n))
   (ToU32 (Mul a b))
 ```
@@ -348,6 +354,8 @@ Lambda Arithmetic (Optimal)
 <td>
 
 ```haskell
+(...)
+
 -- Increments a Bits by 1
 inc :: Bits -> Bits
 inc xs = Bits $ \ex -> \ox -> \ix ->
@@ -368,11 +376,11 @@ mul xs ys =
       i = \p -> add ys (b1 (mul p ys))
   in get xs e o i
 
--- Computes (100k * 100k * n)
+-- Squares (n * 100k)
 main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
-  let a = fromU32 32 100000
+  let a = fromU32 32 (100000 * n)
   let b = fromU32 32 (100000 * n)
   print $ toU32 (mul a b)
 ```
@@ -384,7 +392,7 @@ main = do
 ![](bench/_results_/LambdaArithmetic.png)
 
 This example takes advantage of beta-optimality to implement multiplication
-using lambda-encoded bit-strings. Once again, HVM halts instantly, while GHC
+using lambda-encoded bitstrings. Once again, HVM halts instantly, while GHC
 struggles to deal with all these lambdas. Lambda encodings have wide practical
 applications. For example, Haskell's Lists are optimized by converting them to
 lambdas (foldr/build), its Free Monads library has a faster version based on

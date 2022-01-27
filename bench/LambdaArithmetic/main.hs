@@ -52,7 +52,7 @@ fromU32 s i = fromU32Put (s - 1) (i `mod` 2) (i `div` 2) where
   fromU32Put s 0 i = b0 (fromU32 s i)
   fromU32Put s 1 i = b1 (fromU32 s i)
 
--- Computes (100k * 100k * n)
+-- Squares (n * 100k)
 main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
