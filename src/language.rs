@@ -1,10 +1,5 @@
 use crate::parser;
 use std::fmt;
-use std::{
-  collections::{BTreeMap, HashMap},
-  fmt::format,
-  u64,
-};
 
 // Types
 // =====
@@ -109,17 +104,17 @@ impl fmt::Display for Term {
             }
             return Some(());
           }
-          if name == "StrNil" && args.len() == 0 {
+          if name == "StrNil" && args.is_empty() {
             return Some(());
           }
         }
-        return None;
+        None
       }
       let mut result = String::new();
       result.push('"');
       go(term, &mut result)?;
       result.push('"');
-      return Some(result);
+      Some(result)
     }
     match self {
       Self::Var { name } => write!(f, "{}", name),
@@ -171,11 +166,11 @@ pub fn parse_let(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
     parser::text_parser("let "),
     Box::new(|state| {
-      let (state, spk1) = parser::consume("let ", state)?;
+      let (state, _) = parser::consume("let ", state)?;
       let (state, name) = parser::name1(state)?;
-      let (state, spk1) = parser::consume("=", state)?;
+      let (state, _) = parser::consume("=", state)?;
       let (state, expr) = parse_term(state)?;
-      let (state, skp2) = parser::text(";", state)?;
+      let (state, _) = parser::text(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Let { name, expr, body })))
     }),
@@ -187,12 +182,12 @@ pub fn parse_dup(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
     parser::text_parser("dup "),
     Box::new(|state| {
-      let (state, spk1) = parser::consume("dup ", state)?;
+      let (state, _) = parser::consume("dup ", state)?;
       let (state, nam0) = parser::name1(state)?;
       let (state, nam1) = parser::name1(state)?;
-      let (state, spk1) = parser::consume("=", state)?;
+      let (state, _) = parser::consume("=", state)?;
       let (state, expr) = parse_term(state)?;
-      let (state, skp2) = parser::text(";", state)?;
+      let (state, _) = parser::text(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Dup { nam0, nam1, expr, body })))
     }),
@@ -204,7 +199,7 @@ pub fn parse_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
     parser::text_parser("λ"),
     Box::new(|state| {
-      let (state, skp0) = parser::text("λ", state)?;
+      let (state, _) = parser::text("λ", state)?;
       let (state, name) = parser::name(state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Lam { name, body })))
@@ -218,7 +213,7 @@ pub fn parse_lam_ugly(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
     parser::text_parser("@"),
     Box::new(|state| {
-      let (state, skp0) = parser::text("@", state)?;
+      let (state, _) = parser::text("@", state)?;
       let (state, name) = parser::name(state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Lam { name, body })))
@@ -253,7 +248,7 @@ pub fn parse_app(state: parser::State) -> parser::Answer<Option<BTerm>> {
 pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<BTerm>> {
   parser::guard(
     Box::new(|state| {
-      let (state, open) = parser::text("(", state)?;
+      let (state, _) = parser::text("(", state)?;
       let (state, head) = parser::get_char(state)?;
       Ok((state, ('A'..='Z').contains(&head) || head == '.'))
     }),
@@ -342,11 +337,11 @@ pub fn parse_op2(state: parser::State) -> parser::Answer<Option<BTerm>> {
       Ok((state, open && is_op_char(head)))
     }),
     Box::new(|state| {
-      let (state, skp0) = parser::text("(", state)?;
+      let (state, _) = parser::text("(", state)?;
       let (state, oper) = parse_oper(state)?;
       let (state, val0) = parse_term(state)?;
       let (state, val1) = parse_term(state)?;
-      let (state, skp1) = parser::text(")", state)?;
+      let (state, _) = parser::text(")", state)?;
       Ok((state, Box::new(Term::Op2 { oper, val0, val1 })))
     }),
     state,
@@ -375,8 +370,8 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
       Ok((state, head == '"'))
     }),
     Box::new(|state| {
-      let (state, head) = parser::text("\"", state)?;
-      let mut chars : Vec<char> = Vec::new();
+      let (state, _head) = parser::text("\"", state)?;
+      let mut chars: Vec<char> = Vec::new();
       let mut state = state;
       loop {
         let (new_state, next) = parser::get_char(state)?;
@@ -388,20 +383,12 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
           state = new_state;
         }
       }
-      let empty = Term::Ctr {
-        name: "StrNil".to_string(),
-        args: Vec::new(),
-      };
-      let list = Box::new(chars.iter().rfold(empty, |t,h| {
-        return Term::Ctr {
-          name: "StrCons".to_string(),
-          args: vec![
-            Box::new(Term::U32 { numb: *h as u32 }),
-            Box::new(t)
-          ],
-        };
+      let empty = Term::Ctr { name: "StrNil".to_string(), args: Vec::new() };
+      let list = Box::new(chars.iter().rfold(empty, |t, h| Term::Ctr {
+        name: "StrCons".to_string(),
+        args: vec![Box::new(Term::U32 { numb: *h as u32 }), Box::new(t)],
       }));
-      return Ok((state, list));
+      Ok((state, list))
     }),
     state,
   )
@@ -432,7 +419,7 @@ pub fn parse_rule(state: parser::State) -> parser::Answer<Option<Rule>> {
     parser::text_parser(""),
     Box::new(|state| {
       let (state, lhs) = parse_term(state)?;
-      let (state, spk) = parser::consume("=", state)?;
+      let (state, _) = parser::consume("=", state)?;
       let (state, rhs) = parse_term(state)?;
       Ok((state, Rule { lhs, rhs }))
     }),
@@ -468,6 +455,7 @@ pub fn read_file(code: &str) -> File {
   parser::read(Box::new(parse_file), code)
 }
 
+#[allow(dead_code)]
 pub fn read_rule(code: &str) -> Option<Rule> {
   parser::read(Box::new(parse_rule), code)
 }

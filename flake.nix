@@ -5,7 +5,7 @@
 # https://nest.pijul.com/pijul/pijul:main/SXEYMYF7P4RZM.BKPQ6
 # https://github.com/srid/rust-nix-template/blob/master/flake.nix
 {
-  description = "Beta-optimal, massively-parallel, non-garbage-collected and strongly confluent functional runtime.";
+  description = "A lazy, beta-optimal, massively-parallel, non-garbage-collected and strongly-confluent functional compilation target.";
   inputs = {
     crate2nix = {
       url = "github:kolloch/crate2nix";
@@ -31,6 +31,7 @@
     let
       name = "hvm";
       rustChannel = "stable";
+      rustVersion = "latest";
       inherit (builtins)
         attrValues
         listToAttrs
@@ -46,20 +47,20 @@
             (listToAttrs (map
               (element: {
                 name = element;
-                value = before.rust-bin.${rustChannel}.latest.default;
+                value = before.rust-bin.${rustChannel}.${rustVersion}.default;
               }) [
               "cargo"
               "rustc"
             ])))
         ];
-        pkgs = nixpkgs.legacyPackages.${system} // {
+        pkgs = import nixpkgs {
           inherit system overlays;
         };
         buildInputs = [
-          pkgs.hyperfine
-          pkgs.time
           # TODO: Remove this when `generatedCargoNix` works.
           pkgs.crate2nix
+          pkgs.hyperfine
+          pkgs.time
         ];
         nativeBuildInputs = [
           pkgs.clang
@@ -94,6 +95,10 @@
         packages.${name} = cargoNix.rootCrate.build;
         # `nix build`
         defaultPackage = self.packages.${system}.${name};
+        # `nix flake check`
+        checks.${name} = cargoNix.rootCrate.build.override {
+          runTests = true;
+        };
         # `nix run`
         apps.${name} = flake-utils.lib.mkApp {
           inherit name;

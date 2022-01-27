@@ -1,10 +1,3 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_parens)]
-#![allow(non_snake_case)]
-#![allow(unused_imports)]
-#![allow(unused_mut)]
-
 mod builder;
 mod compiler;
 mod language;
@@ -20,7 +13,7 @@ fn main() -> std::io::Result<()> {
 }
 
 fn run_cli() -> std::io::Result<()> {
-  let mut args: Vec<String> = std::env::args().collect();
+  let args: Vec<String> = std::env::args().collect();
 
   fn hvm(file: &str) -> String {
     if !file.ends_with(".hvm") {
@@ -88,7 +81,7 @@ fn compile_code(code: &str, name: &str) -> std::io::Result<()> {
   if !name.ends_with(".hvm") {
     panic!("Input file must end with .hvm.");
   }
-  let name = format!("{}.c", &name[0 .. name.len() - 4]);
+  let name = format!("{}.c", &name[0..name.len() - 4]);
   compiler::compile_code_and_save(code, &name)?;
   println!("Compiled to '{}'.", name);
   Ok(())
@@ -99,17 +92,18 @@ fn load_file_code(file_name: &str) -> String {
     .unwrap_or_else(|_| panic!("Error reading file: '{}'.", file_name))
 }
 
+#[allow(dead_code)]
 fn run_example() -> std::io::Result<()> {
   // Source code
-  let code = "(Main) = (λf λx (f (f x)) λf λx (f (f x)))";
+  let _code = "(Main) = (λf λx (f (f x)) λf λx (f (f x)))";
 
-  let code = "
+  let _code = "
     (Fn 0) = 1
     (Fn n) = (+ (Fn (- n 1)) (Fn (- n 1)))
     (Main) = (Fn 20)
   ";
 
-  let code = "
+  let _code = "
     // Applies a function to all elements in a list
     (Map fn (Nil))            = (Nil)
     (Map fn (Cons head tail)) = (Cons (fn head) (Map fn tail))
@@ -118,7 +112,7 @@ fn run_example() -> std::io::Result<()> {
     (Main) = (Map λx(+ x 1) (Cons 1 (Cons 2 (Cons 3 (Nil)))))
   ";
 
-  let code = "
+  let _code = "
     (Filter fn (Cons x xs)) = (Filter_Cons (fn x) fn x xs)
       (Filter_Cons 1 fn x xs) = (Cons x (Filter fn xs))
       (Filter_Cons 0 fn x xs) = (Filter fn xs)
@@ -144,26 +138,21 @@ fn run_example() -> std::io::Result<()> {
     (Foo (Bar 1 x) (Baz z k))            = (+ x z)
     (Foo (Bar 7 8) (Baz z k))            = 7
   ";
-  
+
   // Compiles to C and saves as 'main.c'
   compiler::compile_code_and_save(code, "main.c")?;
   println!("Compiled to 'main.c'.");
 
   // Evaluates with interpreter
-  
+
   println!("Reducing with interpreter.");
-  let mut call = language::Term::Ctr {
-    name: "Main".to_string(),
-    args: Vec::new()
-  };
+  let call = language::Term::Ctr { name: "Main".to_string(), args: Vec::new() };
   let (norm, cost, size, time) = builder::eval_code(&call, code);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
   println!();
   println!("{}", norm);
   println!();
-
-
 
   Ok(())
 }

@@ -14,32 +14,32 @@ TL;DR
 Since this became a long, in-depth overview, here is the TL;DR for the lazy:
 
 HVM doesn't need a global, stop-the-world garbage collector because every
-"object" only exists in one place, **exactly like on Rust**; i.e., HVM is
+"object" only exists in one place, **exactly like in Rust**; i.e., HVM is
 *linear*. The catch is that, when an object needs to be referenced in multiple
 places, instead of a complex borrow system, HVM has an elegant, pervasive **lazy
-clone primitive**, that works very similarly to Haskell's evaluation model,
-making cloning essentially free, because the copy of any object isn't made in a
-single, expensive pass, but in a layer-by-layer, on demand fashion. And the
+clone primitive** that works very similarly to Haskell's evaluation model. This
+makes cloning essentially free, because the copy of any object isn't made in a
+single, expensive pass, but in a layer-by-layer, on-demand fashion. And the
 nicest part is that this clone primitive works for not only data, but also for
 lambdas, which explains why HVM has better asymptotics than GHC: it is capable
 of **sharing computations inside lambdas, which GHC can't**. That was only
 possible due to a key insight that comes from Lamping's Abstract Algorithm for
-optimal evaluation of λ-calculus terms.  T. Finally, the fact that objects only
+optimal evaluation of λ-calculus terms. Finally, the fact that objects only
 exist in one place greatly simplifies parallelism. Notice how there is only one
-use of atomics in the entire [runtime.c](https://github.com/Kindelia/HVM/blob/master/src/runtime.c).
+use of atomics in the entire [runtime.c](src/runtime.c).
 
 This was all known and possible since years ago (see other implementations of
-optimal reduction), but all implementations of this algorithm, up to this date,
-represented terms as graphs, which demanded a lot of pointer indirection, making
+optimal reduction), but all implementations of this algorithm, until now,
+represented terms as graphs. This demanded a lot of pointer indirection, making
 it slow in practice. A new memory format, based on [SIC](https://github.com/VictorTaelin/Symmetric-Interaction-Calculus),
 takes advantage of the fact that inputs are known to be λ-terms, allowing for a
 50% lower memory throughput, and letting us avoid several impossible cases. This
 made the runtime 50x (!) faster, which finally allowed it to compete with GHC
-and similar. And this is just a prototype I wrote in about a month; I don't even
-consider myself proficient in C; so I have expectations for the long-term
+and similar. And this is just a prototype I wrote in about a month. I don't even
+consider myself proficient in C, so I have expectations for the long-term
 potential of HVM.
 
-That's about it. Now, on for the long, in-depth explanation.
+That's about it. Now, onto the long, in-depth explanation.
 
 
 How does it work?

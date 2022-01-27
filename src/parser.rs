@@ -25,7 +25,7 @@
 //
 // Check the Testree example at the bottom of this file.
 
-use std::cmp;
+#![allow(dead_code)]
 
 // Types
 // =====
@@ -66,7 +66,7 @@ pub fn find(text: &str, target: &str) -> usize {
 
 pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> A {
   match parser(State { code, index: 0 }) {
-    Ok((state, value)) => value,
+    Ok((_state, value)) => value,
     Err(msg) => {
       println!("{}", msg);
       panic!("No parse.");
@@ -90,7 +90,7 @@ pub fn head_default(state: State) -> char {
 }
 
 pub fn tail(state: State) -> State {
-  let fst = head(state);
+  let _fst = head(state);
   let add = match head(state) {
     Some(c) => c.len_utf8(),
     None => 0,
@@ -99,7 +99,7 @@ pub fn tail(state: State) -> State {
 }
 
 pub fn get_char(state: State) -> Answer<char> {
-  let (state, skipped) = skip(state)?;
+  let (state, _skipped) = skip(state)?;
   if let Some(got) = head(state) {
     let state = State { code: state.code, index: state.index + got.len_utf8() };
     Ok((state, got))
@@ -156,7 +156,7 @@ pub fn skip(state: State) -> Answer<bool> {
   let (state, comment) = skip_comment(state)?;
   let (state, spaces) = skip_spaces(state)?;
   if comment || spaces {
-    let (state, skipped) = skip(state)?;
+    let (state, _skipped) = skip(state)?;
     Ok((state, true))
   } else {
     Ok((state, false))
@@ -187,7 +187,7 @@ pub fn text_here_parser<'a>(pat: &'static str) -> Parser<'a, bool> {
 
 // Like 'text_here', but skipping spaces and comments before.
 pub fn text<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
-  let (state, skipped) = skip(state)?;
+  let (state, _skipped) = skip(state)?;
   let (state, matched) = text_here(pat, state)?;
   Ok((state, matched))
 }
@@ -212,7 +212,7 @@ pub fn consume_parser<'a>(pat: &'static str) -> Parser<'a, ()> {
 
 // Returns true if we are at the end of the file, skipping spaces and comments.
 pub fn done(state: State) -> Answer<bool> {
-  let (state, skipped) = skip(state)?;
+  let (state, _skipped) = skip(state)?;
   Ok((state, state.index == state.code.len()))
 }
 
@@ -231,7 +231,7 @@ pub fn guard<'a, A: 'a>(
   body: Parser<'a, A>,
   state: State<'a>,
 ) -> Answer<'a, Option<A>> {
-  let (state, skipped) = skip(state)?;
+  let (state, _skipped) = skip(state)?;
   let (_, matched) = head(state)?;
   if matched {
     let (state, got) = body(state)?;
@@ -263,7 +263,7 @@ pub fn grammar<'a, A: 'a>(
 
 // Evaluates a parser and returns its result, but reverts its effect.
 pub fn dry<'a, A: 'a>(parser: Parser<'a, A>, state: State<'a>) -> Answer<'a, A> {
-  let (new_state, result) = parser(state)?;
+  let (_new_state, result) = parser(state)?;
   Ok((state, result))
 }
 
@@ -298,12 +298,12 @@ pub fn list<'a, A: 'a, B: 'a>(
   make: Box<dyn Fn(Vec<A>) -> B>,
   state: State<'a>,
 ) -> Answer<'a, B> {
-  let (state, skp) = parse_open(state)?;
+  let (state, _) = parse_open(state)?;
   let mut state = state;
   let mut elems = Vec::new();
   loop {
     let (new_state, done) = parse_close(state)?;
-    let (new_state, skip) = parse_sep(new_state)?;
+    let (new_state, _) = parse_sep(new_state)?;
     if done {
       state = new_state;
       break;
@@ -345,7 +345,7 @@ pub fn name_here(state: State) -> Answer<String> {
 
 // Parses a name after skipping.
 pub fn name(state: State) -> Answer<String> {
-  let (state, skipped) = skip(state)?;
+  let (state, _skipped) = skip(state)?;
   name_here(state)
 }
 
@@ -458,10 +458,10 @@ pub fn node_parser<'a>() -> Parser<'a, Option<Box<Testree>>> {
     guard(
       text_parser("("),
       Box::new(|state| {
-        let (state, skp) = consume("(", state)?;
+        let (state, _) = consume("(", state)?;
         let (state, lft) = testree_parser()(state)?;
         let (state, rgt) = testree_parser()(state)?;
-        let (state, skp) = consume(")", state)?;
+        let (state, _) = consume(")", state)?;
         Ok((state, Box::new(Testree::Node { lft, rgt })))
       }),
       state,
