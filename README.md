@@ -130,8 +130,9 @@ main = do
 #### Comment
 
 The example from the README, TreeSum recursively builds and sums all elements of
-a perfect binary tree. HOVM outperforms Haskell because this algorithm is
-embarassingly parallel, allowing it to use all the 8 cores available.
+a perfect binary tree. HOVM outperforms Haskell by a wide margin, because this
+algorithm is embarassingly parallel, allowing it to fully use all the 8 cores
+available on my machine.
 
 Parallel QuickSort
 ------------------
@@ -200,8 +201,9 @@ main = do
 
 This test once again takes advantage of automatic parallelism by modifying the
 usual QuickSort implementation to return a concatenation tree instead of a flat
-list. This, again, allows HOVM to use multiple cores. Both targets are very
-close in this test.
+list. This, again, allows HOVM to use multiple cores, but not fully, which is
+why HOVM doesn't always outperform GHC. I'm looking for alternative sorting
+algorithms that make better use of HOVM's implicit parallelism.
 
 Optimal Composition
 -------------------
@@ -250,7 +252,8 @@ This is a micro benchmark that composes a function `2^N` times and applies it to
 an argument. There is no parallelism involved here. Instead, HOVM beats GHC
 because of beta-optimality. In general, if the composition of a function `f` has
 a constant-size normal form, then `f^N(x)` is constant-time (`O(L)`) on HOVM,
-and exponential-time (`O(2^L)`) on GHC.
+and exponential-time (`O(2^L)`) on GHC. This can be taken advantage of to design
+novel functional algorithms.
 
 Optimal Lambda Arithmetic
 -------------------------
