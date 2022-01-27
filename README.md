@@ -330,7 +330,7 @@ Lambda Arithmetic (Optimal)
 (Inc xs) = λex λox λix
   let e = ex
   let o = ix
-  let i = λp (o (Inc p))
+  let i = λp (ox (Inc p))
   (xs e o i)
 
 // Adds two Bits
