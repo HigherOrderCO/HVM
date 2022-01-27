@@ -1396,12 +1396,12 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
   }}
 
   // Asks workers to stop
-  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {{
+  for (u64 tid = 1; tid < MAX_WORKERS; ++tid) {{
     worker_stop(tid);
   }}
 
   // Waits workers to stop
-  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {{
+  for (u64 tid = 1; tid < MAX_WORKERS; ++tid) {{
     pthread_join(workers[tid].thread, NULL);
   }}
 
