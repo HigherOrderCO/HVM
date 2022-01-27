@@ -1,4 +1,4 @@
-n = 42 :: Int
+import System.Environment
 
 -- Computes nth Fibonacci number
 fib :: Int -> Int
@@ -7,4 +7,6 @@ fib 1 = 1
 fib n = fib (n - 1) + fib (n - 2)
 
 main :: IO ()
-main = print (fib n)
+main = do
+  n <- read.head <$> getArgs :: IO Int
+  print (fib n)

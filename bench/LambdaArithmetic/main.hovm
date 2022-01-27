@@ -3,7 +3,7 @@
 (B0 p) = λe λo λi (o p)
 (B1 p) = λe λo λi (i p)
 
-// Applies the `f` `xs` times to `x`
+// Applies `f` `xs` times to `x`
 (App xs f x) =
   let e = λf λx x
   let o = λpλfλx(App p λk(f (f k)) x)
@@ -36,6 +36,7 @@
   (FromU32Put s 0 i) = (B0 (FromU32 s i))
   (FromU32Put s 1 i) = (B1 (FromU32 s i))
 
+// Computes (100k * 100k * n)
 (Main n) =
   let a = (FromU32 32 100000)
   let b = (FromU32 32 (* 100000 n))

@@ -6,5 +6,5 @@
 (Sum (Leaf x))   = x
 (Sum (Node a b)) = (+ (Sum a) (Sum b))
 
-// Performs 2^30 additions in parallel
-(Main n) = (Sum (Gen 30))
+// Performs 2^n additions
+(Main n) = (Sum (Gen n))

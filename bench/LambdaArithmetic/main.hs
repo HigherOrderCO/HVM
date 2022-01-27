@@ -1,8 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 
 import Data.Word
-
-n = 32 :: Word32
+import System.Environment
 
 -- The Scott-Encoded Bits type
 newtype Bits = Bits { get :: forall a. a -> (Bits -> a) -> (Bits -> a) -> a }
@@ -10,7 +9,7 @@ end  = Bits (\e -> \o -> \i -> e)
 b0 p = Bits (\e -> \o -> \i -> o p)
 b1 p = Bits (\e -> \o -> \i -> i p)
 
--- Applies the `f` `xs` times to `x`
+-- Applies `f` `xs` times to `x`
 app :: Bits -> (a -> a) -> a -> a
 app xs f x =
   let e = \f -> \x -> x
@@ -49,8 +48,10 @@ fromU32 s i = fromU32Put (s - 1) (i `mod` 2) (i `div` 2) where
   fromU32Put s 0 i = b0 (fromU32 s i)
   fromU32Put s 1 i = b1 (fromU32 s i)
 
+-- Computes (100k * 100k * n)
 main :: IO ()
 main = do
+  n <- read.head <$> getArgs :: IO Word32
   let a = fromU32 32 100000
   let b = fromU32 32 (100000 * n)
   print $ toU32 (mul a b)

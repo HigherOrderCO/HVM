@@ -90,7 +90,7 @@ Parallel Tree Sum
 -----------------
 
 <table>
-<tr> <td>HOVM</td> <td>Haskell</td> </tr>
+<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
@@ -102,21 +102,27 @@ Parallel Tree Sum
 // Adds all elemements of a tree
 (Sum (Leaf x))   = x
 (Sum (Node a b)) = (+ (Sum a) (Sum b))
+
+// Performs 2^n additions
+(Main n) = (Sum (Gen n))
 ```
 
 </td>
 <td>
 
 ```haskell
--- Creates a tree with 2^n elements
-gen :: Word32 -> Tree
-gen 0 = Leaf 1
-gen n = Node (gen(n - 1)) (gen(n - 1))
+import System.Environment
 
--- Adds all elements of a tree
-sun :: Tree -> Word32
-sun (Leaf x)   = 1
-sun (Node a b) = sun a + sun b
+-- Computes f^(2^n)
+comp :: Int -> (a -> a) -> a -> a
+comp 0 f x = f x
+comp n f x = comp (n - 1) (\x -> f (f x)) x
+
+-- Performs 2^n compositions
+main :: IO ()
+main = do
+  n <- read.head <$> getArgs :: IO Int
+  print $ comp n (\x -> x) (0 :: Int)
 ```
 
 </td>
@@ -135,39 +141,48 @@ Parallel QuickSort
 ------------------
 
 <table>
-<tr><td>HOVM</td></tr>
+<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
 ```javascript
-(QSort Nil)         = Empty
-(QSort (Cons x xs)) = (QSortAux x xs)
-(QSortAux p Nil)    = (Single p)
-(QSortAux p xs)     = (Split p (Cons p xs) Nil Nil)
-  (Split p Nil         min max) = (Concat (QSort min) (QSort max))
+(...)
+
+// Parallel QuickSort
+(Sort Nil)         = Empty
+(Sort (Cons x xs)) = (SortAux x xs)
+(SortAux p Nil)    = (Single p)
+(SortAux p xs)     = (Split p (Cons p xs) Nil Nil)
+  (Split p Nil         min max) = (Concat (Sort min) (Sort max))
   (Split p (Cons x xs) min max) = (Place p (< p x) x xs min max)
   (Place p 0     x xs  min max) = (Split p xs (Cons x min) max)
   (Place p 1     x xs  min max) = (Split p xs min (Cons x max))
+
+// Sorts and sums n random numbers
+(Main n) = (Sum (Sort (Randoms 1 n)))
 ```
 
 </td>
-</tr>
-</table>
-
-<table>
-<tr><td>Haskell</td></tr>
-<tr>
 <td>
 
 ```haskell
+(...)
+
+-- Parallel QuickSort
 qsort :: List Word32 -> Tree Word32
 qsort Nil          = Empty
 qsort (Cons x Nil) = Single x
-qsort xs           = split p ls Nil Nil where
+qsort (Cons p xs)  = split p xs Nil Nil where
   split p Nil         min max = Concat (qsort min) (qsort max)
   split p (Cons x xs) min max = place p (p < x) x xs min max
   place p False x xs  min max = split p xs (Cons x min) max
   place p True  x xs  min max = split p xs min (Cons x max)
+
+-- Sorts and sums n random numbers
+main :: IO ()
+main = do
+  n <- read.head <$> getArgs :: IO Word32
+  print $ sun $ qsort $ randoms 1 n
 ```
 
 </td>
@@ -178,7 +193,6 @@ qsort xs           = split p ls Nil Nil where
 
 #### Comment
 
-
 This test once again takes advantage of automatic parallelism by modifying the
 usual QuickSort implementation to return a concatenation tree instead of a flat
 list. This, again, allows HOVM to use multiple cores, making it outperform GHC
@@ -188,7 +202,7 @@ Optimal Composition
 -------------------
 
 <table>
-<tr> <td>HOVM</td> <td>Haskell</td> </tr>
+<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
@@ -196,16 +210,27 @@ Optimal Composition
 // Computes f^(2^n)
 (Comp 0 f x) = (f x)
 (Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
+
+// Performs 2^n compositions
+(Main n) = (Comp n λx(x) 0)
 ```
 
 </td>
 <td>
 
 ```haskell
+import System.Environment
+
 -- Computes f^(2^n)
 comp :: Int -> (a -> a) -> a -> a
 comp 0 f x = f x
 comp n f x = comp (n - 1) (\x -> f (f x)) x
+
+-- Performs 2^n compositions
+main :: IO ()
+main = do
+  n <- read.head <$> getArgs :: IO Int
+  print $ comp n (\x -> x) (0 :: Int)
 ```
 
 </td>
@@ -226,25 +251,12 @@ Optimal Lambda Arithmetic
 -------------------------
 
 <table>
-<tr> <td>HOVM</td> <td>Haskell</td> </tr>
+<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
 <tr>
 <td>
 
 ```javascript
-// The Scott-Encoded Bits type
-(End)  = λe λo λi e
-(B0 p) = λe λo λi (o p)
-(B1 p) = λe λo λi (i p)
-
-// Applies the `f` `xs` times to `x`
-(App xs f x) =
-  let e = λf λx x
-  let o = λpλfλx(App p λk(f (f k)) x)
-  let i = λpλfλx(App p λk(f (f k)) (f x))
-  (xs e o i f x)
-
-// Increments a Bits by 1
-(Inc xs) = λeλoλi(xs e i λp(o (Inc p)))
+(...)
 
 // Adds two Bits
 (Add xs ys) = (App xs λx(Inc x) ys)
@@ -255,29 +267,19 @@ Optimal Lambda Arithmetic
   let o = λp (B0 (Mul p ys))
   let i = λp (Add ys (B0 (Mul p ys)))
   (xs e o i)
+
+// Computes (100k * 100k * n)
+(Main n) =
+  let a = (FromU32 32 100000)
+  let b = (FromU32 32 (* 100000 n))
+  (ToU32 (Mul a b))
 ```
 
 </td>
 <td>
 
 ```haskell
--- The Scott-Encoded Bits type
-newtype Bits = Bits { get :: forall a. a -> (Bits -> a) -> (Bits -> a) -> a }
-end  = Bits (\e -> \o -> \i -> e)
-b0 p = Bits (\e -> \o -> \i -> o p)
-b1 p = Bits (\e -> \o -> \i -> i p)
-
--- Applies the `f` `xs` times to `x`
-app :: Bits -> (a -> a) -> a -> a
-app xs f x =
-  let e = \f -> \x -> x
-      o = \p -> \f -> \x -> app p (\k -> f (f k)) x
-      i = \p -> \f -> \x -> app p (\k -> f (f k)) (f x)
-  in get xs e o i f x
-
--- Increments a Bits by 1
-inc :: Bits -> Bits
-inc xs = Bits (\e -> \o -> \i -> get xs e i (\p -> o (inc p)))
+(...)
 
 -- Adds two Bits
 add :: Bits -> Bits -> Bits
@@ -290,6 +292,14 @@ mul xs ys =
       o = \p -> b0 (mul p ys)
       i = \p -> add ys (b1 (mul p ys))
   in get xs e o i
+
+-- Computes (100k * 100k * n)
+main :: IO ()
+main = do
+  n <- read.head <$> getArgs :: IO Word32
+  let a = fromU32 32 100000
+  let b = fromU32 32 (100000 * n)
+  print $ toU32 (mul a b)
 ```
 
 </td>
@@ -302,13 +312,11 @@ mul xs ys =
 
 This example takes advantage of beta-optimality to implement multiplication
 using lambda-encoded bit-strings. As expected, HOVM is exponentially faster than
-GHC, since this program is very high-order.
-
-Lambda encodings have wide practical applications. For example, Haskell's Lists
-are optimized by converting them to lambdas (foldr/build), its Free Monads
-library has a faster version based on lambdas, and so on. HOVM's optimality open
-doors for an entire unexplored field of lambda encoded algorithms that are
-simply impossible on any other runtime.
+GHC, since this program is very high-order. Lambda encodings have wide practical
+applications. For example, Haskell's Lists are optimized by converting them to
+lambdas (foldr/build), its Free Monads library has a faster version based on
+lambdas, and so on. HOVM's optimality open doors for an entire unexplored field
+of lambda encoded algorithms that were simply impossible before.
 
 How is that possible?
 =====================

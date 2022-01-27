@@ -17,4 +17,5 @@
   (Place p 0     x xs  min max) = (Split p xs (Cons x min) max)
   (Place p 1     x xs  min max) = (Split p xs min (Cons x max))
 
-(Main n) = (Sum (Sort (Randoms 1 10000000)))
+// Sorts and sums n random numbers
+(Main n) = (Sum (Sort (Randoms 1 n)))
