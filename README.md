@@ -13,7 +13,7 @@ though, improved its efficiency drastically, giving birth to the HOVM. Despite
 being a prototype, it already beats mature compilers for several inputs, and it
 is set to scale towards uncharted levels of performance.
 
-**Welcome to the inevitable parallel, functional future of computation!**
+**Welcome to the inevitable parallel, functional future of computers!**
 
 Usage
 -----
