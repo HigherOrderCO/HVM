@@ -187,6 +187,7 @@ Optimal Composition
 <td>
 
 ```javascript
+// Computes f^(2^n)
 (Comp 0 f x) = (f x)
 (Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
 ```
@@ -195,6 +196,8 @@ Optimal Composition
 <td>
 
 ```haskell
+-- Computes f^(2^n)
+comp :: Int -> (a -> a) -> a -> a
 comp 0 f x = f x
 comp n f x = comp (n - 1) (\x -> f (f x)) x
 ```
@@ -222,6 +225,25 @@ Optimal Lambda Arithmetic
 <td>
 
 ```javascript
+// The Scott-Encoded Bits type
+(End)  = λe λo λi e
+(B0 p) = λe λo λi (o p)
+(B1 p) = λe λo λi (i p)
+
+// Applies the `f` function `xs` times to `x`
+(Times xs f x) =
+  let e = λf λx x
+  let o = λp λf λx (Times p λk(f (f k)) x)
+  let i = λp λf λx (Times p λk(f (f k)) (f x))
+  (xs e o i f x)
+
+// Increments a Bits by 1
+(Inc xs) = λe λo λi (xs e i λp(o (Inc p)))
+
+// Adds two Bits
+(Add xs ys) = (Times xs λx(Inc x) ys)
+
+// Multiplies two Bits
 (Mul xs ys) = 
   let e = End
   let o = λp (B0 (Mul p ys))
@@ -233,6 +255,29 @@ Optimal Lambda Arithmetic
 <td>
 
 ```haskell
+-- The Scott-Encoded Bits type
+newtype Bits = Bits { get :: forall a. a -> (Bits -> a) -> (Bits -> a) -> a }
+end  = Bits (\e -> \o -> \i -> e)
+b0 p = Bits (\e -> \o -> \i -> o p)
+b1 p = Bits (\e -> \o -> \i -> i p)
+
+-- Applies the `f` function `xs` times to `x`
+times :: Bits -> (a -> a) -> a -> a
+times xs f x =
+  let e = \f -> \x -> x
+      o = \p -> \f -> \x -> times p (\k -> f (f k)) x
+      i = \p -> \f -> \x -> times p (\k -> f (f k)) (f x)
+  in get xs e o i f x
+
+-- Increments a Bits by 1
+inc :: Bits -> Bits
+inc xs = Bits (\e -> \o -> \i -> get xs e i (\p -> o (inc p)))
+
+-- Adds two Bits
+add :: Bits -> Bits -> Bits
+add xs ys = times xs (\x -> inc x) ys
+
+-- Multiplies two Bits
 mul :: Bits -> Bits -> Bits
 mul xs ys = 
   let e = end

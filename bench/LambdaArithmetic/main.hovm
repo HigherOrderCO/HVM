@@ -16,7 +16,7 @@
 // Adds two Bits
 (Add xs ys) = (Times xs λx(Inc x) ys)
 
-// Muls two Bits
+// Multiplies two Bits
 (Mul xs ys) = 
   let e = End
   let o = λp (B0 (Mul p ys))

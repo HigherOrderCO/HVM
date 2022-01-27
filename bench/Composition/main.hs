@@ -1,6 +1,6 @@
 n = 32 :: Int
 
--- Compites f^(2^n)
+-- Computes f^(2^n)
 comp :: Int -> (a -> a) -> a -> a
 comp 0 f x = f x
 comp n f x = comp (n - 1) (\x -> f (f x)) x
