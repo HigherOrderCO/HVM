@@ -68,11 +68,13 @@ tip of iceberg.
 Benchmarks
 ==========
 
-HOVM is compared against Haskell GHC, because it is the reference lazy
-functional compiler. Note HOVM is still an early prototype. It obviously won't
-beat GHC in many cases. HOVM has a lot of room for improvements and is expected
-to improve steadily as optimizations are implemented. Tests were ran with `ghc
--O2` for Haskell and `clang -O2` for HOVM, in an 8-core M1 Max processor.
+HOVM has two main advantages over GHC: beta-optimality and automatic
+parallelism. As such, to compare the runtimes, I'll highlight 2 parallel
+benchmarks (one simple and one complex), 2 optimal benchmarks (one simple and
+one compelx) and 1 sequential benchmark. Note HOVM is still an early prototype,
+it **obviously** won't beat GHC in general, but it does quite fine already, and
+should improve steadily as optimizations are implemented. Tests were ran with
+`ghc -O2` for Haskell and `clang -O2` for HOVM, in an 8-core M1 Max processor.
 
 Tree Sum (Parallel)
 -------------------
@@ -244,12 +246,11 @@ main = do
 
 #### Comment
 
-This is a micro benchmark that composes a function `2^N` times and applies it to
-an argument. There is no parallelism involved here. Instead, HOVM beats GHC
-because of beta-optimality. In general, if the composition of a function `f` has
-a constant-size normal form, then `f^N(x)` is constant-time (`O(L)`) on HOVM,
-and exponential-time (`O(2^L)`) on GHC. This can be taken advantage of to design
-novel functional algorithms.
+This chart isn't wrong: HOVM is *exponentially* faster for function composition,
+due to optimality, depending on the target function. There is no parallelism
+involved here. In general, if the composition of a function `f` has a
+constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HOVM,
+and exponential-time (`O(2^N)`) on GHC.
 
 Lambda Arithmetic (Optimal)
 ---------------------------
@@ -326,8 +327,8 @@ main = do
 #### Comment
 
 This example takes advantage of beta-optimality to implement multiplication
-using lambda-encoded bit-strings. As expected, HOVM is exponentially faster than
-GHC, since this program is very high-order. Lambda encodings have wide practical
+using lambda-encoded bit-strings. Once again, HOVM halts instantly, while GHC
+struggles to deal with all these lambdas. Lambda encodings have wide practical
 applications. For example, Haskell's Lists are optimized by converting them to
 lambdas (foldr/build), its Free Monads library has a faster version based on
 lambdas, and so on. HOVM's optimality open doors for an entire unexplored field
@@ -390,7 +391,7 @@ main = do
 </tr>
 </table>
 
-![](bench/_results_/Composition.png)
+![](bench/_results_/ListFold.png)
 
 #### Comment
 
