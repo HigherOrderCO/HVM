@@ -1,12 +1,1 @@
-[
-  { "target": "HovmInterpreter", "n": 4, "time": 2.9960830062627792 },
-  { "target": "HovmInterpreter", "n": 4, "time": 2.8814590126276016 },
-  { "target": "HovmInterpreter", "n": 4, "time": 3.0485419929027557 },
-  { "target": "HovmInterpreter", "n": 4, "time": 3.7009579986333847 },
-  { "target": "HovmInterpreter", "n": 4, "time": 3.033834010362625 },
-  { "target": "HovmInterpreter", "n": 4, "time": 2.8093750029802322 },
-  { "target": "HovmInterpreter", "n": 4, "time": 2.8085419982671738 },
-  { "target": "HovmInterpreter", "n": 4, "time": 2.838375002145767 },
-  { "target": "HovmInterpreter", "n": 4, "time": 3.5643749982118607 },
-  { "target": "HovmInterpreter", "n": 4, "time": 3.0696250051259995 }
-]
+[{"target":"HovmInterpreter","n":4,"time":3.6361670047044754},{"target":"HovmInterpreter","n":4,"time":3.2768329977989197},{"target":"HovmInterpreter","n":4,"time":3.030000001192093},{"target":"HovmInterpreter","n":4,"time":3.8415839970111847},{"target":"HovmInterpreter","n":4,"time":3.240457996726036},{"target":"HovmInterpreter","n":4,"time":2.965833008289337},{"target":"HovmInterpreter","n":4,"time":2.865667000412941},{"target":"HovmInterpreter","n":4,"time":2.9204580038785934},{"target":"HovmInterpreter","n":4,"time":3.51979099214077},{"target":"HovmInterpreter","n":4,"time":2.895333006978035},{"target":"Haskell","n":4,"time":15.83279100060463},{"target":"Haskell","n":4,"time":17.218374997377396},{"target":"Haskell","n":4,"time":17.471499994397163},{"target":"Haskell","n":4,"time":15.144999995827675},{"target":"Haskell","n":4,"time":15.97512499988079},{"target":"Haskell","n":4,"time":17.35912500321865},{"target":"Haskell","n":4,"time":16.121457993984222},{"target":"Haskell","n":4,"time":17.619916006922722},{"target":"Haskell","n":4,"time":17.532124996185303},{"target":"Haskell","n":4,"time":17.708084002137184}]

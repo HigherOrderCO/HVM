@@ -21,11 +21,11 @@ const runners = {
   //   execution: (name, n, temp_dir) => `${temp_dir}/bench ${n}`,
   //   extension: ".hovm",
   // },
-  // Haskell: {
-  //   pre: (name, temp_dir) => ["ghc -O2 "+ name +" -o bench"],
-  //   execution: (name, n, temp_dir) => `${temp_dir}/bench ${n}`,
-  //   extension: ".hs",
-  // },
+  Haskell: {
+    pre: (name, temp_dir) => [`ghc -O2 ${name} -o ${temp_dir}/bench`],
+    execution: (name, n, temp_dir) => `${temp_dir}/bench ${n}`,
+    extension: ".hs",
+  },
 }
 
 function format_test_name(str, default_value) {
@@ -93,7 +93,6 @@ function run_pre_commands(runner, file_name, temp_dir) {
     const pres = runner.pre(file_name, temp_dir);
     // runs all pre-commands, if any
     for (pre_command of pres) {
-      console.log(pre_command);
       execSync(pre_command);
     }
     
@@ -106,7 +105,6 @@ function run_execution(runner, file_name, times, ctx, temp_dir) {
   let tests_perf = [];
   for (let i = 0; i < times; i++) {
     const command = runner.execution(file_name, n, temp_dir);
-    console.log(command);
     // exec runner and measure its time
     let start = performance.now();
     execSync(command);
@@ -179,7 +177,6 @@ function main() {
       } catch(e) {
 
       } finally {
-        console.log(file_path);
         const result_path   = ["./Results", file_path, "result.json"].join(path.sep);
         fs.writeFileSync(result_path, result_json, {recursive: true});
       }
