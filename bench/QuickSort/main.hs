@@ -15,14 +15,14 @@ sun (Single a)   = a
 sun (Concat a b) = sun a + sun b
 
 -- Parallel QuickSort
-quicksort :: List Word32 -> Tree Word32
-quicksort Nil                    = Empty
-quicksort (Cons x Nil)           = Single x
-quicksort l@(Cons p (Cons x xs)) = split p l Nil Nil where
-  split p Nil         min max    = Concat (quicksort min) (quicksort max)
-  split p (Cons x xs) min max    = place p (p < x) x xs min max
-  place p False x xs  min max    = split p xs (Cons x min) max
-  place p True  x xs  min max    = split p xs min (Cons x max)
+qsort :: List Word32 -> Tree Word32
+qsort Nil          = Empty
+qsort (Cons x Nil) = Single x
+qsort xs           = split p ls Nil Nil where
+  split p Nil         min max = Concat (qsort min) (qsort max)
+  split p (Cons x xs) min max = place p (p < x) x xs min max
+  place p False x xs  min max = split p xs (Cons x min) max
+  place p True  x xs  min max = split p xs min (Cons x max)
 
 main :: IO ()
 main = do

@@ -140,28 +140,28 @@ Parallel QuickSort
 <td>
 
 ```javascript
-(Quicksort Nil)                 = Empty
-(Quicksort (Cons x xs))         = (Quicksort_ x xs)
-(Quicksort_ p Nil)              = (Single p)
-(Quicksort_ p (Cons x xs))      = (Split p (Cons p (Cons x xs)) Nil Nil)
-  (Split p Nil         min max) = (Concat (Quicksort min) (Quicksort max))
+(QSort Nil)         = Empty
+(QSort (Cons x xs)) = (QSortAux x xs)
+(QSortAux p Nil)    = (Single p)
+(QSortAux p xs)     = (Split p (Cons p xs) Nil Nil)
+  (Split p Nil         min max) = (Concat (QSort min) (QSort max))
   (Split p (Cons x xs) min max) = (Place p (< p x) x xs min max)
-  (Place p 0 x xs      min max) = (Split p xs (Cons x min) max)
-  (Place p 1 x xs      min max) = (Split p xs min (Cons x max))
+  (Place p 0     x xs  min max) = (Split p xs (Cons x min) max)
+  (Place p 1     x xs  min max) = (Split p xs min (Cons x max))
 ```
 
 </td>
 <td>
 
 ```haskell
-quicksort :: List Word32 -> Tree Word32
-quicksort Nil                    = Empty
-quicksort (Cons x Nil)           = Single x
-quicksort l@(Cons p (Cons x xs)) = split p l Nil Nil where
-  split p Nil         min max    = Concat (quicksort min) (quicksort max)
-  split p (Cons x xs) min max    = place p (p < x) x xs min max
-  place p False x xs  min max    = split p xs (Cons x min) max
-  place p True  x xs  min max    = split p xs min (Cons x max)
+qsort :: List Word32 -> Tree Word32
+qsort Nil          = Empty
+qsort (Cons x Nil) = Single x
+qsort xs           = split p ls Nil Nil where
+  split p Nil         min max = Concat (qsort min) (qsort max)
+  split p (Cons x xs) min max = place p (p < x) x xs min max
+  place p False x xs  min max = split p xs (Cons x min) max
+  place p True  x xs  min max = split p xs min (Cons x max)
 ```
 
 </td>

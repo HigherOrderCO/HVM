@@ -8,13 +8,13 @@
 (Sum (Concat a b)) = (+ (Sum a) (Sum b))
 
 // Parallel QuickSort
-(Quicksort Nil)                 = Empty
-(Quicksort (Cons x xs))         = (Quicksort_ x xs)
-(Quicksort_ p Nil)              = (Single p)
-(Quicksort_ p (Cons x xs))      = (Split p (Cons p (Cons x xs)) Nil Nil)
-  (Split p Nil         min max) = (Concat (Quicksort min) (Quicksort max))
+(Sort Nil)         = Empty
+(Sort (Cons x xs)) = (SortAux x xs)
+(SortAux p Nil)    = (Single p)
+(SortAux p xs)     = (Split p (Cons p xs) Nil Nil)
+  (Split p Nil         min max) = (Concat (Sort min) (Sort max))
   (Split p (Cons x xs) min max) = (Place p (< p x) x xs min max)
-  (Place p 0 x xs      min max) = (Split p xs (Cons x min) max)
-  (Place p 1 x xs      min max) = (Split p xs min (Cons x max))
+  (Place p 0     x xs  min max) = (Split p xs (Cons x min) max)
+  (Place p 1     x xs  min max) = (Split p xs min (Cons x max))
 
-(Main n) = (Sum (Quicksort (Randoms 1 10000000)))
+(Main n) = (Sum (Sort (Randoms 1 10000000)))
