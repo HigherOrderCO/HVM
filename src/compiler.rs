@@ -48,12 +48,12 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
 
     line(&mut inits, 6, &format!("case {}: {{", &compile_name(name)));
     inits.push_str(&init);
-    line(&mut inits, 6, "}};");
+    line(&mut inits, 6, "};");
 
     line(&mut codes, 6, &format!("case {}: {{", &compile_name(name)));
     codes.push_str(&code);
     line(&mut codes, 7, "break;");
-    line(&mut codes, 6, "}};");
+    line(&mut codes, 6, "};");
   }
 
   clang_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64)
@@ -91,7 +91,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (Str
     }
   }
   line(&mut init, tab + 1, "continue;");
-  line(&mut init, tab + 0, "}}");
+  line(&mut init, tab + 0, "}");
 
   // Applies the cal_par rule to superposed args
   for (i, is_redex) in dynfun.redex.iter().enumerate() {
@@ -102,7 +102,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (Str
         tab + 1,
         &format!("cal_par(mem, host, term, ask_arg(mem, term, {}), {});", i, i),
       );
-      line(&mut code, tab + 0, "}}");
+      line(&mut code, tab + 0, "}");
     }
   }
 
@@ -160,7 +160,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (Str
     line(&mut code, tab + 1, "init = 1;");
     line(&mut code, tab + 1, "continue;");
 
-    line(&mut code, tab + 0, "}}");
+    line(&mut code, tab + 0, "}");
   }
 
   (init, code)
@@ -209,7 +209,7 @@ pub fn compile_func_rule_term(
           line(code, tab + 1, "inc_cost(mem);");
           line(code, tab + 1, &format!("{} = {};", dup0, copy));
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
-          line(code, tab + 0, "}} else {{");
+          line(code, tab + 0, "} else {");
         }
         let name = fresh(nams, "dup");
         let coln = fresh(nams, "col");
@@ -227,7 +227,7 @@ pub fn compile_func_rule_term(
         line(code, tab + 1, &format!("{} = Dp0({}, {});", dup0, colx, name));
         line(code, tab + 1, &format!("{} = Dp1({}, {});", dup1, colx, name));
         if INLINE_NUMBERS {
-          line(code, tab + 0, "}}");
+          line(code, tab + 0, "}");
         }
         vars.push(dup0);
         vars.push(dup1);
@@ -322,7 +322,7 @@ pub fn compile_func_rule_term(
             _ => line(code, tab + 1, &format!("{} = ?;", retx)),
           }
           line(code, tab + 1, "inc_cost(mem);");
-          line(code, tab + 0, "}} else {{");
+          line(code, tab + 0, "} else {");
         }
         line(code, tab + 1, &format!("u64 {} = alloc(mem, 2);", name));
         line(code, tab + 1, &format!("link(mem, {} + 0, {});", name, val0));
