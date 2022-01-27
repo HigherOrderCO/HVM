@@ -1318,6 +1318,14 @@ u64 normal_join(u64 tid) {{
   }}
 }}
 
+// Stops a worker
+void worker_stop(u64 tid) {{
+  pthread_mutex_lock(&workers[tid].has_work_mutex);
+  workers[tid].has_work = -2;
+  pthread_cond_signal(&workers[tid].has_work_signal);
+  pthread_mutex_unlock(&workers[tid].has_work_mutex);
+}}
+
 // The normalizer worker
 void *worker(void *arg) {{
   u64 tid = (u64)arg;
@@ -1327,13 +1335,17 @@ void *worker(void *arg) {{
       pthread_cond_wait(&workers[tid].has_work_signal, &workers[tid].has_work_mutex);
     }}
     u64 work = workers[tid].has_work;
-    u64 sidx = (work >> 48) & 0xFFFF;
-    u64 slen = (work >> 32) & 0xFFFF;
-    u64 host = (work >>  0) & 0xFFFFFFFF;
-    workers[tid].has_result = normal_go(&workers[tid], host, sidx, slen);
-    workers[tid].has_work = -1;
-    pthread_cond_signal(&workers[tid].has_result_signal);
-    pthread_mutex_unlock(&workers[tid].has_work_mutex);
+    if (work == -2) {{
+      break;
+    }} else {{
+      u64 sidx = (work >> 48) & 0xFFFF;
+      u64 slen = (work >> 32) & 0xFFFF;
+      u64 host = (work >>  0) & 0xFFFFFFFF;
+      workers[tid].has_result = normal_go(&workers[tid], host, sidx, slen);
+      workers[tid].has_work = -1;
+      pthread_cond_signal(&workers[tid].has_result_signal);
+      pthread_mutex_unlock(&workers[tid].has_work_mutex);
+    }}
   }}
   return 0;
 }}
@@ -1383,7 +1395,15 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
     ffi_size += workers[tid].size;
   }}
 
-  // TODO: stop pending threads
+  // Asks workers to stop
+  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {{
+    worker_stop(tid);
+  }}
+
+  // Waits workers to stop
+  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {{
+    pthread_join(workers[tid].thread, NULL);
+  }}
 
   // Clears workers
   for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {{
