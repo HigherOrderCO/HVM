@@ -1,15 +1,16 @@
+// Folds over a list
 (Fold Nil         c n) = n
 (Fold (Cons x xs) c n) =
   (c x (Fold xs c n))
 
+// A list from 0 to n
 (Range 0 xs) = xs
 (Range n xs) =
   let m = (- n 1)
   (Range m (Cons m xs))
 
+// Sums a big list with fold
 (Main n) =
   let size = (* n 1000000)
   let list = (Range size Nil)
-  (Fold λaλb(+ a b) 0)
-
-
+  (Fold list λaλb(+ a b) 0)

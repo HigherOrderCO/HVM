@@ -19,7 +19,11 @@ app xs f x =
 
 -- Increments a Bits by 1
 inc :: Bits -> Bits
-inc xs = Bits (\e -> \o -> \i -> get xs e i (\p -> o (inc p)))
+inc xs = Bits $ \ex -> \ox -> \ix ->
+  let e = ex
+      o = ix
+      i = \p -> ox (inc p)
+  in get xs e o i
 
 -- Adds two Bits
 add :: Bits -> Bits -> Bits

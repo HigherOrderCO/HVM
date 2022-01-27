@@ -72,10 +72,10 @@ HOVM is compared against Haskell GHC, because it is the reference lazy
 functional compiler. Note HOVM is still an early prototype. It obviously won't
 beat GHC in many cases. HOVM has a lot of room for improvements and is expected
 to improve steadily as optimizations are implemented. Tests were ran with `ghc
--O2` for Haskell and `clang -O2` for HOVM, in a 8-core M1 Max processor.
+-O2` for Haskell and `clang -O2` for HOVM, in an 8-core M1 Max processor.
 
-Parallel Tree Sum
------------------
+Tree Sum (Parallel)
+-------------------
 
 <table>
 <tr> <td>main.hovm</td> <td>main.hs</td> </tr>
@@ -134,8 +134,8 @@ a perfect binary tree. HOVM outperforms Haskell by a wide margin, because this
 algorithm is embarassingly parallel, allowing it to fully use all the 8 cores
 available on my machine.
 
-Parallel QuickSort
-------------------
+QuickSort (Parallel?)
+---------------------
 
 <table>
 <tr> <td>main.hovm</td> <td>main.hs</td> </tr>
@@ -143,8 +143,6 @@ Parallel QuickSort
 <td>
 
 ```javascript
-(...)
-
 // Parallel QuickSort
 (Sort Nil) =
   Empty
@@ -167,8 +165,6 @@ Parallel QuickSort
 <td>
 
 ```haskell
-(...)
-
 -- Parallel QuickSort
 qsort :: List Word32 -> Tree Word32
 qsort Nil =
@@ -202,11 +198,11 @@ main = do
 This test once again takes advantage of automatic parallelism by modifying the
 usual QuickSort implementation to return a concatenation tree instead of a flat
 list. This, again, allows HOVM to use multiple cores, but not fully, which is
-why HOVM doesn't always outperform GHC. I'm looking for alternative sorting
+why it doesn't significantly outperform GHC. I'm looking for alternative sorting
 algorithms that make better use of HOVM's implicit parallelism.
 
-Optimal Composition
--------------------
+Composition (Optimal)
+---------------------
 
 <table>
 <tr> <td>main.hovm</td> <td>main.hs</td> </tr>
@@ -255,8 +251,8 @@ a constant-size normal form, then `f^N(x)` is constant-time (`O(L)`) on HOVM,
 and exponential-time (`O(2^L)`) on GHC. This can be taken advantage of to design
 novel functional algorithms.
 
-Optimal Lambda Arithmetic
--------------------------
+Lambda Arithmetic (Optimal)
+---------------------------
 
 <table>
 <tr> <td>main.hovm</td> <td>main.hs</td> </tr>
@@ -264,7 +260,12 @@ Optimal Lambda Arithmetic
 <td>
 
 ```javascript
-(...)
+// Increments a Bits by 1
+(Inc xs) = λex λox λix
+  let e = ex
+  let o = ix
+  let i = λp (o (Inc p))
+  (xs e o i)
 
 // Adds two Bits
 (Add xs ys) = (App xs λx(Inc x) ys)
@@ -287,7 +288,13 @@ Optimal Lambda Arithmetic
 <td>
 
 ```haskell
-(...)
+-- Increments a Bits by 1
+inc :: Bits -> Bits
+inc xs = Bits $ \ex -> \ox -> \ix ->
+  let e = ex
+      o = ix
+      i = \p -> ox (inc p)
+  in get xs e o i
 
 -- Adds two Bits
 add :: Bits -> Bits -> Bits
@@ -325,6 +332,71 @@ applications. For example, Haskell's Lists are optimized by converting them to
 lambdas (foldr/build), its Free Monads library has a faster version based on
 lambdas, and so on. HOVM's optimality open doors for an entire unexplored field
 of lambda encoded algorithms that were simply impossible before.
+
+List Fold (Sequential)
+----------------------
+
+<table>
+<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
+<tr>
+<td>
+
+```javascript
+// Folds over a list
+(Fold Nil         c n) = n
+(Fold (Cons x xs) c n) =
+  (c x (Fold xs c n))
+
+// A list from 0 to n
+(Range 0 xs) = xs
+(Range n xs) =
+  let m = (- n 1)
+  (Range m (Cons m xs))
+
+// Sums a big list with fold
+(Main n) =
+  let size = (* n 1000000)
+  let list = (Range size Nil)
+  (Fold list λaλb(+ a b) 0)
+```
+
+</td>
+<td>
+
+```haskell
+-- Folds over a list
+fold :: List a -> (a -> r -> r) -> r -> r
+fold Nil         c n = n
+fold (Cons x xs) c n =
+  c x (fold xs c n)
+
+-- A list from 0 to n
+range :: Word32 -> List Word32 -> List Word32
+range 0 xs = xs
+range n xs =
+  let m = n - 1
+  in range m (Cons m xs)
+
+-- Sums a big list with fold
+main :: IO ()
+main = do
+  n <- read.head <$> getArgs :: IO Word32
+  let size = 1000000 * n
+  let list = range size Nil
+  print $ fold list (+) 0
+```
+
+</td>
+</tr>
+</table>
+
+![](bench/_results_/Composition.png)
+
+#### Comment
+
+This test just builds and folds over a very huge list of numbers. Since lists
+are sequential, and since there are no high-order terms on which optimality
+could help, then both runtimes are on equal grounds. 
 
 How is that possible?
 =====================

@@ -11,7 +11,11 @@
   (xs e o i f x)
 
 // Increments a Bits by 1
-(Inc xs) = λeλoλi(xs e i λp(o (Inc p)))
+(Inc xs) = λex λox λix
+  let e = ex
+  let o = ix
+  let i = λp (ox (Inc p))
+  (xs e o i)
 
 // Adds two Bits
 (Add xs ys) = (App xs λx(Inc x) ys)
