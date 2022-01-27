@@ -3,18 +3,18 @@
 (B0 p) = λe λo λi (o p)
 (B1 p) = λe λo λi (i p)
 
-// Applies the `f` function `xs` times to `x`
-(Times xs f x) =
+// Applies the `f` `xs` times to `x`
+(App xs f x) =
   let e = λf λx x
-  let o = λp λf λx (Times p λk(f (f k)) x)
-  let i = λp λf λx (Times p λk(f (f k)) (f x))
+  let o = λpλfλx(App p λk(f (f k)) x)
+  let i = λpλfλx(App p λk(f (f k)) (f x))
   (xs e o i f x)
 
 // Increments a Bits by 1
-(Inc xs) = λe λo λi (xs e i λp(o (Inc p)))
+(Inc xs) = λeλoλi(xs e i λp(o (Inc p)))
 
 // Adds two Bits
-(Add xs ys) = (Times xs λx(Inc x) ys)
+(Add xs ys) = (App xs λx(Inc x) ys)
 
 // Multiplies two Bits
 (Mul xs ys) = 
