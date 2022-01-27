@@ -1,4 +1,6 @@
-/target/
+.DS_Store
+**/result/
+**/target/
 *.out.c
 *.hi
 *.o

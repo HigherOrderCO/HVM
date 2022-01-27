@@ -273,7 +273,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
           .0 as u64,
       },
       lang::Term::Dup { nam0, nam1, expr, body } => {
-        let eras = (nam0 == &"*", nam1 == &"*");
+        let eras = (nam0 == "*", nam1 == "*");
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
@@ -283,7 +283,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
         DynTerm::Dup { eras, expr, body }
       }
       lang::Term::Lam { name, body } => {
-        let eras = name == &"*";
+        let eras = name == "*";
         vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
         vars.pop();
@@ -302,7 +302,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
         DynTerm::App { func, argm }
       }
       lang::Term::Ctr { name, args } => {
-        let term_func = *comp.name_to_id.get(name).expect(&format!("Unbound symbol: {}", name));
+        let term_func = *comp.name_to_id.get(name).unwrap_or_else(|| panic!("Unbound symbol: {}", name));
         let term_args = args.iter().map(|arg| convert_term(arg, comp, depth + 0, vars)).collect();
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
           DynTerm::Cal { func: term_func, args: term_args }

@@ -204,7 +204,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
     ctx: &mut CtxSanitizeTerm,
   ) -> Result<Box<lang::Term>, String> {
     fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
-      if !(uses.get(name).copied() > Some(0)) {
+      if uses.get(name).copied() <= Some(0) {
         *name = "*".to_string();
       }
     }
@@ -268,7 +268,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         }
         let expr = Box::new(lang::Term::Var { name: new_name.clone() });
         let body = duplicator(&new_name, expr, body, ctx.uses);
-        rename_erased(&mut new_name, &ctx.uses);
+        rename_erased(&mut new_name, ctx.uses);
         let term = lang::Term::Lam { name: new_name, body };
         Box::new(term)
       }
