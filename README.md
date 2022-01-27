@@ -6,16 +6,14 @@ High-Order Virtual Machine (HOVM)
 it is **beta-optimal**, which means it, in several cases, can be exponentially
 faster than the every other functional runtime, including Haskell's GHC.
 
-That is possible due to a new model of computation, the Interaction Net, a
-natural combination of the Turing Machine with the Lambda Calculus. Up until
-recently, that model, despite elegant, was not efficient in practice. Thanks to
-a new breaktrough, HOVM can now beat mature compilers, despite being just a
-prototype.
+That is possible due to a new model of computation, the Interaction Net, which
+combines the Turing Machine with the Lambda Calculus. Up until recently, that
+model, despite elegant, was not efficient in practice. A recent breaktrough,
+though, improved its efficiency drastically, giving birth to the HOVM. Despite
+being a prototype, it already beats mature compilers for several inputs, and it
+is set to scale towards uncharted levels of performance.
 
-Have you ever dreamed of a future where developers wrote high-level code in
-language that felt **as elegant as Haskell**, and that code was compiled to
-executables **as memory-efficiency of Rust**, all while enjoying the **massive
-parallelism of CUDA**? Wait no more, the future has arrived!
+**Welcome to the inevitable parallel, functional future of computation!**
 
 Usage
 -----
