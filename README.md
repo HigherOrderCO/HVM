@@ -4,7 +4,7 @@ High-order Virtual Machine (HVM)
 **High-order Virtual Machine (HVM)** is a pure functional compile target that
 is **lazy**, **non-garbage-collected** and **massively parallel**. Not only
 that, it is **beta-optimal**, which means it, in several cases, can be
-exponentially faster than most functional runtime, including Haskell's GHC.
+exponentially faster than most functional runtimes, including Haskell's GHC.
 
 That is possible due to a new model of computation, the Interaction Net, which
 combines the Turing Machine with the Lambda Calculus. Up until recently, that
