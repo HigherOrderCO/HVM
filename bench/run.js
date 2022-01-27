@@ -12,17 +12,17 @@ const runners = {
   //   extension: ".c",
   // },
   HovmInterpreter: {
-    pre: (name, temp_dir) => [],
+    pre: (name, file_path, temp_dir) => [],
     execution: (name, n, temp_dir) => `hovm run ${name} ${n}`,
     extension: ".hovm",
   },
-  // HovmCompile: {
-  //   pre: (name, temp_dir) => ["hovm compile " + name, `clang -O2 ${name}.out.c -o ${temp_dir}/bench`],
-  //   execution: (name, n, temp_dir) => `${temp_dir}/bench ${n}`,
-  //   extension: ".hovm",
-  // },
+  HovmCompile: {
+    pre: (name, file_path, temp_dir) => ["hovm compile " + name, `clang -O2 ${file_path}/main.c -o ${temp_dir}/bench`],
+    execution: (name, n, temp_dir) => `${temp_dir}/bench ${n}`,
+    extension: ".hovm",
+  },
   Haskell: {
-    pre: (name, temp_dir) => [`ghc -O2 ${name} -o ${temp_dir}/bench`],
+    pre: (name, file_path, temp_dir) => [`ghc -O2 ${name} -o ${temp_dir}/bench`],
     execution: (name, n, temp_dir) => `${temp_dir}/bench ${n}`,
     extension: ".hs",
   },
@@ -87,16 +87,17 @@ function generate_bench_file(runner, temp_dir, file_content) {
   }
 }
 
-function run_pre_commands(runner, file_name, temp_dir) {
+function run_pre_commands(runner, file_name, file_path, temp_dir) {
   try {
     // get pre-commands for the environment
-    const pres = runner.pre(file_name, temp_dir);
+    const pres = runner.pre(file_name, file_path, temp_dir);
     // runs all pre-commands, if any
     for (pre_command of pres) {
       execSync(pre_command);
     }
     
   } catch(e) {
+    console.log(e);
     throw "Error while running pre commands";
   }
 }
@@ -126,23 +127,23 @@ function run_execution(runner, file_name, times, ctx, temp_dir) {
 
 function run_n (ctx, temp_dir) {
   const {file_path, runner_name, n, times} = ctx;
+  const abs_file_path = path.join(dir, file_path);
   const runner = runners[runner_name];
 
   // const file_content = get_file_content(runner, path, n);
   // const gen_file_name = generate_bench_file(runner, temp_dir, file_content);
   
-  const file_name = path.join(file_path, "main" + runner.extension);
-  console.log("file name", file_name);
-  run_pre_commands(runner, file_name, temp_dir);
+  const file_name = path.join(abs_file_path, "main" + runner.extension);
+  run_pre_commands(runner, file_name, abs_file_path, temp_dir);
 
   // consoles
   console.log("===========================")
   console.log(`${runner_name}: running ${file_path} with n = ${n}`);
   console.log();
 
-  process.chdir(temp_dir);
+  // process.chdir(temp_dir);
   run_execution(runner, file_name, times, ctx , temp_dir);
-  process.chdir("..");
+  // process.chdir("..");
 }
 
 function main() {
@@ -173,11 +174,11 @@ function main() {
     const result_json   = JSON.stringify(result);
     if (file_path) {
       try {
-        fs.mkdirSync(["./Results", file_path].join(path.sep), {recursive: true});
+        fs.mkdirSync([dir, "Results", file_path].join(path.sep), {recursive: true});
       } catch(e) {
 
       } finally {
-        const result_path   = ["./Results", file_path, "result.json"].join(path.sep);
+        const result_path   = [dir, "Results", file_path, "result.json"].join(path.sep);
         fs.writeFileSync(result_path, result_json, {recursive: true});
       }
     }
