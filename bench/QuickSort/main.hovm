@@ -16,16 +16,12 @@
 (Sort_ p xs)       = (Split p (Cons p xs) Nil Nil)
 
 // Splits list in two partitions
-(Split p Nil min max) =
-  (Concat (Sort min) (Sort max))
-(Split p (Cons x xs) min max) =
-  (Place p (< p x) x xs min max)
+(Split p Nil         min max) = (Concat (Sort min) (Sort max))
+(Split p (Cons x xs) min max) = (Place p (< p x) x xs min max)
 
 // Moves element to its partition
-(Place p 0 x xs  min max) =
-  (Split p xs (Cons x min) max)
-(Place p 1 x xs  min max) =
-  (Split p xs min (Cons x max))
+(Place p 0 x xs min max) = (Split p xs (Cons x min) max)
+(Place p 1 x xs min max) = (Split p xs min (Cons x max))
 
 // Sorts and sums n random numbers
-(Main n) = (Sum (Sort (Randoms 1 n)))
+(Main n) = (Sum (Sort (Randoms 1 (* 100000 n))))

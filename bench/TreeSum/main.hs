@@ -1,6 +1,7 @@
 import Data.Word
 import System.Environment
 
+-- A binary tree of uints
 data Tree = Node Tree Tree | Leaf Word32
 
 -- Creates a tree with 2^n elements

@@ -1,17 +1,17 @@
 High-Order Virtual Machine (HOVM)
 =================================
 
-**High-Order Virtual Machine (HOVM)** is a pure functional compile target that is
-**lazy**, **non-garbage-collected** and **massively parallel**. Not only that,
-it is **beta-optimal**, which means it, in several cases, can be exponentially
-faster than the every other functional runtime, including Haskell's GHC.
+**High-Order Virtual Machine (HOVM)** is a pure functional compile target that
+is **lazy**, **non-garbage-collected** and **massively parallel**. Not only
+that, it is **beta-optimal**, which means it, in several cases, can be
+exponentially faster than most functional runtime, including Haskell's GHC.
 
 That is possible due to a new model of computation, the Interaction Net, which
 combines the Turing Machine with the Lambda Calculus. Up until recently, that
 model, despite elegant, was not efficient in practice. A recent breaktrough,
 though, improved its efficiency drastically, giving birth to the HOVM. Despite
-being a prototype, it already beats mature compilers for several inputs, and it
-is set to scale towards uncharted levels of performance.
+being a prototype, it already beats mature compilers in many cases, and is set
+to scale towards uncharted levels of performance.
 
 **Welcome to the inevitable parallel, functional future of computers!**
 
@@ -61,9 +61,9 @@ clang -O2 main.c -o main -lpthread # compiles C to executable
 
 The program above runs in about **6.4 seconds** in a modern 8-core processor,
 while the identical Haskell code takes about **19.2 seconds** in the same
-machine with GHC. Notice how there are no parallelism annotations! And that's
-just the tip of iceberg. 
-
+machine with GHC. Notice how there are no parallelism annotations! You write a
+pure functional program, and the parallelism comes for free. And that's just the
+tip of iceberg. 
 
 Benchmarks
 ==========
@@ -71,18 +71,8 @@ Benchmarks
 HOVM is compared against Haskell GHC, because it is the reference lazy
 functional compiler. Note HOVM is still an early prototype. It obviously won't
 beat GHC in many cases. HOVM has a lot of room for improvements and is expected
-to improve steadily as optimizations are implemented.
-
-```bash
-# GHC
-ghc -O2 main.hs -o main
-time ./main
-
-# HOVM
-hovm main.hovm
-clang -O2 main.c -o main
-time ./main
-```
+to improve steadily as optimizations are implemented. Tests were ran with `ghc
+-O2` for Haskell and `clang -O2` for HOVM, in a 8-core M1 Max processor.
 
 Parallel Tree Sum
 -----------------
@@ -109,25 +99,33 @@ Parallel Tree Sum
 <td>
 
 ```haskell
+import Data.Word
 import System.Environment
 
--- Computes f^(2^n)
-comp :: Int -> (a -> a) -> a -> a
-comp 0 f x = f x
-comp n f x = comp (n - 1) (\x -> f (f x)) x
+-- A binary tree of uints
+data Tree = Node Tree Tree | Leaf Word32
 
--- Performs 2^n compositions
-main :: IO ()
+-- Creates a tree with 2^n elements
+gen :: Word32 -> Tree
+gen 0 = Leaf 1
+gen n = Node (gen(n - 1)) (gen(n - 1))
+
+-- Adds all elements of a tree
+sun :: Tree -> Word32
+sun (Leaf x)   = 1
+sun (Node a b) = sun a + sun b
+
+-- Performs 2^n additions
 main = do
-  n <- read.head <$> getArgs :: IO Int
-  print $ comp n (\x -> x) (0 :: Int)
+  n <- read.head <$> getArgs :: IO Word32
+  print $ sun (gen n)
 ```
 
 </td>
 </tr>
 </table>
 
-// TODO: CHART HERE
+![](bench/_results_/TreeSum.png)
 
 #### Comment
 
@@ -177,7 +175,7 @@ qsort Nil =
 qsort (Cons x Nil) =
   Single x
 qsort (Cons p xs) =
-  split p xs Nil Nil
+  split p (Cons p xs) Nil Nil
 
 -- Splits list in two partitions
 split p Nil min max =
@@ -196,14 +194,14 @@ main = do
 </tr>
 </table>
 
-// TODO: CHART HERE
+![](bench/_results_/QuickSort.png)
 
 #### Comment
 
 This test once again takes advantage of automatic parallelism by modifying the
 usual QuickSort implementation to return a concatenation tree instead of a flat
-list. This, again, allows HOVM to use multiple cores, making it outperform GHC
-by a wide margin.
+list. This, again, allows HOVM to use multiple cores. Both targets are very
+close in this test.
 
 Optimal Composition
 -------------------
@@ -244,7 +242,7 @@ main = do
 </tr>
 </table>
 
-// TODO: GRAPH HERE
+![](bench/_results_/Composition.png)
 
 #### Comment
 
@@ -313,7 +311,7 @@ main = do
 </tr>
 </table>
 
-// TODO: CHART HERE
+![](bench/_results_/LambdaArithmetic.png)
 
 #### Comment
 

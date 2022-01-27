@@ -79,8 +79,8 @@ const u64 GTN = 0xE;
 const u64 NEQ = 0xF;
 
 //GENERATED_CONSTRUCTOR_IDS_START//
-const u64 _MAIN_ = 1;
 const u64 _COMP_ = 0;
+const u64 _MAIN_ = 1;
 
 //GENERATED_CONSTRUCTOR_IDS_END//
 
@@ -478,16 +478,16 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
           {
-            case _MAIN_: {
-              if (get_ari(term) == 1) {
-                init = 0;
-                continue;
-              }
-            };
             case _COMP_: {
               if (get_ari(term) == 3) {
                 stk_push(&stack, host);
                 host = get_loc(term, 0);
+                continue;
+              }
+            };
+            case _MAIN_: {
+              if (get_ari(term) == 1) {
+                init = 0;
                 continue;
               }
             };
@@ -707,23 +707,6 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_1_START//
           {
-            case _MAIN_: {
-              if (1) {
-                inc_cost(mem);
-                u64 lam_0 = alloc(mem, 2);
-                link(mem, lam_0 + 1, Var(lam_0));
-                u64 cal_1 = alloc(mem, 3);
-                link(mem, cal_1 + 0, ask_arg(mem, term, 0));
-                link(mem, cal_1 + 1, Lam(lam_0));
-                link(mem, cal_1 + 2, U_32(0));
-                u64 done = Cal(3, 0, cal_1);
-                link(mem, host, done);
-                clear(mem, get_loc(term, 0), 1);
-                init = 1;
-                continue;
-              }
-              break;
-            };
             case _COMP_: {
               if (get_tag(ask_arg(mem,term,0)) == PAR) {
                 cal_par(mem, host, term, ask_arg(mem, term, 0), 0);
@@ -780,6 +763,23 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
                 u64 done = Cal(3, 0, cal_10);
                 link(mem, host, done);
                 clear(mem, get_loc(term, 0), 3);
+                init = 1;
+                continue;
+              }
+              break;
+            };
+            case _MAIN_: {
+              if (1) {
+                inc_cost(mem);
+                u64 lam_0 = alloc(mem, 2);
+                link(mem, lam_0 + 1, Var(lam_0));
+                u64 cal_1 = alloc(mem, 3);
+                link(mem, cal_1 + 0, ask_arg(mem, term, 0));
+                link(mem, cal_1 + 1, Lam(lam_0));
+                link(mem, cal_1 + 2, U_32(0));
+                u64 done = Cal(3, 0, cal_1);
+                link(mem, host, done);
+                clear(mem, get_loc(term, 0), 1);
                 init = 1;
                 continue;
               }
@@ -1286,8 +1286,8 @@ int main(int argc, char* argv[]) {
   // Id-to-Name map
   const u64 id_to_name_size = 2;
   char* id_to_name_data[id_to_name_size];
-  id_to_name_data[0] = "Comp";
   id_to_name_data[1] = "Main";
+  id_to_name_data[0] = "Comp";
 
 
   // Builds main term

@@ -52,6 +52,6 @@ fromU32 s i = fromU32Put (s - 1) (i `mod` 2) (i `div` 2) where
 main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
-  let a = fromU32 32 100000
+  let a = fromU32 32 (100000 * n)
   let b = fromU32 32 (100000 * n)
   print $ toU32 (mul a b)

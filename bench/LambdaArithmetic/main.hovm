@@ -38,7 +38,7 @@
 
 // Computes (100k * 100k * n)
 (Main n) =
-  let a = (FromU32 32 100000)
+  let a = (FromU32 32 (* 100000 n))
   let b = (FromU32 32 (* 100000 n))
   (ToU32 (Mul a b))
 

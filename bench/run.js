@@ -4,93 +4,46 @@ const path = require("path");
 
 var dir = __dirname;
 
-const runners = {
-  // C: {
-  //   first_line: (n) => `const int N = ${n};`,
-  //   pre: (name) => ["clang -O2 "+ name +" -o bench"],
-  //   execution: (name) => "./bench",
-  //   extension: ".c",
-  // },
-  HovmInterpreter: {
-    pre: (name, file_path, temp_dir) => [],
-    execution: (name, n, temp_dir) => `hovm run ${name} ${n}`,
+const RUNS = 3; // how many times run the same test
+
+function range(init, step, size) {
+  var arr = [];
+  for (var i = 0; i < size; ++i) {
+    arr.push(init);
+    init = init + step;
+  }
+  return arr;
+}
+
+const programs = {
+  //TreeSum: { vals: range(0, 1, 33) },
+  //Composition: { vals: range(0, 1, 33) },
+  //QuickSort: { vals: range(0, 1, 123) },
+  LambdaArithmetic: { vals: range(0, 1, 123) },
+};
+
+const evaluators = {
+  //HovmInterpreter: {
+    //pre: (name, file_path, temp_dir) => [],
+    //execution: (name, n, temp_dir) => `hovm run ${name} ${n}`,
+    //extension: ".hovm",
+  //},
+  HOVM: {
+    pre: (name, file_path) => ["hovm compile " + name, `clang -O2 ${file_path}/main.c -o .bin/hovm`],
+    execution: (name, n) => `.bin/hovm ${n}`,
     extension: ".hovm",
   },
-  HovmCompile: {
-    pre: (name, file_path, temp_dir) => ["hovm compile " + name, `clang -O2 ${file_path}/main.c -o ${temp_dir}/bench`],
-    execution: (name, n, temp_dir) => `${temp_dir}/bench ${n}`,
-    extension: ".hovm",
-  },
-  Haskell: {
-    pre: (name, file_path, temp_dir) => [`ghc -O2 ${name} -o ${temp_dir}/bench`],
-    execution: (name, n, temp_dir) => `${temp_dir}/bench ${n}`,
+  GHC: {
+    pre: (name, file_path) => [`ghc -O2 ${name} -o .bin/ghc`],
+    execution: (name, n) => `.bin/ghc ${n}`,
     extension: ".hs",
   },
 }
 
-function format_test_name(str, default_value) {
-  if (!str) {
-    return default_value;
-  }
-  if (str[0] === "[") {
-    let values = str.substr(1, str.length - 2).split(",").map(x => x.trim());
-    return values;
-  }
-  throw "Couldn't parse tests names";
-}
-
-function format_n_values(str, default_value) {
-  if (!str) {
-    return default_value;
-  } else if (str[0] === "[") {
-    return JSON.parse(str);
-  }
-
-  throw "Couldn't parse n_values";
-}
-
-function replace_first_line(data, runner, n) {
-  return data.toString().replace(/.*\n/, runner.first_line(n) + "\n");
-}
-
-function get_params() {
-  const paths    = format_test_name(process.argv[2], ["Fibonacci"]);
-  const n_values = format_n_values(process.argv[3], [[10, 20, 30]]);
-  const times    = process.argv[4] || 5;
-
-  return {
-    paths,
-    n_values,
-    times
-  }
-}
-
-// function get_file_content(runner, file_path, n) {
-//   console.log(file_path);
-//   try {
-//     const file_name = "main" + runner.extension;
-//     const file_content = fs.readFileSync(path.join(dir, file_path, file_name));
-//     return replace_first_line(file_content, runner, n);
-//   } catch(e) {
-//     throw "Error while reading the file, verify if it exists";
-//   }
-// }
-
-function generate_bench_file(runner, temp_dir, file_content) {
-  try {
-    // process.chdir(temp_dir); // change dir to a temporary folder
-    const gen_file_name = "tmp" + runner.extension; // generate a test file with "tmp.xy" name in .tmp folder
-    fs.writeFileSync(gen_file_name, file_content);
-    return gen_file_name;
-  } catch(e) {
-    throw "Error while generating tmp file";
-  }
-}
-
-function run_pre_commands(runner, file_name, file_path, temp_dir) {
+function run_pre_commands(evaluator, file_name, file_path) {
   try {
     // get pre-commands for the environment
-    const pres = runner.pre(file_name, file_path, temp_dir);
+    const pres = evaluator.pre(file_name, file_path);
     // runs all pre-commands, if any
     for (pre_command of pres) {
       execSync(pre_command);
@@ -102,11 +55,13 @@ function run_pre_commands(runner, file_name, file_path, temp_dir) {
   }
 }
 
-function run_execution(runner, file_name, times, ctx, temp_dir) {
+function run_execution(evaluator, file_name, ctx) {
   let tests_perf = [];
-  for (let i = 0; i < times; i++) {
-    const command = runner.execution(file_name, n, temp_dir);
-    // exec runner and measure its time
+  var total_time = 0;
+  for (let i = 0; i < RUNS+1; i++) {
+    const command = evaluator.execution(file_name, ctx.n);
+    //console.log(command);
+    // exec evaluator and measure its time
     let start = performance.now();
     execSync(command);
     let end = performance.now();
@@ -115,77 +70,103 @@ function run_execution(runner, file_name, times, ctx, temp_dir) {
     let time = end - start;
     console.log(`Time ${i}: ${time}`);
 
-    ctx.result.push({
-      target: ctx.runner_name,
-      n: ctx.n,
-      time: time,
-    });
+    if (i > 0) { // ignore first run
+      total_time += time;
+      //test_results.push({
+        //test: ctx.program_name,
+        //targ: ctx.evaluator_name,
+        //argm: ctx.n,
+        //time: time,
+      //});
+    }
   }
+
+  ctx.result.push({
+    targ: ctx.evaluator_name,
+    prog: ctx.program_name,
+    time: total_time / RUNS / 1000,
+    argm: ctx.n,
+  });
 
   return tests_perf;
 }
 
-function run_n (ctx, temp_dir) {
-  const {file_path, runner_name, n, times} = ctx;
+function run_n (ctx) {
+  const {file_path, evaluator_name, n} = ctx;
   const abs_file_path = path.join(dir, file_path);
-  const runner = runners[runner_name];
+  const evaluator = evaluators[evaluator_name];
 
-  // const file_content = get_file_content(runner, path, n);
-  // const gen_file_name = generate_bench_file(runner, temp_dir, file_content);
-  
-  const file_name = path.join(abs_file_path, "main" + runner.extension);
-  run_pre_commands(runner, file_name, abs_file_path, temp_dir);
+  const file_name = path.join(abs_file_path, "main" + evaluator.extension);
+  run_pre_commands(evaluator, file_name, abs_file_path);
 
   // consoles
   console.log("===========================")
-  console.log(`${runner_name}: running ${file_path} with n = ${n}`);
-  console.log();
+  console.log(`[${evaluator_name}] ${file_path} ${n}`);
 
   // process.chdir(temp_dir);
-  run_execution(runner, file_name, times, ctx , temp_dir);
+  run_execution(evaluator, file_name, ctx);
   // process.chdir("..");
 }
 
 function main() {
-  const params = get_params();
-  const {paths, n_values, times} = params;
+  // for each program
+  for (let program_name in programs) {
+    var file_path = program_name;
+    var program = programs[program_name];
 
-  // create a temp folder
-  var temp_dir = fs.mkdtempSync(path.join(dir, ".tmp-"));
-
-  // for each test
-  paths.forEach((file_path, i) => {
     // will store the results
     let result = [];
-    // for each runner enviroment
-    for (runner_name in runners) {
+
+    // for each evaluator enviroment
+    for (evaluator_name in evaluators) {
       try {
         // for each n value
-        for (n of n_values[i]) {
-          run_n({file_path, runner_name, n, times, result}, temp_dir);
+        for (var n of program.vals) {
+          //console.log("-", n, file_path, evaluator_name, n, RUNS, result, temp_dir);
+          run_n({program_name, file_path, evaluator_name, n, RUNS, result});
         }
       } catch(e) {
-        console.log("Could not run for " + file_path + ": " + runner_name + " target. Verify if it exist.");
+        console.log("Could not run for " + file_path + ": " + evaluator_name + " target. Verify if it exist.");
         console.log("Details: ", e);
       }
     }
 
-    // write result
-    const result_json   = JSON.stringify(result);
-    if (file_path) {
-      try {
-        fs.mkdirSync([dir, "Results", file_path].join(path.sep), {recursive: true});
-      } catch(e) {
-
-      } finally {
-        const result_path   = [dir, "Results", file_path, "result.json"].join(path.sep);
-        fs.writeFileSync(result_path, result_json, {recursive: true});
+    // Saves results.
+    // TODO: messy code, improve
+    console.log("Done! Saving results...");
+    var charts = {};
+    for (var name in programs) {
+      charts[name] = {X: programs[name].vals.slice(0)};
+      for (var eva in evaluators) {
+        charts[name][eva] = [];
       }
     }
-  });
+    for (var res of result) {
+      charts[res.prog][res.targ].push(res.time);
+    }
+    var csvs = [];
+    var evas = Object.keys(evaluators);
+    for (var prog in charts) {
+      var chart = charts[prog];
+      var rows = [["X"].concat(evas)];
+      for (var i = 0; i < chart.X.length; ++i) {
+        var row = [chart.X[i]];
+        for (var eva of evas) {
+          row.push(chart[eva][i]);
+        }
+        rows.push(row);
+      }
+      var text = rows.map(row => row.join(",")).join("\n");
+      csvs.push({prog, text}); 
+    }
+    for (var {prog, text} of csvs) {
+      fs.writeFileSync("./_results_/"+prog+".csv", text);
+    }
+    console.log("Results saved.");
+  };
 
   // delete temp folder
-  fs.rmSync(temp_dir, {recursive: true});
+  //fs.rmSync(temp_dir, {recursive: true});
 
 }
 
