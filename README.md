@@ -149,14 +149,18 @@ Parallel QuickSort
 (...)
 
 // Parallel QuickSort
-(Sort Nil)         = Empty
-(Sort (Cons x xs)) = (SortAux x xs)
-(SortAux p Nil)    = (Single p)
-(SortAux p xs)     = (Split p (Cons p xs) Nil Nil)
-  (Split p Nil         min max) = (Concat (Sort min) (Sort max))
-  (Split p (Cons x xs) min max) = (Place p (< p x) x xs min max)
-  (Place p 0     x xs  min max) = (Split p xs (Cons x min) max)
-  (Place p 1     x xs  min max) = (Split p xs min (Cons x max))
+(Sort Nil) =
+  Empty
+(Sort (Cons x Nil)) =
+  (Single p)
+(Sort (Cons x xs)) =
+  (Split p (Cons p xs) Nil Nil)
+
+// Splits list in two partitions
+(Split p Nil min max) =
+  (Concat (Sort min) (Sort max))
+(Split p (Cons x xs) min max) =
+  (Place p (< p x) x xs min max)
 
 // Sorts and sums n random numbers
 (Main n) = (Sum (Sort (Randoms 1 n)))
@@ -170,13 +174,18 @@ Parallel QuickSort
 
 -- Parallel QuickSort
 qsort :: List Word32 -> Tree Word32
-qsort Nil          = Empty
-qsort (Cons x Nil) = Single x
-qsort (Cons p xs)  = split p xs Nil Nil where
-  split p Nil         min max = Concat (qsort min) (qsort max)
-  split p (Cons x xs) min max = place p (p < x) x xs min max
-  place p False x xs  min max = split p xs (Cons x min) max
-  place p True  x xs  min max = split p xs min (Cons x max)
+qsort Nil =
+  Empty
+qsort (Cons x Nil) =
+  Single x
+qsort (Cons p xs) =
+  split p xs Nil Nil
+
+-- Splits list in two partitions
+split p Nil min max =
+  Concat (qsort min) (qsort max)
+split p (Cons x xs) min max =
+  place p (p < x) x xs min max
 
 -- Sorts and sums n random numbers
 main :: IO ()
