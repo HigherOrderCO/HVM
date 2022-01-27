@@ -308,7 +308,8 @@ This chart isn't wrong: HOVM is *exponentially* faster for function composition,
 due to optimality, depending on the target function. There is no parallelism
 involved here. In general, if the composition of a function `f` has a
 constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HOVM,
-and exponential-time (`O(2^N)`) on GHC.
+and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
+functional algorithms that weren't possible before.
 
 Lambda Arithmetic (Optimal)
 ---------------------------
