@@ -1,22 +1,21 @@
 High-Order Virtual Machine (HOVM)
 =================================
 
-Have you ever dreamed of a future where people wrote high-level code in language
-that felt **as elegant as Haskell**, and that code was compiled to executables
-**as memory-efficiency of Rust**, all while enjoying the **massive parallelism
-of CUDA**? Wait no more, the future has arrived!
-
 **High-Order Virtual Machine (HOVM)** is a pure functional compile target that is
 **lazy**, **non-garbage-collected** and **massively parallel**. Not only that,
 it is **beta-optimal**, which means it, in several cases, can be exponentially
 faster than the every other functional runtime, including Haskell's GHC.
 
-That is possible due to a new model of computation, the **Interaction Net**,
-which enjoys the best aspects of the Turing Machine and the Lambda Calculus. Up
-until recently, that model, despite elegant, was not efficient in practice.
-Thanks to a recent breaktrough, its efficiency improved drastically, allowing
-HOVM to compete with state-of-art functional compilers, even though it is still
-an early prototype with numerous optimizations missing.
+That is possible due to a new model of computation, the Interaction Net, a
+natural combination of the Turing Machine with the Lambda Calculus. Up until
+recently, that model, despite elegant, was not efficient in practice. Thanks to
+a new breaktrough, HOVM can now beat mature compilers, despite being just a
+prototype.
+
+Have you ever dreamed of a future where developers wrote high-level code in
+language that felt **as elegant as Haskell**, and that code was compiled to
+executables **as memory-efficiency of Rust**, all while enjoying the **massive
+parallelism of CUDA**? Wait no more, the future has arrived!
 
 Usage
 -----
