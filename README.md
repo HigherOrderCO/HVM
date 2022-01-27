@@ -135,8 +135,6 @@ main = do
 
 ![](bench/_results_/ListFold.png)
 
-#### Comment
-
 In this micro benchmark, we just build a very huge list of numbers, and fold
 over it to add them all. Since lists are sequential, and since there are no
 high-order lambdas, HOVM doesn't have any technical advantage over GHC. Because
@@ -194,8 +192,6 @@ main = do
 </table>
 
 ![](bench/_results_/TreeSum.png)
-
-#### Comment
 
 The example from the README, TreeSum recursively builds and sums all elements of
 a perfect binary tree. HOVM outperforms Haskell by a wide margin, because this
@@ -261,8 +257,6 @@ main = do
 
 ![](bench/_results_/QuickSort.png)
 
-#### Comment
-
 This test once again takes advantage of automatic parallelism by modifying the
 usual QuickSort implementation to return a concatenation tree instead of a flat
 list. This, again, allows HOVM to use multiple cores, but not fully, which is
@@ -309,8 +303,6 @@ main = do
 </table>
 
 ![](bench/_results_/Composition.png)
-
-#### Comment
 
 This chart isn't wrong: HOVM is *exponentially* faster for function composition,
 due to optimality, depending on the target function. There is no parallelism
@@ -389,8 +381,6 @@ main = do
 </table>
 
 ![](bench/_results_/LambdaArithmetic.png)
-
-#### Comment
 
 This example takes advantage of beta-optimality to implement multiplication
 using lambda-encoded bit-strings. Once again, HOVM halts instantly, while GHC
