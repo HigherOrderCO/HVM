@@ -7,11 +7,11 @@ is **lazy**, **non-garbage-collected** and **massively parallel**. It is also
 faster than most functional runtimes, including Haskell's GHC.
 
 That is possible due to a new model of computation, the Interaction Net, which
-combines the Turing Machine with the Lambda Calculus. Up until recently, this
-model, despite its elegance, was inefficient in practice. However, a recent
-breaktrough has drastically improved its efficiency, giving birth to the HVM.
-Despite being a prototype, it already beats mature compilers in many cases,
-and is set to scale towards uncharted levels of performance.
+elegantly combines the Turing Machine with the Lambda Calculus. Previous
+implementations of this model have been inefficient in practice, however, a
+recent breaktrough has drastically improved its efficiency, giving birth to the
+HVM. Despite being a prototype, it already beats mature compilers in many
+cases, and is set to scale towards uncharted levels of performance.
 
 **Welcome to the inevitable parallel, functional future of computers!**
 
@@ -45,8 +45,8 @@ HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 (Main n) = (Sum (Gen n))
 ```
 
-The program above creates a perfect binary tree with `2^n` elements, and then
-adds them up. Since it is recursive, HVM will parallelize it automatically.
+The program above creates a perfect binary tree with `2^n` elements and adds
+them up. Since it is recursive, HVM will parallelize it automatically.
 
 #### 3. Run and compile
 
@@ -70,12 +70,12 @@ Benchmarks
 ==========
 
 HVM has two main advantages over GHC: automatic parallelism and beta-optimality.
-I've selected 5 micro, but common, benchmarks to compare them. Keep in mind that
-HVM is still an early prototype, so it **obviously** won't beat GHC in general,
-but it does quite well already, and should improve steadily as optimizations are
+I've selected 5 common micro-benchmarks to compare them. Keep in mind that HVM
+is still an early prototype, so it **obviously** won't beat GHC in general, but
+it does quite well already and should improve steadily as optimizations are
 implemented. Tests were compiled with `ghc -O2` for Haskell and `clang -O2` for
 HVM, on an 8-core M1 Max processor. The complete files to replicate these
-results are on [/bench](bench).
+results are in [the /bench directory](bench).
 
 List Fold (Sequential)
 ----------------------
@@ -131,10 +131,10 @@ main = do
 
 ![](bench/_results_/ListFold.png)
 
-In this micro benchmark, we just build a huge list of numbers, and fold over
+In this micro-benchmark, we just build a huge list of numbers, and fold over
 it to sum them. Since lists are sequential, and since there are no higher-order
-lambdas, HVM doesn't have any technical advantage over GHC. As such,
-both runtimes perform very similarly.
+lambdas, HVM doesn't have any technical advantage over GHC. As such, both
+runtimes perform very similarly.
 
 Tree Sum (Parallel)
 -------------------
@@ -298,8 +298,8 @@ constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HVM,
 and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
 novel functional algorithms. I highly encourage you to try composing different
 functions and watching how their complexity behaves. Can you tell if it will be
-linear or exponential? Or how recursion affects it? That's a very insightful
-experience!
+linear or exponential? Or how recursion will affect it? That's a very
+insightful experience!
 
 Lambda Arithmetic (Optimal)
 ---------------------------
@@ -380,9 +380,9 @@ of lambda-encoded algorithms that were simply impossible before.
 How is that possible?
 =====================
 
-Check [HOW.md](https://github.com/Kindelia/HVM/blob/master/HOW.md).
+Check [HOW.md](HOW.md).
 
 How can I help?
 ===============
 
-Join us at the [Kindelia](https://discord.gg/QQ2jkxVj) community!
+Join the Kindelia community on [Discord]((https://discord.gg/QQ2jkxVj)) or [Matrix](https://matrix.to/#/#kindelia:kde.org)!
