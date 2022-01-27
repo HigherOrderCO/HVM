@@ -135,7 +135,7 @@ Parallel QuickSort
 ------------------
 
 <table>
-<tr> <td>HOVM</td> <td>Haskell</td> </tr>
+<tr><td>HOVM</td></tr>
 <tr>
 <td>
 
@@ -152,6 +152,10 @@ Parallel QuickSort
 
 </td>
 </tr>
+</table>
+
+<table>
+<tr><td>Haskell</td></tr>
 <tr>
 <td>
 
