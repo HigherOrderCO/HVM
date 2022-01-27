@@ -76,6 +76,72 @@ it **obviously** won't beat GHC in general, but it does quite fine already, and
 should improve steadily as optimizations are implemented. Tests were ran with
 `ghc -O2` for Haskell and `clang -O2` for HOVM, in an 8-core M1 Max processor.
 
+List Fold (Sequential)
+----------------------
+
+<table>
+<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
+<tr>
+<td>
+
+```javascript
+// Folds over a list
+(Fold Nil         c n) = n
+(Fold (Cons x xs) c n) =
+  (c x (Fold xs c n))
+
+// A list from 0 to n
+(Range 0 xs) = xs
+(Range n xs) =
+  let m = (- n 1)
+  (Range m (Cons m xs))
+
+// Sums a big list with fold
+(Main n) =
+  let size = (* n 1000000)
+  let list = (Range size Nil)
+  (Fold list λaλb(+ a b) 0)
+```
+
+</td>
+<td>
+
+```haskell
+-- Folds over a list
+fold :: List a -> (a -> r -> r) -> r -> r
+fold Nil         c n = n
+fold (Cons x xs) c n =
+  c x (fold xs c n)
+
+-- A list from 0 to n
+range :: Word32 -> List Word32 -> List Word32
+range 0 xs = xs
+range n xs =
+  let m = n - 1
+  in range m (Cons m xs)
+
+-- Sums a big list with fold
+main :: IO ()
+main = do
+  n <- read.head <$> getArgs :: IO Word32
+  let size = 1000000 * n
+  let list = range size Nil
+  print $ fold list (+) 0
+```
+
+</td>
+</tr>
+</table>
+
+![](bench/_results_/ListFold.png)
+
+#### Comment
+
+In this micro benchmark, we just build a very huge list of numbers, and fold
+over it to add them all. Since lists are sequential, and since there are no
+high-order lambdas, HOVM doesn't have any technical advantage over GHC. Because
+of that, both runtimes perform very similar.
+
 Tree Sum (Parallel)
 -------------------
 
@@ -333,71 +399,6 @@ applications. For example, Haskell's Lists are optimized by converting them to
 lambdas (foldr/build), its Free Monads library has a faster version based on
 lambdas, and so on. HOVM's optimality open doors for an entire unexplored field
 of lambda encoded algorithms that were simply impossible before.
-
-List Fold (Sequential)
-----------------------
-
-<table>
-<tr> <td>main.hovm</td> <td>main.hs</td> </tr>
-<tr>
-<td>
-
-```javascript
-// Folds over a list
-(Fold Nil         c n) = n
-(Fold (Cons x xs) c n) =
-  (c x (Fold xs c n))
-
-// A list from 0 to n
-(Range 0 xs) = xs
-(Range n xs) =
-  let m = (- n 1)
-  (Range m (Cons m xs))
-
-// Sums a big list with fold
-(Main n) =
-  let size = (* n 1000000)
-  let list = (Range size Nil)
-  (Fold list λaλb(+ a b) 0)
-```
-
-</td>
-<td>
-
-```haskell
--- Folds over a list
-fold :: List a -> (a -> r -> r) -> r -> r
-fold Nil         c n = n
-fold (Cons x xs) c n =
-  c x (fold xs c n)
-
--- A list from 0 to n
-range :: Word32 -> List Word32 -> List Word32
-range 0 xs = xs
-range n xs =
-  let m = n - 1
-  in range m (Cons m xs)
-
--- Sums a big list with fold
-main :: IO ()
-main = do
-  n <- read.head <$> getArgs :: IO Word32
-  let size = 1000000 * n
-  let list = range size Nil
-  print $ fold list (+) 0
-```
-
-</td>
-</tr>
-</table>
-
-![](bench/_results_/ListFold.png)
-
-#### Comment
-
-This test just builds and folds over a very huge list of numbers. Since lists
-are sequential, and since there are no high-order terms on which optimality
-could help, then both runtimes are on equal grounds. 
 
 How is that possible?
 =====================
