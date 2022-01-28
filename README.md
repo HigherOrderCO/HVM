@@ -75,8 +75,8 @@ I've selected 5 micro, but common, benchmarks to compare them. Keep in mind that
 HVM is still an early prototype, so it **obviously** won't beat GHC in general,
 but it does quite well already, and should improve steadily as optimizations are
 implemented. Tests were compiled with `ghc -O2` for Haskell and `clang -O2` for
-HVM, on an 8-core M1 Max processor. The code to replicate these results is on
-the [/bench](bench) directory.
+HVM, on an 8-core M1 Max processor. The complete files to replicate these
+results are on [/bench](bench).
 
 List Fold (Sequential)
 ----------------------
@@ -162,8 +162,6 @@ Tree Sum (Parallel)
 <td>
 
 ```haskell
-(...)
-
 -- Creates a tree with 2^n elements
 gen 0 = Leaf 1
 gen n = Node (gen(n - 1)) (gen(n - 1))
@@ -197,8 +195,6 @@ QuickSort (Parallel)
 <td>
 
 ```javascript
-(...)
-
 // QuickSort
 (QSort p s Nil)          = Empty
 (QSort p s (Cons x Nil)) = (Single x)
@@ -224,8 +220,6 @@ QuickSort (Parallel)
 <td>
 
 ```haskell
-(...)
-
 -- QuickSort
 qsort p s Nil          = Empty
 qsort p s (Cons x Nil) = Single x
@@ -242,7 +236,6 @@ split p s (Cons x xs) min max =
   place p s (p < x) x xs min max
 
 -- Sorts and sums n random numbers
-main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
   let list = randoms 1 (100000 * n)
@@ -283,15 +276,11 @@ Composition (Optimal)
 <td>
 
 ```haskell
-import System.Environment
-
 -- Computes f^(2^n)
-comp :: Int -> (a -> a) -> a -> a
 comp 0 f x = f x
 comp n f x = comp (n - 1) (\x -> f (f x)) x
 
 -- Performs 2^n compositions
-main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Int
   print $ comp n (\x -> x) (0 :: Int)
@@ -322,8 +311,6 @@ Lambda Arithmetic (Optimal)
 <td>
 
 ```javascript
-(...)
-
 // Increments a Bits by 1
 (Inc xs) = λex λox λix
   let e = ex
@@ -352,10 +339,7 @@ Lambda Arithmetic (Optimal)
 <td>
 
 ```haskell
-(...)
-
 -- Increments a Bits by 1
-inc :: Bits -> Bits
 inc xs = Bits $ \ex -> \ox -> \ix ->
   let e = ex
       o = ix
@@ -363,11 +347,9 @@ inc xs = Bits $ \ex -> \ox -> \ix ->
   in get xs e o i
 
 -- Adds two Bits
-add :: Bits -> Bits -> Bits
 add xs ys = app xs (\x -> inc x) ys
 
 -- Multiplies two Bits
-mul :: Bits -> Bits -> Bits
 mul xs ys = 
   let e = end
       o = \p -> b0 (mul p ys)
@@ -375,7 +357,6 @@ mul xs ys =
   in get xs e o i
 
 -- Squares (n * 100k)
-main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
   let a = fromU32 32 (100000 * n)
