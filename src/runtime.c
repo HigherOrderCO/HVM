@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -144,6 +145,7 @@ void stk_init(Stk* stack) {{
   stack->size = 0;
   stack->mcap = stk_growth_factor;
   stack->data = malloc(stack->mcap * sizeof(u64));
+  assert(stack->data);
 }}
 
 void stk_free(Stk* stack) {{
@@ -1173,6 +1175,7 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
   stk_init(&chrs);
   stk_init(&vars);
   dirs = (Stk*)malloc(sizeof(Stk) * dirs_mcap);
+  assert(dirs);
   for (u64 i = 0; i < dirs_mcap; ++i) {{
     stk_init(&dirs[i]);
   }}
@@ -1221,6 +1224,7 @@ int main(int argc, char* argv[]) {{
   // Builds main term
   mem.size = 0;
   mem.node = (u64*)malloc(HEAP_SIZE);
+  assert(mem.node);
   if (argc <= 1) {{
     mem.node[mem.size++] = Cal(0, _MAIN_, 0);
   }} else {{
@@ -1246,6 +1250,7 @@ int main(int argc, char* argv[]) {{
   // Prints result normal form
   const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
   char* code_data = (char*)malloc(code_mcap * sizeof(char)); 
+  assert(code_data);
   readback(code_data, code_mcap, &mem, mem.node[0], id_to_name_data, id_to_name_size);
   printf("%s\n", code_data);
 
