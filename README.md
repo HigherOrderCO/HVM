@@ -377,6 +377,8 @@ lambdas (foldr/build), its Free Monads library has a faster version based on
 lambdas, and so on. HVM's optimality open doors for an entire unexplored field
 of lambda-encoded algorithms that were simply impossible before.
 
+*Charts made on [plotly.com](https://chart-studio.plotly.com/).*
+
 How is that possible?
 =====================
 
