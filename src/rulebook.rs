@@ -586,15 +586,15 @@ pub fn flatten(rules: &Vec<lang::Rule>) -> Vec<lang::Rule> {
               }
               lang::Term::Var { .. } => {
                 println!("Sorry! HVM can't flatten this nested case:");
-                println!("");
+                println!();
                 println!("  {}", a);
-                println!("");
+                println!();
                 println!("Because of the argument '{}', in:", b_arg);
-                println!("");
+                println!();
                 println!("  {}", b);
-                println!("");
+                println!();
                 println!("This is a HVM limitation, and will be fixed in a future.");
-                println!("");
+                println!();
                 std::process::exit(1);
               }
               _ => {}
