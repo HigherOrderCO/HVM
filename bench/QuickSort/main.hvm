@@ -8,12 +8,9 @@
 (Sum (Concat a b)) = (+ (Sum a) (Sum b))
 
 // Parallel QuickSort
-// TODO: the syntax on the README isn't implemented
-//       yet, so we need a 4th clause. Sorry :P
-(Sort Nil)         = Empty
-(Sort (Cons x xs)) = (Sort_ x xs)
-(Sort_ p Nil)      = (Single p)
-(Sort_ p xs)       = (Split p (Cons p xs) Nil Nil)
+(Sort Nil)          = Empty
+(Sort (Cons x Nil)) = (Single x)
+(Sort (Cons x xs))  = (Split x (Cons x xs) Nil Nil)
 
 // Splits list in two partitions
 (Split p Nil         min max) = (Concat (Sort min) (Sort max))
@@ -24,4 +21,4 @@
 (Place p 1 x xs min max) = (Split p xs min (Cons x max))
 
 // Sorts and sums n random numbers
-(Main n) = (Sum (Sort (Randoms 1 (* 100000 n))))
+(Main n) = (Sum (Sort (Randoms 1 1000)))
