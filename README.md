@@ -23,7 +23,7 @@ Usage
 First, install [Rust](https://www.rust-lang.org/). Then, type:
 
 ```bash
-git clone git@github.com:Kindelia/HVM
+git clone https://github.com/Kindelia/HVM.git
 cd HVM
 cargo install --path .
 ```
