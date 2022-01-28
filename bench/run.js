@@ -17,10 +17,11 @@ function range(init, step, size) {
 
 const programs = {
   //TreeSum: { vals: range(0, 1, 33) },
-  //Composition: { vals: range(0, 1, 33) },
+  Composition: { vals: range(0, 1, 33) },
   //QuickSort: { vals: range(0, 1, 123) },
   //LambdaArithmetic: { vals: range(0, 1, 123) },
-  ListFold: { vals: range(0, 1, 65) },
+  // ListFold: { vals: range(0, 1, 65) },
+  // Fibonacci: { vals: range(0, 1, 43) }
 };
 
 const evaluators = {
@@ -29,14 +30,19 @@ const evaluators = {
     //execution: (name, n, temp_dir) => `hvm run ${name} ${n}`,
     //extension: ".hvm",
   //},
+  // JS: {
+  //   pre: (name, file_path) => [],
+  //   execution: (name, n) => `node ${name} ${n}`,
+  //   extension: ".js"
+  // },
   HVM: {
-    pre: (name, file_path) => ["hvm compile " + name, `clang -O2 ${file_path}/main.c -o .bin/hvm`],
-    execution: (name, n) => `.bin/hvm ${n}`,
+    pre: (name, file_path) => ["hvm compile " + name, `clang -O2 ${file_path}/main.c -o ${dir}/.bin/hvm`],
+    execution: (name, n) => `${dir}/.bin/hvm ${n}`,
     extension: ".hvm",
   },
   GHC: {
-    pre: (name, file_path) => [`ghc -O2 ${name} -o .bin/ghc`],
-    execution: (name, n) => `.bin/ghc ${n}`,
+    pre: (name, file_path) => [`ghc -O2 ${name} -o ${dir}/.bin/ghc`],
+    execution: (name, n) => `${dir}/.bin/ghc ${n}`,
     extension: ".hs",
   },
 }
@@ -161,7 +167,7 @@ function main() {
       csvs.push({prog, text}); 
     }
     for (var {prog, text} of csvs) {
-      fs.writeFileSync("./_results_/"+prog+".csv", text);
+      fs.writeFileSync(path.join(dir, "_results_", prog+".csv"), text);
     }
     console.log("Results saved.");
   };

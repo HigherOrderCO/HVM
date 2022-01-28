@@ -12,8 +12,6 @@ cranelift = "0.80.0"
 cranelift-jit = "0.80.0"
 cranelift-module = "0.80.0"
 cranelift-native = "0.80.0"
-ropey = "1.3.2"
-askama = "0.11.0"
 
 [profile.dev]
 # opt-level = 0
