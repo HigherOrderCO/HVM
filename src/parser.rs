@@ -134,7 +134,7 @@ pub fn skip_comment_parser<'a>() -> Parser<'a, bool> {
 
 pub fn skip_spaces(state: State) -> Answer<bool> {
   pub fn is_space(chr: char) -> bool {
-    chr == ' ' || chr == '\n' || chr == '\t'
+    chr == ' ' || chr == '\n' || chr == '\t' || chr == '\r'
   }
   let mut state = state;
   if state.index < state.code.len() && is_space(head_default(state)) {
