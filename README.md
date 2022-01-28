@@ -51,9 +51,9 @@ adds them up. Since it is recursive, HVM will parallelize it automatically.
 #### 3. Run and compile
 
 ```bash
-hvm e main.hvm 10                  # runs it with n=10
-hvm c main.hvm                     # compiles hvm to C
-clang -O2 main.c -o main -lpthread # compiles C to exe
+hvm r main 10                      # runs it with n=10
+hvm c main                         # compiles HVM to C
+clang -O2 main.c -o main -lpthread # compiles C to BIN
 ./main 30                          # runs it with n=30
 ```
 
@@ -65,7 +65,6 @@ runtime. And that's just the tip of iceberg!
 #### For Nix users
 
 [See Nix usage documentation here](./NIX.md).
-
 
 Benchmarks
 ==========
@@ -249,11 +248,11 @@ main = do
 ![](bench/_results_/QuickSort.png)
 
 This test modifies QuickSort to return a concatenation tree instead of a flat
-list. This makes it embarassingly parallel, allowing HVM to outperform GHC by
-a wide margin again. It even beats Haskell's oficial sort from Data.List! Note
-that flattening the tree will make the algorithm sequential. That's why we
-didn't chose MergeSort, as `merge` operates on lists. In general, trees should
-be favoured over lists on HVM.
+list. This makes it embarassingly parallel, allowing HVM to outperform GHC by a
+wide margin again. It even beats Haskell's sort from Data.List! Note that
+flattening the tree will make the algorithm sequential. That's why we didn't
+chose MergeSort, as `merge` operates on lists. In general, trees should be
+favoured over lists on HVM.
 
 Composition (Optimal)
 ---------------------

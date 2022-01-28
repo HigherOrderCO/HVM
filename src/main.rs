@@ -22,6 +22,14 @@ fn main() -> std::io::Result<()> {
 fn run_cli() -> std::io::Result<()> {
   let mut args: Vec<String> = std::env::args().collect();
 
+  fn hvm(file: &str) -> String {
+    if !file.ends_with(".hvm") {
+      format!("{}.hvm", file)
+    } else {
+      file.to_string()
+    }
+  }
+
   if args.len() <= 1 {
     show_help();
     return Ok(());
@@ -30,12 +38,12 @@ fn run_cli() -> std::io::Result<()> {
   let cmd = &args[1];
 
   if (cmd == "r" || cmd == "run") && args.len() >= 3 {
-    let file = &args[2];
+    let file = &hvm(&args[2]);
     return run_code(&load_file_code(file));
   }
 
   if (cmd == "c" || cmd == "compile") && args.len() >= 3 {
-    let file = &args[2];
+    let file = &hvm(&args[2]);
     return compile_code(&load_file_code(file), file);
   }
 
