@@ -93,7 +93,9 @@ List Fold (Sequential)
 
 // A list from 0 to n
 (Range 0 xs) = xs
-(Range n xs) = (Range (- n 1) (Cons (- n 1) xs))
+(Range n xs) =
+  let m = (- n 1)
+  (Range m (Cons m xs))
 
 // Sums a big list with fold
 (Main n) =
@@ -112,7 +114,9 @@ fold (Cons x xs) c n = c x (fold xs c n)
 
 -- A list from 0 to n
 range 0 xs = xs
-range n xs = in range (n-1) (Cons (n-1) xs)
+range n xs =
+  let m = n - 1
+  in range m (Cons m xs)
 
 -- Sums a big list with fold
 main = do
