@@ -226,7 +226,7 @@ QuickSort (Parallel)
 ```haskell
 (...)
 
--- Parallel QuickSort
+-- QuickSort
 qsort p s Nil          = Empty
 qsort p s (Cons x Nil) = Single x
 qsort p s (Cons x xs)  =
