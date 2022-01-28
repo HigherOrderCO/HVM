@@ -56,7 +56,7 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
     line(&mut codes, 6, "};");
   }
 
-  clang_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64)
+  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64)
 }
 
 pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String, String) {
@@ -446,12 +446,21 @@ fn line(code: &mut String, tab: u64, line: &str) {
   code.push('\n');
 }
 
-pub fn clang_runtime_template(
+pub fn c_runtime_template(
   c_ids: &str,
   inits: &str,
   codes: &str,
   id2nm: &str,
   names_count: u64,
 ) -> String {
-  return format!(include_str!("runtime.c"), c_ids, inits, codes, names_count, id2nm);
+  let num_threads = num_cpus::get();
+  return format!(
+    include_str!("runtime.c"),
+    num_threads=num_threads,
+    c_ids = c_ids,
+    inits = inits,
+    codes = codes,
+    names_count = names_count,
+    id2nm = id2nm
+  );
 }

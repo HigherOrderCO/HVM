@@ -30,7 +30,7 @@ const u64 U64_PER_GB = 0x8000000;
 const u64 HEAP_SIZE = 32 * U64_PER_GB * sizeof(u64);
 
 #ifdef PARALLEL
-#define MAX_WORKERS (8)
+#define MAX_WORKERS ({num_threads})
 #else
 #define MAX_WORKERS (1)
 #endif
@@ -82,7 +82,7 @@ const u64 GTN = 0xE;
 const u64 NEQ = 0xF;
 
 //GENERATED_CONSTRUCTOR_IDS_START//
-{}
+{c_ids}
 //GENERATED_CONSTRUCTOR_IDS_END//
 
 // Threads
@@ -479,7 +479,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
           {{
-{}
+{inits}
           }}
           //GENERATED_REWRITE_RULES_STEP_0_END//
 
@@ -695,7 +695,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_1_START//
           {{
-{}
+{codes}
           }}
           //GENERATED_REWRITE_RULES_STEP_1_END//
 
@@ -1214,9 +1214,9 @@ int main(int argc, char* argv[]) {{
   struct timeval stop, start;
 
   // Id-to-Name map
-  const u64 id_to_name_size = {};
+  const u64 id_to_name_size = {names_count};
   char* id_to_name_data[id_to_name_size];
-{}
+{id2nm}
 
   // Builds main term
   mem.size = 0;
