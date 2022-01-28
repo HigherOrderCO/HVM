@@ -9,9 +9,6 @@ edition = "2018"
 
 [dependencies]
 cranelift = "0.80.0"
-cranelift-jit = "0.80.0"
-cranelift-module = "0.80.0"
-cranelift-native = "0.80.0"
 num_cpus = "1.13.1"
 
 [profile.dev]
