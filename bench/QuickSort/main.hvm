@@ -1,12 +1,12 @@
 // Note: this algorithm exists for demonstration purposes. It picks hardcoded
-// pivots 2^31 that works great for lists of random Uint32 values, but will
-// perform poorly for normal data. A proper pivot selector is necessary to make
-// this algorithm practical. QuickSort is really interesting for HVM, because
-// it, unlike MergeSort, can be auto-parallelized. That's because QuickSort does
+// pivots that work great for lists of random Uint32 values, but will perform
+// poorly on common data. A proper pivot selector is necessary to make this
+// algorithm practical. QuickSort is really interesting for HVM, because it,
+// unlike MergeSort, can be auto-parallelized. That's because QuickSort does
 // most of its work when it is recursing down, allowing threads to be allocated
-// to each sides of the recursion. The sequential concatenation can be delayed,
-// so that QuickSort returns a tree instead. MergeSort, on the other hands,
-// relies on the `merge` function, which operates on lists, sequentially.
+// to each half of the recursion. The concatenation can be delayed by returning
+// a tree instead. MergeSort, on the other hands, does most of its work on the
+// `merge` function, which operates on lists, sequentially.
 
 // Generates a random list
 (Randoms s 0) = (Nil)
