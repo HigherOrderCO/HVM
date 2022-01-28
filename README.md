@@ -133,8 +133,8 @@ main = do
 ![](bench/_results_/ListFold.png)
 
 In this micro benchmark, we just build a huge list of numbers, and fold over
-it to sum them. Since lists are sequential, and since there are no higher-
-order lambdas, HVM doesn't have any technical advantage over GHC. As such,
+it to sum them. Since lists are sequential, and since there are no higher-order
+lambdas, HVM doesn't have any technical advantage over GHC. As such,
 both runtimes perform very similarly.
 
 Tree Sum (Parallel)
