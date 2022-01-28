@@ -453,5 +453,5 @@ pub fn clang_runtime_template(
   id2nm: &str,
   names_count: u64,
 ) -> String {
-  return format!(include_str!("template.c"), c_ids, inits, codes, names_count, id2nm);
+  return format!(include_str!("runtime.c"), c_ids, inits, codes, names_count, id2nm);
 }
