@@ -41,44 +41,42 @@ HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 (Sum (Leaf x))   = x
 (Sum (Node a b)) = (+ (Sum a) (Sum b))
 
-// Performs 2^30 additions in parallel
-(Main n) = (Sum (Gen 30))
+// Performs 2^n additions in parallel
+(Main n) = (Sum (Gen n))
 ```
 
-#### 3. Test it with the interpreter
+The program above creates a perfect binary tree with `2^n` elements, and then
+adds them up. Since it is recursive, HVM will parallelize it automatically.
+
+#### 3. Run and compile
 
 ```bash
-hvm run main.hvm
-```
-
-#### 4. Compile it to blazingly fast, parallel C
-
-```bash
+hvm e main.hvm 10                  # runs it with n=10
 hvm c main.hvm                     # compiles hvm to C
-clang -O2 main.c -o main -lpthread # compiles C to executable
-./main                             # runs the executable
+clang -O2 main.c -o main -lpthread # compiles C to exe
+./main 30                          # runs it with n=30
 ```
+
+The program above runs in about **6.4 seconds** in a modern 8-core processor,
+while the identical Haskell code takes about **19.2 seconds** in the same
+machine with GHC. This is HVM: write a functional program, get a parallel C
+runtime. And that's just the tip of iceberg!
 
 #### For Nix users
 
 [See Nix usage documentation here](./NIX.md).
 
-The program above runs in about **6.4 seconds** in a modern 8-core processor,
-while the identical Haskell code takes about **19.2 seconds** in the same
-machine with GHC. Notice how there are no parallelism annotations! You write a
-pure functional program, and the parallelism comes for free. And that's just the
-tip of iceberg. 
 
 Benchmarks
 ==========
 
-HVM has two main advantages over GHC: beta-optimality and automatic parallelism.
-As such, to compare them, I've selected 2 parallel benchmarks (simple and
-complex), 2 optimal benchmarks (simple and complex) and 1 sequential benchmark.
-Keep in mind that HVM is still an early prototype, so it **obviously** won't
-beat GHC in general, but it does quite fine already and should improve steadily
-as optimizations are implemented. Tests were compiled with `ghc -O2` for Haskell
-and `clang -O2` for HVM, on an 8-core M1 Max processor.
+HVM has two main advantages over GHC: automatic parallelism and beta-optimality.
+I've selected 5 micro, but common, benchmarks to compare them. Keep in mind that
+HVM is still an early prototype, so it **obviously** won't beat GHC in general,
+but it does quite well already, and should improve steadily as optimizations are
+implemented. Tests were compiled with `ghc -O2` for Haskell and `clang -O2` for
+HVM, on an 8-core M1 Max processor. The code to replicate these results is on
+the [/bench](bench) directory.
 
 List Fold (Sequential)
 ----------------------
@@ -111,19 +109,16 @@ List Fold (Sequential)
 
 ```haskell
 -- Folds over a list
-fold :: List a -> (a -> r -> r) -> r -> r
 fold Nil         c n = n
 fold (Cons x xs) c n = c x (fold xs c n)
 
 -- A list from 0 to n
-range :: Word32 -> List Word32 -> List Word32
 range 0 xs = xs
 range n xs =
   let m = n - 1
   in range m (Cons m xs)
 
 -- Sums a big list with fold
-main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
   let size = 1000000 * n
@@ -170,12 +165,10 @@ Tree Sum (Parallel)
 (...)
 
 -- Creates a tree with 2^n elements
-gen :: Word32 -> Tree
 gen 0 = Leaf 1
 gen n = Node (gen(n - 1)) (gen(n - 1))
 
 -- Adds all elements of a tree
-sun :: Tree -> Word32
 sun (Leaf x)   = 1
 sun (Node a b) = sun a + sun b
 
@@ -193,10 +186,10 @@ main = do
 
 TreeSum recursively builds and sums all elements of a perfect binary tree. HVM
 outperforms Haskell by a wide margin because this algorithm is embarassingly
-parallel, allowing it to fully use all 8 available cores.
+parallel, allowing it to fully use the available cores.
 
-QuickSort (Parallel?)
----------------------
+QuickSort (Parallel)
+--------------------
 
 <table>
 <tr> <td>main.hvm</td> <td>main.hs</td> </tr>
@@ -206,22 +199,25 @@ QuickSort (Parallel?)
 ```javascript
 (...)
 
-// Parallel QuickSort
-(Sort Nil)          = Empty
-(Sort (Cons x Nil)) = (Single p)
-(Sort (Cons x xs))  =
-  (Split p (Cons p xs) Nil Nil)
+// QuickSort
+(QSort p s Nil)          = Empty
+(QSort p s (Cons x Nil)) = (Single x)
+(QSort p s (Cons x xs))  =
+  (Split p s (Cons x xs) Nil Nil)
 
-// Splits list into two partitions
-(Split p Nil min max) =
-  let smin = (Sort min)
-  let smax = (Sort max)
-  (Concat smin smax)
-(Split p (Cons x xs) min max) =
-  (Place p (< p x) x xs min max)
+// Splits list in two partitions
+(Split p s Nil min max) =
+  let s   = (>> s 1)
+  let min = (QSort (- p s) s min)
+  let max = (QSort (+ p s) s max)
+  (Concat min max)
+(Split p s (Cons x xs) min max) =
+  (Place p s (< p x) x xs min max)
 
 // Sorts and sums n random numbers
-(Main n) = (Sum (Sort (Randoms 1 n)))
+(Main n) =
+  let list = (Randoms 1 (* 100000 n))
+  (Sum (QSort Pivot Pivot list))
 ```
 
 </td>
@@ -231,25 +227,26 @@ QuickSort (Parallel?)
 (...)
 
 -- Parallel QuickSort
-qsort :: List Word32 -> Tree Word32
-qsort Nil          = Empty
-qsort (Cons x Nil) = Single x
-qsort (Cons p xs)  =
-  split p (Cons p xs) Nil Nil
+qsort p s Nil          = Empty
+qsort p s (Cons x Nil) = Single x
+qsort p s (Cons x xs)  =
+  split p s (Cons x xs) Nil Nil
 
--- Splits list into two partitions
-split p Nil min max =
-  let smin = qsort min
-      smax = qsort max
-  in Concat smin smax
-split p (Cons x xs) min max =
-  place p (p < x) x xs min max
+-- Splits list in two partitions
+split p s Nil min max =
+  let s'   = shiftR s 1
+      min' = qsort (p - s') s' min
+      max' = qsort (p + s') s' max
+  in  Concat min' max'
+split p s (Cons x xs) min max =
+  place p s (p < x) x xs min max
 
 -- Sorts and sums n random numbers
 main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
-  print $ sun $ qsort $ randoms 1 n
+  let list = randoms 1 (100000 * n)
+  print $ sun $ qsort pivot pivot $ list 
 ```
 
 </td>
@@ -258,11 +255,12 @@ main = do
 
 ![](bench/_results_/QuickSort.png)
 
-This test once again takes advantage of automatic parallelism by modifying the
-usual QuickSort implementation to return a concatenation tree instead of a flat
-list. Again, this allows HVM to use multiple cores, but not fully, which is
-why it doesn't significantly outperform GHC. I'm looking for alternative sorting
-algorithms that make better use of HVM's implicit parallelism.
+This test modifies QuickSort to return a concatenation tree instead of a flat
+list. This makes it embarassingly parallel, allowing HVM to outperform GHC by
+a wide margin again. It even beats Haskell's oficial sort from Data.List! Note
+that flattening the tree will make the algorithm sequential. That's why we
+didn't chose MergeSort, as `merge` operates on lists. In general, trees should
+be favoured over lists on HVM.
 
 Composition (Optimal)
 ---------------------

@@ -29,7 +29,7 @@ fn run_cli() -> std::io::Result<()> {
 
   let cmd = &args[1];
 
-  if cmd == "run" && args.len() >= 3 {
+  if (cmd == "r" || cmd == "run") && args.len() >= 3 {
     let file = &args[2];
     return run_code(&load_file_code(file));
   }

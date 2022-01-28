@@ -1,3 +1,4 @@
+import Data.Bits
 import Data.Word
 import System.Environment
 
@@ -15,22 +16,37 @@ sun Empty        = 0
 sun (Single a)   = a
 sun (Concat a b) = sun a + sun b
 
+-- Initial pivot
+pivot = 2147483648
+
 -- Parallel QuickSort
-qsort :: List Word32 -> Tree Word32
-qsort Nil          = Empty
-qsort (Cons x Nil) = Single x
-qsort (Cons p xs)  = split p (Cons p xs) Nil Nil
+qsort p s Nil          = Empty
+qsort p s (Cons x Nil) = Single x
+qsort p s (Cons x xs)  =
+  split p s (Cons x xs) Nil Nil
 
 -- Splits list in two partitions
-split p Nil         min max = Concat (qsort min) (qsort max)
-split p (Cons x xs) min max = place p (p < x) x xs min max
+split p s Nil min max =
+  let s'   = shiftR s 1
+      min' = qsort (p - s') s' min
+      max' = qsort (p + s') s' max
+  in  Concat min' max'
+split p s (Cons x xs) min max =
+  place p s (p < x) x xs min max
 
 -- Moves element to its partition
-place p False x xs min max = split p xs (Cons x min) max
-place p True  x xs min max = split p xs min (Cons x max)
+place p s False x xs min max =
+  split p s xs (Cons x min) max
+place p s True  x xs min max =
+  split p s xs min (Cons x max)
 
 -- Sorts and sums n random numbers
 main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
-  print $ sun $ qsort $ randoms 1 (100000 * n)
+  let list = randoms 1 (100000 * n)
+  print $ sun $ qsort pivot pivot $ list 
+
+
+
+

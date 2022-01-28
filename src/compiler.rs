@@ -26,7 +26,7 @@ pub fn compile_code(code: &str) -> String {
 }
 
 pub fn compile_name(name: &str) -> String {
-  format!("_{}_", name.to_uppercase())
+  str::replace(&format!("_{}_", name.to_uppercase()), ".", "$")
 }
 
 pub fn compile_book(comp: &rb::RuleBook) -> String {
