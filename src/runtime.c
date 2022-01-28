@@ -14,6 +14,7 @@
 // Types
 // -----
 
+// TODO: stdint.h
 typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned long long int u64;
@@ -37,7 +38,8 @@ const u64 HEAP_SIZE = 32 * U64_PER_GB * sizeof(u64);
 #endif
 const u64 MAX_DYNFUNS = 65536;
 #define MAX_ARITY (16)
-const u64 MEM_SPACE = U64_PER_GB; // each worker has 1 GB of the 8 GB total
+const u64 MEM_SPACE = HEAP_SIZE/MAX_WORKERS/sizeof(u64); // each worker has a fraction of the 32GB total
+#define NORMAL_SEEN_MCAP (HEAP_SIZE/sizeof(u64)/(sizeof(u64)*8))
 
 // Terms
 // -----
@@ -735,11 +737,10 @@ void normal_fork(u64 tid, u64 host, u64 sidx, u64 slen);
 u64  normal_join(u64 tid);
 #endif
 
-#define normal_seen_mcap (16777216) // uses 128 MB, covers heaps up to 8 GB
-u64 normal_seen_data[normal_seen_mcap];
+u64 normal_seen_data[NORMAL_SEEN_MCAP];
 
 void normal_init() {{
-  for (u64 i = 0; i < normal_seen_mcap; ++i) {{
+  for (u64 i = 0; i < NORMAL_SEEN_MCAP; ++i) {{
     normal_seen_data[i] = 0;
   }}
 }}
