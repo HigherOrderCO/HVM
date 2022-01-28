@@ -10,11 +10,15 @@ Benchmarking (Nix)
 
 See [NIX.md](../NIX.md#usage-nix) in the root directory for instructions.
 
-#### Initialise development shell
+#### Initialise Nix development shell
 
 ```sh
-cd ..       # Go back to the root HVM directory.
-nix develop # Initialise the dev shell. The rest of the instructions in this section assume that you're using the dev shell.
+# Go back to the root HVM directory.
+cd ..
+# Initialise the dev shell.
+# The rest of the instructions in this section assume that you're using the dev
+# shell.
+nix develop
 cd bench
 cd <benchmark_directory>
 ```
@@ -23,13 +27,13 @@ cd <benchmark_directory>
 
 ```sh
 ghc -O2 main.hs -o main
-hyperfine --show-output ./main
+hyperfine --show-output ./main <arguments>
 ```
 
 #### Benchmark HVM code:
 
 ```sh
-../../result/bin/hvm compile main.hvm
+hvm compile main.hvm
 clang -O2 main.c -o main -lpthread
-hyperfine --show-output ./main
+hyperfine --show-output ./main <arguments>
 ```
