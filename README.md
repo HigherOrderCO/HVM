@@ -81,7 +81,10 @@ List Fold (Sequential)
 ----------------------
 
 <table>
-<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
+<tr>
+  <td><a href="./bench/ListFold/main.hvm"> main.hvm </a></td>
+  <td><a href="./bench/ListFold/main.hs" > main.hs </a></td>
+</tr>
 <tr>
 <td>
 
@@ -140,7 +143,10 @@ Tree Sum (Parallel)
 -------------------
 
 <table>
-<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
+<tr>
+  <td><a href="./bench/TreeSum/main.hvm"> main.hvm </a></td>
+  <td><a href="./bench/TreeSum/main.hs" > main.hs </a></td>
+</tr>
 <tr>
 <td>
 
@@ -189,7 +195,10 @@ QuickSort (Parallel)
 --------------------
 
 <table>
-<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
+<tr>
+  <td><a href="./bench/QuickSort/main.hvm"> main.hvm </a></td>
+  <td><a href="./bench/QuickSort/main.hs" > main.hs </a></td>
+</tr>
 <tr>
 <td>
 
@@ -258,7 +267,10 @@ Composition (Optimal)
 ---------------------
 
 <table>
-<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
+<tr>
+  <td><a href="./bench/Composition/main.hvm"> main.hvm </a></td>
+  <td><a href="./bench/Composition/main.hs" > main.hs </a></td>
+</tr>
 <tr>
 <td>
 
@@ -305,7 +317,10 @@ Lambda Arithmetic (Optimal)
 ---------------------------
 
 <table>
-<tr> <td>main.hvm</td> <td>main.hs</td> </tr>
+<tr>
+  <td><a href="./bench/LambdaArithmetic/main.hvm"> main.hvm </a></td>
+  <td><a href="./bench/LambdaArithmetic/main.hs" > main.hs </a></td>
+</tr>
 <tr>
 <td>
 
