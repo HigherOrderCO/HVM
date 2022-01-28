@@ -25,6 +25,10 @@ const u64 U64_PER_KB = 0x80;
 const u64 U64_PER_MB = 0x20000;
 const u64 U64_PER_GB = 0x8000000;
 
+// HVM pointers can address a 2^32 space of 64-bit elements, so, when the
+// program starts, we pre-alloc the maximum addressable heap, 32 GB.
+const u64 HEAP_SIZE = 32 * U64_PER_GB * sizeof(u64);
+
 #ifdef PARALLEL
 #define MAX_WORKERS (8)
 #else
@@ -1216,7 +1220,7 @@ int main(int argc, char* argv[]) {{
 
   // Builds main term
   mem.size = 0;
-  mem.node = (u64*)malloc(8 * 134217728 * sizeof(u64)); // 8gb
+  mem.node = (u64*)malloc(HEAP_SIZE);
   if (argc <= 1) {{
     mem.node[mem.size++] = Cal(0, _MAIN_, 0);
   }} else {{
