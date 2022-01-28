@@ -362,14 +362,12 @@ pub fn compile_func_rule_term(
   let mut nams = 0;
   let mut vars: Vec<String> = vars
     .iter()
-    .map(|var @ bd::DynVar { param, field, erase }| {
-      match field {
-        Some(field) => {
-          format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, field)
-        }
-        None => {
-          format!("ask_arg(mem, term, {})", param)
-        }
+    .map(|var @ bd::DynVar { param, field, erase }| match field {
+      Some(field) => {
+        format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, field)
+      }
+      None => {
+        format!("ask_arg(mem, term, {})", param)
       }
     })
     .collect();
