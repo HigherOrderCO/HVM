@@ -129,19 +129,20 @@ fn run_example() -> std::io::Result<()> {
   ";
 
   let code = "
-    (Foo arg) = λx (arg (λx x) x)
-    (Main)    = 42
+    (Sort (Nil))                         = 0
+    (Sort (Cons x Nil))                  = (Foo x)
+    (Sort (Cons x (Cons y Nil)))         = (Foo x y)
+    (Sort (Cons x (Cons y (Cons z zs)))) = (Foo x y z zs)
+    (Foo (Bar 1 x) (Baz z k))            = (+ x z)
+    (Foo (Bar 7 8) (Baz z k))            = 7
   ";
-
-  let code = "
-    (Main) = (λx(x 4 5) λa λb b)
-  ";
-
+  
   // Compiles to C and saves as 'main.c'
   compiler::compile_code_and_save(code, "main.c")?;
   println!("Compiled to 'main.c'.");
 
   // Evaluates with interpreter
+  
   println!("Reducing with interpreter.");
   let mut call = language::Term::Ctr {
     name: "Main".to_string(),
@@ -153,6 +154,8 @@ fn run_example() -> std::io::Result<()> {
   println!();
   println!("{}", norm);
   println!();
+
+
 
   Ok(())
 }

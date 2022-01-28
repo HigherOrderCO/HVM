@@ -1,5 +1,5 @@
 use crate::language as lang;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 // RuleBook
 // ========
@@ -20,6 +20,7 @@ pub struct RuleBook {
 }
 
 pub fn gen_rulebook(file: &lang::File) -> RuleBook {
+
   // Generates a name table for a whole program. That table links constructor
   // names (such as `cons` and `succ`) to small ids (such as `0` and `1`).
   pub type NameToId = HashMap<String, u64>;
@@ -125,10 +126,11 @@ pub fn gen_rulebook(file: &lang::File) -> RuleBook {
     groups
   }
 
-  let func_rules = gen_func_rules(&file.rules);
-  let name_to_id = gen_name_to_id(&file.rules);
+  let flat_rules = flatten(&file.rules);
+  let func_rules = gen_func_rules(&flat_rules);
+  let name_to_id = gen_name_to_id(&flat_rules);
   let id_to_name = invert(&name_to_id);
-  let ctr_is_cal = gen_ctr_is_cal(&file.rules);
+  let ctr_is_cal = gen_ctr_is_cal(&flat_rules);
   RuleBook { func_rules, name_to_id, id_to_name, ctr_is_cal }
 }
 
@@ -173,8 +175,6 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
             for arg in args {
               if let lang::Term::Var { name } = &**arg {
                 table.insert(name.clone(), fresh());
-              } else {
-                return Err("Invalid left-hand side".to_owned());
               }
             }
           }
@@ -529,4 +529,228 @@ mod tests {
     // key contains expected value
     assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
   }
+}
+
+// Split rules that have nested cases, flattening them.
+// I'm not proud of this code. Must improve considerably.
+pub fn flatten(rules: &Vec<lang::Rule>) -> Vec<lang::Rule> {
+
+  // Unique name generator
+  let mut name_count = 0;
+  fn fresh(name_count: &mut u64) -> u64 {
+    let name = *name_count;
+    *name_count += 1;
+    return name;
+  }
+  
+  // Checks if this rule has nested patterns, and must be splitted
+  fn must_split(lhs: &lang::Term) -> bool {
+/**/if let lang::Term::Ctr { ref args, .. } = *lhs {
+/*  */for arg in args {
+/*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
+/*   A  */for field in arg_args {
+/*    D   */if is_tested(&field) {
+/* ─=≡ΣO)   */return true;
+/*    U   */}
+/*   K  */}
+/*  E */}
+/* N*/}
+/**/} return false;
+  }
+
+  fn is_tested(term: &lang::Term) -> bool {
+    match term {
+      lang::Term::Ctr { .. } => true,
+      lang::Term::U32 { .. } => true,
+      _                      => false,
+    }
+  }
+
+  // Checks true if every time that `a` matches, `b` will match too
+  fn matches_together(a: &lang::Rule, b: &lang::Rule) -> bool {
+    if let (
+      lang::Term::Ctr { name: ref a_name, args: ref a_args },
+      lang::Term::Ctr { name: ref b_name, args: ref b_args }
+    ) = (&*a.lhs, &*b.lhs) {
+      for (a_arg, b_arg) in a_args.iter().zip(b_args) {
+        match **a_arg {
+          lang::Term::Ctr { name: ref a_arg_name, args: ref a_arg_args } => {
+            match **b_arg {
+              lang::Term::Ctr { name: ref b_arg_name, args: ref b_arg_args } => {
+                if a_arg_name != b_arg_name || a_arg_args.len() != b_arg_args.len() {
+                  return false;
+                }
+              }
+              lang::Term::U32 { .. } => {
+                return false;
+              }
+              lang::Term::Var { .. } => {
+                println!("Sorry! HVM can't flatten this nested case:");
+                println!("");
+                println!("  {}", a);
+                println!("");
+                println!("Because of the argument '{}', in:", b_arg);
+                println!("");
+                println!("  {}", b);
+                println!("");
+                println!("This is a HVM limitation, and will be fixed in a future.");
+                println!("");
+                std::process::exit(1);
+              }
+              _ => {}
+            }
+          }
+          lang::Term::U32 { numb: a_arg_numb } => {
+            match **b_arg {
+              lang::Term::U32 { numb: b_arg_numb } => {
+                if a_arg_numb != b_arg_numb {
+                  return false;
+                }
+              }
+              lang::Term::Ctr { .. } => {
+                return false;
+              }
+              _ => {}
+            }
+          }
+          _ => {}
+        }
+      }
+    }
+    return true;
+  }
+
+  fn split_group(rules: &Vec<lang::Rule>, name_count: &mut u64) -> Vec<lang::Rule> {
+    let mut skip : HashSet<usize> = HashSet::new();
+    let mut new_rules : Vec<lang::Rule> = Vec::new();
+    for i in 0 .. rules.len() {
+      if !skip.contains(&i) {
+        let rule = &rules[i];
+        //println!("- {}", rule);
+        if must_split(&rule.lhs) {
+          if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
+            let mut new_group : Vec<lang::Rule> = Vec::new();
+            let new_lhs_name : String = name.clone();
+            let new_rhs_name : String = format!("{}.{}", name, fresh(name_count));
+            let mut new_lhs_args : Vec<Box<lang::Term>> = Vec::new();
+            let mut new_rhs_args : Vec<Box<lang::Term>> = Vec::new();
+            for arg in args {
+              match &**arg {
+                lang::Term::Ctr { name: ref arg_name, args: ref arg_args } => {
+                  let new_arg_name = arg_name.clone();
+                  let mut new_arg_args = Vec::new();
+                  for field in arg_args {
+                    match &**field {
+                      lang::Term::Ctr { .. } => {
+                        let var_name = format!(".{}", fresh(name_count));
+                        new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
+                        new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
+                      }
+                      lang::Term::U32 { .. } => {
+                        let var_name = format!(".{}", fresh(name_count));
+                        new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
+                        new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
+                      }
+                      lang::Term::Var { .. } => {
+                        new_arg_args.push(field.clone());
+                        new_rhs_args.push(field.clone());
+                      }
+                      _ => { panic!("?"); }
+                    }
+                  }
+                  new_lhs_args.push(Box::new(lang::Term::Ctr { name: new_arg_name, args: new_arg_args}));
+                }
+                lang::Term::Var { .. } => {
+                  new_lhs_args.push(Box::new(*arg.clone()));
+                  new_rhs_args.push(Box::new(*arg.clone()));
+                }
+                _ => {}
+              }
+            }
+            let new_lhs = Box::new(lang::Term::Ctr {
+              name: new_lhs_name,
+              args: new_lhs_args,
+            });
+            let new_rhs = Box::new(lang::Term::Ctr {
+              name: new_rhs_name.clone(),
+              args: new_rhs_args,
+            });
+            new_group.push(lang::Rule {
+              lhs: new_lhs,
+              rhs: new_rhs,
+            });
+
+            let new_rule_name = format!(".{}", fresh(name_count));
+
+            for j in i .. rules.len() {
+              let other = &rules[j];
+              if matches_together(&rule, &other) {
+                skip.insert(j);
+                if let lang::Term::Ctr { name: ref other_name, args: ref other_args } = &*other.lhs {
+                  let mut other_new_lhs_name = new_rhs_name.clone();
+                  let mut other_new_lhs_args = Vec::new();
+                  for other_arg in other_args {
+                    match &**other_arg {
+                      lang::Term::Ctr { name: ref other_arg_name, args: ref other_arg_args } => {
+                        for other_field in other_arg_args {
+                          other_new_lhs_args.push(other_field.clone());
+                        }
+                      }
+                      lang::Term::U32 { .. } => {
+                      }
+                      lang::Term::Var { .. } => {
+                        other_new_lhs_args.push(other_arg.clone());
+                      }
+                      _ => {}
+                    }
+                  }
+                  let other_new_lhs = Box::new(lang::Term::Ctr {
+                    name: other_new_lhs_name,
+                    args: other_new_lhs_args,
+                  });
+                  let other_new_rhs = other.rhs.clone();
+                  //println!("~~ {} = {}", other_new_lhs, other_new_rhs);
+                  new_group.push(lang::Rule {
+                    lhs: other_new_lhs,
+                    rhs: other_new_rhs,
+                  });
+                }
+              }
+            }
+            for rule in split_group(&new_group, name_count) {
+              new_rules.push(rule);
+            }
+          } else {
+            panic!("Invalid left-hand side.");
+          }
+        } else {
+          new_rules.push(rules[i].clone());
+        }
+      }
+    }
+    return new_rules;
+  }
+
+  // Groups rules by function name
+  let mut groups : HashMap<String, Vec<lang::Rule>> = HashMap::new();
+  for rule in rules {
+    if let lang::Term::Ctr { ref name, .. } = *rule.lhs {
+      if let Some(group) = groups.get_mut(name) {
+        group.push(rule.clone());
+      } else {
+        groups.insert(name.clone(), vec![rule.clone()]);
+      }
+    }
+  }
+
+  // For each group, split its internal rules
+  let mut new_rules = Vec::new();
+  for (name, rules) in groups {
+    for rule in split_group(&rules, &mut name_count) {
+      new_rules.push(rule);
+    }
+  }
+
+  return new_rules;
+
 }
