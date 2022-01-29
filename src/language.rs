@@ -187,6 +187,20 @@ pub fn parse_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
   );
 }
 
+// TODO: move this to parse_lam to avoid duplicated code
+pub fn parse_lam_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
+  return parser::guard(
+    parser::text_parser("@"),
+    Box::new(|state| {
+      let (state, skp0) = parser::text("@", state)?;
+      let (state, name) = parser::name(state)?;
+      let (state, body) = parse_term(state)?;
+      Ok((state, Box::new(Term::Lam { name, body })))
+    }),
+    state,
+  );
+}
+
 pub fn parse_app(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
     parser::text_parser("("),
@@ -334,6 +348,7 @@ pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
       Box::new(parse_let),
       Box::new(parse_dup),
       Box::new(parse_lam),
+      Box::new(parse_lam_ugly),
       Box::new(parse_ctr),
       Box::new(parse_op2),
       Box::new(parse_app),
