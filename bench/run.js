@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const fs = require("fs");
 const { exec, execSync } = require("child_process");
 const path = require("path");
@@ -36,7 +37,7 @@ const evaluators = {
   //   extension: ".js"
   // },
   HVM: {
-    pre: (name, file_path) => ["hvm compile " + name, `clang -O2 ${file_path}/main.c -o ${dir}/.bin/hvm`],
+    pre: (name, file_path) => ["hvm compile " + name, `clang -O2 -lpthread ${file_path}/main.c -o ${dir}/.bin/hvm`],
     execution: (name, n) => `${dir}/.bin/hvm ${n}`,
     extension: ".hvm",
   },
