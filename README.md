@@ -133,6 +133,7 @@ main = do
 </table>
 
 ![](bench/_results_/ListFold.png)
+<sub> *the lower the better </sub>
 
 In this micro-benchmark, we just build a huge list of numbers, and fold over
 it to sum them. Since lists are sequential, and since there are no higher-order
