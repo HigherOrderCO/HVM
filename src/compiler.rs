@@ -362,14 +362,12 @@ pub fn compile_func_rule_term(
   let mut nams = 0;
   let mut vars: Vec<String> = vars
     .iter()
-    .map(|var @ bd::DynVar { param, field, erase }| {
-      match field {
-        Some(field) => {
-          format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, field)
-        }
-        None => {
-          format!("ask_arg(mem, term, {})", param)
-        }
+    .map(|var @ bd::DynVar { param, field, erase }| match field {
+      Some(field) => {
+        format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, field)
+      }
+      None => {
+        format!("ask_arg(mem, term, {})", param)
       }
     })
     .collect();
@@ -453,14 +451,55 @@ pub fn c_runtime_template(
   id2nm: &str,
   names_count: u64,
 ) -> String {
-  let num_threads = num_cpus::get();
-  return format!(
-    include_str!("runtime.c"),
-    num_threads=num_threads,
-    c_ids = c_ids,
-    inits = inits,
-    codes = codes,
-    names_count = names_count,
-    id2nm = id2nm
+  const C_RUNTIME_TEMPLATE: &str = include_str!("runtime.c");
+  const C_CONSTRUCTOR_IDS_CONTENT: &str = "/* GENERATED_CONSTRUCTOR_IDS_CONTENT */";
+  const C_REWRITE_RULES_STEP_0_CONTENT: &str = "/* GENERATED_REWRITE_RULES_STEP_0_CONTENT */";
+  const C_REWRITE_RULES_STEP_1_CONTENT: &str = "/* GENERATED_REWRITE_RULES_STEP_1_CONTENT */";
+  const C_NAME_COUNT_CONTENT: &str = "/* GENERATED_NAME_COUNT_CONTENT */";
+  const C_ID_TO_NAME_DATA_CONTENT: &str = "/* GENERATED_ID_TO_NAME_DATA_CONTENT */";
+  const C_NUM_THREADS_CONTENT: &str = "/* GENERATED_NUM_THREADS_CONTENT */";
+
+  // Sanity checks: the generated section tokens we're looking for must be present in the runtime C
+  // file.
+  debug_assert!(
+    C_RUNTIME_TEMPLATE.contains(C_CONSTRUCTOR_IDS_CONTENT),
+    "The runtime C file is missing the constructor ids section token: {}",
+    C_CONSTRUCTOR_IDS_CONTENT
   );
+  debug_assert!(
+    C_RUNTIME_TEMPLATE.contains(C_REWRITE_RULES_STEP_0_CONTENT),
+    "The runtime C file is missing the rewrite rules step 0 section token: {}",
+    C_REWRITE_RULES_STEP_0_CONTENT
+  );
+  debug_assert!(
+    C_RUNTIME_TEMPLATE.contains(C_REWRITE_RULES_STEP_1_CONTENT),
+    "The runtime C file is missing the rewrite rules step 1 section token: {}",
+    C_REWRITE_RULES_STEP_1_CONTENT
+  );
+  debug_assert!(
+    C_RUNTIME_TEMPLATE.contains(C_NAME_COUNT_CONTENT),
+    "The runtime C file is missing name count section token: {}",
+    C_NAME_COUNT_CONTENT
+  );
+  debug_assert!(
+    C_RUNTIME_TEMPLATE.contains(C_ID_TO_NAME_DATA_CONTENT),
+    "The runtime C file is missing the id to name data section token: {}",
+    C_ID_TO_NAME_DATA_CONTENT
+  );
+  debug_assert!(
+    C_RUNTIME_TEMPLATE.contains(C_NUM_THREADS_CONTENT),
+    "The runtime C file is missing the num threads section token: {}",
+    C_NUM_THREADS_CONTENT
+  );
+
+  // Instantiate the template with the given sections' content
+  let runtime_template = C_RUNTIME_TEMPLATE
+    .replace(C_NUM_THREADS_CONTENT, &num_cpus::get().to_string())
+    .replace(C_CONSTRUCTOR_IDS_CONTENT, c_ids)
+    .replace(C_REWRITE_RULES_STEP_0_CONTENT, inits)
+    .replace(C_REWRITE_RULES_STEP_1_CONTENT, codes)
+    .replace(C_NAME_COUNT_CONTENT, &names_count.to_string())
+    .replace(C_ID_TO_NAME_DATA_CONTENT, id2nm);
+
+  runtime_template
 }

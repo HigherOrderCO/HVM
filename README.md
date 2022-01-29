@@ -9,8 +9,8 @@ faster than most functional runtimes, including Haskell's GHC.
 That is possible due to a new model of computation, the Interaction Net, which
 elegantly combines the Turing Machine with the Lambda Calculus. Previous
 implementations of this model have been inefficient in practice, however, a
-recent breaktrough has drastically improved its efficiency, giving birth to the
-HVM. Despite being a prototype, it already beats mature compilers in many
+recent breakthrough has drastically improved its efficiency, giving birth to
+the HVM. Despite being a prototype, it already beats mature compilers in many
 cases, and is set to scale towards uncharted levels of performance.
 
 **Welcome to the inevitable parallel, functional future of computers!**
@@ -133,6 +133,7 @@ main = do
 </table>
 
 ![](bench/_results_/ListFold.png)
+<sub> *the lower the better </sub>
 
 In this micro-benchmark, we just build a huge list of numbers, and fold over
 it to sum them. Since lists are sequential, and since there are no higher-order
@@ -399,7 +400,7 @@ How is that possible?
 
 Check [HOW.md](HOW.md).
 
-How can I help?
-===============
+Community
+=========
 
-Join the Kindelia community on [Discord]((https://discord.gg/QQ2jkxVj)) or [Matrix](https://matrix.to/#/#kindelia:kde.org)!
+Join our [Telegram Chat](https://t.me/formality_lang), the [Kindelia community on Discord](https://discord.gg/QQ2jkxVj) or [Matrix](https://matrix.to/#/#kindelia:kde.org)!
