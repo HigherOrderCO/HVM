@@ -58,6 +58,8 @@
         buildInputs = [
           pkgs.hyperfine
           pkgs.time
+          # TODO: Remove this when `generatedCargoNix` works.
+          pkgs.crate2nix
         ];
         nativeBuildInputs = [
           pkgs.clang
