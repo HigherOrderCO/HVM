@@ -399,7 +399,7 @@ How is that possible?
 
 Check [HOW.md](HOW.md).
 
-How can I help?
-===============
+Community
+=========
 
-Join the Kindelia community on [Discord]((https://discord.gg/QQ2jkxVj)) or [Matrix](https://matrix.to/#/#kindelia:kde.org)!
+Join our [Telegram Chat](https://t.me/formality_lang), the [Kindelia community on Discord](https://discord.gg/QQ2jkxVj) or [Matrix](https://matrix.to/#/#kindelia:kde.org)!
