@@ -188,7 +188,7 @@ pub fn parse_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
 }
 
 // TODO: move this to parse_lam to avoid duplicated code
-pub fn parse_lam_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_lam_ugly(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
     parser::text_parser("@"),
     Box::new(|state| {
