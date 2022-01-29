@@ -5,6 +5,8 @@ How!?
 
 JK
 
+**Note: this is a public draft. It contains a lot of errors. I'll review it around Monday, and finish later on. Corrections and feedbacks are welcome!**
+
 How it works?
 =============
 
