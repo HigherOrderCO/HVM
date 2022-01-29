@@ -99,6 +99,28 @@ impl fmt::Display for Term {
   // WARN: I think this could overflow, might need to rewrite it to be iterative instead of recursive?
   // NOTE: Another issue is complexity. This function is O(N^2). Should use ropes to be linear.
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn str_sugar(term: &Term) -> Option<String> {
+      fn go(term: &Term, text: &mut String) -> Option<()> {
+        if let Term::Ctr { name, args } = term {
+          if name == "StrCons" && args.len() == 2 {
+            if let Term::U32 { numb } = *args[0] {
+              text.push(std::char::from_u32(numb)?);
+              go(&args[1], text)?;
+            }
+            return Some(());
+          }
+          if name == "StrNil" && args.len() == 0 {
+            return Some(());
+          }
+        }
+        return None;
+      }
+      let mut result = String::new();
+      result.push('"');
+      go(term, &mut result)?;
+      result.push('"');
+      return Some(result);
+    }
     match self {
       Self::Var { name } => write!(f, "{}", name),
       Self::Dup { nam0, nam1, expr, body } => {
@@ -108,7 +130,11 @@ impl fmt::Display for Term {
       Self::Lam { name, body } => write!(f, "λ{} {}", name, body),
       Self::App { func, argm } => write!(f, "({} {})", func, argm),
       Self::Ctr { name, args } => {
-        write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
+        if let Some(term) = str_sugar(self) {
+          write!(f, "{}", term)
+        } else {
+          write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
+        }
       }
       Self::U32 { numb } => write!(f, "{}", numb),
       Self::Op2 { oper, val0, val1 } => write!(f, "({} {} {})", oper, val0, val1),
@@ -341,6 +367,46 @@ pub fn parse_var(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
+// TODO: parse escape sequences
+pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+  parser::guard(
+    Box::new(|state| {
+      let (state, head) = parser::get_char(state)?;
+      Ok((state, head == '"'))
+    }),
+    Box::new(|state| {
+      let (state, head) = parser::text("\"", state)?;
+      let mut chars : Vec<char> = Vec::new();
+      let mut state = state;
+      loop {
+        let (new_state, next) = parser::get_char(state)?;
+        if next == '"' || next == '\0' {
+          state = new_state;
+          break;
+        } else {
+          chars.push(next);
+          state = new_state;
+        }
+      }
+      let empty = Term::Ctr {
+        name: "StrNil".to_string(),
+        args: Vec::new(),
+      };
+      let list = Box::new(chars.iter().rfold(empty, |t,h| {
+        return Term::Ctr {
+          name: "StrCons".to_string(),
+          args: vec![
+            Box::new(Term::U32 { numb: *h as u32 }),
+            Box::new(t)
+          ],
+        };
+      }));
+      return Ok((state, list));
+    }),
+    state,
+  )
+}
+
 pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
   parser::grammar(
     "Term",
@@ -353,6 +419,7 @@ pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
       Box::new(parse_op2),
       Box::new(parse_app),
       Box::new(parse_u32),
+      Box::new(parse_str_sugar),
       Box::new(parse_var),
       Box::new(|state| Ok((state, None))),
     ],

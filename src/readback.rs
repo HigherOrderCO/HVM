@@ -4,6 +4,7 @@
 
 use crate::rulebook as rb;
 use crate::runtime as rt;
+use crate::language as lang;
 use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -245,4 +246,8 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
   let mut stacks = Stacks::new();
 
   go(ctx, &mut stacks, term, 0)
+}
+
+pub fn as_term(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> Box<lang::Term> {
+  return lang::read_term(&as_code(mem, comp, host));
 }

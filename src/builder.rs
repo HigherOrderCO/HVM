@@ -476,7 +476,7 @@ pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) 
 }
 
 // Evaluates a Lambolt term to normal form
-pub fn eval_code(call: &lang::Term, code: &str) -> (String, u64, u64, u64) {
+pub fn eval_code(call: &lang::Term, code: &str) -> (Box<lang::Term>, u64, u64, u64) {
   // Creates a new Runtime worker
   let mut worker = rt::new_worker();
 
@@ -498,7 +498,7 @@ pub fn eval_code(call: &lang::Term, code: &str) -> (String, u64, u64, u64) {
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string
-  let norm = rd::as_code(&worker, &Some(book), host);
+  let norm = rd::as_term(&worker, &Some(book), host);
 
   // Returns the normal form and the gas cost
   (norm, worker.cost, worker.size, time)
