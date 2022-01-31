@@ -401,8 +401,12 @@ Check [HOW.md](HOW.md).
 How can I help?
 ===============
 
-I'm confident HVM's current design is ready to scale and become the fastest
-runtime in the world. There are many cool things we'd like to do with it:
+Most importantly, if you appreciate our work, help spreading the project! Posting on
+Reddit, communities, etc. helps more than you think.
+
+Second, I'm actually looking for partners! I'm confident HVM's current design is ready
+to scale and become the fastest runtime in the world. There are many cool things we'd
+like to implement:
 
 - Compile it to GPUs (just imagine that!)
 
@@ -412,7 +416,7 @@ runtime in the world. There are many cool things we'd like to do with it:
 
 - A bunch of other [planned features](https://github.com/Kindelia/HVM/issues/38)
 
-I'm looking for partners. If you'd like to be part of any of these, please
+If you'd like to be part of any of these, please
 [email me](victor.taelin@gmail.com), or just send me a personal message on
 [Twitter](https://twitter.com/victor.taelin).
 
