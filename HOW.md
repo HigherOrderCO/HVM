@@ -154,7 +154,8 @@ foo(4    , 9    ) // arguments are reduced
 
 But this computation has a silly issue: the `3 * 3` value is not necessary to
 produce the output, so the `3 * 3` multiplication was wasted work. This led to
-the idea of **lazy** evaluation:
+the idea of **lazy** evaluation. An initial implementation of this idea would
+operate as follows:
 
 ```javascript
 foo(2 * 2, 3 * 3) // the input
@@ -180,24 +181,26 @@ accesses to the same object. Sadly, such a language wouldn't be practical.
 Imagine never being able to copy anything! Therefore, real languages must find
 a way to let their users replicate values, without impacting the features they
 desire, all while avoiding these expensive clones. In previous languages, the
-solution has almost always been the use of references.
+solution has almost always been the use of references of some sort.
 
 For example, Haskell is lazy. To avoid "cloning computations", it implements
-thunks, which are nothing but *memoized references* to shared expressions. Rust
-is GC-free, so every object has only one "owner". To avoid too much cloning, it
-implements a complex *shared references* system, based on borrows. Finally,
-parallel languages require mutexes and atomics to synchronize accesses to
-*shared references*. In other words, references saved the world by letting us
-avoid these evil clones, and that's great... right? Right? *awkward silence*
+thunks, which are nothing but *memoized references* to shared expressions,
+allowing the `(2 * 2)` example above to be cached. This solution, though,
+breaks down when there are lambdas. Similarly
+Rust is GC-free, so every object has only one "owner". To avoid too much 
+cloning, it implements a complex *shared references* system, based on borrows. 
+Finally, parallel languages require mutexes and atomics to synchronize accesses 
+to *shared references*. In other words, references saved the world by letting us
+avoid these evil clones, and that's great... right? *awkward silence*
 
 > clone wasn't the impostor
 
 References. **They** ruin everything. They're the reason Rust is so hard to
 use. They're the reason parallel programming is so complex. They're the reason
-Haskell isn't optimal. Yes, that's right! Thunks break down when they have free
-variables, demanding a whole de-sharing system that allows the glorious GHC to
-be beaten by a 1-month-old prototype in the same class of programs it should
-thrive in. It isn't GHC's fault. References are the real culprits.
+Haskell isn't optimal, since thunks can't share computations that have free
+variables (i.e., any expression inside lambdas). They're why a 1-month-old
+prototype beats GHC in the same class of programs it should thrive in.
+It isn't GHC's fault. References are the real culprits.
 
 ### HVM's solution: lofi and chill with clones
 
