@@ -1,3 +1,7 @@
+// This is HVM's C runtime template. HVM files generate a copy of this file,
+// modified to also include user-defined rules. It then can be compiled to run
+// in parallel with -lpthreads.
+
 #include <assert.h>
 
 #include <pthread.h>
@@ -44,6 +48,12 @@ const u64 MEM_SPACE = HEAP_SIZE/MAX_WORKERS/sizeof(u64); // each worker has a fr
 
 // Terms
 // -----
+// HVM's runtime stores terms in a 64-bit memory. Each element is a Link, which
+// usually points to a constructor. It stores a Tag representing the ctor's
+// variant, and possibly a position on the memory. So, for example, `Lnk ptr =
+// APP * TAG | 137` creates a pointer to an app node stored on position 137.
+// Some links deal with variables: DP0, DP1, VAR, ARG and ERA.  The OP2 link
+// represents a numeric operation, and U32 and F32 links represent unboxed nums.
 
 typedef u64 Lnk;
 
@@ -52,21 +62,20 @@ const u64 EXT = 0x100000000;
 const u64 ARI = 0x100000000000000;
 const u64 TAG = 0x1000000000000000;
 
-const u64 DP0 = 0x0;
-const u64 DP1 = 0x1;
-const u64 VAR = 0x2;
-const u64 ARG = 0x3;
-const u64 ERA = 0x4;
-const u64 LAM = 0x5;
-const u64 APP = 0x6;
-const u64 PAR = 0x7;
-const u64 CTR = 0x8;
-const u64 CAL = 0x9;
-const u64 OP2 = 0xA;
-const u64 U32 = 0xB;
-const u64 F32 = 0xC;
-const u64 OUT = 0xE;
-const u64 NIL = 0xF;
+const u64 DP0 = 0x0; // points to the dup node that binds this variable (left side)
+const u64 DP1 = 0x1; // points to the dup node that binds this variable (right side)
+const u64 VAR = 0x2; // points to the λ that binds this variable
+const u64 ARG = 0x3; // points to the occurrence of a bound variable a linear argument
+const u64 ERA = 0x4; // signals that a binder doesn't use its bound variable
+const u64 LAM = 0x5; // arity = 2
+const u64 APP = 0x6; // arity = 2
+const u64 PAR = 0x7; // arity = 2 // TODO: rename to SUP
+const u64 CTR = 0x8; // arity = user defined
+const u64 CAL = 0x9; // arity = user defined
+const u64 OP2 = 0xA; // arity = 2
+const u64 U32 = 0xB; // arity = 0 (unboxed)
+const u64 F32 = 0xC; // arity = 0 (unboxed)
+const u64 NIL = 0xF; // not used
 
 const u64 ADD = 0x0;
 const u64 SUB = 0x1;
@@ -130,6 +139,7 @@ Worker workers[MAX_WORKERS];
 
 // Array
 // -----
+// Some array utils
 
 void array_write(Arr* arr, u64 idx, u64 value) {
   arr->data[idx] = value;
@@ -141,6 +151,7 @@ u64 array_read(Arr* arr, u64 idx) {
 
 // Stack
 // -----
+// Some stack utils.
 
 u64 stk_growth_factor = 16;
 
@@ -188,6 +199,7 @@ u64 stk_find(Stk* stk, u64 val) {
 
 // Memory
 // ------
+// Creating, storing and reading Lnks, allocating and freeing memory.
 
 Lnk Var(u64 pos) {
   return (VAR * TAG) | pos;
@@ -241,10 +253,6 @@ Lnk Cal(u64 ari, u64 fun, u64 pos) {
   return (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos;
 }
 
-Lnk Out(u64 arg, u64 fld) {
-  return (OUT * TAG) | (arg << 8) | fld;
-}
-
 u64 get_tag(Lnk lnk) {
   return lnk / TAG;
 }
@@ -265,14 +273,19 @@ u64 get_loc(Lnk lnk, u64 arg) {
   return get_val(lnk) + arg;
 }
 
+// Dereferences a Lnk, getting what is stored on its target position
 Lnk ask_lnk(Worker* mem, u64 loc) {
   return mem->node[loc];
 }
 
+// Dereferences the nth argument of the Term represented by this Lnk
 Lnk ask_arg(Worker* mem, Lnk term, u64 arg) {
   return ask_lnk(mem, get_loc(term, arg));
 }
 
+// This inserts a value in another. It just writes a position in memory if
+// `value` is a constructor. If it is VAR, DP0 or DP1, it also updates the
+// corresponding λ or dup binder.
 u64 link(Worker* mem, u64 loc, Lnk lnk) {
   mem->node[loc] = lnk;
   //array_write(mem->nodes, loc, lnk);
@@ -283,6 +296,7 @@ u64 link(Worker* mem, u64 loc, Lnk lnk) {
   return lnk;
 }
 
+// Allocates a block of memory, up to 16 words long
 u64 alloc(Worker* mem, u64 size) {
   if (UNLIKELY(size == 0)) {
     return 0;
@@ -298,41 +312,21 @@ u64 alloc(Worker* mem, u64 size) {
   }
 }
 
+// Frees a block of memory by adding its position a freelist
 void clear(Worker* mem, u64 loc, u64 size) {
   stk_push(&mem->free[size], loc);
-}
-
-// Debug
-// -----
-
-void debug_print_lnk(Lnk x) {
-  u64 tag = get_tag(x);
-  u64 ext = get_ext(x);
-  u64 val = get_val(x);
-  switch (tag) {
-    case DP0: printf("DP0"); break;
-    case DP1: printf("DP1"); break;
-    case VAR: printf("VAR"); break;
-    case ARG: printf("ARG"); break;
-    case ERA: printf("ERA"); break;
-    case LAM: printf("LAM"); break;
-    case APP: printf("APP"); break;
-    case PAR: printf("PAR"); break;
-    case CTR: printf("CTR"); break;
-    case CAL: printf("CAL"); break;
-    case OP2: printf("OP2"); break;
-    case U32: printf("U32"); break;
-    case F32: printf("F32"); break;
-    case OUT: printf("OUT"); break;
-    case NIL: printf("NIL"); break;
-    default : printf("???"); break;
-  }
-  printf(":%llx:%llx", ext, val);
 }
 
 // Garbage Collection
 // ------------------
 
+// This clears the memory used by a term that becames unreachable. It just frees
+// all its nodes recursivelly. This is called as soon as a term goes out of
+// scope. No global GC pass is necessary to find unreachable terms!
+// HVM can still produce some garbage in very uncommon situations that are
+// mostly irrelevant in practice. Absolute GC-freedom, though, requires
+// uncommenting the `reduce` lines below, but this would make HVM not 100% lazy
+// in some cases, so it should be called in a separate thread.
 void collect(Worker* mem, Lnk term) {
   switch (get_tag(term)) {
     case DP0: {
@@ -395,6 +389,9 @@ void inc_cost(Worker* mem) {
   mem->cost++;
 }
 
+// Performs a `x <- value` substitution. It just calls link if the substituted
+// value is a term. If it is an ERA node, that means `value` is now unreachable,
+// so we just call the collector.
 void subst(Worker* mem, Lnk lnk, Lnk val) {
   if (get_tag(lnk) != ERA) {
     link(mem, get_loc(lnk,0), val);
@@ -403,6 +400,12 @@ void subst(Worker* mem, Lnk lnk, Lnk val) {
   }
 }
 
+// (F {a0 a1} b c ...)
+// ------------------- CAL-PAR
+// dup b0 b1 = b
+// dup c0 c1 = c
+// ...
+// {(F a0 b0 c0 ...) (F a1 b1 c1 ...)}
 Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {
   inc_cost(mem);
   u64 arit = get_ari(term);
@@ -429,6 +432,7 @@ Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {
   return done;
 }
 
+// Reduces a term to weak head normal form.
 Lnk reduce(Worker* mem, u64 root, u64 slen) {
   Stk stack;
   stk_init(&stack);
@@ -498,6 +502,11 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
         case APP: {
           u64 arg0 = ask_arg(mem, term, 0);
           switch (get_tag(arg0)) {
+
+            // (λx(body) a)
+            // ------------ APP-LAM
+            // x <- a
+            // body
             case LAM: {
               inc_cost(mem);
               subst(mem, ask_arg(mem, arg0, 0), ask_arg(mem, term, 1));
@@ -507,6 +516,11 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               init = 1;
               continue;
             }
+
+            // ({a b} c)
+            // ----------------- APP-PAR
+            // dup x0 x1 = c
+            // {(a x0) (b x1)}
             case PAR: {
               inc_cost(mem);
               u64 app0 = get_loc(term, 0);
@@ -524,6 +538,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               link(mem, host, done);
               break;
             }
+
           }
           break;
         }
@@ -531,6 +546,13 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
         case DP1: {
           u64 arg0 = ask_arg(mem, term, 2);
           switch (get_tag(arg0)) {
+
+            // {r s} = λx(f)
+            // --------------- SUP-LAM
+            // dup f0 f1 = f
+            // r <- λx0(f0)
+            // s <- λx1(f1)
+            // x <- {x0 x1}
             case LAM: {
               inc_cost(mem);
               u64 let0 = get_loc(term, 0);
@@ -552,7 +574,12 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               link(mem, host, done);
               init = 1;
               continue;
+
             }
+            // !{x y} = {a b}
+            // -------------- SUP-PAR-EQ
+            // x <- a
+            // y <- b
             case PAR: {
               if (get_ext(term) == get_ext(arg0)) {
                 inc_cost(mem);
@@ -585,6 +612,12 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               }
             }
           }
+
+          // {x y} = N
+          // ---------- SUP-U32
+          // x <- N
+          // y <- N
+          // ~
           if (get_tag(arg0) == U32) {
             inc_cost(mem);
             subst(mem, ask_arg(mem,term,0), arg0);
@@ -593,6 +626,15 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
             link(mem, host, arg0);
             break;
           }
+
+          // {x y} = (K a b c ...)
+          // ------------------------- SUP-CTR
+          // dup a0 a1 = a
+          // dup b0 b1 = b
+          // dup c0 c1 = c
+          // ...
+          // x <- (K a0 b0 c0 ...)
+          // y <- (K a1 b1 c1 ...)
           if (get_tag(arg0) == CTR) {
             inc_cost(mem);
             u64 func = get_ext(arg0);
@@ -629,6 +671,10 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           //printf("! op2 %llu %llu\n", slen, stack.size);
           u64 arg0 = ask_arg(mem, term, 0);
           u64 arg1 = ask_arg(mem, term, 1);
+
+          // (+ a b)
+          // --------- OP2-U32
+          // add(a, b)
           if (get_tag(arg0) == U32 && get_tag(arg1) == U32) {
             inc_cost(mem);
             u64 a = get_val(arg0);
@@ -657,6 +703,11 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
             link(mem, host, done);
             break;
           }
+
+          // (+ {a0 a1} b)
+          // --------------------- OP2-PAR-0
+          // let b0 b1 = b
+          // {(+ a0 b0) (+ a1 b1)}
           if (get_tag(arg0) == PAR) {
             inc_cost(mem);
             u64 op20 = get_loc(term, 0);
@@ -674,6 +725,11 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
             link(mem, host, done);
             break;
           }
+
+          // (+ a {b0 b1})
+          // --------------- OP2-PAR-1
+          // dup a0 a1 = a
+          // {(+ a0 b0) (+ a1 b1)}
           if (get_tag(arg1) == PAR) {
             inc_cost(mem);
             u64 op20 = get_loc(term, 0);
@@ -691,6 +747,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
             link(mem, host, done);
             break;
           }
+
           break;
         }
         case CAL: {
@@ -1199,6 +1256,33 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
   for (u64 i = 0; i < dirs_mcap; ++i) {
     stk_free(&dirs[i]);
   }
+}
+
+// Debug
+// -----
+
+void debug_print_lnk(Lnk x) {
+  u64 tag = get_tag(x);
+  u64 ext = get_ext(x);
+  u64 val = get_val(x);
+  switch (tag) {
+    case DP0: printf("DP0"); break;
+    case DP1: printf("DP1"); break;
+    case VAR: printf("VAR"); break;
+    case ARG: printf("ARG"); break;
+    case ERA: printf("ERA"); break;
+    case LAM: printf("LAM"); break;
+    case APP: printf("APP"); break;
+    case PAR: printf("PAR"); break;
+    case CTR: printf("CTR"); break;
+    case CAL: printf("CAL"); break;
+    case OP2: printf("OP2"); break;
+    case U32: printf("U32"); break;
+    case F32: printf("F32"); break;
+    case NIL: printf("NIL"); break;
+    default : printf("???"); break;
+  }
+  printf(":%llx:%llx", ext, val);
 }
 
 // Main
