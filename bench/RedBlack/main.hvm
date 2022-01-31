@@ -11,17 +11,190 @@
 //   tie(color: Color, left: RedBlack<A>, key: U32, val: A, right: RedBlack<A>)
 // }
 
-// Member: <A: Type> -> (key: U32, map: RedBlack<A>) -> Maybe<A>
-(Member get_key RedBlack.tip) = (None)
-(Member get_key (RedBlack.tie color left key val right)) =
+// RedBlack.member: <A: Type> -> (key: U32, map: RedBlack<A>) -> Maybe<A>
+(RedBlack.member member_key RedBlack.tip) = None
+(RedBlack.member member_key (RedBlack.tie color left key value right)) =
   (IfElse
-    (< get_key key)
-    (RedBlack.Member get_key left)
+    (< member_key key)
+    (RedBlack.member member_key left)
     (IfElse
-      (> get_key key)
-      (RedBlack.Member get_key right)
-      (Some val)
+      (> member_key key)
+      (RedBlack.member member_key right)
+      (Some value)
     )
   )
+
+(RedBlack.insert insert_key value RedBlack.tip) =
+  (RedBlack.tie
+    Color.red
+    RedBlack.tip
+    insert_key
+    value
+    RedBlack.tip
+  )
+
+(RedBlack.insert insert_key insert_value (RedBlack.tie color left key value right)) =
+  (IfElse
+    (< insert_key key)
+    (RedBlack.balance
+      color
+      (RedBlack.insert insert_key insert_value left)
+      key
+      value
+      right
+    )
+    (IfElse
+      (> insert_key key)
+      (RedBlack.balance
+        color
+        left
+        key
+        value
+        (RedBlack.insert insert_key insert_value right)
+      )
+      (RedBlack.tie
+        color
+        left
+        insert_key
+        insert_value
+        right
+      )
+    )
+  )
+
+(RedBlack.balance
+  Color.black
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie Color.red child0 key0 value0 child1)
+    key1
+    value1
+    child2
+  )
+  key2
+  value2
+  child3
+) =
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie
+      Color.black
+      child0
+      key0
+      value0
+      child1
+    )
+    key1
+    value1
+    (RedBlack.tie
+      Color.black
+      child2
+      key2
+      value2
+      child3
+    )
+  )
+
+(RedBlack.balance
+  Color.black
+  (RedBlack.tie
+    Color.red
+    child0
+    key0
+    value0
+    (RedBlack.tie Color.red child1 key1 value1 child2)
+  )
+  key2
+  value2
+  child3
+) =
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie
+      Color.black
+      child0
+      key0
+      value0
+      child1
+    )
+    key1
+    value1
+    (RedBlack.tie
+      Color.black
+      child2
+      key2
+      value2
+      child3
+    )
+  )
+
+(RedBlack.balance
+  Color.black
+  child0
+  key0
+  value0
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie Color.red child1 key1 value1 child2)
+    key2
+    value2
+    child3
+  )
+) =
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie
+      Color.black
+      child0
+      key0
+      value0
+      child1
+    )
+    key1
+    value1
+    (RedBlack.tie
+      Color.black
+      child2
+      key2
+      value2
+      child3
+    )
+  )
+
+(RedBlack.balance
+  Color.black
+  child0
+  key0
+  value0
+  (RedBlack.tie
+    Color.red
+    child1
+    key1
+    value1
+    (RedBlack.tie Color.red child2 key2 value2 child3)
+  )
+) =
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie
+      Color.black
+      child0
+      key0
+      value0
+      child1
+    )
+    key1
+    value1
+    (RedBlack.tie
+      Color.black
+      child2
+      key2
+      value2
+      child3
+    )
+  )
+  
+(RedBlack.balance color left key value right) = (RedBlack.tie color left key value right)
+
 
 (Main) = (RedBlack.Member RedBlack.tip)
