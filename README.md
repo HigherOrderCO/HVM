@@ -305,7 +305,7 @@ main = do
 This chart isn't wrong: HVM is *exponentially* faster for function composition,
 due to optimality, depending on the target function. There is no parallelism
 involved here. In general, if the composition of a function `f` has a
-constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HVM,
+constant-size normal form, then `f^(2^N)(x)` is linear-time (`O(N)`) on HVM,
 and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
 novel functional algorithms. I highly encourage you to try composing different
 functions and watching how their complexity behaves. Can you tell if it will be
