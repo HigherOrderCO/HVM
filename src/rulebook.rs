@@ -542,20 +542,20 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   }
 
   // Checks if this rule has nested patterns, and must be splitted
+  #[rustfmt::skip]
   fn must_split(lhs: &lang::Term) -> bool {
 /**/if let lang::Term::Ctr { ref args, .. } = *lhs {
 /*  */for arg in args {
 /*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
 /*   A  */for field in arg_args {
-/*    D   */if is_tested(&field) {
+/*    D   */if is_tested(field) {
 /* ─=≡ΣO)   */return true;
 /*    U   */}
 /*   K  */}
 /*  E */}
 /* N*/}
-/**/} return false;
+/**/} false
   }
-
 
   fn is_tested(term: &lang::Term) -> bool {
     matches!(term, lang::Term::Ctr { .. } | lang::Term::U32 { .. })
