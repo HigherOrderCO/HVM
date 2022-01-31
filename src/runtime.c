@@ -33,7 +33,8 @@ const u64 U64_PER_MB = 0x20000;
 const u64 U64_PER_GB = 0x8000000;
 
 // HVM pointers can address a 2^32 space of 64-bit elements, so, when the
-// program starts, we pre-alloc the maximum addressable heap, 32 GB.
+// program starts, we pre-alloc the maximum addressable heap, 32 GB. This will
+// be replaced by a proper arena allocator soon (see the Issues)!
 const u64 HEAP_SIZE = 8 * U64_PER_GB * sizeof(u64);
 
 #ifdef PARALLEL
@@ -905,6 +906,9 @@ Lnk normal(Worker* mem, u64 host, u64 sidx, u64 slen) {
 #ifdef PARALLEL
 
 // Normalizes in a separate thread
+// Note that, right now, the allocator will just partition the space of the
+// normal form equally among threads, which will not fully use the CPU cores in
+// many cases. A better task scheduler should be implemented. See Issues.
 void normal_fork(u64 tid, u64 host, u64 sidx, u64 slen) {
   pthread_mutex_lock(&workers[tid].has_work_mutex);
   workers[tid].has_work = (sidx << 48) | (slen << 32) | host;
