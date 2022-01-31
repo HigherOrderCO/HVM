@@ -356,10 +356,10 @@ Is reduced to:
 (Pair 42 42)
 ```
 
-**2.** By "substition", we mean "replacing a variable by a value". For example,
-the substitution of `x` by `7` in `[1, x, 8]` would be `[1, 7, 8]`. Since every
-variable only occurs once in the runtime, substitution is a fast, constant time
-operation that performs either 1 or 2 array writes.
+**2.** By "substitution", we mean "replacing a variable by a value". For
+example, the substitution of `x` by `7` in `[1, x, 8]` would be `[1, 7, 8]`.
+Since every variable only occurs once in the runtime, substitution is a fast,
+constant time operation that performs either 1 or 2 array writes.
 
 **3.** `dup`s aren't stored inside the expressions. Instead, they "float" on
 the global scope. That's why they're always written on top.
