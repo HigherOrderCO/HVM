@@ -58,11 +58,6 @@ pub struct DynFun {
   pub rules: Vec<DynRule>,
 }
 
-// Given a RuleBook file and a function name, builds a dynamic Rust closure that applies that
-// function to the runtime memory buffer directly. This process is complex, so I'll write a lot of
-// comments here. All comments will be based on the following Lambolt example:
-//   (Add (Succ a) b) = (Succ (Add a b))
-//   (Add (Zero)   b) = b
 pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
   let mut redex = if let lang::Term::Ctr { name: _, ref args } = *rules[0].lhs {
     vec![false; args.len()]
@@ -72,10 +67,13 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
   let dynrules = rules
     .iter()
     .filter_map(|rule| {
-      if let lang::Term::Ctr { name: _, ref args } = *rule.lhs {
+      if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
         let mut cond = Vec::new();
         let mut vars = Vec::new();
         let mut free = Vec::new();
+        if args.len() != redex.len() {
+          panic!("Inconsistent length of left-hand side on equation for '{}'.", name);
+        }
         for ((i, arg), redex) in args.iter().enumerate().zip(redex.iter_mut()) {
           match &**arg {
             lang::Term::Ctr { name, args } => {
