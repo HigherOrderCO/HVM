@@ -1,6 +1,8 @@
 .DS_Store
-**/result/
-**/target/
+**/bench/*/main
+**/bench/*/main.c
+**/result
+**/target
 *.out.c
 *.hi
 *.o

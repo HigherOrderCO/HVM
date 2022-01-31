@@ -21,7 +21,7 @@ pub fn compile_code_and_save(code: &str, file_name: &str) -> std::io::Result<()>
 pub fn compile_code(code: &str) -> String {
   let file = lang::read_file(code);
   let book = rb::gen_rulebook(&file);
-  let funs = bd::build_runtime_functions(&book);
+  let _funs = bd::build_runtime_functions(&book);
   compile_book(&book)
 }
 
@@ -37,7 +37,7 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
   for (id, name) in &comp.id_to_name {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
   }
-  for (name, (arity, rules)) in &comp.func_rules {
+  for (name, (_arity, rules)) in &comp.func_rules {
     let (init, code) = compile_func(comp, rules, 7);
 
     line(
@@ -68,7 +68,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (Str
 
   // Converts redex vector to stricts vector
   // TODO: avoid code duplication, this same algo is on builder.rs
-  let arity = dynfun.redex.len() as u64;
+  let _arity = dynfun.redex.len() as u64;
   let mut stricts = Vec::new();
   for (i, is_redex) in dynfun.redex.iter().enumerate() {
     if *is_redex {
@@ -151,7 +151,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (Str
     }
 
     // Collects unused variables (none in this example)
-    for dynvar @ bd::DynVar { param, field, erase } in dynrule.vars.iter() {
+    for dynvar @ bd::DynVar { param: _, field: _, erase } in dynrule.vars.iter() {
       if *erase {
         line(&mut code, tab + 1, &format!("collect(mem, {});", get_var(dynvar)));
       }
@@ -181,7 +181,7 @@ pub fn compile_func_rule_term(
     nams: &mut u64,
     dups: &mut u64,
   ) -> String {
-    let INLINE_NUMBERS = true;
+    const INLINE_NUMBERS: bool = true;
     //println!("compile {:?}", term);
     //println!("- vars: {:?}", vars);
     match term {
@@ -217,10 +217,10 @@ pub fn compile_func_rule_term(
         *dups += 1;
         line(code, tab + 1, &format!("u64 {} = alloc(mem, 3);", name));
         line(code, tab + 1, &format!("u64 {} = {};", coln, colx));
-        if (eras.0) {
+        if eras.0 {
           line(code, tab + 1, &format!("link(mem, {} + 0, Era());", name));
         }
-        if (eras.1) {
+        if eras.1 {
           line(code, tab + 1, &format!("link(mem, {} + 1, Era());", name));
         }
         line(code, tab + 1, &format!("link(mem, {} + 2, {});", name, copy));
@@ -347,7 +347,7 @@ pub fn compile_func_rule_term(
           _ => "?",
         };
         line(code, tab + 1, &format!("{} = Op2({}, {});", retx, oper_name, name));
-        if (INLINE_NUMBERS) {
+        if INLINE_NUMBERS {
           line(code, tab + 0, "}");
         }
         retx
@@ -362,7 +362,7 @@ pub fn compile_func_rule_term(
   let mut nams = 0;
   let mut vars: Vec<String> = vars
     .iter()
-    .map(|var @ bd::DynVar { param, field, erase }| match field {
+    .map(|_var @ bd::DynVar { param, field, erase: _ }| match field {
       Some(field) => {
         format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, field)
       }
@@ -374,6 +374,7 @@ pub fn compile_func_rule_term(
   go(code, tab, term, &mut vars, &mut nams, dups)
 }
 
+#[allow(dead_code)]
 // This isn't used, but it is an alternative way to compile right-hand side bodies. It results in
 // slightly different code that might be faster since it inlines many memory writes. But it doesn't
 // optimize numeric operations to avoid extra rules, so that may make it slower, depending.
@@ -425,7 +426,7 @@ pub fn compile_func_rule_body(
 }
 
 fn get_var(var: &bd::DynVar) -> String {
-  let bd::DynVar { param, field, erase } = var;
+  let bd::DynVar { param, field, erase: _ } = var;
   match field {
     Some(i) => {
       format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, i)
@@ -437,7 +438,7 @@ fn get_var(var: &bd::DynVar) -> String {
 }
 
 fn line(code: &mut String, tab: u64, line: &str) {
-  for i in 0..tab {
+  for _ in 0..tab {
     code.push_str("  ");
   }
   code.push_str(line);
@@ -493,13 +494,12 @@ pub fn c_runtime_template(
   );
 
   // Instantiate the template with the given sections' content
-  let runtime_template = C_RUNTIME_TEMPLATE
+
+  C_RUNTIME_TEMPLATE
     .replace(C_NUM_THREADS_CONTENT, &num_cpus::get().to_string())
     .replace(C_CONSTRUCTOR_IDS_CONTENT, c_ids)
     .replace(C_REWRITE_RULES_STEP_0_CONTENT, inits)
     .replace(C_REWRITE_RULES_STEP_1_CONTENT, codes)
     .replace(C_NAME_COUNT_CONTENT, &names_count.to_string())
-    .replace(C_ID_TO_NAME_DATA_CONTENT, id2nm);
-
-  runtime_template
+    .replace(C_ID_TO_NAME_DATA_CONTENT, id2nm)
 }

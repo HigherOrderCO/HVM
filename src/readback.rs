@@ -1,13 +1,10 @@
 // Moving Lambolt Terms to/from runtime, and building dynamic functions.
 
-#![allow(clippy::identity_op)]
-
+use crate::language as lang;
 use crate::rulebook as rb;
 use crate::runtime as rt;
-use crate::language as lang;
 use crate::runtime::{Lnk, Worker};
 use std::collections::{HashMap, HashSet};
-use std::fmt;
 
 /// Reads back a term from Runtime's memory
 // TODO: we should readback as a language::Term, not as a string
@@ -71,10 +68,11 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
           name(ctx, arg, depth + 1);
         }
       }
-      default => {}
+      _ => {}
     }
   }
 
+  #[allow(dead_code)]
   struct CtxGo<'a> {
     mem: &'a Worker,
     comp: &'a Option<rb::RuleBook>,
@@ -191,7 +189,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
           rt::GTE => ">=",
           rt::GTN => ">",
           rt::NEQ => "!=",
-          default => panic!("unknown operation"),
+          _ => panic!("unknown operation"),
         };
         let val0 = rt::ask_arg(ctx.mem, term, 0);
         let val1 = rt::ask_arg(ctx.mem, term, 1);
@@ -226,7 +224,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         .unwrap_or_else(|| format!("^{}", rt::get_loc(term, 0))),
       rt::ARG => "!".to_string(),
       rt::ERA => "~".to_string(),
-      default => {
+      _ => {
         format!("?({})", rt::get_tag(term))
       }
     }
@@ -249,5 +247,5 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
 }
 
 pub fn as_term(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> Box<lang::Term> {
-  return lang::read_term(&as_code(mem, comp, host));
+  lang::read_term(&as_code(mem, comp, host))
 }

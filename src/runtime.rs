@@ -1,8 +1,6 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_parens)]
-#![allow(non_snake_case)]
 #![allow(clippy::identity_op)]
+#![allow(dead_code)]
+#![allow(non_snake_case)]
 
 use std::collections::{hash_map, HashMap};
 
@@ -108,7 +106,7 @@ pub fn Arg(pos: u64) -> Lnk {
 }
 
 pub fn Era() -> Lnk {
-  (ERA * TAG)
+  ERA * TAG
 }
 
 pub fn Lam(pos: u64) -> Lnk {
@@ -306,7 +304,7 @@ pub fn reduce(
   mem: &mut Worker,
   funcs: &[Option<Function>],
   root: u64,
-  opt_id_to_name: Option<&HashMap<u64, String>>,
+  _opt_id_to_name: Option<&HashMap<u64, String>>,
 ) -> Lnk {
   let mut stack: Vec<u64> = Vec::new();
 
@@ -368,7 +366,7 @@ pub fn reduce(
           if get_tag(arg0) == LAM {
             inc_cost(mem);
             subst(mem, ask_arg(mem, arg0, 0), ask_arg(mem, term, 1));
-            let done = link(mem, host, ask_arg(mem, arg0, 1));
+            let _done = link(mem, host, ask_arg(mem, arg0, 1));
             clear(mem, get_loc(term, 0), 2);
             clear(mem, get_loc(arg0, 0), 2);
             init = 1;
@@ -420,7 +418,7 @@ pub fn reduce(
               inc_cost(mem);
               subst(mem, ask_arg(mem, term, 0), ask_arg(mem, arg0, 0));
               subst(mem, ask_arg(mem, term, 1), ask_arg(mem, arg0, 1));
-              let done =
+              let _done =
                 link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
               clear(mem, get_loc(term, 0), 3);
               clear(mem, get_loc(arg0, 0), 2);
@@ -450,7 +448,7 @@ pub fn reduce(
             inc_cost(mem);
             subst(mem, ask_arg(mem, term, 0), arg0);
             subst(mem, ask_arg(mem, term, 1), arg0);
-            let done = arg0;
+            let _done = arg0;
             link(mem, host, arg0);
           }
           if get_tag(arg0) == CTR {
@@ -461,7 +459,7 @@ pub fn reduce(
               subst(mem, ask_arg(mem, term, 0), Ctr(0, func, 0));
               subst(mem, ask_arg(mem, term, 1), Ctr(0, func, 0));
               clear(mem, get_loc(term, 0), 3);
-              let done = link(mem, host, Ctr(0, func, 0));
+              let _done = link(mem, host, Ctr(0, func, 0));
             } else {
               let ctr0 = get_loc(arg0, 0);
               let ctr1 = alloc(mem, arit);
@@ -582,10 +580,9 @@ pub fn reduce(
         }
         CAL => {
           let fun = get_ext(term);
-          let ari = get_ari(term);
+          let _ari = get_ari(term);
           if let Some(f) = &funcs[fun as usize] {
             if (f.rewriter)(mem, host, term) {
-              host = host;
               init = 1;
               continue;
             }
@@ -608,7 +605,7 @@ pub fn reduce(
 }
 
 pub fn set_bit(bits: &mut [u64], bit: u64) {
-  bits[bit as usize >> 6] |= (1 << (bit & 0x3f));
+  bits[bit as usize >> 6] |= 1 << (bit & 0x3f);
 }
 
 pub fn get_bit(bits: &[u64], bit: u64) -> bool {
@@ -677,7 +674,7 @@ pub fn normal(
 // -----
 
 pub fn show_lnk(x: Lnk) -> String {
-  if (x == 0) {
+  if x == 0 {
     String::from("~")
   } else {
     let tag = get_tag(x);
