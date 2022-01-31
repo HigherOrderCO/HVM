@@ -1,0 +1,27 @@
+(IfElse 1 yeah nope) = yeah
+(IfElse 0 yeah nope) = nope
+
+// type Color {
+//   red
+//   black
+// }
+
+// type RedBlack<A: type> {
+//   tip
+//   tie(color: Color, left: RedBlack<A>, key: U32, val: A, right: RedBlack<A>)
+// }
+
+// Member: <A: Type> -> (key: U32, map: RedBlack<A>) -> Maybe<A>
+(Member get_key RedBlack.tip) = (None)
+(Member get_key (RedBlack.tie color left key val right)) =
+  (IfElse
+    (< get_key key)
+    (RedBlack.Member get_key left)
+    (IfElse
+      (> get_key key)
+      (RedBlack.Member get_key right)
+      (Some val)
+    )
+  )
+
+(Main) = (RedBlack.Member RedBlack.tip)
