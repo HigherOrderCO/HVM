@@ -17,11 +17,11 @@ function range(init, step, size) {
 }
 
 const programs = {
-  TreeSum: { vals: range(0, 1, 33) },
-  Composition: { vals: range(0, 1, 33) },
+  //TreeSum: { vals: range(0, 1, 33) },
+  //Composition: { vals: range(0, 1, 33) },
   QuickSort: { vals: range(0, 1, 65) },
-  LambdaArithmetic: { vals: range(0, 1, 65) },
-  ListFold: { vals: range(0, 1, 65) },
+  //LambdaArithmetic: { vals: range(0, 1, 65) },
+  //ListFold: { vals: range(0, 1, 65) },
 };
 
 const evaluators = {
