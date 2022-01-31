@@ -5,8 +5,9 @@ How!?
 
 JK
 
-**Note: this is a public draft. It contains a lot of errors. I'll review it
-around Monday, and finish later on. Corrections and feedbacks are welcome!**
+**Note: this is a public draft. It contains a lot of errors and may be too
+meme-ish / handholding in some parts. I'll finish later on. Corrections and
+feedbacks are welcome!**
 
 TL;DR
 =====
