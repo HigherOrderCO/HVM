@@ -87,32 +87,6 @@ rec {
     #   inject test dependencies into the build
 
     crates = {
-      "anyhow" = rec {
-        crateName = "anyhow";
-        version = "1.0.53";
-        edition = "2018";
-        sha256 = "1q06xg4jn4lpad7lj1af28x5xdwymgl1k820zj2nnrhlbi2mp94l";
-        authors = [
-          "David Tolnay <dtolnay@gmail.com>"
-        ];
-        features = {
-          "default" = [ "std" ];
-        };
-        resolvedDefaultFeatures = [ "default" "std" ];
-      };
-      "bitflags" = rec {
-        crateName = "bitflags";
-        version = "1.3.2";
-        edition = "2018";
-        sha256 = "12ki6w8gn1ldq7yz9y680llwk5gmrhrzszaa17g1sbrw2r2qvwxy";
-        authors = [
-          "The Rust Project Developers"
-        ];
-        features = {
-          "rustc-dep-of-std" = [ "core" "compiler_builtins" ];
-        };
-        resolvedDefaultFeatures = [ "default" ];
-      };
       "cfg-if" = rec {
         crateName = "cfg-if";
         version = "1.0.0";
@@ -300,133 +274,30 @@ rec {
         };
         resolvedDefaultFeatures = [ "std" ];
       };
-      "cranelift-jit" = rec {
-        crateName = "cranelift-jit";
-        version = "0.80.0";
+      "hermit-abi" = rec {
+        crateName = "hermit-abi";
+        version = "0.1.19";
         edition = "2018";
-        sha256 = "1ykbzb3ibv19qvi93r8hyfjsdacq8l05x5ggrb1ydhfavch0w3wf";
+        sha256 = "0cxcm8093nf5fyn114w8vxbrbcyvv91d4015rdnlgfll7cs6gd32";
         authors = [
-          "The Cranelift Project Developers"
+          "Stefan Lankes"
         ];
         dependencies = [
           {
-            name = "anyhow";
-            packageId = "anyhow";
-          }
-          {
-            name = "cranelift-codegen";
-            packageId = "cranelift-codegen";
-            usesDefaultFeatures = false;
-            features = [ "std" ];
-          }
-          {
-            name = "cranelift-entity";
-            packageId = "cranelift-entity";
-          }
-          {
-            name = "cranelift-module";
-            packageId = "cranelift-module";
-          }
-          {
-            name = "cranelift-native";
-            packageId = "cranelift-native";
-          }
-          {
             name = "libc";
             packageId = "libc";
-          }
-          {
-            name = "log";
-            packageId = "log";
             usesDefaultFeatures = false;
-          }
-          {
-            name = "region";
-            packageId = "region";
-          }
-          {
-            name = "target-lexicon";
-            packageId = "target-lexicon";
-          }
-          {
-            name = "winapi";
-            packageId = "winapi";
-            target = { target, features }: (target."os" == "windows");
-            features = [ "winbase" "memoryapi" ];
-          }
-        ];
-        devDependencies = [
-          {
-            name = "cranelift-entity";
-            packageId = "cranelift-entity";
           }
         ];
         features = {
-          "selinux-fix" = [ "memmap2" ];
+          "rustc-dep-of-std" = [ "core" "compiler_builtins/rustc-dep-of-std" "libc/rustc-dep-of-std" ];
         };
         resolvedDefaultFeatures = [ "default" ];
-      };
-      "cranelift-module" = rec {
-        crateName = "cranelift-module";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "0y57agnw9g2ld3lz49hmv4lwwd8nhlmmzyrv2rijl3vpi73hyilk";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "anyhow";
-            packageId = "anyhow";
-          }
-          {
-            name = "cranelift-codegen";
-            packageId = "cranelift-codegen";
-            usesDefaultFeatures = false;
-          }
-        ];
-        features = {
-          "core" = [ "hashbrown" "cranelift-codegen/core" ];
-          "default" = [ "std" ];
-          "std" = [ "cranelift-codegen/std" ];
-        };
-        resolvedDefaultFeatures = [ "default" "std" ];
-      };
-      "cranelift-native" = rec {
-        crateName = "cranelift-native";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "0iks3anay8wixbvdc6vhkkwj6aql9q4703mcvmxyx9j30g52hq0n";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "cranelift-codegen";
-            packageId = "cranelift-codegen";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "libc";
-            packageId = "libc";
-            target = { target, features }: (target."arch" == "s390x");
-          }
-          {
-            name = "target-lexicon";
-            packageId = "target-lexicon";
-          }
-        ];
-        features = {
-          "core" = [ "cranelift-codegen/core" ];
-          "default" = [ "std" ];
-          "std" = [ "cranelift-codegen/std" ];
-        };
-        resolvedDefaultFeatures = [ "default" "std" ];
       };
       "hvm" = rec {
         crateName = "hvm";
         version = "0.1.0";
-        edition = "2018";
+        edition = "2021";
         crateBin = [
           { name = "hvm"; path = "src/main.rs"; }
         ];
@@ -437,25 +308,17 @@ rec {
             packageId = "cranelift";
           }
           {
-            name = "cranelift-jit";
-            packageId = "cranelift-jit";
-          }
-          {
-            name = "cranelift-module";
-            packageId = "cranelift-module";
-          }
-          {
-            name = "cranelift-native";
-            packageId = "cranelift-native";
+            name = "num_cpus";
+            packageId = "num_cpus";
           }
         ];
 
       };
       "libc" = rec {
         crateName = "libc";
-        version = "0.2.115";
+        version = "0.2.116";
         edition = "2015";
-        sha256 = "13c11qdsk7clp0mxyl4pwb6yq0wpvrkfkky4dq7h0sm9lwpri38a";
+        sha256 = "0x6sk17kv2fdsqxlm23bz9x1y79w90k7ylkflk44rgidhy4bspan";
         authors = [
           "The Rust Project Developers"
         ];
@@ -487,28 +350,27 @@ rec {
           "kv_unstable_sval" = [ "kv_unstable" "value-bag/sval" "sval" ];
         };
       };
-      "mach" = rec {
-        crateName = "mach";
-        version = "0.3.2";
+      "num_cpus" = rec {
+        crateName = "num_cpus";
+        version = "1.13.1";
         edition = "2015";
-        sha256 = "1yksa8lwzqh150gr4417rls1wk20asy9vhp8kq5g9n7z58xyh8xq";
+        sha256 = "18apx62z4j4lajj2fi6r1i8slr9rs2d0xrbj2ls85qfyxck4brhr";
         authors = [
-          "Nick Fitzgerald <fitzgen@gmail.com>"
-          "David Cuddeback <david.cuddeback@gmail.com>"
-          "Gonzalo Brito Gadeschi <gonzalobg88@gmail.com>"
+          "Sean McArthur <sean@seanmonstar.com>"
         ];
         dependencies = [
           {
+            name = "hermit-abi";
+            packageId = "hermit-abi";
+            target = { target, features }: (((target."arch" == "x86_64") || (target."arch" == "aarch64")) && (target."os" == "hermit"));
+          }
+          {
             name = "libc";
             packageId = "libc";
-            usesDefaultFeatures = false;
-            target = { target, features }: ((target."os" == "macos") || (target."os" == "ios"));
+            target = { target, features }: (!(target."windows" or false));
           }
         ];
-        features = {
-          "rustc-dep-of-std" = [ "rustc-std-workspace-core" "libc/rustc-dep-of-std" ];
-        };
-        resolvedDefaultFeatures = [ "default" ];
+
       };
       "regalloc" = rec {
         crateName = "regalloc";
@@ -537,37 +399,6 @@ rec {
           "enable-serde" = [ "serde" ];
         };
         resolvedDefaultFeatures = [ "default" ];
-      };
-      "region" = rec {
-        crateName = "region";
-        version = "2.2.0";
-        edition = "2015";
-        sha256 = "1q4szar3ms76552iygmhsvzhvvwkgz4l94qpx600vmyw5bm58zl7";
-        authors = [
-          "Elliott Linder <elliott.darfink@gmail.com>"
-        ];
-        dependencies = [
-          {
-            name = "bitflags";
-            packageId = "bitflags";
-          }
-          {
-            name = "libc";
-            packageId = "libc";
-          }
-          {
-            name = "mach";
-            packageId = "mach";
-            target = { target, features }: ((target."os" == "macos") || (target."os" == "ios"));
-          }
-          {
-            name = "winapi";
-            packageId = "winapi";
-            target = { target, features }: (target."windows" or false);
-            features = [ "basetsd" "minwindef" "sysinfoapi" "memoryapi" "winnt" ];
-          }
-        ];
-
       };
       "rustc-hash" = rec {
         crateName = "rustc-hash";
@@ -605,51 +436,6 @@ rec {
         features = {
         };
         resolvedDefaultFeatures = [ "default" ];
-      };
-      "winapi" = rec {
-        crateName = "winapi";
-        version = "0.3.9";
-        edition = "2015";
-        sha256 = "06gl025x418lchw1wxj64ycr7gha83m44cjr5sarhynd9xkrm0sw";
-        authors = [
-          "Peter Atashian <retep998@gmail.com>"
-        ];
-        dependencies = [
-          {
-            name = "winapi-i686-pc-windows-gnu";
-            packageId = "winapi-i686-pc-windows-gnu";
-            target = { target, features }: (stdenv.hostPlatform.config == "i686-pc-windows-gnu");
-          }
-          {
-            name = "winapi-x86_64-pc-windows-gnu";
-            packageId = "winapi-x86_64-pc-windows-gnu";
-            target = { target, features }: (stdenv.hostPlatform.config == "x86_64-pc-windows-gnu");
-          }
-        ];
-        features = {
-          "debug" = [ "impl-debug" ];
-        };
-        resolvedDefaultFeatures = [ "basetsd" "memoryapi" "minwindef" "sysinfoapi" "winbase" "winnt" ];
-      };
-      "winapi-i686-pc-windows-gnu" = rec {
-        crateName = "winapi-i686-pc-windows-gnu";
-        version = "0.4.0";
-        edition = "2015";
-        sha256 = "1dmpa6mvcvzz16zg6d5vrfy4bxgg541wxrcip7cnshi06v38ffxc";
-        authors = [
-          "Peter Atashian <retep998@gmail.com>"
-        ];
-
-      };
-      "winapi-x86_64-pc-windows-gnu" = rec {
-        crateName = "winapi-x86_64-pc-windows-gnu";
-        version = "0.4.0";
-        edition = "2015";
-        sha256 = "0gqq64czqb64kskjryj8isp62m2sgvx25yyj3kpc2myh85w24bki";
-        authors = [
-          "Peter Atashian <retep998@gmail.com>"
-        ];
-
       };
     };
 

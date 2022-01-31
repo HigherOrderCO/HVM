@@ -1,3 +1,9 @@
+// This is HVM's C runtime template. HVM files generate a copy of this file,
+// modified to also include user-defined rules. It then can be compiled to run
+// in parallel with -lpthreads.
+
+#include <assert.h>
+
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -13,6 +19,7 @@
 // Types
 // -----
 
+// TODO: stdint.h
 typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned long long int u64;
@@ -26,20 +33,28 @@ const u64 U64_PER_MB = 0x20000;
 const u64 U64_PER_GB = 0x8000000;
 
 // HVM pointers can address a 2^32 space of 64-bit elements, so, when the
-// program starts, we pre-alloc the maximum addressable heap, 32 GB.
-const u64 HEAP_SIZE = 32 * U64_PER_GB * sizeof(u64);
+// program starts, we pre-alloc the maximum addressable heap, 32 GB. This will
+// be replaced by a proper arena allocator soon (see the Issues)!
+const u64 HEAP_SIZE = 8 * U64_PER_GB * sizeof(u64);
 
 #ifdef PARALLEL
-#define MAX_WORKERS (8)
+#define MAX_WORKERS (/* GENERATED_NUM_THREADS_CONTENT */)
 #else
 #define MAX_WORKERS (1)
 #endif
 const u64 MAX_DYNFUNS = 65536;
 #define MAX_ARITY (16)
-const u64 MEM_SPACE = U64_PER_GB; // each worker has 1 GB of the 8 GB total
+const u64 MEM_SPACE = HEAP_SIZE/MAX_WORKERS/sizeof(u64); // each worker has a fraction of the 32GB total
+#define NORMAL_SEEN_MCAP (HEAP_SIZE/sizeof(u64)/(sizeof(u64)*8))
 
 // Terms
 // -----
+// HVM's runtime stores terms in a 64-bit memory. Each element is a Link, which
+// usually points to a constructor. It stores a Tag representing the ctor's
+// variant, and possibly a position on the memory. So, for example, `Lnk ptr =
+// APP * TAG | 137` creates a pointer to an app node stored on position 137.
+// Some links deal with variables: DP0, DP1, VAR, ARG and ERA.  The OP2 link
+// represents a numeric operation, and U32 and F32 links represent unboxed nums.
 
 typedef u64 Lnk;
 
@@ -48,21 +63,20 @@ const u64 EXT = 0x100000000;
 const u64 ARI = 0x100000000000000;
 const u64 TAG = 0x1000000000000000;
 
-const u64 DP0 = 0x0;
-const u64 DP1 = 0x1;
-const u64 VAR = 0x2;
-const u64 ARG = 0x3;
-const u64 ERA = 0x4;
-const u64 LAM = 0x5;
-const u64 APP = 0x6;
-const u64 PAR = 0x7;
-const u64 CTR = 0x8;
-const u64 CAL = 0x9;
-const u64 OP2 = 0xA;
-const u64 U32 = 0xB;
-const u64 F32 = 0xC;
-const u64 OUT = 0xE;
-const u64 NIL = 0xF;
+const u64 DP0 = 0x0; // points to the dup node that binds this variable (left side)
+const u64 DP1 = 0x1; // points to the dup node that binds this variable (right side)
+const u64 VAR = 0x2; // points to the λ that binds this variable
+const u64 ARG = 0x3; // points to the occurrence of a bound variable a linear argument
+const u64 ERA = 0x4; // signals that a binder doesn't use its bound variable
+const u64 LAM = 0x5; // arity = 2
+const u64 APP = 0x6; // arity = 2
+const u64 PAR = 0x7; // arity = 2 // TODO: rename to SUP
+const u64 CTR = 0x8; // arity = user defined
+const u64 CAL = 0x9; // arity = user defined
+const u64 OP2 = 0xA; // arity = 2
+const u64 U32 = 0xB; // arity = 0 (unboxed)
+const u64 F32 = 0xC; // arity = 0 (unboxed)
+const u64 NIL = 0xF; // not used
 
 const u64 ADD = 0x0;
 const u64 SUB = 0x1;
@@ -82,24 +96,24 @@ const u64 GTN = 0xE;
 const u64 NEQ = 0xF;
 
 //GENERATED_CONSTRUCTOR_IDS_START//
-{}
+/* GENERATED_CONSTRUCTOR_IDS_CONTENT */
 //GENERATED_CONSTRUCTOR_IDS_END//
 
 // Threads
 // -------
 
-typedef struct {{
+typedef struct {
   u64 size;
   u64* data;
-}} Arr;
+} Arr;
 
-typedef struct {{
+typedef struct {
   u64* data;
   u64  size;
   u64  mcap;
-}} Stk;
+} Stk;
 
-typedef struct {{
+typedef struct {
   u64  tid;
   Lnk* node;
   u64  size;
@@ -117,7 +131,7 @@ typedef struct {{
 
   Thd  thread;
   #endif
-}} Worker;
+} Worker;
 
 // Globals
 // -------
@@ -126,374 +140,375 @@ Worker workers[MAX_WORKERS];
 
 // Array
 // -----
+// Some array utils
 
-void array_write(Arr* arr, u64 idx, u64 value) {{
+void array_write(Arr* arr, u64 idx, u64 value) {
   arr->data[idx] = value;
-}}
+}
 
-u64 array_read(Arr* arr, u64 idx) {{
+u64 array_read(Arr* arr, u64 idx) {
   return arr->data[idx];
-}}
+}
 
 // Stack
 // -----
+// Some stack utils.
 
 u64 stk_growth_factor = 16;
 
-void stk_init(Stk* stack) {{
+void stk_init(Stk* stack) {
   stack->size = 0;
   stack->mcap = stk_growth_factor;
   stack->data = malloc(stack->mcap * sizeof(u64));
-}}
+  assert(stack->data);
+}
 
-void stk_free(Stk* stack) {{
+void stk_free(Stk* stack) {
   free(stack->data);
-}}
+}
 
-void stk_push(Stk* stack, u64 val) {{
-  if (UNLIKELY(stack->size == stack->mcap)) {{ 
+void stk_push(Stk* stack, u64 val) {
+  if (UNLIKELY(stack->size == stack->mcap)) { 
     stack->mcap = stack->mcap * stk_growth_factor;
     stack->data = realloc(stack->data, stack->mcap * sizeof(u64));
-  }}
+  }
   stack->data[stack->size++] = val;
-}}
+}
 
-u64 stk_pop(Stk* stack) {{
-  if (LIKELY(stack->size > 0)) {{
+u64 stk_pop(Stk* stack) {
+  if (LIKELY(stack->size > 0)) {
     // TODO: shrink? -- impacts performance considerably
-    //if (stack->size == stack->mcap / stk_growth_factor) {{
+    //if (stack->size == stack->mcap / stk_growth_factor) {
       //stack->mcap = stack->mcap / stk_growth_factor;
       //stack->data = realloc(stack->data, stack->mcap * sizeof(u64));
       //printf("shrink %llu\n", stack->mcap);
-    //}}
+    //}
     return stack->data[--stack->size];
-  }} else {{
+  } else {
     return -1;
-  }}
-}}
+  }
+}
 
-u64 stk_find(Stk* stk, u64 val) {{
-  for (u64 i = 0; i < stk->size; ++i) {{
-    if (stk->data[i] == val) {{
+u64 stk_find(Stk* stk, u64 val) {
+  for (u64 i = 0; i < stk->size; ++i) {
+    if (stk->data[i] == val) {
       return i;
-    }}
-  }}
+    }
+  }
   return -1;
-}}
+}
 
 // Memory
 // ------
+// Creating, storing and reading Lnks, allocating and freeing memory.
 
-Lnk Var(u64 pos) {{
+Lnk Var(u64 pos) {
   return (VAR * TAG) | pos;
-}}
+}
 
-Lnk Dp0(u64 col, u64 pos) {{
+Lnk Dp0(u64 col, u64 pos) {
   return (DP0 * TAG) | (col * EXT) | pos;
-}}
+}
 
-Lnk Dp1(u64 col, u64 pos) {{
+Lnk Dp1(u64 col, u64 pos) {
   return (DP1 * TAG) | (col * EXT) | pos;
-}}
+}
 
-Lnk Arg(u64 pos) {{
+Lnk Arg(u64 pos) {
   return (ARG * TAG) | pos;
-}}
+}
 
-Lnk Era() {{
+Lnk Era() {
   return (ERA * TAG);
-}}
+}
 
-Lnk Lam(u64 pos) {{
+Lnk Lam(u64 pos) {
   return (LAM * TAG) | pos;
-}}
+}
 
-Lnk App(u64 pos) {{
+Lnk App(u64 pos) {
   return (APP * TAG) | pos;
-}}
+}
 
-Lnk Par(u64 col, u64 pos) {{
+Lnk Par(u64 col, u64 pos) {
   return (PAR * TAG) | (col * EXT) | pos;
-}}
+}
 
-Lnk Op2(u64 ope, u64 pos) {{
+Lnk Op2(u64 ope, u64 pos) {
   return (OP2 * TAG) | (ope * EXT) | pos;
-}}
+}
 
-Lnk U_32(u64 val) {{
+Lnk U_32(u64 val) {
   return (U32 * TAG) | val;
-}}
+}
 
-Lnk Nil() {{
+Lnk Nil() {
   return NIL * TAG;
-}}
+}
 
-Lnk Ctr(u64 ari, u64 fun, u64 pos) {{
+Lnk Ctr(u64 ari, u64 fun, u64 pos) {
   return (CTR * TAG) | (ari * ARI) | (fun * EXT) | pos;
-}}
+}
 
-Lnk Cal(u64 ari, u64 fun, u64 pos) {{ 
+Lnk Cal(u64 ari, u64 fun, u64 pos) { 
   return (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos;
-}}
+}
 
-Lnk Out(u64 arg, u64 fld) {{
-  return (OUT * TAG) | (arg << 8) | fld;
-}}
-
-u64 get_tag(Lnk lnk) {{
+u64 get_tag(Lnk lnk) {
   return lnk / TAG;
-}}
+}
 
-u64 get_ext(Lnk lnk) {{
+u64 get_ext(Lnk lnk) {
   return (lnk / EXT) & 0xFFFFFF;
-}}
+}
 
-u64 get_val(Lnk lnk) {{
+u64 get_val(Lnk lnk) {
   return lnk & 0xFFFFFFFF;
-}}
+}
 
-u64 get_ari(Lnk lnk) {{
+u64 get_ari(Lnk lnk) {
   return (lnk / ARI) & 0xF;
-}}
+}
 
-u64 get_loc(Lnk lnk, u64 arg) {{
+u64 get_loc(Lnk lnk, u64 arg) {
   return get_val(lnk) + arg;
-}}
+}
 
-Lnk ask_lnk(Worker* mem, u64 loc) {{
+// Dereferences a Lnk, getting what is stored on its target position
+Lnk ask_lnk(Worker* mem, u64 loc) {
   return mem->node[loc];
-}}
+}
 
-Lnk ask_arg(Worker* mem, Lnk term, u64 arg) {{
+// Dereferences the nth argument of the Term represented by this Lnk
+Lnk ask_arg(Worker* mem, Lnk term, u64 arg) {
   return ask_lnk(mem, get_loc(term, arg));
-}}
+}
 
-u64 link(Worker* mem, u64 loc, Lnk lnk) {{
+// This inserts a value in another. It just writes a position in memory if
+// `value` is a constructor. If it is VAR, DP0 or DP1, it also updates the
+// corresponding λ or dup binder.
+u64 link(Worker* mem, u64 loc, Lnk lnk) {
   mem->node[loc] = lnk;
   //array_write(mem->nodes, loc, lnk);
-  if (get_tag(lnk) <= VAR) {{
+  if (get_tag(lnk) <= VAR) {
     mem->node[get_loc(lnk, get_tag(lnk) == DP1 ? 1 : 0)] = Arg(loc);
     //array_write(mem->nodes, get_loc(lnk, get_tag(lnk) == DP1 ? 1 : 0), Arg(loc));
-  }}
+  }
   return lnk;
-}}
+}
 
-u64 alloc(Worker* mem, u64 size) {{
-  if (UNLIKELY(size == 0)) {{
+// Allocates a block of memory, up to 16 words long
+u64 alloc(Worker* mem, u64 size) {
+  if (UNLIKELY(size == 0)) {
     return 0;
-  }} else {{
+  } else {
     u64 reuse = stk_pop(&mem->free[size]);
-    if (reuse != -1) {{
+    if (reuse != -1) {
       return reuse;
-    }}
+    }
     u64 loc = mem->size;
     mem->size += size;
     return mem->tid * MEM_SPACE + loc;
     //return __atomic_fetch_add(&mem->nodes->size, size, __ATOMIC_RELAXED);
-  }}
-}}
+  }
+}
 
-void clear(Worker* mem, u64 loc, u64 size) {{
+// Frees a block of memory by adding its position a freelist
+void clear(Worker* mem, u64 loc, u64 size) {
   stk_push(&mem->free[size], loc);
-}}
-
-// Debug
-// -----
-
-void debug_print_lnk(Lnk x) {{
-  u64 tag = get_tag(x);
-  u64 ext = get_ext(x);
-  u64 val = get_val(x);
-  switch (tag) {{
-    case DP0: printf("DP0"); break;
-    case DP1: printf("DP1"); break;
-    case VAR: printf("VAR"); break;
-    case ARG: printf("ARG"); break;
-    case ERA: printf("ERA"); break;
-    case LAM: printf("LAM"); break;
-    case APP: printf("APP"); break;
-    case PAR: printf("PAR"); break;
-    case CTR: printf("CTR"); break;
-    case CAL: printf("CAL"); break;
-    case OP2: printf("OP2"); break;
-    case U32: printf("U32"); break;
-    case F32: printf("F32"); break;
-    case OUT: printf("OUT"); break;
-    case NIL: printf("NIL"); break;
-    default : printf("???"); break;
-  }}
-  printf(":%llx:%llx", ext, val);
-}}
+}
 
 // Garbage Collection
 // ------------------
 
-void collect(Worker* mem, Lnk term) {{
-  switch (get_tag(term)) {{
-    case DP0: {{
+// This clears the memory used by a term that becames unreachable. It just frees
+// all its nodes recursivelly. This is called as soon as a term goes out of
+// scope. No global GC pass is necessary to find unreachable terms!
+// HVM can still produce some garbage in very uncommon situations that are
+// mostly irrelevant in practice. Absolute GC-freedom, though, requires
+// uncommenting the `reduce` lines below, but this would make HVM not 100% lazy
+// in some cases, so it should be called in a separate thread.
+void collect(Worker* mem, Lnk term) {
+  switch (get_tag(term)) {
+    case DP0: {
       link(mem, get_loc(term,0), Era());
       //reduce(mem, get_loc(ask_arg(mem,term,1),0));
       break;
-    }}
-    case DP1: {{
+    }
+    case DP1: {
       link(mem, get_loc(term,1), Era());
       //reduce(mem, get_loc(ask_arg(mem,term,0),0));
       break;
-    }}
-    case VAR: {{
+    }
+    case VAR: {
       link(mem, get_loc(term,0), Era());
       break;
-    }}
-    case LAM: {{
-      if (get_tag(ask_arg(mem,term,0)) != ERA) {{
+    }
+    case LAM: {
+      if (get_tag(ask_arg(mem,term,0)) != ERA) {
         link(mem, get_loc(ask_arg(mem,term,0),0), Era());
-      }}
+      }
       collect(mem, ask_arg(mem,term,1));
       clear(mem, get_loc(term,0), 2);
       break;
-    }}
-    case APP: {{
+    }
+    case APP: {
       collect(mem, ask_arg(mem,term,0));
       collect(mem, ask_arg(mem,term,1));
       clear(mem, get_loc(term,0), 2);
       break;
-    }}
-    case PAR: {{
+    }
+    case PAR: {
       collect(mem, ask_arg(mem,term,0));
       collect(mem, ask_arg(mem,term,1));
       clear(mem, get_loc(term,0), 2);
       break;
-    }}
-    case OP2: {{
+    }
+    case OP2: {
       collect(mem, ask_arg(mem,term,0));
       collect(mem, ask_arg(mem,term,1));
       break;
-    }}
-    case U32: {{
+    }
+    case U32: {
       break;
-    }}
-    case CTR: case CAL: {{
+    }
+    case CTR: case CAL: {
       u64 arity = get_ari(term);
-      for (u64 i = 0; i < arity; ++i) {{
+      for (u64 i = 0; i < arity; ++i) {
         collect(mem, ask_arg(mem,term,i));
-      }}
+      }
       clear(mem, get_loc(term,0), arity);
       break;
-    }}
-  }}
-}}
+    }
+  }
+}
 
 // Terms
 // -----
 
-void inc_cost(Worker* mem) {{
+void inc_cost(Worker* mem) {
   mem->cost++;
-}}
+}
 
-void subst(Worker* mem, Lnk lnk, Lnk val) {{
-  if (get_tag(lnk) != ERA) {{
+// Performs a `x <- value` substitution. It just calls link if the substituted
+// value is a term. If it is an ERA node, that means `value` is now unreachable,
+// so we just call the collector.
+void subst(Worker* mem, Lnk lnk, Lnk val) {
+  if (get_tag(lnk) != ERA) {
     link(mem, get_loc(lnk,0), val);
-  }} else {{
+  } else {
     collect(mem, val);
-  }}
-}}
+  }
+}
 
-Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {{
+// (F {a0 a1} b c ...)
+// ------------------- CAL-PAR
+// dup b0 b1 = b
+// dup c0 c1 = c
+// ...
+// {(F a0 b0 c0 ...) (F a1 b1 c1 ...)}
+Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {
   inc_cost(mem);
   u64 arit = get_ari(term);
   u64 func = get_ext(term);
   u64 fun0 = get_loc(term, 0);
   u64 fun1 = alloc(mem, arit);
   u64 par0 = get_loc(argn, 0);
-  for (u64 i = 0; i < arit; ++i) {{
-    if (i != n) {{
+  for (u64 i = 0; i < arit; ++i) {
+    if (i != n) {
       u64 leti = alloc(mem, 3);
       u64 argi = ask_arg(mem, term, i);
       link(mem, fun0+i, Dp0(get_ext(argn), leti));
       link(mem, fun1+i, Dp1(get_ext(argn), leti));
       link(mem, leti+2, argi);
-    }} else {{
+    } else {
       link(mem, fun0+i, ask_arg(mem, argn, 0));
       link(mem, fun1+i, ask_arg(mem, argn, 1));
-    }}
-  }}
+    }
+  }
   link(mem, par0+0, Cal(arit, func, fun0));
   link(mem, par0+1, Cal(arit, func, fun1));
   u64 done = Par(get_ext(argn), par0);
   link(mem, host, done);
   return done;
-}}
+}
 
-Lnk reduce(Worker* mem, u64 root, u64 slen) {{
+// Reduces a term to weak head normal form.
+Lnk reduce(Worker* mem, u64 root, u64 slen) {
   Stk stack;
   stk_init(&stack);
 
   u64 init = 1;
   u32 host = (u32)root;
 
-  while (1) {{
+  while (1) {
 
     u64 term = ask_lnk(mem, host);
 
     //printf("reducing: host=%d size=%llu init=%llu ", host, stack.size, init); debug_print_lnk(term); printf("\n");
-    //for (u64 i = 0; i < size; ++i) {{
+    //for (u64 i = 0; i < size; ++i) {
       //printf("- %llu ", stack[i]); debug_print_lnk(ask_lnk(mem, stack[i]>>1)); printf("\n");
-    //}}
+    //}
     
-    if (init == 1) {{
-      switch (get_tag(term)) {{
-        case APP: {{
+    if (init == 1) {
+      switch (get_tag(term)) {
+        case APP: {
           stk_push(&stack, host);
           //stack[size++] = host;
           init = 1;
           host = get_loc(term, 0);
           continue;
-        }}
+        }
         case DP0:
-        case DP1: {{
+        case DP1: {
           // TODO: reason about this, comment
           atomic_flag* flag = ((atomic_flag*)(mem->node + get_loc(term,0))) + 6;
-          if (atomic_flag_test_and_set(flag) != 0) {{
+          if (atomic_flag_test_and_set(flag) != 0) {
             continue;
-          }}
+          }
           stk_push(&stack, host);
           host = get_loc(term, 2);
           continue;
-        }}
-        case OP2: {{
+        }
+        case OP2: {
           //printf("op2 %llu %llu\n", slen, stack.size);
-          if (slen == 1 || stack.size > 0) {{
+          if (slen == 1 || stack.size > 0) {
             stk_push(&stack, host);
             stk_push(&stack, get_loc(term, 0) | 0x80000000);
             //stack[size++] = host;
             //stack[size++] = get_loc(term, 0) | 0x80000000;
             host = get_loc(term, 1);
             continue;
-          }}
+          }
           break;
-        }}
-        case CAL: {{
+        }
+        case CAL: {
           u64 fun = get_ext(term);
           u64 ari = get_ari(term);
           
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
-          {{
-{}
-          }}
+          {
+/* GENERATED_REWRITE_RULES_STEP_0_CONTENT */
+          }
           //GENERATED_REWRITE_RULES_STEP_0_END//
 
           break;
-        }}
-      }}
+        }
+      }
 
-    }} else {{
+    } else {
 
-      switch (get_tag(term)) {{
-        case APP: {{
+      switch (get_tag(term)) {
+        case APP: {
           u64 arg0 = ask_arg(mem, term, 0);
-          switch (get_tag(arg0)) {{
-            case LAM: {{
+          switch (get_tag(arg0)) {
+
+            // (λx(body) a)
+            // ------------ APP-LAM
+            // x <- a
+            // body
+            case LAM: {
               inc_cost(mem);
               subst(mem, ask_arg(mem, arg0, 0), ask_arg(mem, term, 1));
               u64 done = link(mem, host, ask_arg(mem, arg0, 1));
@@ -501,8 +516,13 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
               clear(mem, get_loc(arg0,0), 2);
               init = 1;
               continue;
-            }}
-            case PAR: {{
+            }
+
+            // ({a b} c)
+            // ----------------- APP-PAR
+            // dup x0 x1 = c
+            // {(a x0) (b x1)}
+            case PAR: {
               inc_cost(mem);
               u64 app0 = get_loc(term, 0);
               u64 app1 = get_loc(arg0, 0);
@@ -518,15 +538,23 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
               u64 done = Par(get_ext(arg0), par0);
               link(mem, host, done);
               break;
-            }}
-          }}
+            }
+
+          }
           break;
-        }}
+        }
         case DP0:
-        case DP1: {{
+        case DP1: {
           u64 arg0 = ask_arg(mem, term, 2);
-          switch (get_tag(arg0)) {{
-            case LAM: {{
+          switch (get_tag(arg0)) {
+
+            // {r s} = λx(f)
+            // --------------- SUP-LAM
+            // dup f0 f1 = f
+            // r <- λx0(f0)
+            // s <- λx1(f1)
+            // x <- {x0 x1}
+            case LAM: {
               inc_cost(mem);
               u64 let0 = get_loc(term, 0);
               u64 par0 = get_loc(arg0, 0);
@@ -547,9 +575,14 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
               link(mem, host, done);
               init = 1;
               continue;
-            }}
-            case PAR: {{
-              if (get_ext(term) == get_ext(arg0)) {{
+
+            }
+            // !{x y} = {a b}
+            // -------------- SUP-PAR-EQ
+            // x <- a
+            // y <- b
+            case PAR: {
+              if (get_ext(term) == get_ext(arg0)) {
                 inc_cost(mem);
                 subst(mem, ask_arg(mem,term,0), ask_arg(mem,arg0,0));
                 subst(mem, ask_arg(mem,term,1), ask_arg(mem,arg0,1));
@@ -558,7 +591,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
                 clear(mem, get_loc(arg0,0), 2);
                 init = 1;
                 continue;
-              }} else {{
+              } else {
                 inc_cost(mem);
                 u64 par0 = alloc(mem, 2);
                 u64 let0 = get_loc(term,0);
@@ -577,59 +610,78 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
                 u64 done = Par(get_ext(arg0), get_tag(term) == DP0 ? par0 : par1);
                 link(mem, host, done);
                 break;
-              }}
-            }}
-          }}
-          if (get_tag(arg0) == U32) {{
+              }
+            }
+          }
+
+          // {x y} = N
+          // ---------- SUP-U32
+          // x <- N
+          // y <- N
+          // ~
+          if (get_tag(arg0) == U32) {
             inc_cost(mem);
             subst(mem, ask_arg(mem,term,0), arg0);
             subst(mem, ask_arg(mem,term,1), arg0);
             u64 done = arg0;
             link(mem, host, arg0);
             break;
-          }}
-          if (get_tag(arg0) == CTR) {{
+          }
+
+          // {x y} = (K a b c ...)
+          // ------------------------- SUP-CTR
+          // dup a0 a1 = a
+          // dup b0 b1 = b
+          // dup c0 c1 = c
+          // ...
+          // x <- (K a0 b0 c0 ...)
+          // y <- (K a1 b1 c1 ...)
+          if (get_tag(arg0) == CTR) {
             inc_cost(mem);
             u64 func = get_ext(arg0);
             u64 arit = get_ari(arg0);
-            if (arit == 0) {{
+            if (arit == 0) {
               subst(mem, ask_arg(mem,term,0), Ctr(0, func, 0));
               subst(mem, ask_arg(mem,term,1), Ctr(0, func, 0));
               clear(mem, get_loc(term,0), 3);
               u64 done = link(mem, host, Ctr(0, func, 0));
-            }} else {{
+            } else {
               u64 ctr0 = get_loc(arg0,0);
               u64 ctr1 = alloc(mem, arit);
               u64 term_arg_0 = ask_arg(mem,term,0);
               u64 term_arg_1 = ask_arg(mem,term,1);
-              for (u64 i = 0; i < arit; ++i) {{
+              for (u64 i = 0; i < arit; ++i) {
                 u64 leti = i == 0 ? get_loc(term,0) : alloc(mem, 3);
                 u64 arg0_arg_i = ask_arg(mem, arg0, i);
                 link(mem, ctr0+i, Dp0(get_ext(term), leti));
                 link(mem, ctr1+i, Dp1(get_ext(term), leti));
                 link(mem, leti+2, arg0_arg_i);
-              }}
+              }
               subst(mem, term_arg_0, Ctr(arit, func, ctr0));
               subst(mem, term_arg_1, Ctr(arit, func, ctr1));
               u64 done = Ctr(arit, func, get_tag(term) == DP0 ? ctr0 : ctr1);
               link(mem, host, done);
-            }}
+            }
             break;
-          }}
+          }
           atomic_flag* flag = ((atomic_flag*)(mem->node + get_loc(term,0))) + 6;
           atomic_flag_clear(flag);
           break;
-        }}
-        case OP2: {{
+        }
+        case OP2: {
           //printf("! op2 %llu %llu\n", slen, stack.size);
           u64 arg0 = ask_arg(mem, term, 0);
           u64 arg1 = ask_arg(mem, term, 1);
-          if (get_tag(arg0) == U32 && get_tag(arg1) == U32) {{
+
+          // (+ a b)
+          // --------- OP2-U32
+          // add(a, b)
+          if (get_tag(arg0) == U32 && get_tag(arg1) == U32) {
             inc_cost(mem);
             u64 a = get_val(arg0);
             u64 b = get_val(arg1);
             u64 c = 0;
-            switch (get_ext(term)) {{
+            switch (get_ext(term)) {
               case ADD: c = (a +  b) & 0xFFFFFFFF; break;
               case SUB: c = (a -  b) & 0xFFFFFFFF; break;
               case MUL: c = (a *  b) & 0xFFFFFFFF; break;
@@ -646,13 +698,18 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
               case GTE: c = (a >= b) ? 1 : 0;      break;
               case GTN: c = (a >  b) ? 1 : 0;      break;
               case NEQ: c = (a != b) ? 1 : 0;      break;
-            }}
+            }
             u64 done = U_32(c);
             clear(mem, get_loc(term,0), 2);
             link(mem, host, done);
             break;
-          }}
-          if (get_tag(arg0) == PAR) {{
+          }
+
+          // (+ {a0 a1} b)
+          // --------------------- OP2-PAR-0
+          // let b0 b1 = b
+          // {(+ a0 b0) (+ a1 b1)}
+          if (get_tag(arg0) == PAR) {
             inc_cost(mem);
             u64 op20 = get_loc(term, 0);
             u64 op21 = get_loc(arg0, 0);
@@ -668,8 +725,13 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
             u64 done = Par(get_ext(arg0), par0);
             link(mem, host, done);
             break;
-          }}
-          if (get_tag(arg1) == PAR) {{
+          }
+
+          // (+ a {b0 b1})
+          // --------------- OP2-PAR-1
+          // dup a0 a1 = a
+          // {(+ a0 b0) (+ a1 b1)}
+          if (get_tag(arg1) == PAR) {
             inc_cost(mem);
             u64 op20 = get_loc(term, 0);
             u64 op21 = get_loc(arg1, 0);
@@ -685,150 +747,150 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {{
             u64 done = Par(get_ext(arg1), par0);
             link(mem, host, done);
             break;
-          }}
+          }
+
           break;
-        }}
-        case CAL: {{
+        }
+        case CAL: {
           u64 fun = get_ext(term);
           u64 ari = get_ari(term);
 
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_1_START//
-          {{
-{}
-          }}
+          {
+/* GENERATED_REWRITE_RULES_STEP_1_CONTENT */
+          }
           //GENERATED_REWRITE_RULES_STEP_1_END//
 
           break;
-        }}
-      }}
-    }}
+        }
+      }
+    }
 
     u64 item = stk_pop(&stack);
-    if (item == -1) {{
+    if (item == -1) {
       break;
-    }} else {{
+    } else {
       init = item >> 31;
       host = item & 0x7FFFFFFF;
       continue;
-    }}
+    }
 
-  }}
+  }
 
   return ask_lnk(mem, root);
-}}
+}
 
 // sets the nth bit of a bit-array represented as a u64 array
-void set_bit(u64* bits, u64 bit) {{
+void set_bit(u64* bits, u64 bit) {
   bits[bit >> 6] |= (1ULL << (bit & 0x3f));
-}}
+}
 
 // gets the nth bit of a bit-array represented as a u64 array
-u8 get_bit(u64* bits, u64 bit) {{
+u8 get_bit(u64* bits, u64 bit) {
   return (bits[bit >> 6] >> (bit & 0x3F)) & 1;
-}}
+}
 
 #ifdef PARALLEL
 void normal_fork(u64 tid, u64 host, u64 sidx, u64 slen);
 u64  normal_join(u64 tid);
 #endif
 
-#define normal_seen_mcap (16777216) // uses 128 MB, covers heaps up to 8 GB
-u64 normal_seen_data[normal_seen_mcap];
+u64 normal_seen_data[NORMAL_SEEN_MCAP];
 
-void normal_init() {{
-  for (u64 i = 0; i < normal_seen_mcap; ++i) {{
+void normal_init() {
+  for (u64 i = 0; i < NORMAL_SEEN_MCAP; ++i) {
     normal_seen_data[i] = 0;
-  }}
-}}
+  }
+}
 
-Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {{
+Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
   Lnk term = ask_lnk(mem, host);
   //printf("normal %llu %llu | ", sidx, slen); debug_print_lnk(term); printf("\n");
-  if (get_bit(normal_seen_data, host)) {{
+  if (get_bit(normal_seen_data, host)) {
     return term;
-  }} else {{
+  } else {
     term = reduce(mem, host, slen);
     set_bit(normal_seen_data, host);
     u64 rec_size = 0;
     u64 rec_locs[16];
-    switch (get_tag(term)) {{
-      case LAM: {{
+    switch (get_tag(term)) {
+      case LAM: {
         rec_locs[rec_size++] = get_loc(term,1);
         break;
-      }}
-      case APP: {{
+      }
+      case APP: {
         rec_locs[rec_size++] = get_loc(term,0);
         rec_locs[rec_size++] = get_loc(term,1);
         break;
-      }}
-      case PAR: {{
+      }
+      case PAR: {
         rec_locs[rec_size++] = get_loc(term,0);
         rec_locs[rec_size++] = get_loc(term,1);
         break;
-      }}
-      case DP0: {{
+      }
+      case DP0: {
         rec_locs[rec_size++] = get_loc(term,2);
         break;
-      }}
-      case DP1: {{
+      }
+      case DP1: {
         rec_locs[rec_size++] = get_loc(term,2);
         break;
-      }}
-      case OP2: {{
-        if (slen > 1) {{
+      }
+      case OP2: {
+        if (slen > 1) {
           rec_locs[rec_size++] = get_loc(term,0);
           rec_locs[rec_size++] = get_loc(term,1);
           break;
-        }}
-      }}
-      case CTR: case CAL: {{
+        }
+      }
+      case CTR: case CAL: {
         u64 arity = (u64)get_ari(term);
-        for (u64 i = 0; i < arity; ++i) {{
+        for (u64 i = 0; i < arity; ++i) {
           rec_locs[rec_size++] = get_loc(term,i);
-        }}
+        }
         break;
-      }}
-    }}
+      }
+    }
     #ifdef PARALLEL
 
     //printf("ue %llu %llu\n", rec_size, slen);
     
-    if (rec_size >= 2 && slen >= rec_size) {{
+    if (rec_size >= 2 && slen >= rec_size) {
 
       u64 space = slen / rec_size;
 
-      for (u64 i = 1; i < rec_size; ++i) {{
+      for (u64 i = 1; i < rec_size; ++i) {
         //printf("spawn %llu %llu\n", sidx + i * space, space);
         normal_fork(sidx + i * space, rec_locs[i], sidx + i * space, space);
-      }}
+      }
 
       link(mem, rec_locs[0], normal_go(mem, rec_locs[0], sidx, space));
 
-      for (u64 i = 1; i < rec_size; ++i) {{
+      for (u64 i = 1; i < rec_size; ++i) {
         link(mem, get_loc(term, i), normal_join(sidx + i * space));
-      }}
+      }
 
-    }} else {{
+    } else {
 
-      for (u64 i = 0; i < rec_size; ++i) {{
+      for (u64 i = 0; i < rec_size; ++i) {
         link(mem, rec_locs[i], normal_go(mem, rec_locs[i], sidx, slen));
-      }}
+      }
 
-    }}
+    }
     #else
 
-    for (u64 i = 0; i < rec_size; ++i) {{
+    for (u64 i = 0; i < rec_size; ++i) {
       link(mem, rec_locs[i], normal_go(mem, rec_locs[i], sidx, slen));
-    }}
+    }
 
     #endif
 
     return term;
-  }}
-}}
+  }
+}
 
-Lnk normal(Worker* mem, u64 host, u64 sidx, u64 slen) {{
+Lnk normal(Worker* mem, u64 host, u64 sidx, u64 slen) {
   // In order to allow parallelization of numeric operations, reduce() will treat OP2 as a CTR if
   // there is enough thread space. So, for example, normalizing a recursive "sum" function with 4
   // threads might return something like `(+ (+ 64 64) (+ 64 64))`. reduce() will treat the first
@@ -838,53 +900,56 @@ Lnk normal(Worker* mem, u64 host, u64 sidx, u64 slen) {{
   normal_go(mem, host, sidx, slen);
   normal_init();
   return normal_go(mem, host, 0, 1);
-}}
+}
 
 
 #ifdef PARALLEL
 
 // Normalizes in a separate thread
-void normal_fork(u64 tid, u64 host, u64 sidx, u64 slen) {{
+// Note that, right now, the allocator will just partition the space of the
+// normal form equally among threads, which will not fully use the CPU cores in
+// many cases. A better task scheduler should be implemented. See Issues.
+void normal_fork(u64 tid, u64 host, u64 sidx, u64 slen) {
   pthread_mutex_lock(&workers[tid].has_work_mutex);
   workers[tid].has_work = (sidx << 48) | (slen << 32) | host;
   pthread_cond_signal(&workers[tid].has_work_signal);
   pthread_mutex_unlock(&workers[tid].has_work_mutex);
-}}
+}
 
 // Waits the result of a forked normalizer
-u64 normal_join(u64 tid) {{
-  while (1) {{
+u64 normal_join(u64 tid) {
+  while (1) {
     pthread_mutex_lock(&workers[tid].has_result_mutex);
-    while (workers[tid].has_result == -1) {{
+    while (workers[tid].has_result == -1) {
       pthread_cond_wait(&workers[tid].has_result_signal, &workers[tid].has_result_mutex);
-    }}
+    }
     u64 done = workers[tid].has_result;
     workers[tid].has_result = -1;
     pthread_mutex_unlock(&workers[tid].has_result_mutex);
     return done;
-  }}
-}}
+  }
+}
 
 // Stops a worker
-void worker_stop(u64 tid) {{
+void worker_stop(u64 tid) {
   pthread_mutex_lock(&workers[tid].has_work_mutex);
   workers[tid].has_work = -2;
   pthread_cond_signal(&workers[tid].has_work_signal);
   pthread_mutex_unlock(&workers[tid].has_work_mutex);
-}}
+}
 
 // The normalizer worker
-void *worker(void *arg) {{
+void *worker(void *arg) {
   u64 tid = (u64)arg;
-  while (1) {{
+  while (1) {
     pthread_mutex_lock(&workers[tid].has_work_mutex);
-    while (workers[tid].has_work == -1) {{
+    while (workers[tid].has_work == -1) {
       pthread_cond_wait(&workers[tid].has_work_signal, &workers[tid].has_work_mutex);
-    }}
+    }
     u64 work = workers[tid].has_work;
-    if (work == -2) {{
+    if (work == -2) {
       break;
-    }} else {{
+    } else {
       u64 sidx = (work >> 48) & 0xFFFF;
       u64 slen = (work >> 32) & 0xFFFF;
       u64 host = (work >>  0) & 0xFFFFFFFF;
@@ -892,26 +957,26 @@ void *worker(void *arg) {{
       workers[tid].has_work = -1;
       pthread_cond_signal(&workers[tid].has_result_signal);
       pthread_mutex_unlock(&workers[tid].has_work_mutex);
-    }}
-  }}
+    }
+  }
   return 0;
-}}
+}
 
 #endif
 
 u64 ffi_cost;
 u64 ffi_size;
 
-void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
+void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {
 
   // Init thread objects
-  for (u64 t = 0; t < MAX_WORKERS; ++t) {{
+  for (u64 t = 0; t < MAX_WORKERS; ++t) {
     workers[t].tid = t;
     workers[t].size = t == 0 ? (u64)mem_size : 0l;
     workers[t].node = (u64*)mem_data;
-    for (u64 a = 0; a < MAX_ARITY; ++a) {{
+    for (u64 a = 0; a < MAX_ARITY; ++a) {
       stk_init(&workers[t].free[a]);
-    }}
+    }
     workers[t].cost = 0;
     #ifdef PARALLEL
     workers[t].has_work = -1;
@@ -922,13 +987,13 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
     pthread_cond_init(&workers[t].has_result_signal, NULL);
     // workers[t].thread = NULL;
     #endif
-  }}
+  }
 
   // Spawns threads
   #ifdef PARALLEL
-  for (u64 tid = 1; tid < MAX_WORKERS; ++tid) {{
+  for (u64 tid = 1; tid < MAX_WORKERS; ++tid) {
     pthread_create(&workers[tid].thread, NULL, &worker, (void*)tid);
-  }}
+  }
   #endif
 
   // Normalizes trm
@@ -937,226 +1002,226 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {{
   // Computes total cost and size
   ffi_cost = 0;
   ffi_size = 0;
-  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {{
+  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {
     ffi_cost += workers[tid].cost;
     ffi_size += workers[tid].size;
-  }}
+  }
 
   // Asks workers to stop
-  for (u64 tid = 1; tid < MAX_WORKERS; ++tid) {{
+  for (u64 tid = 1; tid < MAX_WORKERS; ++tid) {
     worker_stop(tid);
-  }}
+  }
 
   // Waits workers to stop
-  for (u64 tid = 1; tid < MAX_WORKERS; ++tid) {{
+  for (u64 tid = 1; tid < MAX_WORKERS; ++tid) {
     pthread_join(workers[tid].thread, NULL);
-  }}
+  }
 
   // Clears workers
-  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {{
-    for (u64 a = 0; a < MAX_ARITY; ++a) {{
+  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {
+    for (u64 a = 0; a < MAX_ARITY; ++a) {
       stk_free(&workers[tid].free[a]);
-    }}
+    }
     #ifdef PARALLEL
     pthread_mutex_destroy(&workers[tid].has_work_mutex);
     pthread_cond_destroy(&workers[tid].has_work_signal);
     pthread_mutex_destroy(&workers[tid].has_result_mutex);
     pthread_cond_destroy(&workers[tid].has_result_signal);
     #endif
-  }}
-}}
+  }
+}
 
 // Readback
 // --------
 
-void readback_vars(Stk* vars, Worker* mem, Lnk term, Stk* seen) {{
+void readback_vars(Stk* vars, Worker* mem, Lnk term, Stk* seen) {
   //printf("- readback_vars %llu ", get_loc(term,0)); debug_print_lnk(term); printf("\n");
-  if (stk_find(seen, term) != -1) {{ // FIXME: probably very slow, change to a proper hashmap
+  if (stk_find(seen, term) != -1) { // FIXME: probably very slow, change to a proper hashmap
     return;
-  }} else {{
+  } else {
     stk_push(seen, term);
-    switch (get_tag(term)) {{
-      case LAM: {{
+    switch (get_tag(term)) {
+      case LAM: {
         u64 argm = ask_arg(mem, term, 0);
         u64 body = ask_arg(mem, term, 1);
-        if (get_tag(argm) != ERA) {{
+        if (get_tag(argm) != ERA) {
           stk_push(vars, Var(get_loc(term, 0)));
-        }};
+        };
         readback_vars(vars, mem, body, seen);
         break;
-      }}
-      case APP: {{
+      }
+      case APP: {
         u64 lam = ask_arg(mem, term, 0);
         u64 arg = ask_arg(mem, term, 1);
         readback_vars(vars, mem, lam, seen);
         readback_vars(vars, mem, arg, seen);
         break;
-      }}
-      case PAR: {{
+      }
+      case PAR: {
         u64 arg0 = ask_arg(mem, term, 0);
         u64 arg1 = ask_arg(mem, term, 1);
         readback_vars(vars, mem, arg0, seen);
         readback_vars(vars, mem, arg1, seen);
         break;
-      }}
-      case DP0: {{
+      }
+      case DP0: {
         u64 arg = ask_arg(mem, term, 2);
         readback_vars(vars, mem, arg, seen);
         break;
-      }}
-      case DP1: {{
+      }
+      case DP1: {
         u64 arg = ask_arg(mem, term, 2);
         readback_vars(vars, mem, arg, seen);
         break;
-      }}
-      case OP2: {{
+      }
+      case OP2: {
         u64 arg0 = ask_arg(mem, term, 0);
         u64 arg1 = ask_arg(mem, term, 1);
         readback_vars(vars, mem, arg0, seen);
         readback_vars(vars, mem, arg1, seen);
         break;
-      }}
-      case CTR: case CAL: {{
+      }
+      case CTR: case CAL: {
         u64 arity = get_ari(term);
-        for (u64 i = 0; i < arity; ++i) {{
+        for (u64 i = 0; i < arity; ++i) {
           readback_vars(vars, mem, ask_arg(mem, term, i), seen);
-        }}
+        }
         break;
-      }}
-    }}
-  }}
-}}
+      }
+    }
+  }
+}
 
-void readback_decimal_go(Stk* chrs, u64 n) {{
+void readback_decimal_go(Stk* chrs, u64 n) {
   //printf("--- A %llu\n", n);
-  if (n > 0) {{
+  if (n > 0) {
     readback_decimal_go(chrs, n / 10);
     stk_push(chrs, '0' + (n % 10));
-  }}
-}}
+  }
+}
 
-void readback_decimal(Stk* chrs, u64 n) {{
-  if (n == 0) {{
+void readback_decimal(Stk* chrs, u64 n) {
+  if (n == 0) {
     stk_push(chrs, '0');
-  }} else {{
+  } else {
     readback_decimal_go(chrs, n);
-  }}
-}}
+  }
+}
 
-void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char** id_to_name_data, u64 id_to_name_mcap) {{
+void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char** id_to_name_data, u64 id_to_name_mcap) {
   //printf("- readback_term: "); debug_print_lnk(term); printf("\n");
-  switch (get_tag(term)) {{
-    case LAM: {{
+  switch (get_tag(term)) {
+    case LAM: {
       stk_push(chrs, '%');
-      if (get_tag(ask_arg(mem, term, 0)) == ERA) {{
+      if (get_tag(ask_arg(mem, term, 0)) == ERA) {
         stk_push(chrs, '~');
-      }} else {{
+      } else {
         stk_push(chrs, 'x');
         readback_decimal(chrs, stk_find(vars, Var(get_loc(term, 0))));
-      }};
+      };
       stk_push(chrs, ' ');
       readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
       break;
-    }}
-    case APP: {{
+    }
+    case APP: {
       stk_push(chrs, '(');
       readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
       stk_push(chrs, ' ');
       readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
       stk_push(chrs, ')');
       break;
-    }}
-    case PAR: {{
+    }
+    case PAR: {
       u64 col = get_ext(term);
-      if (dirs[col].size > 0) {{
+      if (dirs[col].size > 0) {
         u64 head = stk_pop(&dirs[col]);
-        if (head == 0) {{
+        if (head == 0) {
           readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
           stk_push(&dirs[col], head);
-        }} else {{
+        } else {
           readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
           stk_push(&dirs[col], head);
-        }}
-      }} else {{
+        }
+      } else {
         stk_push(chrs, '<');
         readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
         stk_push(chrs, ' ');
         readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
         stk_push(chrs, '>');
-      }}
+      }
       break;
-    }}
-    case DP0: case DP1: {{
+    }
+    case DP0: case DP1: {
       u64 col = get_ext(term);
       u64 val = ask_arg(mem, term, 2);
       stk_push(&dirs[col], get_tag(term) == DP0 ? 0 : 1);
       readback_term(chrs, mem, ask_arg(mem, term, 2), vars, dirs, id_to_name_data, id_to_name_mcap);
       stk_pop(&dirs[col]);
       break;
-    }}
-    case OP2: {{
+    }
+    case OP2: {
       stk_push(chrs, '(');
       readback_term(chrs, mem, ask_arg(mem, term, 0), vars, dirs, id_to_name_data, id_to_name_mcap);
-      switch (get_ext(term)) {{
-        case ADD: {{ stk_push(chrs, '+'); break; }}
-        case SUB: {{ stk_push(chrs, '-'); break; }}
-        case MUL: {{ stk_push(chrs, '*'); break; }}
-        case DIV: {{ stk_push(chrs, '/'); break; }}
-        case MOD: {{ stk_push(chrs, '%'); break; }}
-        case AND: {{ stk_push(chrs, '&'); break; }}
-        case OR: {{ stk_push(chrs, '|'); break; }}
-        case XOR: {{ stk_push(chrs, '^'); break; }}
-        case SHL: {{ stk_push(chrs, '<'); stk_push(chrs, '<'); break; }}
-        case SHR: {{ stk_push(chrs, '>'); stk_push(chrs, '>'); break; }}
-        case LTN: {{ stk_push(chrs, '<'); break; }}
-        case LTE: {{ stk_push(chrs, '<'); stk_push(chrs, '='); break; }}
-        case EQL: {{ stk_push(chrs, '='); stk_push(chrs, '='); break; }}
-        case GTE: {{ stk_push(chrs, '>'); stk_push(chrs, '='); break; }}
-        case GTN: {{ stk_push(chrs, '>'); break; }}
-        case NEQ: {{ stk_push(chrs, '!'); stk_push(chrs, '='); break; }}
-      }}
+      switch (get_ext(term)) {
+        case ADD: { stk_push(chrs, '+'); break; }
+        case SUB: { stk_push(chrs, '-'); break; }
+        case MUL: { stk_push(chrs, '*'); break; }
+        case DIV: { stk_push(chrs, '/'); break; }
+        case MOD: { stk_push(chrs, '%'); break; }
+        case AND: { stk_push(chrs, '&'); break; }
+        case OR: { stk_push(chrs, '|'); break; }
+        case XOR: { stk_push(chrs, '^'); break; }
+        case SHL: { stk_push(chrs, '<'); stk_push(chrs, '<'); break; }
+        case SHR: { stk_push(chrs, '>'); stk_push(chrs, '>'); break; }
+        case LTN: { stk_push(chrs, '<'); break; }
+        case LTE: { stk_push(chrs, '<'); stk_push(chrs, '='); break; }
+        case EQL: { stk_push(chrs, '='); stk_push(chrs, '='); break; }
+        case GTE: { stk_push(chrs, '>'); stk_push(chrs, '='); break; }
+        case GTN: { stk_push(chrs, '>'); break; }
+        case NEQ: { stk_push(chrs, '!'); stk_push(chrs, '='); break; }
+      }
       readback_term(chrs, mem, ask_arg(mem, term, 1), vars, dirs, id_to_name_data, id_to_name_mcap);
       stk_push(chrs, ')');
       break;
-    }}
-    case U32: {{
+    }
+    case U32: {
       //printf("- u32\n");
       readback_decimal(chrs, get_val(term));
       //printf("- u32 done\n");
       break;
-    }}
-    case CTR: case CAL: {{
+    }
+    case CTR: case CAL: {
       u64 func = get_ext(term);
       u64 arit = get_ari(term);
       stk_push(chrs, '(');
-      if (func < id_to_name_mcap && id_to_name_data[func] != NULL) {{
-        for (u64 i = 0; id_to_name_data[func][i] != '\0'; ++i) {{
+      if (func < id_to_name_mcap && id_to_name_data[func] != NULL) {
+        for (u64 i = 0; id_to_name_data[func][i] != '\0'; ++i) {
           stk_push(chrs, id_to_name_data[func][i]);
-        }}
-      }} else {{
+        }
+      } else {
         stk_push(chrs, '$');
         readback_decimal(chrs, func); // TODO: function names
-      }}
-      for (u64 i = 0; i < arit; ++i) {{
+      }
+      for (u64 i = 0; i < arit; ++i) {
         stk_push(chrs, ' ');
         readback_term(chrs, mem, ask_arg(mem, term, i), vars, dirs, id_to_name_data, id_to_name_mcap);
-      }}
+      }
       stk_push(chrs, ')');
       break;
-    }}
-    case VAR: {{
+    }
+    case VAR: {
       stk_push(chrs, 'x');
       readback_decimal(chrs, stk_find(vars, term));
       break;
-    }}
-    default: {{
+    }
+    default: {
       stk_push(chrs, '?');
       break;
-    }}
-  }}
-}}
+    }
+  }
+}
 
-void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_to_name_data, u64 id_to_name_mcap) {{
+void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_to_name_data, u64 id_to_name_mcap) {
   //printf("reading back\n");
 
   // Constants
@@ -1173,62 +1238,91 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
   stk_init(&chrs);
   stk_init(&vars);
   dirs = (Stk*)malloc(sizeof(Stk) * dirs_mcap);
-  for (u64 i = 0; i < dirs_mcap; ++i) {{
+  assert(dirs);
+  for (u64 i = 0; i < dirs_mcap; ++i) {
     stk_init(&dirs[i]);
-  }}
+  }
 
   // Readback
   readback_vars(&vars, mem, term, &seen);
   readback_term(&chrs, mem, term, &vars, dirs, id_to_name_data, id_to_name_mcap);
 
   // Generates C string
-  for (u64 i = 0; i < chrs.size && i < code_mcap; ++i) {{
+  for (u64 i = 0; i < chrs.size && i < code_mcap; ++i) {
     code_data[i] = chrs.data[i];
-  }}
+  }
   code_data[chrs.size < code_mcap ? chrs.size : code_mcap] = '\0';
 
   // Cleanup
   stk_free(&seen);
   stk_free(&chrs);
   stk_free(&vars);
-  for (u64 i = 0; i < dirs_mcap; ++i) {{
+  for (u64 i = 0; i < dirs_mcap; ++i) {
     stk_free(&dirs[i]);
-  }}
-}}
+  }
+}
+
+// Debug
+// -----
+
+void debug_print_lnk(Lnk x) {
+  u64 tag = get_tag(x);
+  u64 ext = get_ext(x);
+  u64 val = get_val(x);
+  switch (tag) {
+    case DP0: printf("DP0"); break;
+    case DP1: printf("DP1"); break;
+    case VAR: printf("VAR"); break;
+    case ARG: printf("ARG"); break;
+    case ERA: printf("ERA"); break;
+    case LAM: printf("LAM"); break;
+    case APP: printf("APP"); break;
+    case PAR: printf("PAR"); break;
+    case CTR: printf("CTR"); break;
+    case CAL: printf("CAL"); break;
+    case OP2: printf("OP2"); break;
+    case U32: printf("U32"); break;
+    case F32: printf("F32"); break;
+    case NIL: printf("NIL"); break;
+    default : printf("???"); break;
+  }
+  printf(":%llx:%llx", ext, val);
+}
 
 // Main
 // ----
 
-Lnk parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {{
-  if (code[0] >= '0' && code[0] <= '9') {{
+Lnk parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
+  if (code[0] >= '0' && code[0] <= '9') {
     return U_32(strtol(code, 0, 10));
-  }} else {{
+  } else {
     return U_32(0);
-  }}
-}}
+  }
+}
 
 // Uncomment to test without Deno FFI
-int main(int argc, char* argv[]) {{
+int main(int argc, char* argv[]) {
 
   Worker mem;
   struct timeval stop, start;
 
   // Id-to-Name map
-  const u64 id_to_name_size = {};
+  const u64 id_to_name_size = /* GENERATED_NAME_COUNT_CONTENT */;
   char* id_to_name_data[id_to_name_size];
-{}
+/* GENERATED_ID_TO_NAME_DATA_CONTENT */;
 
   // Builds main term
   mem.size = 0;
   mem.node = (u64*)malloc(HEAP_SIZE);
-  if (argc <= 1) {{
+  assert(mem.node);
+  if (argc <= 1) {
     mem.node[mem.size++] = Cal(0, _MAIN_, 0);
-  }} else {{
+  } else {
     mem.node[mem.size++] = Cal(argc - 1, _MAIN_, 1);
-    for (u64 i = 1; i < argc; ++i) {{
+    for (u64 i = 1; i < argc; ++i) {
       mem.node[mem.size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
-    }}
-  }}
+    }
+  }
 
   // Reduces and benchmarks
   //printf("Reducing.\n");
@@ -1246,10 +1340,11 @@ int main(int argc, char* argv[]) {{
   // Prints result normal form
   const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
   char* code_data = (char*)malloc(code_mcap * sizeof(char)); 
+  assert(code_data);
   readback(code_data, code_mcap, &mem, mem.node[0], id_to_name_data, id_to_name_size);
   printf("%s\n", code_data);
 
   // Cleanup
   free(code_data);
   free(mem.node);
-}}
+}

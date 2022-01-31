@@ -37,3 +37,11 @@ hvm compile main.hvm
 clang -O2 main.c -o main -lpthread
 hyperfine --show-output ./main <arguments>
 ```
+
+#### Running all benchmarks
+
+The `run.js` script runs the benchmarks that generated the images on README.md.
+
+```sh
+node run.js
+```

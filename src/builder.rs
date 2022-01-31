@@ -1,15 +1,10 @@
 // Moving Lambolt Terms to/from runtime, and building dynamic functions.
 // TODO: "dups" still needs to be moved out on alloc_body etc.
 
-#![allow(clippy::identity_op)]
-
 use crate::language as lang;
 use crate::readback as rd;
 use crate::rulebook as rb;
 use crate::runtime as rt;
-use crate::runtime::{Lnk, Worker};
-use std::collections::{HashMap, HashSet};
-use std::fmt;
 use std::iter;
 use std::time::Instant;
 
@@ -63,24 +58,22 @@ pub struct DynFun {
   pub rules: Vec<DynRule>,
 }
 
-// Given a RuleBook file and a function name, builds a dynamic Rust closure that applies that
-// function to the runtime memory buffer directly. This process is complex, so I'll write a lot of
-// comments here. All comments will be based on the following Lambolt example:
-//   (Add (Succ a) b) = (Succ (Add a b))
-//   (Add (Zero)   b) = b
 pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
-  let mut redex = if let lang::Term::Ctr { ref name, ref args } = *rules[0].lhs {
+  let mut redex = if let lang::Term::Ctr { name: _, ref args } = *rules[0].lhs {
     vec![false; args.len()]
   } else {
     panic!("Invalid left-hand side: {}", rules[0].lhs);
   };
-  let mut dynrules = rules
+  let dynrules = rules
     .iter()
     .filter_map(|rule| {
       if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
         let mut cond = Vec::new();
         let mut vars = Vec::new();
         let mut free = Vec::new();
+        if args.len() != redex.len() {
+          panic!("Inconsistent length of left-hand side on equation for '{}'.", name);
+        }
         for ((i, arg), redex) in args.iter().enumerate().zip(redex.iter_mut()) {
           match &**arg {
             lang::Term::Ctr { name, args } => {
@@ -122,7 +115,7 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
 }
 
 fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
-  let DynVar { param, field, erase } = var;
+  let DynVar { param, field, erase: _ } = var;
   match field {
     Some(i) => rt::ask_arg(mem, rt::ask_arg(mem, term, *param), *i),
     None => rt::ask_arg(mem, term, *param),
@@ -219,7 +212,7 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
         }
 
         // Collects unused variables (none in this example)
-        for dynvar @ DynVar { param, field, erase } in dynrule.vars.iter() {
+        for dynvar @ DynVar { param: _, field: _, erase } in dynrule.vars.iter() {
           if *erase {
             rt::collect(mem, get_var(mem, term, dynvar));
           }
@@ -256,6 +249,8 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
       lang::Oper::Neq => rt::NEQ,
     }
   }
+
+  #[allow(clippy::identity_op)]
   fn convert_term(
     term: &lang::Term,
     comp: &rb::RuleBook,
@@ -302,7 +297,8 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
         DynTerm::App { func, argm }
       }
       lang::Term::Ctr { name, args } => {
-        let term_func = *comp.name_to_id.get(name).unwrap_or_else(|| panic!("Unbound symbol: {}", name));
+        let term_func =
+          *comp.name_to_id.get(name).unwrap_or_else(|| panic!("Unbound symbol: {}", name));
         let term_args = args.iter().map(|arg| convert_term(arg, comp, depth + 0, vars)).collect();
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
           DynTerm::Cal { func: term_func, args: term_args }
@@ -344,7 +340,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
           panic!("Unbound variable.");
         }
       }
-      DynTerm::Dup { eras, expr, body } => {
+      DynTerm::Dup { eras: _, expr, body } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 3]);
         let dupk;
@@ -370,7 +366,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
         vars.pop();
         body
       }
-      DynTerm::Lam { eras, body } => {
+      DynTerm::Lam { eras: _, body } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
         link(nodes, targ, 0, Elem::Fix { value: rt::Era() });
@@ -437,7 +433,7 @@ static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to a
 pub fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar]) -> rt::Lnk {
   unsafe {
     let (elem, nodes) = body;
-    let mut hosts = &mut ALLOC_BODY_WORKSPACE;
+    let hosts = &mut ALLOC_BODY_WORKSPACE;
     nodes.iter().enumerate().for_each(|(i, node)| {
       hosts[i] = rt::alloc(mem, node.len() as u64);
     });
@@ -476,7 +472,7 @@ pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) 
 }
 
 // Evaluates a Lambolt term to normal form
-pub fn eval_code(call: &lang::Term, code: &str) -> (String, u64, u64, u64) {
+pub fn eval_code(call: &lang::Term, code: &str) -> (Box<lang::Term>, u64, u64, u64) {
   // Creates a new Runtime worker
   let mut worker = rt::new_worker();
 
@@ -487,7 +483,7 @@ pub fn eval_code(call: &lang::Term, code: &str) -> (String, u64, u64, u64) {
   let book = rb::gen_rulebook(&file);
 
   // Builds dynamic functions
-  let mut funs = build_runtime_functions(&book);
+  let funs = build_runtime_functions(&book);
 
   // Allocates the main term
   let host = alloc_term(&mut worker, &book, call);
@@ -498,7 +494,7 @@ pub fn eval_code(call: &lang::Term, code: &str) -> (String, u64, u64, u64) {
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string
-  let norm = rd::as_code(&worker, &Some(book), host);
+  let norm = rd::as_term(&worker, &Some(book), host);
 
   // Returns the normal form and the gas cost
   (norm, worker.cost, worker.size, time)

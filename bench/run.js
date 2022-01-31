@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 const fs = require("fs");
 const { exec, execSync } = require("child_process");
 const path = require("path");
@@ -17,11 +18,10 @@ function range(init, step, size) {
 
 const programs = {
   //TreeSum: { vals: range(0, 1, 33) },
-  // Composition: { vals: range(0, 1, 33) },
-  // QuickSort: { vals: range(0, 1, 129) },
-  //LambdaArithmetic: { vals: range(0, 1, 123) },
-  // ListFold: { vals: range(0, 1, 65) },
-  Fibonacci: { vals: range(0, 1, 43) }
+  //Composition: { vals: range(0, 1, 33) },
+  QuickSort: { vals: range(0, 1, 65) },
+  //LambdaArithmetic: { vals: range(0, 1, 65) },
+  //ListFold: { vals: range(0, 1, 65) },
 };
 
 const evaluators = {
@@ -41,7 +41,7 @@ const evaluators = {
   //   extension: ".js"
   // },
   HVM: {
-    pre: (name, file_path) => ["hvm compile " + name, `clang -O2 ${file_path}/main.c -o ${dir}/.bin/hvm`],
+    pre: (name, file_path) => ["hvm compile " + name, `clang -O2 -lpthread ${file_path}/main.c -o ${dir}/.bin/hvm`],
     execution: (name, n) => `${dir}/.bin/hvm ${n}`,
     extension: ".hvm",
   },

@@ -6,7 +6,7 @@ Usage (Nix)
 [Install Nix](https://nixos.org/manual/nix/stable/installation/installation.html) and [Nix Flakes](https://nixos.wiki/wiki/Flakes#Installing_flakes) then, in a shell, run:
 
 ```sh
-git clone git@github.com:Kindelia/HVM
+git clone https://github.com/Kindelia/HVM.git
 cd HVM
 # Build HVM
 nix build

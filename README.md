@@ -9,8 +9,8 @@ faster than most functional runtimes, including Haskell's GHC.
 That is possible due to a new model of computation, the Interaction Net, which
 elegantly combines the Turing Machine with the Lambda Calculus. Previous
 implementations of this model have been inefficient in practice, however, a
-recent breaktrough has drastically improved its efficiency, giving birth to the
-HVM. Despite being a prototype, it already beats mature compilers in many
+recent breakthrough has drastically improved its efficiency, giving birth to
+the HVM. Despite being a prototype, it already beats mature compilers in many
 cases, and is set to scale towards uncharted levels of performance.
 
 **Welcome to the inevitable parallel, functional future of computers!**
@@ -23,9 +23,7 @@ Usage
 First, install [Rust](https://www.rust-lang.org/). Then, type:
 
 ```bash
-git clone git@github.com:Kindelia/HVM
-cd HVM
-cargo install --path .
+cargo install hvm
 ```
 
 #### 2. Create an HVM file
@@ -133,6 +131,7 @@ main = do
 </table>
 
 ![](bench/_results_/ListFold.png)
+<sub> *the lower the better </sub>
 
 In this micro-benchmark, we just build a huge list of numbers, and fold over
 it to sum them. Since lists are sequential, and since there are no higher-order
@@ -306,7 +305,7 @@ main = do
 This chart isn't wrong: HVM is *exponentially* faster for function composition,
 due to optimality, depending on the target function. There is no parallelism
 involved here. In general, if the composition of a function `f` has a
-constant-size normal form, then `f^(2^N)(x)` is constant-time (`O(N)`) on HVM,
+constant-size normal form, then `f^(2^N)(x)` is linear-time (`O(N)`) on HVM,
 and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
 novel functional algorithms. I highly encourage you to try composing different
 functions and watching how their complexity behaves. Can you tell if it will be
@@ -402,4 +401,29 @@ Check [HOW.md](HOW.md).
 How can I help?
 ===============
 
-Join the Kindelia community on [Discord]((https://discord.gg/QQ2jkxVj)) or [Matrix](https://matrix.to/#/#kindelia:kde.org)!
+Most importantly, if you appreciate our work, help spreading the project! Posting on
+Reddit, communities, etc. helps more than you think.
+
+Second, I'm actually looking for partners! I'm confident HVM's current design is ready
+to scale and become the fastest runtime in the world. There are many cool things we'd
+like to implement:
+
+- Compile it to GPUs (just imagine that!)
+
+- Build a blockchain around it (draft on [Kindelia](https://github.com/kindelia/kindelia))
+
+- Compile [Kind-Lang](https://github.com/kindelia/kind) to it
+
+- A bunch of other [planned features](https://github.com/Kindelia/HVM/issues/38)
+
+If you'd like to be part of any of these, please
+[email me](victor.taelin@gmail.com), or just send me a personal message on
+[Twitter](https://twitter.com/victor.taelin).
+
+Community
+=========
+
+To just follow the project, join our [Telegram
+Chat](https://t.me/formality_lang), the [Kindelia community on
+Discord](https://discord.gg/QQ2jkxVj) or
+[Matrix](https://matrix.to/#/#kindelia:kde.org)!

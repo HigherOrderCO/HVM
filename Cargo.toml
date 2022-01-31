@@ -1,20 +1,15 @@
-# cargo-features = ["const_impl_trait", "type_alias_impl_trait"]
-
 [package]
 name = "hvm"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
+description = "A lazy, beta-optimal, massively-parallel, non-garbage-collected and strongly-confluent functional compilation target."
+repository = "https://github.com/Kindelia/HVM"
+license = "MIT"
+keywords = ["functional", "language", "runtime", "compiler", "target"]
+categories = ["compilers"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cranelift = "0.80.0"
-cranelift-jit = "0.80.0"
-cranelift-module = "0.80.0"
-cranelift-native = "0.80.0"
-
-[profile.dev]
-# opt-level = 0
-
-[profile.release]
-opt-level = 3
+cranelift = "0.80"
+num_cpus = "1.13"
