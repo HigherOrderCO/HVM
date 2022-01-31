@@ -30,11 +30,11 @@ const evaluators = {
     //execution: (name, n, temp_dir) => `hvm run ${name} ${n}`,
     //extension: ".hvm",
   //},
-  RUST: {
-    pre: (name, file_path) => [`rustc -O ${name} -o ${dir}/.bin/rust`],
-    execution: (name, n) => `${dir}/.bin/rust ${n}`,
-    extension: ".rs"
-  },
+  // RUST: {
+  //   pre: (name, file_path) => [`rustc -O ${name} -o ${dir}/.bin/rust`],
+  //   execution: (name, n) => `${dir}/.bin/rust ${n}`,
+  //   extension: ".rs"
+  // },
   // JS: {
   //   pre: (name, file_path) => [],
   //   execution: (name, n) => `node ${name} ${n}`,
