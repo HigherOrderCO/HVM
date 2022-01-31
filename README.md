@@ -23,9 +23,7 @@ Usage
 First, install [Rust](https://www.rust-lang.org/). Then, type:
 
 ```bash
-git clone https://github.com/Kindelia/HVM.git
-cd HVM
-cargo install --path .
+cargo install hvm
 ```
 
 #### 2. Create an HVM file
