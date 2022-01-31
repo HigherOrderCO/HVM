@@ -400,7 +400,28 @@ How is that possible?
 
 Check [HOW.md](HOW.md).
 
+How can I help?
+===============
+
+I'm confident HVM's current design is ready to scale and become the fastest
+runtime in the world. There are many cool things we'd like to do with it:
+
+- Compile it to GPUs (just imagine that!)
+
+- Build a blockchain around it (draft on [Kindelia](https://github.com/kindelia/kindelia))
+
+- Compile [Kind-Lang](https://github.com/kindelia/kind) to it
+
+- A bunch of other [planned features](https://github.com/Kindelia/HVM/issues/38)
+
+I'm looking for partners. If you'd like to be part of any of these, please
+[email me](victor.taelin@gmail.com), or just send me a personal message on
+[Twitter](https://twitter.com/victor.taelin).
+
 Community
 =========
 
-Join our [Telegram Chat](https://t.me/formality_lang), the [Kindelia community on Discord](https://discord.gg/QQ2jkxVj) or [Matrix](https://matrix.to/#/#kindelia:kde.org)!
+To just follow the project, join our [Telegram
+Chat](https://t.me/formality_lang), the [Kindelia community on
+Discord](https://discord.gg/QQ2jkxVj) or
+[Matrix](https://matrix.to/#/#kindelia:kde.org)!
