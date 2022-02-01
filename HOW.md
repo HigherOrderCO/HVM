@@ -699,7 +699,7 @@ up in the function position of an application. For example, the situation below
 can happen at runtime:
 
 ```javascript
-({λx(x) λy(x)} 10)
+({λx(x) λy(y)} 10)
 ```
 
 This represents two superposed lambdas, applied to an argument `10`. If we
@@ -710,7 +710,7 @@ superposed application rule that deals with that situation:
 ```javascript
 ({a b} c)
 ----------------------- App-Sup
-{x0 x1} = c
+dup x0 x1 = c
 {(a x0) (b x1)}
 ```
 
