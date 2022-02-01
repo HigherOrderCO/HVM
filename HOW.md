@@ -532,9 +532,9 @@ x <- arg
 body
 ```
 
-This is the famous beta-reduction rule. This must be read as: "whenever there is
-a `(λx(body) arg)` pattern in the runtime, substitute `x` by `arg` wherever it
-occurs, and return `body`". For example, `(λx(Single x) 42)` is reduced to
+This is the famous beta-reduction rule. This must be read as: *"the application
+of the lambda `λx(body)` to the argument `arg` reduces to `body`, and the
+substitution of `x` by `arg`"*. For example, `(λx(Single x) 42)` is reduced to
 `(Single 42)`. Remember that variables only occur once. Because of that,
 beta-reduction is a very fast operation. A modern CPU can perform more than 200
 million beta-reductions per second, in a single core. As an example:
@@ -547,7 +547,8 @@ million beta-reductions per second, in a single core. As an example:
 (Pair 2 3)
 ```
 
-Simple, right? Now, we're ready to learn the most beautiful rule.
+Simple, right? This rule is beautiful, but the next one is special, as it is
+responsible for making all of HVM possible.
 
 ### Lambda Duplication
 
@@ -753,10 +754,10 @@ dup xB yB = b
 ```
 
 This rule handles the duplication of a superposition. In English, it says that:
-"the duplication of a superposition `{a b}` as `x` and `y` reduces to the
+*"the duplication of a superposition `{a b}` as `x` and `y` reduces to the
 duplication of `a` as `xA` and `yA`, `b` as `xB` and `tB`, and the substitution
 of `x` by the superposition `{xA xB}`, and the substitution of `y` by `{yA
-tB}`".  At that point, the formal notation is probably doing a better job than
+tB}`"*.  At that point, the formal notation is probably doing a better job than
 English at conveying this information.
 
 If you've paid close attention, though, you may have noticed the DUP-SUP has
@@ -771,7 +772,7 @@ extra cost, HVM instead placed a limitation, that allowed for a much faster
 decision procedure. That limitation is:
 
 **If a lambda that clones its argument is itself cloned, then its clones aren't
-allowed allowed to clone each-other.**
+allowed to clone each-other.**
 
 For example, this term is **not** allowed:
 
@@ -803,11 +804,9 @@ is a common (and annoying) misconception that this is limit is any relevant in
 practice. C programmers survived without closures, for decades. Rust programmers
 live well with far more restrictive limitations on what shapes of programs
 they're allowed to write. HVM has all sorts of extremely high-level closures you
-can think of. You just can't have a clone clone its own clone. And that's it.
-
-The good thing is that, by abiding to this limitation, HVM is able to push its
-efficiency even further. Without it, it wouldn't be possible to achieve its
-current real-world performance.
+can think of. You just can't have a clone clone its own clone. Without this
+limitation, which is almost irrelevant in practice, it wouldn't be possible for
+HVM to achieve its current performance, so we believe it is justified.
 
 As a last note, HVM's current implementation is slightly more restrictive than
 it hould be, since each occurrence of a global definition counts as a clone of
@@ -820,12 +819,3 @@ HVM's low-level implementation
 TODO: in this section, explain how HVM nodes are stored in memory, how rewrites
 and reduction works, etc. Since this isn't done yet, feel free to explore it
 yourself by reading [runtime.c](https://github.com/Kindelia/HVM/blob/master/src/runtime.c).
-
-
-
-
-
-
-
-
-
