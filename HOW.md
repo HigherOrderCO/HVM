@@ -799,7 +799,9 @@ let h = λf(λx(f (f x)))
 ```
 
 And all the other "hardcore" functional programming tools are compatible.
-Y-Combinators, Church-Encodings, nested maps of maps, all work just fine. It
+Y-Combinators, Church-Encodings, nested maps of maps, all work just fine. 
+If you think you'll reach this limitation in practice, you're probably
+misunderstanding how esotheric a program must be for that to happen. It
 is a common (and annoying) misconception that this limit is any relevant in
 practice. C programmers survived without closures, for decades. Rust programmers
 live well with far more restrictive limitations on what shapes of programs
