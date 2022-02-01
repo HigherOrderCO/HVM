@@ -110,6 +110,8 @@ having incremented each number in `list` by 1. Notes:
 
 - You can abbreviate applications (`(((f a) b) c ...)` == `(f a b c ...)`).
 
+- You may write `@` instead of `λ`.
+
 The secret ingredient
 =====================
 
