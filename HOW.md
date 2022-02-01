@@ -744,7 +744,7 @@ Superposed Duplication
 
 There is one last rule that is worth discussing.
 
-```
+```javascript
 dup x y = {a b}
 --------------- DUP-SUP (different)
 x <- {xA xB}
@@ -776,7 +776,7 @@ allowed to clone each-other.**
 
 For example, this term is **not** allowed:
 
-```
+```javascript
 let g = λf(λx(f (f x)))
 (g g)
 ```
@@ -792,7 +792,7 @@ numbers in a loop, you've probably never seen a program that reaches this
 limitation in your entire career. Even if you're a fan of λ-encodings, you're
 fine. For example, the program above can be fixed by just avoiding one clone:
 
-```
+```javascript
 let g = λf(λx(f (f x)))
 let h = λf(λx(f (f x)))
 (g h)
