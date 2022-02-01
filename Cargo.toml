@@ -1,6 +1,6 @@
 [package]
 name = "hvm"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "A lazy, beta-optimal, massively-parallel, non-garbage-collected and strongly-confluent functional compilation target."
 repository = "https://github.com/Kindelia/HVM"
@@ -11,5 +11,4 @@ categories = ["compilers"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cranelift = "0.80"
 num_cpus = "1.13"
