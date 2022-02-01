@@ -569,7 +569,7 @@ b <- λx1(b1)
 x <- {x0 x1}
 dup b0 b1 = body
 
-dup a b = <r s>
+dup a b = {r s}
 --------------- Dup-Sup
 a <- r
 b <- s
