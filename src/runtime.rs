@@ -316,7 +316,7 @@ pub fn reduce(
     //println!("reduce {}", show_lnk(term));
     //println!("------ {}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name));
     //for i in 0 .. 256 {
-      //println!("- {:x} {}", i, show_lnk(mem.node[i]));
+    //println!("- {:x} {}", i, show_lnk(mem.node[i]));
     //}
     //println!("memory {}", show_mem(mem));
 
@@ -349,11 +349,11 @@ pub fn reduce(
                 init = 0;
               } else {
                 stack.push(host);
-                for i in 0 .. f.stricts.len() {
+                for (i, strict) in f.stricts.iter().enumerate() {
                   if i < f.stricts.len() - 1 {
-                    stack.push(get_loc(term, f.stricts[i]) | 0x80000000);
+                    stack.push(get_loc(term, *strict) | 0x80000000);
                   } else {
-                    host = get_loc(term, f.stricts[i]);
+                    host = get_loc(term, *strict);
                   }
                 }
               }
@@ -425,7 +425,8 @@ pub fn reduce(
               inc_cost(mem);
               subst(mem, ask_arg(mem, term, 0), ask_arg(mem, arg0, 0));
               subst(mem, ask_arg(mem, term, 1), ask_arg(mem, arg0, 1));
-              let _done = link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
+              let _done =
+                link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
               clear(mem, get_loc(term, 0), 3);
               clear(mem, get_loc(arg0, 0), 2);
               init = 1;
@@ -469,7 +470,7 @@ pub fn reduce(
             } else {
               let ctr0 = get_loc(arg0, 0);
               let ctr1 = alloc(mem, arit);
-              for i in 0 .. arit - 1 {
+              for i in 0..arit - 1 {
                 let leti = alloc(mem, 3);
                 link(mem, leti + 2, ask_arg(mem, arg0, i));
                 link(mem, ctr0 + i, Dp0(get_ext(term), leti));

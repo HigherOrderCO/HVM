@@ -87,193 +87,6 @@ rec {
     #   inject test dependencies into the build
 
     crates = {
-      "cfg-if" = rec {
-        crateName = "cfg-if";
-        version = "1.0.0";
-        edition = "2018";
-        sha256 = "1za0vb97n4brpzpv8lsbnzmq5r8f2b0cpqqr0sy8h5bn751xxwds";
-        authors = [
-          "Alex Crichton <alex@alexcrichton.com>"
-        ];
-        features = {
-          "rustc-dep-of-std" = [ "core" "compiler_builtins" ];
-        };
-      };
-      "cranelift" = rec {
-        crateName = "cranelift";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "18ri19pld8h32yg7hp4qjhglcqyp9ic0xrp99x63r0ln700f9n9s";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "cranelift-codegen";
-            packageId = "cranelift-codegen";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "cranelift-frontend";
-            packageId = "cranelift-frontend";
-            usesDefaultFeatures = false;
-          }
-        ];
-        features = {
-          "core" = [ "cranelift-codegen/core" "cranelift-frontend/core" ];
-          "default" = [ "std" ];
-          "std" = [ "cranelift-codegen/std" "cranelift-frontend/std" ];
-        };
-        resolvedDefaultFeatures = [ "default" "std" ];
-      };
-      "cranelift-bforest" = rec {
-        crateName = "cranelift-bforest";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "1cqsjgz6wvn73qwchkj6w2ha1brg8ddzf4xpcfzlqyx45dmvl5lm";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "cranelift-entity";
-            packageId = "cranelift-entity";
-            usesDefaultFeatures = false;
-          }
-        ];
-
-      };
-      "cranelift-codegen" = rec {
-        crateName = "cranelift-codegen";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "0hnnyabj6rjxnxa28nfmckgvb1zkicm2hw9dw5mzzvgph405v7j8";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "cranelift-bforest";
-            packageId = "cranelift-bforest";
-          }
-          {
-            name = "cranelift-codegen-shared";
-            packageId = "cranelift-codegen-shared";
-          }
-          {
-            name = "cranelift-entity";
-            packageId = "cranelift-entity";
-          }
-          {
-            name = "log";
-            packageId = "log";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "regalloc";
-            packageId = "regalloc";
-          }
-          {
-            name = "smallvec";
-            packageId = "smallvec";
-          }
-          {
-            name = "target-lexicon";
-            packageId = "target-lexicon";
-          }
-        ];
-        buildDependencies = [
-          {
-            name = "cranelift-codegen-meta";
-            packageId = "cranelift-codegen-meta";
-          }
-        ];
-        features = {
-          "all-arch" = [ "x86" "arm64" "s390x" ];
-          "core" = [ "hashbrown" ];
-          "default" = [ "std" "unwind" ];
-          "enable-serde" = [ "serde" "regalloc/enable-serde" "cranelift-entity/enable-serde" ];
-          "rebuild-isle" = [ "cranelift-isle" "miette" "cranelift-codegen-meta/rebuild-isle" ];
-          "regalloc-snapshot" = [ "bincode" "regalloc/enable-serde" ];
-          "souper-harvest" = [ "souper-ir" "souper-ir/stringify" ];
-          "unwind" = [ "gimli" ];
-        };
-        resolvedDefaultFeatures = [ "std" ];
-      };
-      "cranelift-codegen-meta" = rec {
-        crateName = "cranelift-codegen-meta";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "0j5d7rv3i95hx3g4hqdqyyns8mq180q4nwqf21lhzfvi0caf2vnk";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "cranelift-codegen-shared";
-            packageId = "cranelift-codegen-shared";
-          }
-        ];
-        features = {
-        };
-      };
-      "cranelift-codegen-shared" = rec {
-        crateName = "cranelift-codegen-shared";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "0r7md540vbmbv28yk6bl383l33gzfwwwi432p7zg2skliwnsa7cq";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-
-      };
-      "cranelift-entity" = rec {
-        crateName = "cranelift-entity";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "0qg4x9cz01mljbddm6mxwj5ccjankgyz0gg5bkwvrlrx0m06g452";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-        features = {
-          "enable-serde" = [ "serde" ];
-        };
-      };
-      "cranelift-frontend" = rec {
-        crateName = "cranelift-frontend";
-        version = "0.80.0";
-        edition = "2018";
-        sha256 = "1dvi8j4zr8hv0jqxhaqsbvhw6whafb6s0mxz8rymczq9w5nibjxp";
-        authors = [
-          "The Cranelift Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "cranelift-codegen";
-            packageId = "cranelift-codegen";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "log";
-            packageId = "log";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "smallvec";
-            packageId = "smallvec";
-          }
-          {
-            name = "target-lexicon";
-            packageId = "target-lexicon";
-          }
-        ];
-        features = {
-          "core" = [ "hashbrown" "cranelift-codegen/core" ];
-          "default" = [ "std" ];
-          "std" = [ "cranelift-codegen/std" ];
-        };
-        resolvedDefaultFeatures = [ "std" ];
-      };
       "hermit-abi" = rec {
         crateName = "hermit-abi";
         version = "0.1.19";
@@ -296,17 +109,13 @@ rec {
       };
       "hvm" = rec {
         crateName = "hvm";
-        version = "0.1.0";
+        version = "0.1.4";
         edition = "2021";
         crateBin = [
           { name = "hvm"; path = "src/main.rs"; }
         ];
         src = lib.cleanSourceWith { filter = sourceFilter;  src = ./.; };
         dependencies = [
-          {
-            name = "cranelift";
-            packageId = "cranelift";
-          }
           {
             name = "num_cpus";
             packageId = "num_cpus";
@@ -329,27 +138,6 @@ rec {
         };
         resolvedDefaultFeatures = [ "default" "std" ];
       };
-      "log" = rec {
-        crateName = "log";
-        version = "0.4.14";
-        edition = "2015";
-        sha256 = "04175hv0v62shd82qydq58a48k3bjijmk54v38zgqlbxqkkbpfai";
-        authors = [
-          "The Rust Project Developers"
-        ];
-        dependencies = [
-          {
-            name = "cfg-if";
-            packageId = "cfg-if";
-          }
-        ];
-        features = {
-          "kv_unstable" = [ "value-bag" ];
-          "kv_unstable_serde" = [ "kv_unstable_std" "value-bag/serde" "serde" ];
-          "kv_unstable_std" = [ "std" "kv_unstable" "value-bag/error" ];
-          "kv_unstable_sval" = [ "kv_unstable" "value-bag/sval" "sval" ];
-        };
-      };
       "num_cpus" = rec {
         crateName = "num_cpus";
         version = "1.13.1";
@@ -371,71 +159,6 @@ rec {
           }
         ];
 
-      };
-      "regalloc" = rec {
-        crateName = "regalloc";
-        version = "0.0.33";
-        edition = "2018";
-        sha256 = "06mbx3x5rp5f8al1k7hx5f4r9pcacax75fa0klippjnzj7zqr03x";
-        authors = [
-          "The Regalloc.rs Developers"
-        ];
-        dependencies = [
-          {
-            name = "log";
-            packageId = "log";
-            usesDefaultFeatures = false;
-          }
-          {
-            name = "rustc-hash";
-            packageId = "rustc-hash";
-          }
-          {
-            name = "smallvec";
-            packageId = "smallvec";
-          }
-        ];
-        features = {
-          "enable-serde" = [ "serde" ];
-        };
-        resolvedDefaultFeatures = [ "default" ];
-      };
-      "rustc-hash" = rec {
-        crateName = "rustc-hash";
-        version = "1.1.0";
-        edition = "2015";
-        sha256 = "1qkc5khrmv5pqi5l5ca9p5nl5hs742cagrndhbrlk3dhlrx3zm08";
-        authors = [
-          "The Rust Project Developers"
-        ];
-        features = {
-          "default" = [ "std" ];
-        };
-        resolvedDefaultFeatures = [ "default" "std" ];
-      };
-      "smallvec" = rec {
-        crateName = "smallvec";
-        version = "1.8.0";
-        edition = "2018";
-        sha256 = "10zf4fn63p2d6sx8qap3jvyarcfw563308x3431hd4c34r35gpgj";
-        authors = [
-          "The Servo Project Developers"
-        ];
-        features = {
-          "const_new" = [ "const_generics" ];
-        };
-      };
-      "target-lexicon" = rec {
-        crateName = "target-lexicon";
-        version = "0.12.2";
-        edition = "2018";
-        sha256 = "1zsvillq0zsggg3fb0mfmcia0f68wfclahaqc0zgln14pkfzrgyr";
-        authors = [
-          "Dan Gohman <sunfish@mozilla.com>"
-        ];
-        features = {
-        };
-        resolvedDefaultFeatures = [ "default" ];
       };
     };
 
