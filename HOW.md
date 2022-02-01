@@ -815,6 +815,53 @@ it should be, since each occurrence of a global definition counts as a clone of
 itself. That is not necessary, and will soon be patched. Regardless, even in
 this version, it is very unlikely you'll find this in practice.
 
+Infinite lists
+--------------------
+
+### with the Y-Combinator
+```javascript
+// The Y-Combinator
+Y = λf ((λr (f (r r))) (λr (f (r r))))
+
+// List Map function
+(Map f Nil)         = Nil
+(Map f (Cons x xs)) = (Cons (f x) (Map f xs))
+
+// List projectors
+(Head (Cons x xs)) = x
+(Tail (Cons x xs)) = xs
+
+// The infinite list: 0, 1, 2, 3 ...
+Nats = ((Y) λx(Cons 0 (Map λx(+ x 1) x)))
+
+// Just a test (returns 2)
+Main = (Head (Tail (Tail Nats)))
+```
+
+### without λ-Combinator
+
+```javascript
+// The infinite list: 0, 1, 2, 3 ...
+Nats = (Cons 0 (Map λx(+ x 1) Nat))
+```
+
+### with copatterns
+
+```javascript
+// CoList Map function
+(Head (Map f xs)) = (f (Head xs))
+(Tail (Map f xs)) = (Map f (Tail xs))
+
+// The infinite colist: 0, 1, 2, 3 ...
+(Head Nats) = 0
+(Tail Nats) = (Map λx(+ x 1) Nats)
+
+// Just a test (returns 2)
+(Main n) = (Head (Tail (Tail Nats)))
+```
+
+That is impossible in Haskell, but just works out of the box in HVM if only because math rewards elegance.
+
 HVM's low-level implementation
 ==============================
 
