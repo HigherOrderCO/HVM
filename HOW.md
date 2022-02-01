@@ -42,7 +42,6 @@ potential of HVM.
 
 That's about it. Now, onto the long, in-depth explanation.
 
-
 How does it work?
 =================
 
@@ -113,8 +112,8 @@ having incremented each number in `list` by 1. Notes:
 
 - You can abbreviate applications (`(((f a) b) c ...)` == `(f a b c ...)`).
 
-The secret sauce
-================
+The secret ingredient
+=====================
 
 What makes HVM special, though, is **how** it evaluates its programs. HVM has
 one simple trick that hackers don't want you to know. This trick is responsible
@@ -125,7 +124,7 @@ section should provide more context and a better intuition about why things are
 the way they are. That said, if you just want to see the tech, feel free to
 skip it.
 
-### Clones are workaholic monsters that ruin everything
+### Clones ruin everything
 
 By clones, I mean when a value is copied, shared, replicated, or whatever else
 you call it. For example, consider the JavaScript program below:
@@ -168,10 +167,9 @@ Notice how the `3 * 3` expression was never computed, thereby saving work?
 Instead, the other `2 * 2` expression has been computed twice, yet again
 resulting in **wasted work**! That's because `x` was used two times in the body
 of `foo`, which caused the `2 * 2` expression to be **cloned** and, thus,
-computed twice. In other words, these evil clones ruined the virtue of
-laziness. Was /r/antiwork right all along?
+computed twice. In other words, clones ruined the virtue of laziness.
 
-### Everyone's solution: ban the evil clones!
+### Everyone's solution: ban the clones
 
 Imagine a language without clones. Such a language would be computationally
 perfect. Lazy evaluators wouldn't waste work, since expressions can't be
@@ -185,38 +183,37 @@ solution has almost always been the use of references of some sort.
 
 For example, Haskell is lazy. To avoid "cloning computations", it implements
 thunks, which are nothing but *memoized references* to shared expressions,
-allowing the `(2 * 2)` example above to be cached. This solution, though,
-breaks down when there are lambdas. Similarly,
-Rust is GC-free, so every object has only one "owner". To avoid too much 
-cloning, it implements a complex *shared references* system, based on borrows. 
-Finally, parallel languages require mutexes and atomics to synchronize accesses 
-to *shared references*. In other words, references saved the world by letting us
-avoid these evil clones, and that's great... right? *awkward silence*
+allowing the `(2 * 2)` example above to be cached. This solution, though, breaks
+down when there are lambdas. Similarly, Rust is GC-free, so every object has
+only one "owner". To avoid too much cloning, it implements a complex *borrowed
+references* system, based on borrows.  Finally, parallel languages require
+mutexes and atomics to synchronize accesses to *shared references*. In other
+words, references saved the world by letting us avoid these clones, and that's
+great... right?
 
 > clone wasn't the impostor
 
-References. **They** ruin everything. They're the reason Rust is so hard to
-use. They're the reason parallel programming is so complex. They're the reason
+References. **They** ruin everything. They're the reason Rust is so hard to use.
+They're the reason parallel programming is so complex. They're the reason
 Haskell isn't optimal, since thunks can't share computations that have free
 variables (i.e., any expression inside lambdas). They're why a 1-month-old
-prototype beats GHC in the same class of programs it should thrive in.
-It isn't GHC's fault. References are the real culprits.
+prototype beats GHC in the same class of programs it should thrive in.  It isn't
+GHC's fault. References are the real culprits.
 
-### HVM's solution: lofi and chill with clones
+### HVM's solution: make clones cheap
 
-Clones aren't evil. They just need to relax.
+Clones aren't bad. They just need to relax.
 
 Once you understand the context above, grasping how HVM can be optimally lazy,
 non-GC'd and inherently parallel is easy. At its base, it has the same "linear"
 core that both Haskell and Rust share in common (which, as we've just
 established, is already all these things). The difference is that, instead of
 adding some kind of clever reference system to circumvent the cost of
-cloning... **HVM introduces a pervasive, lazy clone primitive**. Yes, that's
-it.
+cloning... **HVM introduces a pervasive, lazy clone primitive**. 
 
-**HVM's runtime features a `.clone()` primitive that has zero cost, until the
-cloned value needs to be read. Once it does, instead of being copied whole,
-it's done layer by layer, on-demand.**
+**HVM's runtime has no references. Instead, it features a `.clone()` primitive
+that has zero cost, until the cloned value needs to be read. Once it does,
+instead of being copied whole, it's done layer by layer, on-demand.**
 
 For the purpose of lazy evaluation, HVM's lazy clones works like Haskell's
 thunks, except they do not break down on lambdas. For the context of garbage
@@ -228,8 +225,8 @@ entirely thread safe, requiring minimal synchronization.
 In other words, think of HVM as Rust, except replacing the borrow system by a
 very cheap `.clone()` operation that can be used and abused with no mercy. This
 is the secret sauce! Easy, right? Well, no. There is still a big problem to be
-solved: **how the hell do we incrementally clone a lambda?** The answer to this
-problem is what made it all possible. Let's get technical!
+solved: **how do we incrementally clone a lambda?** There is a beautiful answer
+to this problem that made this all possible. Let's get technical!
 
 HVM's Rewrite Rules
 ===================
@@ -311,7 +308,7 @@ Constructor Duplication
 
 ```javascript
 dup x y = (Foo a b ...)
-------------------------- Dup-Ctr
+----------------------- Dup-Ctr
 dup a0 a1 = a
 dup b0 b1 = b
 ...
@@ -322,7 +319,7 @@ y <- (Foo a1 b1 ...)
 This should be read as: *"the duplication of the constructor `(Foo a b ...)` as
 `x` and `y` reduces to the duplication of `a` as `a0` and `a1`, the duplication
 of `b` as `b0` and `b1`, and the substitution of `x` by `(Foo a0 b0 ...)` and
-the substitution of `y` by `(Foo a1 b1)`"*.
+the substitution of `y` by `(Foo a1 b1 ...)`"*.
 
 There is a lot of new information here, so, before moving on, let's dissect it
 all one by one.
@@ -523,9 +520,8 @@ collected without even touching it. Collection is orchestrated by variables
 that go out of scope. For example, in the last lines, `x` and `y` both aren't
 referenced anywhere. That triggers the collection of the remaining list.
 
-Uuf! That was a LOT of info. Hopefully, by now, you have an intuition about how
-the lazy duplication primitive works. You must be tired. But don't worry. The
-worst part comes now.
+That was a lot of info. Hopefully, by now, you have an intuition about how the
+lazy duplication primitive works. Moving on.
 
 ### Lambda Application
 
@@ -536,13 +532,12 @@ x <- arg
 body
 ```
 
-Okay, I lied. This part is simple. This is the famous beta-reduction rule! This
-must be read as: "whenever there is a `(λx(body) arg)` pattern in the runtime,
-substitute `x` by `arg` wherever it occurs, and return `body`. For example,
-`(λx(Single x) 42)` is reduced to `(Single 42)`. Remember that variables only
-occur once. Because of that, beta-reduction is a very fast operation. A modern
-CPU can perform more than 200 million beta-reductions per second, in a single
-core. As an example:
+This is the famous beta-reduction rule. This must be read as: "whenever there is
+a `(λx(body) arg)` pattern in the runtime, substitute `x` by `arg` wherever it
+occurs, and return `body`". For example, `(λx(Single x) 42)` is reduced to
+`(Single 42)`. Remember that variables only occur once. Because of that,
+beta-reduction is a very fast operation. A modern CPU can perform more than 200
+million beta-reductions per second, in a single core. As an example:
 
 ```javascript
 (λxλy(Pair x y) 2 3)
@@ -552,14 +547,13 @@ core. As an example:
 (Pair 2 3)
 ```
 
-Simple, huh? Okay. Now, the worst part.
+Simple, right? Now, we're ready to learn the most beautiful rule.
 
 ### Lambda Duplication
 
 Incrementally cloning datatypes is a neat idea. But there is nothing special to
 it. In fact, that **is** exactly how Haskell's thunks behave! But, now, take a
 moment and ask yourself: **how the hell do we incrementally clone a lambda**?
-Well, I won't waste your time. This is how:
 
 ```javascript
 dup a b = λx(body)
@@ -575,17 +569,16 @@ a <- r
 b <- s
 ```
 
-Sorry, **wat**? Well, I told you. This is where things get wild. Perhaps a good
-place to start is by writing this in plain English. It reads as: "the
-duplication of a lambda `λx(body)` as `a` and `b` reduces in the duplication of
-its `body` as `b0` and `b1`, and the substitution of `a` by `λx0(b0)`, `b` by
-`λx1(b1)` and `x` by the superposition `{x0 x1}`".
+Here is how. This may be a bit overwhelming. A good place to start is by writing
+this in plain English. It reads as: "the duplication of a lambda `λx(body)` as
+`a` and `b` reduces in the duplication of its `body` as `b0` and `b1`, and the
+substitution of `a` by `λx0(b0)`, `b` by `λx1(b1)` and `x` by the superposition
+`{x0 x1}`".
 
 What this is saying is that, in order to duplicate a lambda, we must duplicate
-its body. So, far, so good. But we must also duplicate the `λ` itself. And,
-then, weird things happen with its variable, and there is a brand new
-construct, the superposition, that I haven't explained yet. But, this is fine.
-Let's try to do it with an example:
+its body; then we must create two lambdas. Then, then, weird things happen with
+its variable. And then there is a brand new construct, the superposition, that I
+haven't explained yet. But, this is fine. Let's try to do it with an example:
 
 ```javascript
 dup a b = λx λy (Pair x y)
@@ -606,8 +599,7 @@ Can you spot the issue? As soon as the lambda is copied, it is moved to another
 location of the program, which means it gets detached from its own body.
 Because of that, the variable `x` gets unbound on the first line, and the body
 of each copied `λx` has no reference to `x`. That makes no sense at all! How do
-we solve
-this?
+we solve this?
 
 First, we must let go of material goods and accept a cruel reality of HVM:
 **lambdas don't have scopes**. That is, a variable bound by a lambda can occur
@@ -618,11 +610,11 @@ like it doesn't.
 Once you accept that in your heart, you'll find that the program above will
 make a little more sense, because we can say that the `λx` binder on the second
 line is "connected" to the `x` variable on the first line, even if it's
-outside. But wait, there is still a problem: there are **two** lambdas bound to
+outside. But there is still a problem: there are **two** lambdas bound to
 the same variable. If the left lambda gets applied to an argument, it should
 NOT affect the second one. But with the way it is written, that's what would
 happen. To work around this issue, we need a new construct: the
-**superposition**. Written as **{r s}**, a superposition stands for an
+**superposition**. Written as `{r s}`, a superposition stands for an
 expression that is part of two partially copied lambdas. So, for example,
 `(Pair {1 2} 3)` can represent either `(Pair 1 3)` or `(Pair 2 3)`, depending
 on the context.
@@ -721,8 +713,10 @@ superposed application rule that deals with that situation:
 {(a x0) (b x1)}
 ```
 
-That rule also applies to user-defined functions! The logic is the same, only
-adapted depending on the arity.
+In English, this rule says that: "the application of a superposition `{a b}` to
+`c` is the supoerposition of the application of `a` and `b` to copies of `c`".
+Makes sense, doesn't it? That rule also applies to user-defined functions. The
+logic is the same, only adapted depending on the arity. I won't show it here.
 
 Superposed Operation
 --------------------
@@ -740,4 +734,98 @@ dup a0 a1 = a
 {(+ a0 b0) (+ a1 b1)}
 ```
 
-TODO: to be continued...
+This, too, follows the same logic of superposed application, except operators
+are strict on both arguments.
+
+
+Superposed Duplication
+----------------------
+
+There is one last rule that is worth discussing.
+
+```
+dup x y = {a b}
+--------------- DUP-SUP (different)
+x <- {xA xB}
+y <- {yA yB}
+dup xA yA = a
+dup xB yB = b
+```
+
+This rule handles the duplication of a superposition. In English, it says that:
+"the duplication of a superposition `{a b}` as `x` and `y` reduces to the
+duplication of `a` as `xA` and `yA`, `b` as `xB` and `tB`, and the substitution
+of `x` by the superposition `{xA xB}`, and the substitution of `y` by `{yA
+tB}`".  At that point, the formal notation is probably doing a better job than
+English at conveying this information.
+
+If you've paid close attention, though, you may have noticed the DUP-SUP has
+already been defined, on the *Lambda Application* section. So, what is going on
+here? Well, it turns out that DUP-SUP is a special case that has two different
+reduction rules. If this DUP-SUP represents the end of a duplication process, it
+must go with the former rule. If, though, you're duplicating a term, which
+itself duplicates something, then this rule must be used. Due to the extremely
+local nature of HVM reductions, though, determining when each rule should be
+used in general would require an expensive book-keeping machinery. To avoid that
+extra cost, HVM instead placed a limitation, that allowed for a much faster
+decision procedure. That limitation is:
+
+**If a lambda that clones its argument is itself cloned, then its clones aren't
+allowed allowed to clone each-other.**
+
+For example, this term is **not** allowed:
+
+```
+let g = λf(λx(f (f x)))
+(g g)
+```
+
+That's because `g` is a function that clones its argument (since `f` is used
+twice). It is then cloned, so each `g` on the second line is a clone. Then the
+first clone attempts to clone the second clone. That is considered undefined
+behavior, and a typed language that compiles to HVM must check that this kind of
+situation won't happen.
+
+How common is this? Well, except if you like multiplying Church-Encoded natural
+numbers in a loop, you've probably never seen a program that reaches this
+limitation in your entire career. Even if you're a fan of λ-encodings, you're
+fine. For example, the program above can be fixed by just avoiding one clone:
+
+```
+let g = λf(λx(f (f x)))
+let h = λf(λx(f (f x)))
+(g g)
+```
+
+And all the other "hardcore" functional programming tools are compatible.
+Y-Combinators, Scott-Encodings, Church-Encodings and the like work just fine. It
+is a common (and annoying) misconception that this is limit is any relevant in
+practice. C programmers survived without closures, for decades. Rust programmers
+live well with far more restrictive limitations on what shapes of programs
+they're allowed to write. HVM has all sorts of extremely high-level closures you
+can think of. You just can't have a clone clone its own clone. And that's it.
+
+The good thing is that, by abiding to this limitation, HVM is able to push its
+efficiency even further. Without it, it wouldn't be possible to achieve its
+current real-world performance.
+
+As a last note, HVM's current implementation is slightly more restrictive than
+it hould be, since each occurrence of a global definition counts as a clone of
+itself. That is not necessary, and will soon be patched. Regardless, even in
+this version, it is very unlikely you'll find this in practice.
+
+HVM's low-level implementation
+==============================
+
+TODO: in this section, explain how HVM nodes are stored in memory, how rewrites
+and reduction works, etc. Since this isn't done yet, feel free to explore it
+yourself by reading [runtime.c](https://github.com/Kindelia/HVM/blob/master/src/runtime.c).
+
+
+
+
+
+
+
+
+

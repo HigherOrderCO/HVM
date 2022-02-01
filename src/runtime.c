@@ -584,9 +584,16 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
             }
 
             // dup x y = {a b}
-            // --------------- DUP-PAR-EQ
+            // --------------- DUP-PAR (equal)
             // x <- a
             // y <- b
+            //
+            // dup x y = {a b}
+            // ----------------- DUP-SUP (different)
+            // x <- {xA xB}
+            // y <- {yA yB}
+            // dup xA yA = a
+            // dup xB yB = b
             case PAR: {
               //printf("dup-sup\n");
               if (get_ext(term) == get_ext(arg0)) {
