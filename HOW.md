@@ -135,8 +135,8 @@ function foo(x, y) {
 }
 ```
 
-To compute `foo(2, 3)`, the number `2` must be **cloned** before multiplying it
-with itself. This seemingly innocent operation has made a lot of people very
+To compute `foo(2, 3)`, the number `2` must be **cloned** before adding it
+to itself. This seemingly innocent operation has made a lot of people very
 confused and has been widely regarded as the hardest problem of the 21st
 century.
 
