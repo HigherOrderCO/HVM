@@ -186,7 +186,8 @@ thunks, which are nothing but *memoized references* to shared expressions,
 allowing the `(2 * 2)` example above to be cached. This solution, though, breaks
 down when there are lambdas. Similarly, Rust is GC-free, so every object has
 only one "owner". To avoid too much cloning, it implements a complex *borrowed
-references* system, based on borrows.  Finally, parallel languages require
+references* system, allowing the same object to be accessed from multiple places,
+when the compiler can prove it is safe. Finally, parallel languages require
 mutexes and atomics to synchronize accesses to *shared references*. In other
 words, references saved the world by letting us avoid these clones, and that's
 great... right?
