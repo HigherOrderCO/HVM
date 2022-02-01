@@ -7,11 +7,11 @@ is **lazy**, **non-garbage-collected** and **massively parallel**. It is also
 faster than most functional runtimes, including Haskell's GHC.
 
 That is possible due to a new model of computation, the Interaction Net, which
-elegantly combines the Turing Machine with the Lambda Calculus. Previous
-implementations of this model have been inefficient in practice, however, a
-recent breakthrough has drastically improved its efficiency, giving birth to
-the HVM. Despite being a prototype, it already beats mature compilers in many
-cases, and is set to scale towards uncharted levels of performance.
+combines the Turing Machine with the Lambda Calculus. Previous implementations
+of this model have been inefficient in practice, however, a recent breakthrough
+has drastically improved its efficiency, giving birth to the HVM. Despite being
+a prototype, it already beats mature compilers in many cases, and is set to
+scale towards uncharted levels of performance.
 
 **Welcome to the inevitable parallel, functional future of computers!**
 
