@@ -410,7 +410,7 @@ like to implement:
 
 - Compile it to GPUs (just imagine that!)
 
-- Build a blockchain around it (draft on [Kindelia](https://github.com/kindelia/kindelia))
+- Build a peer-to-peer λ-calculus REPL (draft on [Kindelia](https://github.com/kindelia/kindelia))
 
 - Compile [Kind-Lang](https://github.com/kindelia/kind) to it
 
