@@ -345,11 +345,11 @@ pub fn reduce(
                 init = 0;
               } else {
                 stack.push(host);
-                for i in &f.stricts {
-                  if *i < f.stricts.len() as u64 - 1 {
-                    stack.push(get_loc(term, *i as u64) | 0x80000000);
+                for i in 0 .. f.stricts.len() {
+                  if i < f.stricts.len() - 1 {
+                    stack.push(get_loc(term, f.stricts[i]) | 0x80000000);
                   } else {
-                    host = get_loc(term, *i as u64);
+                    host = get_loc(term, f.stricts[i]);
                   }
                 }
               }

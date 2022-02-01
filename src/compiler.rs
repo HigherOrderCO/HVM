@@ -82,11 +82,11 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (Str
     line(&mut init, tab + 1, "init = 0;");
   } else {
     line(&mut init, tab + 1, "stk_push(&stack, host);");
-    for i in &stricts {
-      if *i < stricts.len() as u64 - 1 {
-        line(&mut init, tab + 1, &format!("stk_push(&stack, get_loc(term, {}) | 0x80000000);", i));
+    for i in 0 .. stricts.len() {
+      if i < stricts.len() - 1 {
+        line(&mut init, tab + 1, &format!("stk_push(&stack, get_loc(term, {}) | 0x80000000);", stricts[i]));
       } else {
-        line(&mut init, tab + 1, &format!("host = get_loc(term, {});", i));
+        line(&mut init, tab + 1, &format!("host = get_loc(term, {});", stricts[i]));
       }
     }
   }
