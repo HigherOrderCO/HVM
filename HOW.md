@@ -186,7 +186,7 @@ solution has almost always been the use of references of some sort.
 For example, Haskell is lazy. To avoid "cloning computations", it implements
 thunks, which are nothing but *memoized references* to shared expressions,
 allowing the `(2 * 2)` example above to be cached. This solution, though,
-breaks down when there are lambdas. Similarly
+breaks down when there are lambdas. Similarly,
 Rust is GC-free, so every object has only one "owner". To avoid too much 
 cloning, it implements a complex *shared references* system, based on borrows. 
 Finally, parallel languages require mutexes and atomics to synchronize accesses 
