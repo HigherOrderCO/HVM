@@ -121,7 +121,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         let body_txt = go(ctx, stacks, body, depth + 1);
         let arg = rt::ask_arg(ctx.mem, term, 0);
         let name_txt = if rt::get_tag(arg) == rt::ERA {
-          "~"
+          "_"
         } else {
           let var = rt::Var(rt::get_loc(term, 0));
           ctx.names.get(&var).map(|s| s as &str).unwrap_or("?")
@@ -223,7 +223,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         .map(String::to_string)
         .unwrap_or_else(|| format!("^{}", rt::get_loc(term, 0))),
       rt::ARG => "!".to_string(),
-      rt::ERA => "~".to_string(),
+      rt::ERA => "_".to_string(),
       _ => {
         format!("?({})", rt::get_tag(term))
       }

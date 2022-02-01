@@ -43,5 +43,5 @@ Pivot = 2147483648
 
 // Sorts and sums n random numbers
 (Main n) =
-  let list = (Randoms 1 (* 100000 n))
+  let list = (Randoms 1 (* 100000 10))
   (Sum (QSort Pivot Pivot list))

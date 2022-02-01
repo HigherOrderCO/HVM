@@ -30,6 +30,7 @@ pub fn compile_name(name: &str) -> String {
 }
 
 pub fn compile_book(comp: &rb::RuleBook) -> String {
+  let mut dups  = 0;
   let mut c_ids = String::new();
   let mut inits = String::new();
   let mut codes = String::new();
@@ -38,7 +39,7 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
   }
   for (name, (_arity, rules)) in &comp.func_rules {
-    let (init, code) = compile_func(comp, rules, 7);
+    let (init, code) = compile_func(comp, rules, 7, &mut dups);
 
     line(
       &mut c_ids,
@@ -59,10 +60,9 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
   c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64)
 }
 
-pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String, String) {
+pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64, dups: &mut u64) -> (String, String) {
   let dynfun = bd::build_dynfun(comp, rules);
 
-  let mut dups = 0;
   let mut init = String::new();
   let mut code = String::new();
 
@@ -97,11 +97,8 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (Str
   for (i, is_redex) in dynfun.redex.iter().enumerate() {
     if *is_redex {
       line(&mut code, tab + 0, &format!("if (get_tag(ask_arg(mem,term,{})) == PAR) {{", i));
-      line(
-        &mut code,
-        tab + 1,
-        &format!("cal_par(mem, host, term, ask_arg(mem, term, {}), {});", i, i),
-      );
+      line(&mut code, tab + 1, &format!("cal_par(mem, host, term, ask_arg(mem, term, {}), {});", i, i));
+      line(&mut code, tab + 1, &format!("continue;"));
       line(&mut code, tab + 0, "}");
     }
   }
@@ -133,7 +130,7 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (Str
 
     // Builds the right-hand side term (ex: `(Succ (Add a b))`)
     //let done = compile_func_rule_body(&mut code, tab + 1, &dynrule.body, &dynrule.vars);
-    let done = compile_func_rule_term(&mut code, tab + 1, &dynrule.term, &dynrule.vars, &mut dups);
+    let done = compile_func_rule_term(&mut code, tab + 1, &dynrule.term, &dynrule.vars, dups);
     line(&mut code, tab + 1, &format!("u64 done = {};", done));
 
     // Links the host location to it
@@ -295,11 +292,7 @@ pub fn compile_func_rule_term(
         line(code, tab + 0, &format!("u64 {};", retx));
         // Optimization: do inline operation, avoiding Op2 allocation, when operands are already number
         if INLINE_NUMBERS {
-          line(
-            code,
-            tab + 0,
-            &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1),
-          );
+          line(code, tab + 0, &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1));
           let a = format!("get_val({})", val0);
           let b = format!("get_val({})", val1);
           match *oper {

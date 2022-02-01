@@ -313,8 +313,12 @@ pub fn reduce(
 
   loop {
     let term = ask_lnk(mem, host);
-    //println!("reduce {}", show_term(mem, ask_lnk(mem, root), opt_id_to_name));
-    //println!("reduce {}", show_mem(mem));
+    //println!("reduce {}", show_lnk(term));
+    //println!("------ {}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name));
+    //for i in 0 .. 256 {
+      //println!("- {:x} {}", i, show_lnk(mem.node[i]));
+    //}
+    //println!("memory {}", show_mem(mem));
 
     if init == 1 {
       match get_tag(term) {
@@ -364,6 +368,7 @@ pub fn reduce(
         APP => {
           let arg0 = ask_arg(mem, term, 0);
           if get_tag(arg0) == LAM {
+            //println!("app-lam");
             inc_cost(mem);
             subst(mem, ask_arg(mem, arg0, 0), ask_arg(mem, term, 1));
             let _done = link(mem, host, ask_arg(mem, arg0, 1));
@@ -373,6 +378,7 @@ pub fn reduce(
             continue;
           }
           if get_tag(arg0) == PAR {
+            //println!("app-sup");
             inc_cost(mem);
             let app0 = get_loc(term, 0);
             let app1 = get_loc(arg0, 0);
@@ -392,6 +398,7 @@ pub fn reduce(
         DP0 | DP1 => {
           let arg0 = ask_arg(mem, term, 2);
           if get_tag(arg0) == LAM {
+            //println!("dup-lam");
             inc_cost(mem);
             let let0 = get_loc(term, 0);
             let par0 = get_loc(arg0, 0);
@@ -412,14 +419,13 @@ pub fn reduce(
             link(mem, host, done);
             init = 1;
             continue;
-          }
-          if get_tag(arg0) == PAR {
+          } else if get_tag(arg0) == PAR {
+            //println!("dup-sup");
             if get_ext(term) == get_ext(arg0) {
               inc_cost(mem);
               subst(mem, ask_arg(mem, term, 0), ask_arg(mem, arg0, 0));
               subst(mem, ask_arg(mem, term, 1), ask_arg(mem, arg0, 1));
-              let _done =
-                link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
+              let _done = link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
               clear(mem, get_loc(term, 0), 3);
               clear(mem, get_loc(arg0, 0), 2);
               init = 1;
@@ -443,15 +449,15 @@ pub fn reduce(
               let done = Par(get_ext(arg0), if get_tag(term) == DP0 { par0 } else { par1 });
               link(mem, host, done);
             }
-          }
-          if get_tag(arg0) == U32 {
+          } else if get_tag(arg0) == U32 {
+            //println!("dup-u32");
             inc_cost(mem);
             subst(mem, ask_arg(mem, term, 0), arg0);
             subst(mem, ask_arg(mem, term, 1), arg0);
             let _done = arg0;
             link(mem, host, arg0);
-          }
-          if get_tag(arg0) == CTR {
+          } else if get_tag(arg0) == CTR {
+            //println!("dup-ctr");
             inc_cost(mem);
             let func = get_ext(arg0);
             let arit = get_ari(arg0);
@@ -463,16 +469,19 @@ pub fn reduce(
             } else {
               let ctr0 = get_loc(arg0, 0);
               let ctr1 = alloc(mem, arit);
-              let term_arg_0 = ask_arg(mem, term, 0);
-              let term_arg_1 = ask_arg(mem, term, 1);
-              for i in 0..arit {
-                let leti = if i == 0 { get_loc(term, 0) } else { alloc(mem, 3) };
-                let arg0_arg_i = ask_arg(mem, arg0, i);
+              for i in 0 .. arit - 1 {
+                let leti = alloc(mem, 3);
+                link(mem, leti + 2, ask_arg(mem, arg0, i));
                 link(mem, ctr0 + i, Dp0(get_ext(term), leti));
                 link(mem, ctr1 + i, Dp1(get_ext(term), leti));
-                link(mem, leti + 2, arg0_arg_i);
               }
+              let leti = get_loc(term, 0);
+              link(mem, leti + 2, ask_arg(mem, arg0, arit - 1));
+              let term_arg_0 = ask_arg(mem, term, 0);
+              link(mem, ctr0 + arit - 1, Dp0(get_ext(term), leti));
               subst(mem, term_arg_0, Ctr(arit, func, ctr0));
+              let term_arg_1 = ask_arg(mem, term, 1);
+              link(mem, ctr1 + arit - 1, Dp1(get_ext(term), leti));
               subst(mem, term_arg_1, Ctr(arit, func, ctr1));
               let done = Ctr(arit, func, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
               link(mem, host, done);
@@ -483,6 +492,7 @@ pub fn reduce(
           let arg0 = ask_arg(mem, term, 0);
           let arg1 = ask_arg(mem, term, 1);
           if get_tag(arg0) == U32 && get_tag(arg1) == U32 {
+            //println!("op2-u32");
             inc_cost(mem);
             let a = get_val(arg0);
             let b = get_val(arg1);
@@ -544,8 +554,8 @@ pub fn reduce(
             let done = U_32(c);
             clear(mem, get_loc(term, 0), 2);
             link(mem, host, done);
-          }
-          if get_tag(arg0) == PAR {
+          } else if get_tag(arg0) == PAR {
+            //println!("op2-sup-0");
             inc_cost(mem);
             let op20 = get_loc(term, 0);
             let op21 = get_loc(arg0, 0);
@@ -560,8 +570,8 @@ pub fn reduce(
             link(mem, par0 + 1, Op2(get_ext(term), op21));
             let done = Par(get_ext(arg0), par0);
             link(mem, host, done);
-          }
-          if get_tag(arg1) == PAR {
+          } else if get_tag(arg1) == PAR {
+            //println!("op2-sup-1");
             inc_cost(mem);
             let op20 = get_loc(term, 0);
             let op21 = get_loc(arg1, 0);
@@ -583,6 +593,7 @@ pub fn reduce(
           let _ari = get_ari(term);
           if let Some(f) = &funcs[fun as usize] {
             if (f.rewriter)(mem, host, term) {
+              //println!("cal-fun");
               init = 1;
               continue;
             }
@@ -709,10 +720,11 @@ pub fn show_lnk(x: Lnk) -> String {
 
 pub fn show_mem(worker: &Worker) -> String {
   let mut s: String = String::new();
-  for i in 0..24 {
+  for i in 0..48 {
     // pushes to the string
+    s.push_str(&format!("{:x} | ", i));
     s.push_str(&show_lnk(worker.node[i]));
-    s.push('|');
+    s.push('\n');
   }
   s
 }
