@@ -795,7 +795,7 @@ fine. For example, the program above can be fixed by just avoiding one clone:
 ```
 let g = λf(λx(f (f x)))
 let h = λf(λx(f (f x)))
-(g g)
+(g h)
 ```
 
 And all the other "hardcore" functional programming tools are compatible.
