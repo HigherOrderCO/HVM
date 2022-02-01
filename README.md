@@ -418,7 +418,7 @@ like to implement:
 
 If you'd like to be part of any of these, please
 [email me](mailto:victor.taelin@gmail.com), or just send me a personal message on
-[Twitter](https://twitter.com/victor.taelin).
+[Twitter](https://twitter.com/victortaelin).
 
 Community
 =========

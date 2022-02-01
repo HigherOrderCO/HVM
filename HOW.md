@@ -135,8 +135,8 @@ function foo(x, y) {
 }
 ```
 
-To compute `foo(2, 3)`, the number `2` must be **cloned** before multiplying it
-with itself. This seemingly innocent operation has made a lot of people very
+To compute `foo(2, 3)`, the number `2` must be **cloned** before adding it
+to itself. This seemingly innocent operation has made a lot of people very
 confused and has been widely regarded as the hardest problem of the 21st
 century.
 
@@ -699,7 +699,7 @@ up in the function position of an application. For example, the situation below
 can happen at runtime:
 
 ```javascript
-({λx(x) λy(x)} 10)
+({λx(x) λy(y)} 10)
 ```
 
 This represents two superposed lambdas, applied to an argument `10`. If we
@@ -710,7 +710,7 @@ superposed application rule that deals with that situation:
 ```javascript
 ({a b} c)
 ----------------------- App-Sup
-{x0 x1} = c
+dup x0 x1 = c
 {(a x0) (b x1)}
 ```
 
@@ -799,7 +799,9 @@ let h = λf(λx(f (f x)))
 ```
 
 And all the other "hardcore" functional programming tools are compatible.
-Y-Combinators, Scott-Encodings, Church-Encodings and the like work just fine. It
+Y-Combinators, Church-Encodings, nested maps of maps, all work just fine. 
+If you think you'll reach this limitation in practice, you're probably
+misunderstanding how esotheric a program must be for that to happen. It
 is a common (and annoying) misconception that this limit is any relevant in
 practice. C programmers survived without closures, for decades. Rust programmers
 live well with far more restrictive limitations on what shapes of programs
