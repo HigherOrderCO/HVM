@@ -10,5 +10,12 @@ categories = ["compilers"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+test = true
+
+[[bin]]
+name = "hvm"
+test = false
+
 [dependencies]
 num_cpus = "1.13"

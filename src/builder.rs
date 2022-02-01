@@ -471,7 +471,7 @@ pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) 
   alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
 }
 
-// Evaluates a Lambolt term to normal form
+/// Evaluates a Lambolt term to normal form
 pub fn eval_code(call: &lang::Term, code: &str) -> (Box<lang::Term>, u64, u64, u64) {
   // Creates a new Runtime worker
   let mut worker = rt::new_worker();
