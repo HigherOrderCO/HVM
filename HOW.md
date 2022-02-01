@@ -660,7 +660,7 @@ reduction:
 
 ```javascript
 dup f g = ((λx λy (Pair (+ x x) y)) 2)
-(Pair (g 10) (g 20))
+(Pair (f 10) (g 20))
 ----------------------------------- App-Lam
 dup f g = λy (Pair (+ 2 2) y)
 (Pair (f 10) (g 20))
