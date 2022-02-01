@@ -417,7 +417,7 @@ like to implement:
 - A bunch of other [planned features](https://github.com/Kindelia/HVM/issues/38)
 
 If you'd like to be part of any of these, please
-[email me](victor.taelin@gmail.com), or just send me a personal message on
+[email me](mailto:victor.taelin@gmail.com), or just send me a personal message on
 [Twitter](https://twitter.com/victor.taelin).
 
 Community
