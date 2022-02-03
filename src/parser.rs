@@ -90,7 +90,6 @@ pub fn head_default(state: State) -> char {
 }
 
 pub fn tail(state: State) -> State {
-  let _fst = head(state);
   let add = match head(state) {
     Some(c) => c.len_utf8(),
     None => 0,
@@ -264,12 +263,8 @@ pub fn grammar<'a, A: 'a>(
 pub fn maybe<'a, A: 'a>(parser: Parser<'a, A>, state: State<'a>) -> Answer<'a, Option<A>> {
   let result = parser(state);
   match result {
-    Ok((state, result)) => {
-      Ok((state, Some(result)))
-    },
-    Err(err) => {
-      Ok((state, None))
-    }
+    Ok((state, result)) => Ok((state, Some(result))),
+    Err(_) => Ok((state, None)),
   }
 }
 

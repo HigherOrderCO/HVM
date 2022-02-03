@@ -1,11 +1,18 @@
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+    types: [review_requested, ready_for_review]
 
 name: Continuous Integration
 
 jobs:
   cargo_check:
+    if: github.event.pull_request.draft == false
     name: cargo check
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -19,8 +26,12 @@ jobs:
           command: check
 
   cargo_test:
+    if: github.event.pull_request.draft == false
     name: cargo test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -34,6 +45,7 @@ jobs:
           command: test
 
   cargo_fmt:
+    if: github.event.pull_request.draft == false
     name: cargo fmt
     runs-on: ubuntu-latest
     steps:
@@ -50,6 +62,7 @@ jobs:
           args: --all -- --check
 
   cargo_clippy:
+    if: github.event.pull_request.draft == false
     name: cargo clippy
     runs-on: ubuntu-latest
     steps:
@@ -67,6 +80,7 @@ jobs:
           args: -- -D warnings
 
   nix_build:
+    if: github.event.pull_request.draft == false
     name: nix build
     runs-on: ubuntu-latest
     steps:
@@ -78,6 +92,7 @@ jobs:
     - run: nix build
 
   nix_flake_check:
+    if: github.event.pull_request.draft == false
     name: nix flake check
     runs-on: ubuntu-latest
     steps:

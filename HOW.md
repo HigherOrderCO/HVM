@@ -765,7 +765,7 @@ extra cost, HVM instead placed a limitation that allowed for a much faster
 decision procedure. That limitation is:
 
 **If a lambda that clones its argument is itself cloned, then its clones aren't
-allowed to clone each-other.**
+allowed to clone each other.**
 
 For example, this term is **not** allowed:
 
@@ -780,7 +780,7 @@ first clone attempts to clone the second clone. That is considered undefined
 behavior, and a typed language that compiles to HVM must check that this kind of
 situation won't happen.
 
-How common is this? Well, unless you like multiplying Church-Encoded natural
+How common is this? Well, unless you like multiplying Church encoded natural
 numbers in a loop, you've probably never seen a program that reaches this
 limitation in your entire career. Even if you're a fan of λ-encodings, you're
 fine. For example, the program above can be fixed by just avoiding one clone:
@@ -792,10 +792,10 @@ let h = λf(λx(f (f x)))
 ```
 
 And all the other "hardcore" functional programming tools are compatible.
-Y-Combinators, Church-Encodings, nested maps of maps, all work just fine. 
+Y-Combinators, Church encodings, nested maps of maps, all work just fine. 
 If you think you'll reach this limitation in practice, you're probably
-misunderstanding how esotheric a program must be for that to happen. It
-is a common (and annoying) misconception that this limit is any relevant in
+misunderstanding how esoteric a program must be for that to happen. It
+is a common (and annoying) misconception that this limit has much relevance in
 practice. C programmers survived without closures, for decades. Rust programmers
 live well with far more restrictive limitations on what shapes of programs
 they're allowed to write. HVM has all sorts of extremely high-level closures you
@@ -822,7 +822,7 @@ Bonus: Copatterns
 
 Since functions and constructors are treated the same, this means there is
 nothing preventing us from writing copatterns, by just swapping the roles of
-eliminators and introducers. That is, for example, consider the program below:
+eliminators and introducers. As an example, consider the program below:
 
 ```javascript
 // List Map function
@@ -864,7 +864,7 @@ Bonus: Abusing Beta-Optimality
 
 By abusing beta-optimality, we're able to turn some exponential-time algorithms
 in linear-time ones. That is why we're able to implement `Add` on `BitStrings`
-as repeated increment:
+as repeated applications of increment:
 
 
 ```javascript
@@ -872,11 +872,11 @@ as repeated increment:
 (Add xs ys) = (App xs λx(Inc x) ys)
 ```
 
-This small, elegant mathematical one-liner is as efficient as the
-manually-crafted add-with-carry operation, which is an 8-cases, low-level,
+This small, elegant and mathematical one-liner is as efficient as the
+manually-crafted add-with-carry operation, which is an 8-cases, low-level and
 error-prone definition. In order for this to be possible, we must apply some
 techniques to make sure the self-composition (`λx (f (f x))`) of the function
-remais as small as possible. First, we must use λ-encoded algorithms. It we
+remains as small as possible. First, we must use λ-encoded algorithms. If we
 don't, then the normal form will not be small. For example:
 
 ```javascript
@@ -885,7 +885,7 @@ don't, then the normal form will not be small. For example:
 ```
 
 This is easy to read, but then `λx (Not (Not x))` will not have a small normal
-form. If we use λ-encodings, we can write `not` as:
+form. If we use λ-encodings, we can write `Not` as:
 
 ```javascript
 True  = λt λf t
@@ -893,7 +893,7 @@ False = λt λf f
 Not   = λb (b False True)
 ```
 
-This correctly negates an λ-encoded boolean. But `λx (Not (Not x))` still has a
+This correctly negates a λ-encoded boolean. But `λx (Not (Not x))` still has a
 large normal form: `λx (x λtλf(f) λtλf(t) λtλf(f) λtλf(t))`. Now, if we inline
 the definition of `Not`, we get:
 
@@ -951,7 +951,7 @@ Similar uses of this idea can greatly speed-up functional algorithms. For
 example, a clever way to implement a `Data.List` would be to let all algorithms
 operate on λ-encoded Church Lists under the hoods, converting as needed. This
 has the same "deforestation" effect of Haskell's rewrite pragmas, without any
-hard-coded compile-time rewrite, and in a more flexible way. For example, using
+hard-coded compile-time rewriting, and in a more flexible way. For example, using
 `map` in a loop is "deforested" in HVM. GHC can't do that, because the number of
 applications is not known statically.
 
@@ -974,7 +974,7 @@ Add = λa
   (a case_succ case_zero b)
 ```
 
-Notice how the later avoids cloning `b` entirely.
+Notice how the latter avoids cloning `b` entirely.
 
 Abusing Parallelism
 -------------------
