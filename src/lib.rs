@@ -1,5 +1,5 @@
 //! # High-order Virtual Machine (HVM) library
-//! 
+//!
 //! Note: this API is **unstable**.
 
 pub mod builder;
