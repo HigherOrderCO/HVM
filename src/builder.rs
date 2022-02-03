@@ -472,7 +472,7 @@ pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) 
 }
 
 // Evaluates a Lambolt term to normal form
-pub fn eval_code(call: &lang::Term, code: &str) -> (Box<lang::Term>, u64, u64, u64) {
+pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> (Box<lang::Term>, u64, u64, u64) {
   // Creates a new Runtime worker
   let mut worker = rt::new_worker();
 
@@ -490,7 +490,7 @@ pub fn eval_code(call: &lang::Term, code: &str) -> (Box<lang::Term>, u64, u64, u
 
   // Normalizes it
   let init = Instant::now();
-  rt::normal(&mut worker, host, &funs, Some(&book.id_to_name));
+  rt::normal(&mut worker, host, &funs, Some(&book.id_to_name), debug);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string

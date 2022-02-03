@@ -302,6 +302,7 @@ pub fn reduce(
   funcs: &[Option<Function>],
   root: u64,
   _opt_id_to_name: Option<&HashMap<u64, String>>,
+  debug: bool,
 ) -> Lnk {
   let mut stack: Vec<u64> = Vec::new();
 
@@ -310,13 +311,11 @@ pub fn reduce(
 
   loop {
     let term = ask_lnk(mem, host);
-    //println!("--- reduce {}", show_lnk(term));
-    //println!("------------------------");
-    //println!("{}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name, term));
-    //for i in 0 .. 256 {
-      //println!("- {:x} {}", i, show_lnk(mem.node[i]));
-    //}
-    //println!("memory {}", show_mem(mem));
+
+    if debug {
+      println!("------------------------");
+      println!("{}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name, term));
+    }
 
     if init == 1 {
       match get_tag(term) {
@@ -634,12 +633,13 @@ pub fn normal_go(
   host: u64,
   seen: &mut [u64],
   opt_id_to_name: Option<&HashMap<u64, String>>,
+  debug: bool,
 ) -> Lnk {
   let term = ask_lnk(mem, host);
   if get_bit(seen, host) {
     term
   } else {
-    let term = reduce(mem, funcs, host, opt_id_to_name);
+    let term = reduce(mem, funcs, host, opt_id_to_name, debug);
     set_bit(seen, host);
     let mut rec_locs = Vec::with_capacity(16);
     match get_tag(term) {
@@ -669,7 +669,7 @@ pub fn normal_go(
       _ => {}
     }
     for loc in rec_locs {
-      let lnk: Lnk = normal_go(mem, funcs, loc, seen, opt_id_to_name);
+      let lnk: Lnk = normal_go(mem, funcs, loc, seen, opt_id_to_name, debug);
       link(mem, loc, lnk);
     }
     term
@@ -681,9 +681,10 @@ pub fn normal(
   host: u64,
   funcs: &[Option<Function>],
   opt_id_to_name: Option<&HashMap<u64, String>>,
+  debug: bool,
 ) -> Lnk {
   let mut seen = vec![0; 4194304];
-  normal_go(mem, funcs, host, &mut seen, opt_id_to_name)
+  normal_go(mem, funcs, host, &mut seen, opt_id_to_name, debug)
 }
 
 // Debug
@@ -819,7 +820,7 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
         format!("({} {})", func, argm)
       }
       PAR => {
-        let kind = get_ext(term);
+        //let kind = get_ext(term);
         let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name, focus);
         let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus);
         format!("{{{} {}}}", func, argm)
@@ -878,10 +879,10 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
   }
   find_lets(mem, term, &mut lets, &mut kinds, &mut names, &mut count);
   let mut text = go(mem, term, &names, opt_id_to_name, focus);
-  for (key, pos) in lets {
+  for (_key, pos) in lets {
     // todo: reverse
     let what = String::from("?");
-    let kind = kinds.get(&key).unwrap_or(&0);
+    //let kind = kinds.get(&key).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
     let nam0 = if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
     let nam1 = if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };

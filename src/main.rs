@@ -30,9 +30,14 @@ fn run_cli() -> std::io::Result<()> {
 
   let cmd = &args[1];
 
+  if (cmd == "d" || cmd == "debug") && args.len() >= 3 {
+    let file = &hvm(&args[2]);
+    return run_code(&load_file_code(file), true);
+  }
+
   if (cmd == "r" || cmd == "run") && args.len() >= 3 {
     let file = &hvm(&args[2]);
-    return run_code(&load_file_code(file));
+    return run_code(&load_file_code(file), false);
   }
 
   if (cmd == "c" || cmd == "compile") && args.len() >= 3 {
@@ -50,7 +55,11 @@ fn show_help() {
   println!();
   println!("To run a file, interpreted:");
   println!();
-  println!("  hvm run file.hvm");
+  println!("  hvm r file.hvm");
+  println!();
+  println!("To run a file in debug mode:");
+  println!();
+  println!("  hvm d file.hvm");
   println!();
   println!("To compile a file to C:");
   println!();
@@ -67,9 +76,9 @@ fn make_call() -> language::Term {
   language::Term::Ctr { name, args }
 }
 
-fn run_code(code: &str) -> std::io::Result<()> {
+fn run_code(code: &str, debug: bool) -> std::io::Result<()> {
   println!("Reducing.");
-  let (norm, cost, size, time) = builder::eval_code(&make_call(), code);
+  let (norm, cost, size, time) = builder::eval_code(&make_call(), code, debug);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
   println!();
@@ -147,7 +156,7 @@ fn run_example() -> std::io::Result<()> {
 
   println!("Reducing with interpreter.");
   let call = language::Term::Ctr { name: "Main".to_string(), args: Vec::new() };
-  let (norm, cost, size, time) = builder::eval_code(&call, code);
+  let (norm, cost, size, time) = builder::eval_code(&call, code, false);
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
   println!();
