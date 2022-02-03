@@ -135,8 +135,8 @@ function foo(x, y) {
 }
 ```
 
-To compute `foo(2, 3)`, the number `2` must be **cloned** before multiplying it
-with itself. This seemingly innocent operation has made a lot of people very
+To compute `foo(2, 3)`, the number `2` must be **cloned** before adding it
+to itself. This seemingly innocent operation has made a lot of people very
 confused and has been widely regarded as the hardest problem of the 21st
 century.
 
@@ -186,7 +186,8 @@ thunks, which are nothing but *memoized references* to shared expressions,
 allowing the `(2 * 2)` example above to be cached. This solution, though, breaks
 down when there are lambdas. Similarly, Rust is GC-free, so every object has
 only one "owner". To avoid too much cloning, it implements a complex *borrowed
-references* system, based on borrows.  Finally, parallel languages require
+references* system, allowing the same object to be accessed from multiple places,
+when the compiler can prove it is safe. Finally, parallel languages require
 mutexes and atomics to synchronize accesses to *shared references*. In other
 words, references saved the world by letting us avoid these clones, and that's
 great... right?
@@ -577,8 +578,8 @@ substitution of `a` by `λx0(b0)`, `b` by `λx1(b1)` and `x` by the superpositio
 `{x0 x1}`".
 
 What this is saying is that, in order to duplicate a lambda, we must duplicate
-its body; then we must create two lambdas. Then, then, weird things happen with
-its variable. And then there is a brand new construct, the superposition, that I
+its body; then we must create two lambdas. Then, weird things happen with its
+variable. And then there is a brand new construct, the superposition, that I
 haven't explained yet. But, this is fine. Let's try to do it with an example:
 
 ```javascript
@@ -699,7 +700,7 @@ up in the function position of an application. For example, the situation below
 can happen at runtime:
 
 ```javascript
-({λx(x) λy(x)} 10)
+({λx(x) λy(y)} 10)
 ```
 
 This represents two superposed lambdas, applied to an argument `10`. If we
@@ -710,12 +711,12 @@ superposed application rule that deals with that situation:
 ```javascript
 ({a b} c)
 ----------------------- App-Sup
-{x0 x1} = c
+dup x0 x1 = c
 {(a x0) (b x1)}
 ```
 
 In English, this rule says that: "the application of a superposition `{a b}` to
-`c` is the supoerposition of the application of `a` and `b` to copies of `c`".
+`c` is the superposition of the application of `a` and `b` to copies of `c`".
 Makes sense, doesn't it? That rule also applies to user-defined functions. The
 logic is the same, only adapted depending on the arity. I won't show it here.
 
@@ -764,11 +765,11 @@ If you've paid close attention, though, you may have noticed the DUP-SUP has
 already been defined, on the *Lambda Application* section. So, what is going on
 here? Well, it turns out that DUP-SUP is a special case that has two different
 reduction rules. If this DUP-SUP represents the end of a duplication process, it
-must go with the former rule. If, though, you're duplicating a term, which
+must go with the former rule. However, if you're duplicating a term, which
 itself duplicates something, then this rule must be used. Due to the extremely
-local nature of HVM reductions, though, determining when each rule should be
+local nature of HVM reductions though, determining when each rule should be
 used in general would require an expensive book-keeping machinery. To avoid that
-extra cost, HVM instead placed a limitation, that allowed for a much faster
+extra cost, HVM instead placed a limitation that allowed for a much faster
 decision procedure. That limitation is:
 
 **If a lambda that clones its argument is itself cloned, then its clones aren't
@@ -787,7 +788,7 @@ first clone attempts to clone the second clone. That is considered undefined
 behavior, and a typed language that compiles to HVM must check that this kind of
 situation won't happen.
 
-How common is this? Well, except if you like multiplying Church-Encoded natural
+How common is this? Well, unless you like multiplying Church-Encoded natural
 numbers in a loop, you've probably never seen a program that reaches this
 limitation in your entire career. Even if you're a fan of λ-encodings, you're
 fine. For example, the program above can be fixed by just avoiding one clone:
@@ -799,7 +800,9 @@ let h = λf(λx(f (f x)))
 ```
 
 And all the other "hardcore" functional programming tools are compatible.
-Y-Combinators, Scott-Encodings, Church-Encodings and the like work just fine. It
+Y-Combinators, Church-Encodings, nested maps of maps, all work just fine. 
+If you think you'll reach this limitation in practice, you're probably
+misunderstanding how esotheric a program must be for that to happen. It
 is a common (and annoying) misconception that this limit is any relevant in
 practice. C programmers survived without closures, for decades. Rust programmers
 live well with far more restrictive limitations on what shapes of programs

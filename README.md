@@ -410,7 +410,7 @@ like to implement:
 
 - Compile it to GPUs (just imagine that!)
 
-- Build a blockchain around it (draft on [Kindelia](https://github.com/kindelia/kindelia))
+- Build a peer-to-peer λ-calculus REPL (draft on [Kindelia](https://github.com/kindelia/kindelia))
 
 - Compile [Kind-Lang](https://github.com/kindelia/kind) to it
 
@@ -418,7 +418,7 @@ like to implement:
 
 If you'd like to be part of any of these, please
 [email me](mailto:victor.taelin@gmail.com), or just send me a personal message on
-[Twitter](https://twitter.com/victor.taelin).
+[Twitter](https://twitter.com/victortaelin).
 
 Community
 =========

@@ -146,34 +146,26 @@ function main() {
     // Saves results.
     // TODO: messy code, improve
     console.log("Done! Saving results...");
-    var charts = {};
-    for (var name in programs) {
-      charts[name] = {X: programs[name].vals.slice(0)};
-      for (var eva in evaluators) {
-        charts[name][eva] = [];
-      }
+    var chart = {
+      X: programs[program_name].vals.slice(0),
+    };
+    for (var eva in evaluators) {
+      chart[eva] = [];
     }
     for (var res of result) {
-      charts[res.prog][res.targ].push(res.time);
+      chart[res.targ].push(res.time);
     }
-    var csvs = [];
     var evas = Object.keys(evaluators);
-    for (var prog in charts) {
-      var chart = charts[prog];
-      var rows = [["X"].concat(evas)];
-      for (var i = 0; i < chart.X.length; ++i) {
-        var row = [chart.X[i]];
-        for (var eva of evas) {
-          row.push(chart[eva][i]);
-        }
-        rows.push(row);
+    var rows = [["X"].concat(evas)];
+    for (var i = 0; i < chart.X.length; ++i) {
+      var row = [chart.X[i]];
+      for (var eva of evas) {
+        row.push(chart[eva][i]);
       }
-      var text = rows.map(row => row.join(",")).join("\n");
-      csvs.push({prog, text}); 
+      rows.push(row);
     }
-    for (var {prog, text} of csvs) {
-      fs.writeFileSync(path.join(dir, "_results_", prog+".csv"), text);
-    }
+    var text = rows.map(row => row.join(",")).join("\n");
+    fs.writeFileSync(path.join(dir, "_results_", program_name+".csv"), text);
     console.log("Results saved.");
   };
 

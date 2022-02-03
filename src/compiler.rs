@@ -30,7 +30,7 @@ pub fn compile_name(name: &str) -> String {
 }
 
 pub fn compile_book(comp: &rb::RuleBook) -> String {
-  let mut dups  = 0;
+  let mut dups = 0;
   let mut c_ids = String::new();
   let mut inits = String::new();
   let mut codes = String::new();
@@ -60,7 +60,12 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
   c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64)
 }
 
-pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64, dups: &mut u64) -> (String, String) {
+pub fn compile_func(
+  comp: &rb::RuleBook,
+  rules: &[lang::Rule],
+  tab: u64,
+  dups: &mut u64,
+) -> (String, String) {
   let dynfun = bd::build_dynfun(comp, rules);
 
   let mut init = String::new();
@@ -82,11 +87,15 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64, dups: &
     line(&mut init, tab + 1, "init = 0;");
   } else {
     line(&mut init, tab + 1, "stk_push(&stack, host);");
-    for i in 0 .. stricts.len() {
+    for (i, strict) in stricts.iter().enumerate() {
       if i < stricts.len() - 1 {
-        line(&mut init, tab + 1, &format!("stk_push(&stack, get_loc(term, {}) | 0x80000000);", stricts[i]));
+        line(
+          &mut init,
+          tab + 1,
+          &format!("stk_push(&stack, get_loc(term, {}) | 0x80000000);", strict),
+        );
       } else {
-        line(&mut init, tab + 1, &format!("host = get_loc(term, {});", stricts[i]));
+        line(&mut init, tab + 1, &format!("host = get_loc(term, {});", strict));
       }
     }
   }
@@ -97,8 +106,12 @@ pub fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64, dups: &
   for (i, is_redex) in dynfun.redex.iter().enumerate() {
     if *is_redex {
       line(&mut code, tab + 0, &format!("if (get_tag(ask_arg(mem,term,{})) == PAR) {{", i));
-      line(&mut code, tab + 1, &format!("cal_par(mem, host, term, ask_arg(mem, term, {}), {});", i, i));
-      line(&mut code, tab + 1, &format!("continue;"));
+      line(
+        &mut code,
+        tab + 1,
+        &format!("cal_par(mem, host, term, ask_arg(mem, term, {}), {});", i, i),
+      );
+      line(&mut code, tab + 1, "continue;");
       line(&mut code, tab + 0, "}");
     }
   }
@@ -292,7 +305,11 @@ pub fn compile_func_rule_term(
         line(code, tab + 0, &format!("u64 {};", retx));
         // Optimization: do inline operation, avoiding Op2 allocation, when operands are already number
         if INLINE_NUMBERS {
-          line(code, tab + 0, &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1));
+          line(
+            code,
+            tab + 0,
+            &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1),
+          );
           let a = format!("get_val({})", val0);
           let b = format!("get_val({})", val1);
           match *oper {
