@@ -54,9 +54,6 @@ pub const GTE: u64 = 0xD;
 pub const GTN: u64 = 0xE;
 pub const NEQ: u64 = 0xF;
 
-const _MAIN: u64 = 0;
-const _SLOW: u64 = 1;
-
 // Types
 // -----
 
@@ -313,8 +310,9 @@ pub fn reduce(
 
   loop {
     let term = ask_lnk(mem, host);
-    //println!("reduce {}", show_lnk(term));
-    //println!("------ {}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name));
+    //println!("--- reduce {}", show_lnk(term));
+    //println!("------------------------");
+    //println!("{}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name, term));
     //for i in 0 .. 256 {
       //println!("- {:x} {}", i, show_lnk(mem.node[i]));
     //}
@@ -335,8 +333,8 @@ pub fn reduce(
         }
         OP2 => {
           stack.push(host);
-          stack.push(get_loc(term, 0) | 0x80000000);
-          host = get_loc(term, 1);
+          stack.push(get_loc(term, 1) | 0x80000000);
+          host = get_loc(term, 0);
           continue;
         }
         CAL => {
@@ -397,6 +395,13 @@ pub fn reduce(
         }
         DP0 | DP1 => {
           let arg0 = ask_arg(mem, term, 2);
+          let argK = ask_arg(mem, term, if get_tag(term) == DP0 { 1 } else { 0 });
+          if get_tag(argK) == ERA {
+            let done = arg0;
+            link(mem, host, done);
+            init = 1;
+            continue;
+          }
           if get_tag(arg0) == LAM {
             //println!("dup-lam");
             inc_cost(mem);
@@ -729,7 +734,7 @@ pub fn show_mem(worker: &Worker) -> String {
   s
 }
 
-pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, String>>) -> String {
+pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, String>>, focus: u64) -> String {
   let mut lets: HashMap<u64, u64> = HashMap::new();
   let mut kinds: HashMap<u64, u64> = HashMap::new();
   let mut names: HashMap<u64, String> = HashMap::new();
@@ -792,36 +797,37 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
     term: Lnk,
     names: &HashMap<u64, String>,
     opt_id_to_name: Option<&HashMap<u64, String>>,
+    focus: u64,
   ) -> String {
-    match get_tag(term) {
+    let done = match get_tag(term) {
       DP0 => {
-        return format!("a{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")));
+        format!("a{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")))
       }
       DP1 => {
-        return format!("b{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")));
+        format!("b{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")))
       }
       VAR => {
-        return format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")));
+        format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")))
       }
       LAM => {
         let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")));
-        return format!("λ{} {}", name, go(mem, ask_arg(mem, term, 1), names, opt_id_to_name));
+        format!("λ{} {}", name, go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus))
       }
       APP => {
-        let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name);
-        let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name);
-        return format!("({} {})", func, argm);
+        let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name, focus);
+        let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus);
+        format!("({} {})", func, argm)
       }
       PAR => {
         let kind = get_ext(term);
-        let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name);
-        let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name);
-        return format!("&{}<{} {}>", kind, func, argm);
+        let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name, focus);
+        let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus);
+        format!("{{{} {}}}", func, argm)
       }
       OP2 => {
         let oper = get_ext(term);
-        let val0 = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name);
-        let val1 = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name);
+        let val0 = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name, focus);
+        let val1 = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus);
         let symb = match oper {
           0x00 => "+",
           0x01 => "-",
@@ -841,16 +847,16 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
           0x15 => "!=",
           _ => "?",
         };
-        return format!("({} {} {})", symb, val0, val1);
+        format!("({} {} {})", symb, val0, val1)
       }
       U32 => {
-        return format!("{}", get_val(term));
+        format!("{}", get_val(term))
       }
       CTR | CAL => {
         let func = get_ext(term);
         let arit = get_ari(term);
         let args: Vec<String> =
-          (0..arit).map(|i| go(mem, ask_arg(mem, term, i), names, opt_id_to_name)).collect();
+          (0..arit).map(|i| go(mem, ask_arg(mem, term, i), names, opt_id_to_name, focus)).collect();
         let name = if let Some(id_to_name) = opt_id_to_name {
           id_to_name.get(&func).unwrap_or(&String::from("?")).clone()
         } else {
@@ -860,28 +866,31 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
             func
           )
         };
-        return format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>());
+        format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
       _ => String::from("?"),
-    }
+    };
+    if term == focus {
+      return format!("${}", done);
+    } else {
+      return done;
+    };
   }
   find_lets(mem, term, &mut lets, &mut kinds, &mut names, &mut count);
-  let mut text = go(mem, term, &names, opt_id_to_name);
+  let mut text = go(mem, term, &names, opt_id_to_name, focus);
   for (key, pos) in lets {
     // todo: reverse
     let what = String::from("?");
     let kind = kinds.get(&key).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
-    let nam0 =
-      if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
-    let nam1 =
-      if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+    let nam0 = if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+    let nam1 = if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
     text.push_str(&format!(
-      " !{}<{} {}> = {};",
-      kind,
+      "\ndup {} {} = {};",
+      //kind,
       nam0,
       nam1,
-      go(mem, ask_lnk(mem, pos + 2), &names, opt_id_to_name)
+      go(mem, ask_lnk(mem, pos + 2), &names, opt_id_to_name, focus)
     ));
   }
   text
