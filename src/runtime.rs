@@ -394,13 +394,13 @@ pub fn reduce(
         }
         DP0 | DP1 => {
           let arg0 = ask_arg(mem, term, 2);
-          let argK = ask_arg(mem, term, if get_tag(term) == DP0 { 1 } else { 0 });
-          if get_tag(argK) == ERA {
-            let done = arg0;
-            link(mem, host, done);
-            init = 1;
-            continue;
-          }
+          //let argK = ask_arg(mem, term, if get_tag(term) == DP0 { 1 } else { 0 });
+          //if get_tag(argK) == ERA {
+            //let done = arg0;
+            //link(mem, host, done);
+            //init = 1;
+            //continue;
+          //}
           if get_tag(arg0) == LAM {
             //println!("dup-lam");
             inc_cost(mem);
