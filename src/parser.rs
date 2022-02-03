@@ -1,5 +1,5 @@
 // This parse library is more high-level and functional than existing alternatives.
-// A Parser is defied as (with details omitted):
+// A Parser is defined as (with details omitted):
 //
 //   Answer<A> = Result<(State, A), String>
 //   Parser<A> = Fn(State) -> Answer<A>>
