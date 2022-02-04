@@ -38,6 +38,8 @@ and similar. And this is just a prototype I wrote in about a month. I don't even
 consider myself proficient in C, so I have expectations for the long-term
 potential of HVM.
 
+HVM's optimality and complexity reasoning comes from the vast literature on the optimal evaluation of functional programming languages. [This book](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages), from Andrea Asperti and Stefano Guerrini, has a great overview. HVM is merely a practical, efficient implementation of the bookkeeping-free reduction machine depicted on the book (pages 14-39). Its high-order machinery has a 1-to-1 relationship to the theoretical model, and the same complexity bounds, and respective proofs (chapter 10) apply. HVM has additional features (machine integers, datatypes) that do not affect complexity.
+
 That's about it. Now, onto the long, in-depth explanation.
 
 How does it work?
@@ -815,11 +817,6 @@ As a last note, HVM's current implementation is slightly more restrictive than
 it should be, since each occurrence of a global definition counts as a clone of
 itself. That is not necessary, and will soon be patched. Regardless, even in
 this version, it is very unlikely you'll find this in practice.
-
-Theory
-======
-
-HVM's optimality and complexity reasoning comes from the vast literature on the optimal evaluation of functional programming languages. [This book](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages), from Andrea Asperti and Stefano Guerrini, has a great overview. HVM is merely a practical, efficient implementation of the bookkeeping-free reduction machine depicted on the book (pages 14-39). Its high-order machinery has a 1-to-1 relationship to the theoretical model, and the same complexity bounds, and respective proofs (chapter 10) apply. HVM has additional features (machine integers, datatypes) that do not affect complexity.
 
 HVM's low-level implementation
 ==============================
