@@ -921,7 +921,7 @@ The same technique also applies for `Inc`. We start with the usual definition:
 (Inc (I x)) = (O (Inc x))
 ```
 
-Then we made it λ-encoded:
+Then we make it λ-encoded:
 
 ```javascript
 (Inc x) =
@@ -931,7 +931,7 @@ Then we made it λ-encoded:
   (x case_e case_o case_i)
 ```
 
-Then we lifted the shared lambdas up:
+Then we lift the shared lambdas up:
 
 ```javascript
 (Inc x) = λe λo λi
