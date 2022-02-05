@@ -120,6 +120,8 @@ having incremented each number in `list` by 1. Notes:
 
 - You may write `@` instead of `λ`.
 
+- Check [this](https://github.com/Kindelia/HVM/issues/64#issuecomment-1030688993) issue about how constructors, applications and currying work.
+
 What makes it fast
 ==================
 
