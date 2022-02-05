@@ -870,14 +870,12 @@ as repeated increment:
 (Add xs ys) = (App xs λx(Inc x) ys)
 ```
 
-This small, elegant mathematical one-liner has the same asymptotics as the
-manually-crafted add-with-carry operation, which is low-level and error-prone.
-is an 8-cases, error-prone low-level definition.
-
-In order for this to be possible, we must apply some techniques to make sure the
-self-composition (`λx (f (f x))`) of the function remais as small as possible.
-First, we must use λ-encoded algorithms. It we don't, then the normal form will
-not be small. For example:
+This small, elegant mathematical one-liner is as efficient as the
+manually-crafted add-with-carry operation, which is an 8-cases, low-level,
+error-prone definition. In order for this to be possible, we must apply some
+techniques to make sure the self-composition (`λx (f (f x))`) of the function
+remais as small as possible. First, we must use λ-encoded algorithms. It we
+don't, then the normal form will not be small. For example:
 
 ```
 (Not True)  = False
