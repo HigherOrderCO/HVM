@@ -425,5 +425,5 @@ Community
 
 To just follow the project, join our [Telegram
 Chat](https://t.me/formality_lang), the [Kindelia community on
-Discord](https://discord.gg/QQ2jkxVj) or
+Discord](https://discord.gg/VV7ppaVWYn) or
 [Matrix](https://matrix.to/#/#kindelia:kde.org)!

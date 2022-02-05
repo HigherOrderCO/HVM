@@ -1,23 +1,20 @@
-How!?
-=====
-
 ![magic](https://c.tenor.com/md3foOULKGIAAAAC/magic.gif)
 
 **Note: this is a public draft. It contains a lot of errors and may be too
 meme-ish and handholding in some parts. I know it needs improvements. I'll
 review and finish in a future. Corrections and feedbacks are welcome!**
 
-Table of Contents
-=================
+How?
+====
 
 * [TL;DR](#tldr)
 * [Core Language Overview](#hvms-core-language-overview)
-* [The Secret Ingredient](#the-secret-ingredient)
+* [How it isn't garbage collected](#how-it-isnt-garbage-collected)
 * [Rewrite Rules](#hvms-rewrite-rules)
 * [Low-level Implementation](#hvms-low-level-implementation)
-* [Bonus](#bonus)
-  * [Copatterns](#copatterns)
-  * [Abusing Beta-Optimality](#abusing-beta-optimality)
+* [Bonus: copatterns](#bonus-copatterns)
+* [Bonus: Abusing Beta-Optimality](#bonus-abusing-beta-optimality)
+* [Bonus: Abusing Parallelism](#bonus-abusing-parallelism)
 
 TL;DR
 =====
@@ -49,6 +46,8 @@ made the runtime 50x (!) faster, which finally allowed it to compete with GHC
 and similar. And this is just a prototype I wrote in about a month. I don't even
 consider myself proficient in C, so I have expectations for the long-term
 potential of HVM.
+
+HVM's optimality and complexity reasoning comes from the vast literature on the optimal evaluation of functional programming languages. [This book](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages), from Andrea Asperti and Stefano Guerrini, has a great overview. HVM is merely a practical, efficient implementation of the bookkeeping-free reduction machine depicted on the book (pages 14-39). Its high-order machinery has a 1-to-1 relationship to the theoretical model, and the same complexity bounds, and respective proofs (chapter 10) apply. HVM has additional features (machine integers, datatypes) that do not affect complexity.
 
 That's about it. Now, onto the long, in-depth explanation.
 
@@ -121,8 +120,8 @@ having incremented each number in `list` by 1. Notes:
 
 - You may write `@` instead of `λ`.
 
-The Secret Ingredient
-=====================
+How it isn't garbage-collected
+==============================
 
 What makes HVM special, though, is **how** it evaluates its programs. HVM has
 one simple trick that hackers don't want you to know. This trick is responsible
@@ -815,16 +814,10 @@ TODO: in this section, explain how HVM nodes are stored in memory, how rewrites
 and reduction works, etc. Since this isn't done yet, feel free to explore it
 yourself by reading [runtime.c](https://github.com/Kindelia/HVM/blob/master/src/runtime.c).
 
-(...)
+[TODO]
 
-
-Bonus
-=====
-
-I'll be pasting some interesting ideas and applications here.
-
-Copatterns
-----------
+Bonus: Copatterns
+=================
 
 Since functions and constructors are treated the same, this means there is
 nothing preventing us from writing copatterns, by just swapping the roles of
@@ -865,8 +858,8 @@ position, and the function `Map` is matched:
 (Main n) = (Head (Tail (Tail Nats)))
 ```
 
-Abusing Beta-Optimality
------------------------
+Bonus: Abusing Beta-Optimality
+==============================
 
 By abusing beta-optimality, we're able to turn some exponential-time algorithms
 in linear-time ones. That is why we're able to implement `Add` on `BitStrings`
