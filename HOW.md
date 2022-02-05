@@ -4,8 +4,20 @@ How!?
 ![magic](https://c.tenor.com/md3foOULKGIAAAAC/magic.gif)
 
 **Note: this is a public draft. It contains a lot of errors and may be too
-meme-ish / handholding in some parts. I'll review and finish later on.
-Corrections and feedbacks are welcome!**
+meme-ish and handholding in some parts. I know it needs improvements. I'll
+review and finish in a future. Corrections and feedbacks are welcome!**
+
+Table of Contents
+=================
+
+* [TL;DR](#tldr)
+* [Core Language Overview](#hvms-core-language-overview)
+* [The Secret Ingredient](#the-secret-ingredient)
+* [Rewrite Rules](#hvms-rewrite-rules)
+* [Low-level Implementation](#hvms-low-level-implementation)
+* [Bonus](#bonus)
+  * [Copatterns](#copatterns)
+  * [Abusing Beta-Optimality](#abusing-beta-optimality)
 
 TL;DR
 =====
@@ -40,18 +52,15 @@ potential of HVM.
 
 That's about it. Now, onto the long, in-depth explanation.
 
-How does it work?
-=================
-
-HVM is, in essence, just a virtual machine that evaluates terms in its core
-language. So, before we dig deeper, let's review that language.
-
 HVM's Core Language Overview
 ============================
 
-HVM's Core is a very simple language that resembles untyped Haskell. It
-features lambdas (eliminated by applications), constructors (eliminated by
-user-defined rewrite rules) and machine integers (eliminated by operators).
+
+HVM is, in essence, just a virtual machine that evaluates terms in its core
+language. So, before we dig deeper, let's review that language. HVM's Core is a
+very simple language that resembles untyped Haskell. It features lambdas
+(eliminated by applications), constructors (eliminated by user-defined rewrite
+rules) and machine integers (eliminated by operators).
 
 ```
 term ::=
@@ -112,7 +121,7 @@ having incremented each number in `list` by 1. Notes:
 
 - You may write `@` instead of `λ`.
 
-The secret ingredient
+The Secret Ingredient
 =====================
 
 What makes HVM special, though, is **how** it evaluates its programs. HVM has
@@ -371,27 +380,10 @@ is as if HVM has added a `.clone()` to every variable used more than once. And
 that's fine.
 
 **5.** Even though the user-facing language makes no distinction between
-constructors and functions, the runtime does, for optimality purposes.  The
-effect this has is that, if a constructor is used in a functional position of
-an equation, it is flagged as a function, and the duplication rule is NOT
-triggered for it. For example, consider the programs below:
-
-```javascript
-(Map f Nil)         = Nil
-(Map f (Cons x xs)) = (Cons (f x) (Map f xs))
-```
-
-```javascript
-(Head (Map f xs)) = (f (Head xs))
-(Tail (Map f xs)) = (Map f (Tail xs))
-```
-
-On the first one, `Map` is flagged as a function, and its introducers, `Nil`
-and `Cons`, as constructors. On the second one, its eliminators, `Head` and
-`Tail`, are flagged as functions, and `Map` as a constructor. As such, `Map`
-can NOT be duplicated on the first program, but it CAN be duplicated on the
-second. Welcome
-to the upside down world of codata!
+constructors and functions, the runtime does, for optimality purposes.
+Specifically, a duplication is only applied for constructors that are not used
+as functions. This equal treatment means we can write copatterns easily in HVM;
+see the bonus section.
 
 #### Example
 
@@ -816,9 +808,183 @@ it should be, since each occurrence of a global definition counts as a clone of
 itself. That is not necessary, and will soon be patched. Regardless, even in
 this version, it is very unlikely you'll find this in practice.
 
-HVM's low-level implementation
+HVM's Low-level Implementation
 ==============================
 
 TODO: in this section, explain how HVM nodes are stored in memory, how rewrites
 and reduction works, etc. Since this isn't done yet, feel free to explore it
 yourself by reading [runtime.c](https://github.com/Kindelia/HVM/blob/master/src/runtime.c).
+
+(...)
+
+
+Bonus
+=====
+
+I'll be pasting some interesting ideas and applications here.
+
+Copatterns
+----------
+
+Since functions and constructors are treated the same, this means there is
+nothing preventing us from writing copatterns, by just swapping the roles of
+eliminators and introducers. That is, for example, consider the program below:
+
+```javascript
+// List Map function
+(Map f Nil)         = Nil
+(Map f (Cons x xs)) = (Cons (f x) (Map f xs))
+
+// List projectors
+(Head (Cons x xs)) = x
+(Tail (Cons x xs)) = xs
+
+// The infinite list: 0, 1, 2, 3 ...
+Nats = (Cons 0 (Map λx(+ x 1) Nats))
+
+// Just a test (returns 2)
+Main = (Head (Tail (Tail Nats)))
+```
+
+It is an the usual recursive `Map` applied to an infinite `List`. Here, `Map` is
+used in the function position, and the List constructors (`Nil` and `Cons`) are
+matched. The same program can be written in a corecursive fashion, by inverting
+everything: the `List` destructors (`Head`/`Tail`) are used in the function
+position, and the function `Map` is matched:
+
+```javascript
+// CoList Map function
+(Head (Map f xs)) = (f (Head xs))
+(Tail (Map f xs)) = (Map f (Tail xs))
+
+// The infinite colist: 0, 1, 2, 3 ...
+(Head Nats) = 0
+(Tail Nats) = (Map λx(+ x 1) Nats)
+
+// Just a test (returns 2)
+(Main n) = (Head (Tail (Tail Nats)))
+```
+
+Abusing Beta-Optimality
+-----------------------
+
+By abusing beta-optimality, we're able to turn some exponential-time algorithms
+in linear-time ones. That is why we're able to implement `Add` on `BitStrings`
+as repeated increment:
+
+
+```
+// Addition is just "increment N times"
+(Add xs ys) = (App xs λx(Inc x) ys)
+```
+
+This small, elegant mathematical one-liner has the same asymptotics as the
+manually-crafted add-with-carry operation, which is low-level and error-prone.
+is an 8-cases, error-prone low-level definition.
+
+In order for this to be possible, we must apply some techniques to make sure the
+self-composition (`λx (f (f x))`) of the function remais as small as possible.
+First, we must use λ-encoded algorithms. It we don't, then the normal form will
+not be small. For example:
+
+```
+(Not True)  = False
+(Not False) = True
+```
+
+This is easy to read, but then `λx (Not (Not x))` will not have a small normal
+form. If we use λ-encodings, we can write `not` as:
+
+```
+True  = λt λf t
+False = λt λf f
+Not   = λb (b False True)
+```
+
+This correctly negates an λ-encoded boolean. But `λx (Not (Not x))` still has a
+large normal form: `λx (x λtλf(f) λtλf(t) λtλf(f) λtλf(t))`. Now, if we inline
+the definition of `Not`, we get:
+
+```
+True  = λt λf t
+False = λt λf f
+Not   = λb (b λtλf(f) λtλf(t))
+```
+
+Notice how both branches start with the same lambdas? We can lift them up and
+**share** them:
+
+```
+True  = λt λf t
+False = λt λf f
+Not   = λb λt λf (b f t)
+```
+
+This will make the normal form of `λx (Not (Not x))` small: i.e., it becomes `λx
+λt λf (b t f)`. This makes `Not^(2^N)` linear time in `N`!
+
+The same technique also applies for `Inc`. We start with the usual definition:
+
+```
+(Inc E)     = E
+(Inc (O x)) = (I x)
+(Inc (I x)) = (O (Inc x))
+```
+
+Then we made it λ-encoded:
+
+```
+(Inc x) =
+  let case_e = λe λo λi e
+  let case_o = λx λe λo λi (i x)
+  let case_i = λx λe λo λi (o (Inc x))
+  (x case_e case_o case_i)
+```
+
+Then we lifted the shared lambdas up:
+
+```
+(Inc x) = λe λo λi
+  let case_e = e
+  let case_o = λx (i x)
+  let case_i = λx (o (Inc x))
+  (x case_e case_o case_i)
+```
+
+This makes `λx (Inc (Inc x))` have a constant-space normal form, which in turn
+makes the composition of `Inc` fast, allowing `Add` to be efficiently
+implemented as repeated increment. 
+
+Similar uses of this idea can greatly speed-up functional algorithms. For
+example, a clever way to implement a `Data.List` would be to let all algorithms
+operate on λ-encoded Church Lists under the hoods, converting as needed. This
+has the same "deforestation" effect of Haskell's rewrite pragmas, without any
+hard-coded compile-time rewrite, and in a more flexible way. For example, using
+`map` in a loop is "deforested" in HVM. GHC can't do that, because the number of
+applications is not known statically.
+
+Note that too much cloning will often make your normal forms large, so avoid
+these by keeping your programs linear. For example, instead of:
+
+```
+Add = λa λb
+  let case_zero = b
+  let case_succ = λa_pred (Add a_pred b)
+  (a case_succ case_zero)
+```
+
+Write:
+
+```
+Add = λa
+  let case_zero = λb b
+  let case_succ = λa_pred λb (Add a_pred b)
+  (a case_succ case_zero b)
+```
+
+Notice how the later avoids cloning `b` entirely.
+
+Abusing Parallelism
+-------------------
+
+[TODO]
