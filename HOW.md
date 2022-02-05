@@ -865,7 +865,7 @@ in linear-time ones. That is why we're able to implement `Add` on `BitStrings`
 as repeated increment:
 
 
-```
+```javascript
 // Addition is just "increment N times"
 (Add xs ys) = (App xs λx(Inc x) ys)
 ```
@@ -877,7 +877,7 @@ techniques to make sure the self-composition (`λx (f (f x))`) of the function
 remais as small as possible. First, we must use λ-encoded algorithms. It we
 don't, then the normal form will not be small. For example:
 
-```
+```javascript
 (Not True)  = False
 (Not False) = True
 ```
@@ -885,7 +885,7 @@ don't, then the normal form will not be small. For example:
 This is easy to read, but then `λx (Not (Not x))` will not have a small normal
 form. If we use λ-encodings, we can write `not` as:
 
-```
+```javascript
 True  = λt λf t
 False = λt λf f
 Not   = λb (b False True)
@@ -895,7 +895,7 @@ This correctly negates an λ-encoded boolean. But `λx (Not (Not x))` still has 
 large normal form: `λx (x λtλf(f) λtλf(t) λtλf(f) λtλf(t))`. Now, if we inline
 the definition of `Not`, we get:
 
-```
+```javascript
 True  = λt λf t
 False = λt λf f
 Not   = λb (b λtλf(f) λtλf(t))
@@ -904,7 +904,7 @@ Not   = λb (b λtλf(f) λtλf(t))
 Notice how both branches start with the same lambdas? We can lift them up and
 **share** them:
 
-```
+```javascript
 True  = λt λf t
 False = λt λf f
 Not   = λb λt λf (b f t)
@@ -915,7 +915,7 @@ This will make the normal form of `λx (Not (Not x))` small: i.e., it becomes `�
 
 The same technique also applies for `Inc`. We start with the usual definition:
 
-```
+```javascript
 (Inc E)     = E
 (Inc (O x)) = (I x)
 (Inc (I x)) = (O (Inc x))
@@ -923,7 +923,7 @@ The same technique also applies for `Inc`. We start with the usual definition:
 
 Then we made it λ-encoded:
 
-```
+```javascript
 (Inc x) =
   let case_e = λe λo λi e
   let case_o = λx λe λo λi (i x)
@@ -933,7 +933,7 @@ Then we made it λ-encoded:
 
 Then we lifted the shared lambdas up:
 
-```
+```javascript
 (Inc x) = λe λo λi
   let case_e = e
   let case_o = λx (i x)
@@ -956,7 +956,7 @@ applications is not known statically.
 Note that too much cloning will often make your normal forms large, so avoid
 these by keeping your programs linear. For example, instead of:
 
-```
+```javascript
 Add = λa λb
   let case_zero = b
   let case_succ = λa_pred (Add a_pred b)
@@ -965,7 +965,7 @@ Add = λa λb
 
 Write:
 
-```
+```javascript
 Add = λa
   let case_zero = λb b
   let case_succ = λa_pred λb (Add a_pred b)
