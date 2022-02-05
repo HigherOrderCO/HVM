@@ -9,10 +9,10 @@ How?
 
 * [TL;DR](#tldr)
 * [Core Language Overview](#hvms-core-language-overview)
-* [How it isn't garbage collected](#how-it-isnt-garbage-collected)
+* [What makes it fast](#what-makes-it-fast)
 * [Rewrite Rules](#hvms-rewrite-rules)
 * [Low-level Implementation](#hvms-low-level-implementation)
-* [Bonus: copatterns](#bonus-copatterns)
+* [Bonus: Copatterns](#bonus-copatterns)
 * [Bonus: Abusing Beta-Optimality](#bonus-abusing-beta-optimality)
 * [Bonus: Abusing Parallelism](#bonus-abusing-parallelism)
 
@@ -120,8 +120,8 @@ having incremented each number in `list` by 1. Notes:
 
 - You may write `@` instead of `λ`.
 
-How it isn't garbage-collected
-==============================
+What makes it fast
+==================
 
 What makes HVM special, though, is **how** it evaluates its programs. HVM has
 one simple trick that hackers don't want you to know. This trick is responsible
@@ -129,8 +129,7 @@ for HVM's major features: beta-optimality, parallelism, and no garbage
 collection. But before we get too technical, we must first talk about
 **clones**, and how their work obsession ruins everything, for everyone. This
 section should provide more context and a better intuition about why things are
-the way they are. That said, if you just want to see the tech, feel free to
-skip it.
+the way they are.
 
 ### Clones ruin everything
 
@@ -381,7 +380,7 @@ that's fine.
 **5.** Even though the user-facing language makes no distinction between
 constructors and functions, the runtime does, for optimality purposes.
 Specifically, a duplication is only applied for constructors that are not used
-as functions. This equal treatment means we can write copatterns easily in HVM;
+as functions. This equal treatment means we can write Copatterns easily in HVM;
 see the bonus section.
 
 #### Example
