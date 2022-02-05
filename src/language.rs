@@ -394,38 +394,35 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-// TODO: parse escape sequences
-//pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
-  //parser::guard(
-    //Box::new(|state| {
-      //let (state, head) = parser::get_char(state)?;
-      //Ok((state, head == '['))
-    //}),
-    //Box::new(|state| {
-      //let (state, _head) = parser::text("[", state)?;
-      //let mut elems: Vec<Box<Term>> = Vec::new();
-      //let mut state = state;
-      //loop {
-        //let (new_state, done) = parser::text("]")?;
-        //if done {
-          //state = new_state;
-          //break;
-        //} else {
-          //let elem = parse_term(state)?;
-          //elems.push(Box::new(elem));
-          //state = new_state;
-        //}
-      //}
-      //let empty = Term::Ctr { name: "Nil".to_string(), args: Vec::new() };
-      //let list = Box::new(chars.iter().rfold(empty, |t, h| Term::Ctr {
-        //name: "Cons".to_string(),
-        //args: vec![h, Box::new(t)],
-      //}));
-      //Ok((state, list))
-    //}),
-    //state,
-  //)
-//}
+pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+  parser::guard(
+    Box::new(|state| {
+      let (state, head) = parser::get_char(state)?;
+      Ok((state, head == '['))
+    }),
+    Box::new(|state| {
+      let (state, _head) = parser::text("[", state)?;
+      // let mut elems: Vec<Box<Term>> = Vec::new();
+      let state = state;
+      let (state, elems) = 
+        parser::until(
+    Box::new(|x| parser::text("]", x)), 
+   Box::new(|x| { 
+            let (state, term) = parse_term(x)?;
+            let (state, _) = parser::maybe(Box::new(|x| parser::text(",", x)), state)?;
+            Ok((state, term))
+          })
+          , state)?;
+      let empty = Term::Ctr { name: "Nil".to_string(), args: Vec::new() };
+      let list = Box::new(elems.iter().rfold(empty, |t, h| Term::Ctr {
+        name: "Cons".to_string(),
+        args: vec![h.clone(), Box::new(t)],
+      }));
+      Ok((state, list))
+    }),
+    state,
+  )
+}
 
 pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
   parser::grammar(
@@ -440,6 +437,7 @@ pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
       Box::new(parse_app),
       Box::new(parse_u32),
       Box::new(parse_str_sugar),
+      Box::new(parse_lst_sugar),
       Box::new(parse_var),
       Box::new(|state| Ok((state, None))),
     ],

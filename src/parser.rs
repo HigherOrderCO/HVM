@@ -261,6 +261,18 @@ pub fn grammar<'a, A: 'a>(
 // Combinators
 // ===========
 
+pub fn maybe<'a, A: 'a>(parser: Parser<'a, A>, state: State<'a>) -> Answer<'a, Option<A>> {
+  let result = parser(state);
+  match result {
+    Ok((state, result)) => {
+      Ok((state, Some(result)))
+    },
+    Err(err) => {
+      Ok((state, None))
+    }
+  }
+}
+
 // Evaluates a parser and returns its result, but reverts its effect.
 pub fn dry<'a, A: 'a>(parser: Parser<'a, A>, state: State<'a>) -> Answer<'a, A> {
   let (_new_state, result) = parser(state)?;
