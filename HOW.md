@@ -41,7 +41,7 @@ optimal reduction), but all implementations of this algorithm, until now,
 represented terms as graphs. This demanded a lot of pointer indirection, making
 it slow in practice. A new memory format, based on [SIC](https://github.com/VictorTaelin/Symmetric-Interaction-Calculus),
 takes advantage of the fact that inputs are known to be λ-terms, allowing for a
-50% lower memory throughput, and letting us avoid several impossible cases. This
+50% lower memory usage, and letting us avoid several impossible cases. This
 made the runtime 50x (!) faster, which finally allowed it to compete with GHC
 and similar. And this is just a prototype I wrote in about a month. I don't even
 consider myself proficient in C, so I have expectations for the long-term
