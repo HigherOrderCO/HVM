@@ -65,7 +65,7 @@ fn show_help() {
   println!();
   println!("  hvm c file.hvm");
   println!();
-  println!("More info: https://github.com/kindelia/hvm");
+  println!("This is a PROTOTYPE. Report bugs on https://github.com/Kindelia/HVM/issues!");
   println!();
 }
 
