@@ -60,9 +60,7 @@ while the identical Haskell code takes about **19.2 seconds** in the same
 machine with GHC. This is HVM: write a functional program, get a parallel C
 runtime. And that's just the tip of iceberg!
 
-#### For Nix users
-
-[See Nix usage documentation here](./NIX.md).
+[See Nix usage documentation here.](./NIX.md)
 
 Benchmarks
 ==========
@@ -404,11 +402,11 @@ How can I help?
 Most importantly, if you appreciate our work, help spreading the project! Posting on
 Reddit, communities, etc. helps more than you think.
 
-Second, I'm actually looking for partners! I'm confident HVM's current design is
-ready to scale and become the fastest runtime in the world. There are many cool
-things we'd like to do. If you'd like to get involved, please [email
-me](mailto:victor.taelin@gmail.com), or just send me a personal message on
-[Twitter](https://twitter.com/victortaelin).
+Second, I'm looking for partners! I believe HVM's current design is ready to
+scale and become the fastest runtime in the world, but much needs to be done to
+get there. We're also building interesting products built on top of it. If you'd
+like to get involved, please [email me](mailto:victor.taelin@gmail.com), or just
+send me a personal message on [Twitter](https://twitter.com/victortaelin).
 
 Community
 =========
