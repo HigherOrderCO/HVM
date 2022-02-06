@@ -42,7 +42,8 @@ fn run_cli() -> std::io::Result<()> {
 
   if (cmd == "c" || cmd == "compile") && args.len() >= 3 {
     let file = &hvm(&args[2]);
-    return compile_code(&load_file_code(file), file);
+    let parallel = !(args.len() >= 4 && args[3] == "--single-thread");
+    return compile_code(&load_file_code(file), file, parallel);
   }
 
   println!("Invalid arguments: {:?}.", args);
@@ -63,7 +64,7 @@ fn show_help() {
   println!();
   println!("To compile a file to C:");
   println!();
-  println!("  hvm c file.hvm");
+  println!("  hvm c file.hvm [--single-thread]");
   println!();
   println!("This is a PROTOTYPE. Report bugs on https://github.com/Kindelia/HVM/issues!");
   println!();
@@ -86,12 +87,12 @@ fn run_code(code: &str, debug: bool) -> std::io::Result<()> {
   Ok(())
 }
 
-fn compile_code(code: &str, name: &str) -> std::io::Result<()> {
+fn compile_code(code: &str, name: &str, parallel: bool) -> std::io::Result<()> {
   if !name.ends_with(".hvm") {
     panic!("Input file must end with .hvm.");
   }
   let name = format!("{}.c", &name[0..name.len() - 4]);
-  compiler::compile_code_and_save(code, &name)?;
+  compiler::compile_code_and_save(code, &name, parallel)?;
   println!("Compiled to '{}'.", name);
   Ok(())
 }
@@ -149,7 +150,7 @@ fn run_example() -> std::io::Result<()> {
   ";
 
   // Compiles to C and saves as 'main.c'
-  compiler::compile_code_and_save(code, "main.c")?;
+  compiler::compile_code_and_save(code, "main.c", true)?;
   println!("Compiled to 'main.c'.");
 
   // Evaluates with interpreter

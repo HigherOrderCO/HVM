@@ -6,8 +6,8 @@ use crate::rulebook as rb;
 use crate::runtime as rt;
 use std::io::Write;
 
-pub fn compile_code_and_save(code: &str, file_name: &str) -> std::io::Result<()> {
-  let as_clang = compile_code(code);
+pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> std::io::Result<()> {
+  let as_clang = compile_code(code, parallel);
   let mut file = std::fs::OpenOptions::new()
     .read(true)
     .write(true)
@@ -18,18 +18,18 @@ pub fn compile_code_and_save(code: &str, file_name: &str) -> std::io::Result<()>
   Ok(())
 }
 
-pub fn compile_code(code: &str) -> String {
+pub fn compile_code(code: &str, parallel: bool) -> String {
   let file = lang::read_file(code);
   let book = rb::gen_rulebook(&file);
   let _funs = bd::build_runtime_functions(&book);
-  compile_book(&book)
+  compile_book(&book, parallel)
 }
 
 pub fn compile_name(name: &str) -> String {
   str::replace(&format!("_{}_", name.to_uppercase()), ".", "$")
 }
 
-pub fn compile_book(comp: &rb::RuleBook) -> String {
+pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   let mut dups = 0;
   let mut c_ids = String::new();
   let mut inits = String::new();
@@ -57,7 +57,7 @@ pub fn compile_book(comp: &rb::RuleBook) -> String {
     line(&mut codes, 6, "};");
   }
 
-  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64)
+  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, parallel)
 }
 
 pub fn compile_func(
@@ -461,8 +461,10 @@ pub fn c_runtime_template(
   codes: &str,
   id2nm: &str,
   names_count: u64,
+  parallel: bool,
 ) -> String {
   const C_RUNTIME_TEMPLATE: &str = include_str!("runtime.c");
+  const C_PARALLEL_FLAG_CONTENT: &str = "/* GENERATED_PARALLEL_FLAG_CONTENT */";
   const C_CONSTRUCTOR_IDS_CONTENT: &str = "/* GENERATED_CONSTRUCTOR_IDS_CONTENT */";
   const C_REWRITE_RULES_STEP_0_CONTENT: &str = "/* GENERATED_REWRITE_RULES_STEP_0_CONTENT */";
   const C_REWRITE_RULES_STEP_1_CONTENT: &str = "/* GENERATED_REWRITE_RULES_STEP_1_CONTENT */";
@@ -476,6 +478,11 @@ pub fn c_runtime_template(
     C_RUNTIME_TEMPLATE.contains(C_CONSTRUCTOR_IDS_CONTENT),
     "The runtime C file is missing the constructor ids section token: {}",
     C_CONSTRUCTOR_IDS_CONTENT
+  );
+  debug_assert!(
+    C_RUNTIME_TEMPLATE.contains(C_PARALLEL_FLAG_CONTENT),
+    "The runtime C file is missing parallel flag token: {}",
+    C_PARALLEL_FLAG_CONTENT
   );
   debug_assert!(
     C_RUNTIME_TEMPLATE.contains(C_REWRITE_RULES_STEP_0_CONTENT),
@@ -506,6 +513,7 @@ pub fn c_runtime_template(
   // Instantiate the template with the given sections' content
 
   C_RUNTIME_TEMPLATE
+    .replace(C_PARALLEL_FLAG_CONTENT, if parallel { "#define PARALLEL" } else { "" })
     .replace(C_NUM_THREADS_CONTENT, &num_cpus::get().to_string())
     .replace(C_CONSTRUCTOR_IDS_CONTENT, c_ids)
     .replace(C_REWRITE_RULES_STEP_0_CONTENT, inits)

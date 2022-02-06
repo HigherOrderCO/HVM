@@ -2,16 +2,18 @@
 // modified to also include user-defined rules. It then can be compiled to run
 // in parallel with -lpthreads.
 
-#include <assert.h>
+/* GENERATED_PARALLEL_FLAG_CONTENT */
 
-#include <pthread.h>
+#include <assert.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
 
-#define PARALLEL
+#ifdef PARALLEL
+#include <pthread.h>
+#endif
 
 #define LIKELY(x) __builtin_expect((x), 1)
 #define UNLIKELY(x) __builtin_expect((x), 0)
@@ -23,7 +25,9 @@
 typedef unsigned char u8;
 typedef unsigned int u32;
 typedef unsigned long long int u64;
+#ifdef PARALLEL
 typedef pthread_t Thd;
+#endif
 
 // Consts
 // ------
