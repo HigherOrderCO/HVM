@@ -748,9 +748,9 @@ dup xB yB = b
 
 This rule handles the duplication of a superposition. In English, it says that:
 *"the duplication of a superposition `{a b}` as `x` and `y` reduces to the
-duplication of `a` as `xA` and `yA`, `b` as `xB` and `tB`, and the substitution
+duplication of `a` as `xA` and `yA`, `b` as `xB` and `yB`, and the substitution
 of `x` by the superposition `{xA xB}`, and the substitution of `y` by `{yA
-tB}`"*.  At that point, the formal notation is probably doing a better job than
+yB}`"*.  At that point, the formal notation is probably doing a better job than
 English at conveying this information.
 
 If you've paid close attention, though, you may have noticed the DUP-SUP has
