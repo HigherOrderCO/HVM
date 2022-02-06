@@ -41,7 +41,7 @@ optimal reduction), but all implementations of this algorithm, until now,
 represented terms as graphs. This demanded a lot of pointer indirection, making
 it slow in practice. A new memory format, based on [SIC](https://github.com/VictorTaelin/Symmetric-Interaction-Calculus),
 takes advantage of the fact that inputs are known to be λ-terms, allowing for a
-50% lower memory throughput, and letting us avoid several impossible cases. This
+50% lower memory usage, and letting us avoid several impossible cases. This
 made the runtime 50x (!) faster, which finally allowed it to compete with GHC
 and similar. And this is just a prototype I wrote in about a month. I don't even
 consider myself proficient in C, so I have expectations for the long-term
@@ -119,6 +119,8 @@ having incremented each number in `list` by 1. Notes:
 - You can abbreviate applications (`(((f a) b) c ...)` == `(f a b c ...)`).
 
 - You may write `@` instead of `λ`.
+
+- Check [this](https://github.com/Kindelia/HVM/issues/64#issuecomment-1030688993) issue about how constructors, applications and currying work.
 
 What makes it fast
 ==================
@@ -746,9 +748,9 @@ dup xB yB = b
 
 This rule handles the duplication of a superposition. In English, it says that:
 *"the duplication of a superposition `{a b}` as `x` and `y` reduces to the
-duplication of `a` as `xA` and `yA`, `b` as `xB` and `tB`, and the substitution
+duplication of `a` as `xA` and `yA`, `b` as `xB` and `yB`, and the substitution
 of `x` by the superposition `{xA xB}`, and the substitution of `y` by `{yA
-tB}`"*.  At that point, the formal notation is probably doing a better job than
+yB}`"*.  At that point, the formal notation is probably doing a better job than
 English at conveying this information.
 
 If you've paid close attention, though, you may have noticed the DUP-SUP has
