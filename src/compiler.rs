@@ -513,7 +513,7 @@ pub fn c_runtime_template(
   // Instantiate the template with the given sections' content
 
   C_RUNTIME_TEMPLATE
-    .replace(C_PARALLEL_FLAG_CONTENT, if parallel { "#define PARALLEL" } else { "" })
+    .replace(C_PARALLEL_FLAG_CONTENT, if parallel { "#define PARALLEL\n#define COMPILED" } else { "#define COMPILED" })
     .replace(C_NUM_THREADS_CONTENT, &num_cpus::get().to_string())
     .replace(C_CONSTRUCTOR_IDS_CONTENT, c_ids)
     .replace(C_REWRITE_RULES_STEP_0_CONTENT, inits)

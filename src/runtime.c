@@ -3,6 +3,9 @@
 // in parallel with -lpthreads.
 
 /* GENERATED_PARALLEL_FLAG_CONTENT */
+#ifndef COMPILED
+#define PARALLEL
+#endif
 
 #include <assert.h>
 #include <stdatomic.h>
@@ -10,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+#include <stdint.h>
 
 #ifdef PARALLEL
 #include <pthread.h>
@@ -22,9 +26,9 @@
 // -----
 
 // TODO: stdint.h
-typedef unsigned char u8;
-typedef unsigned int u32;
-typedef unsigned long long int u64;
+typedef uint8_t u8;
+typedef uint32_t u32;
+typedef uint64_t u64;
 #ifdef PARALLEL
 typedef pthread_t Thd;
 #endif
@@ -42,7 +46,11 @@ const u64 U64_PER_GB = 0x8000000;
 const u64 HEAP_SIZE = 8 * U64_PER_GB * sizeof(u64);
 
 #ifdef PARALLEL
+#ifndef COMPILED
+#define MAX_WORKERS (2)
+#else
 #define MAX_WORKERS (/* GENERATED_NUM_THREADS_CONTENT */)
+#endif
 #else
 #define MAX_WORKERS (1)
 #endif
@@ -99,6 +107,10 @@ const u64 GTE = 0xD;
 const u64 GTN = 0xE;
 const u64 NEQ = 0xF;
 
+#ifndef COMPILED
+const u64 _MAIN_ = 0;
+const u64 _FIB_ = 1; 
+#endif
 //GENERATED_CONSTRUCTOR_IDS_START//
 /* GENERATED_CONSTRUCTOR_IDS_CONTENT */
 //GENERATED_CONSTRUCTOR_IDS_END//
@@ -496,6 +508,21 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
           {
+#ifndef COMPILED
+            case _MAIN_: {
+              if (get_ari(term) == 1) {
+                init = 0;
+                continue;
+              }
+            };
+            case _FIB_: {
+              if (get_ari(term) == 1) {
+                stk_push(&stack, host);
+                host = get_loc(term, 0);
+                continue;
+              }
+            };
+#endif
 /* GENERATED_REWRITE_RULES_STEP_0_CONTENT */
           }
           //GENERATED_REWRITE_RULES_STEP_0_END//
@@ -784,6 +811,100 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_1_START//
           {
+#ifndef COMPILED
+case _MAIN_: {
+              if (1) {
+                inc_cost(mem);
+                u64 cal_0 = alloc(mem, 1);
+                link(mem, cal_0 + 0, ask_arg(mem, term, 0));
+                u64 done = Cal(1, 0, cal_0);
+                link(mem, host, done);
+                clear(mem, get_loc(term, 0), 1);
+                init = 1;
+                continue;
+              }
+              break;
+            };
+            case _FIB_: {
+              if (get_tag(ask_arg(mem,term,0)) == PAR) {
+                cal_par(mem, host, term, ask_arg(mem, term, 0), 0);
+                continue;
+              }
+              if ((get_tag(ask_arg(mem, term, 0)) == U32 && get_val(ask_arg(mem, term, 0)) == 0u)) {
+                inc_cost(mem);
+                u64 done = U_32(0);
+                link(mem, host, done);
+                clear(mem, get_loc(term, 0), 1);
+                init = 1;
+                continue;
+              }
+              if ((get_tag(ask_arg(mem, term, 0)) == U32 && get_val(ask_arg(mem, term, 0)) == 1u)) {
+                inc_cost(mem);
+                u64 done = U_32(1);
+                link(mem, host, done);
+                clear(mem, get_loc(term, 0), 1);
+                init = 1;
+                continue;
+              }
+              if (1) {
+                inc_cost(mem);
+                u64 cpy_0 = ask_arg(mem, term, 0);
+                u64 dp0_1;
+                u64 dp1_2;
+                if (get_tag(cpy_0) == U32) {
+                  inc_cost(mem);
+                  dp0_1 = cpy_0;
+                  dp1_2 = cpy_0;
+                } else {
+                  u64 dup_3 = alloc(mem, 3);
+                  u64 col_4 = 0;
+                  link(mem, dup_3 + 2, cpy_0);
+                  dp0_1 = Dp0(0, dup_3);
+                  dp1_2 = Dp1(0, dup_3);
+                }
+                u64 ret_7;
+                if (get_tag(dp0_1) == U32 && get_tag(U_32(1)) == U32) {
+                  ret_7 = U_32(get_val(dp0_1) - get_val(U_32(1)));
+                  inc_cost(mem);
+                } else {
+                  u64 op2_8 = alloc(mem, 2);
+                  link(mem, op2_8 + 0, dp0_1);
+                  link(mem, op2_8 + 1, U_32(1));
+                  ret_7 = Op2(SUB, op2_8);
+                }
+                u64 cal_9 = alloc(mem, 1);
+                link(mem, cal_9 + 0, ret_7);
+                u64 ret_10;
+                if (get_tag(dp1_2) == U32 && get_tag(U_32(2)) == U32) {
+                  ret_10 = U_32(get_val(dp1_2) - get_val(U_32(2)));
+                  inc_cost(mem);
+                } else {
+                  u64 op2_11 = alloc(mem, 2);
+                  link(mem, op2_11 + 0, dp1_2);
+                  link(mem, op2_11 + 1, U_32(2));
+                  ret_10 = Op2(SUB, op2_11);
+                }
+                u64 cal_12 = alloc(mem, 1);
+                link(mem, cal_12 + 0, ret_10);
+                u64 ret_5;
+                if (get_tag(Cal(1, 0, cal_9)) == U32 && get_tag(Cal(1, 0, cal_12)) == U32) {
+                  ret_5 = U_32(get_val(Cal(1, 0, cal_9)) + get_val(Cal(1, 0, cal_12)));
+                  inc_cost(mem);
+                } else {
+                  u64 op2_6 = alloc(mem, 2);
+                  link(mem, op2_6 + 0, Cal(1, 0, cal_9));
+                  link(mem, op2_6 + 1, Cal(1, 0, cal_12));
+                  ret_5 = Op2(ADD, op2_6);
+                }
+                u64 done = ret_5;
+                link(mem, host, done);
+                clear(mem, get_loc(term, 0), 1);
+                init = 1;
+                continue;
+              }
+              break;
+            };
+#endif
 /* GENERATED_REWRITE_RULES_STEP_1_CONTENT */
           }
           //GENERATED_REWRITE_RULES_STEP_1_END//
@@ -1337,10 +1458,18 @@ int main(int argc, char* argv[]) {
   struct timeval stop, start;
 
   // Id-to-Name map
-  const u64 id_to_name_size = /* GENERATED_NAME_COUNT_CONTENT */;
+  const u64 id_to_name_size = 
+#ifndef COMPILED  
+ 2 
+#endif 
+  /* GENERATED_NAME_COUNT_CONTENT */ 
+  ;
   char* id_to_name_data[id_to_name_size];
 /* GENERATED_ID_TO_NAME_DATA_CONTENT */;
-
+#ifndef COMPILED  
+  id_to_name_data[0] = "Fib";
+  id_to_name_data[1] = "Main";
+#endif
   // Builds main term
   mem.size = 0;
   mem.node = (u64*)malloc(HEAP_SIZE);
