@@ -28,7 +28,12 @@ pub fn compile_code(code: &str, parallel: bool) -> String {
 }
 
 pub fn compile_name(name: &str) -> String {
-  str::replace(&format!("_{}_", name.to_uppercase()), ".", "$")
+  // TODO: this can still cause some name collisions.  
+  // Note: avoiding the use of `$` because it is not an actually valid
+  // identifier character in C.
+  let name = name.replace("_", "__");
+  let name = name.replace(".", "_");
+  format!("_{}_", name.to_uppercase())
 }
 
 pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
@@ -46,7 +51,7 @@ pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
     line(
       &mut c_ids,
       0,
-      &format!("const u64 {} = {};", &compile_name(name), comp.name_to_id.get(name).unwrap_or(&0)),
+      &format!("#define {} ({})", &compile_name(name), comp.name_to_id.get(name).unwrap_or(&0)),
     );
 
     line(&mut inits, 6, &format!("case {}: {{", &compile_name(name)));
