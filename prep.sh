@@ -19,7 +19,7 @@ while :; do
 	case "${input}" in
 		("y" | "yes")
 			printf "Applying lints...\n";
-			cargo clippy -- -D warnings --fix;
+			cargo clippy --allow-dirty --allow-staged --fix -- -D warnings;
 			break;
 		;;
 		("" | "n" | "no")
@@ -31,7 +31,7 @@ while :; do
 	esac;
 done;
 printf "Checking formatting...\n";
-cargo fmt --all -- --check;
+cargo fmt --all --check;
 while :; do
 	printf "Attempt to apply formatting? This will write changes to files. (y/N): "
 	read -r input;

@@ -109,7 +109,7 @@ rec {
       };
       "hvm" = rec {
         crateName = "hvm";
-        version = "0.1.4";
+        version = "0.1.6";
         edition = "2021";
         crateBin = [
           { name = "hvm"; path = "src/main.rs"; }
