@@ -195,11 +195,9 @@ pub fn parse_dup(state: parser::State) -> parser::Answer<Option<BTerm>> {
   );
 }
 
-pub fn parse_lam<>(state: parser::State) -> parser::Answer<Option<BTerm>> {
-  let parse_symbol = |x| parser::parser_or(&[
-      parser::text_parser("λ"),
-      parser::text_parser("@"),
-    ], x);
+pub fn parse_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
+  let parse_symbol =
+    |x| parser::parser_or(&[parser::text_parser("λ"), parser::text_parser("@")], x);
   parser::guard(
     Box::new(parse_symbol),
     Box::new(move |state| {

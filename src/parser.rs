@@ -233,10 +233,7 @@ pub fn guard<'a, A: 'a>(
   }
 }
 
-pub fn parser_or<'a>(
-  parsers: &[Parser<'a, bool>],
-  state: State<'a>
-) -> Answer<'a, bool> {
+pub fn parser_or<'a>(parsers: &[Parser<'a, bool>], state: State<'a>) -> Answer<'a, bool> {
   for parser in parsers {
     let (state, matched) = parser(state)?;
     if matched {
