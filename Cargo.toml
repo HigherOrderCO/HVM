@@ -20,6 +20,7 @@ test = false
 [dependencies]
 itertools = "0.10"
 num_cpus = "1.13"
+regex = "1.5.4"
 
 [dev-dependencies]
 proptest = "1.0"

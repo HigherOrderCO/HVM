@@ -2,14 +2,14 @@
 // modified to also include user-defined rules. It then can be compiled to run
 // in parallel with -lpthreads.
 
-/* GENERATED_PARALLEL_FLAG_CONTENT */
-
 #include <assert.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/time.h>
+
+/*! GENERATED_PARALLEL_FLAG !*/
 
 #ifdef PARALLEL
 #include <pthread.h>
@@ -42,7 +42,7 @@ const u64 U64_PER_GB = 0x8000000;
 const u64 HEAP_SIZE = 8 * U64_PER_GB * sizeof(u64);
 
 #ifdef PARALLEL
-#define MAX_WORKERS (/* GENERATED_NUM_THREADS_CONTENT */)
+#define MAX_WORKERS (/*! GENERATED_NUM_THREADS */ 0 /* GENERATED_NUM_THREADS !*/)
 #else
 #define MAX_WORKERS (1)
 #endif
@@ -100,7 +100,7 @@ const u64 GTN = 0xE;
 const u64 NEQ = 0xF;
 
 //GENERATED_CONSTRUCTOR_IDS_START//
-/* GENERATED_CONSTRUCTOR_IDS_CONTENT */
+/*! GENERATED_CONSTRUCTOR_IDS !*/
 //GENERATED_CONSTRUCTOR_IDS_END//
 
 // Threads
@@ -496,7 +496,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
           {
-/* GENERATED_REWRITE_RULES_STEP_0_CONTENT */
+/*! GENERATED_REWRITE_RULES_STEP_0 !*/
           }
           //GENERATED_REWRITE_RULES_STEP_0_END//
 
@@ -784,7 +784,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_1_START//
           {
-/* GENERATED_REWRITE_RULES_STEP_1_CONTENT */
+/*! GENERATED_REWRITE_RULES_STEP_1 !*/
           }
           //GENERATED_REWRITE_RULES_STEP_1_END//
 
@@ -1337,9 +1337,9 @@ int main(int argc, char* argv[]) {
   struct timeval stop, start;
 
   // Id-to-Name map
-  const u64 id_to_name_size = /* GENERATED_NAME_COUNT_CONTENT */;
+  const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
   char* id_to_name_data[id_to_name_size];
-/* GENERATED_ID_TO_NAME_DATA_CONTENT */;
+/*! GENERATED_ID_TO_NAME_DATA !*/;
 
   // Builds main term
   mem.size = 0;

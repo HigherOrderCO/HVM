@@ -87,11 +87,33 @@ rec {
     #   inject test dependencies into the build
 
     crates = {
+      "aho-corasick" = rec {
+        crateName = "aho-corasick";
+        version = "0.7.18";
+        edition = "2018";
+        sha256 = "0vv50b3nvkhyy7x7ip19qnsq11bqlnffkmj2yx2xlyk5wzawydqy";
+        libName = "aho_corasick";
+        authors = [
+          "Andrew Gallant <jamslam@gmail.com>"
+        ];
+        dependencies = [
+          {
+            name = "memchr";
+            packageId = "memchr";
+            usesDefaultFeatures = false;
+          }
+        ];
+        features = {
+          "default" = [ "std" ];
+          "std" = [ "memchr/std" ];
+        };
+        resolvedDefaultFeatures = [ "default" "std" ];
+      };
       "autocfg" = rec {
         crateName = "autocfg";
-        version = "1.0.1";
+        version = "1.1.0";
         edition = "2015";
-        sha256 = "0jj6i9zn4gjl03kjvziqdji6rwx8ykz8zk2ngpc331z2g3fk3c6d";
+        sha256 = "1ylp3cb47ylzabimazvbz9ms6ap784zhb6syaz6c1jqpmcmq0s6l";
         authors = [
           "Josh Stone <cuviper@gmail.com>"
         ];
@@ -290,6 +312,10 @@ rec {
             name = "num_cpus";
             packageId = "num_cpus";
           }
+          {
+            name = "regex";
+            packageId = "regex";
+          }
         ];
         devDependencies = [
           {
@@ -352,15 +378,31 @@ rec {
       };
       "libc" = rec {
         crateName = "libc";
-        version = "0.2.116";
+        version = "0.2.117";
         edition = "2015";
-        sha256 = "0x6sk17kv2fdsqxlm23bz9x1y79w90k7ylkflk44rgidhy4bspan";
+        sha256 = "0v52a7r5kmgc97rjf1sm3p3gkw3djzrnld4sli65nnxnz7h74kg7";
         authors = [
           "The Rust Project Developers"
         ];
         features = {
           "default" = [ "std" ];
           "rustc-dep-of-std" = [ "align" "rustc-std-workspace-core" ];
+          "use_std" = [ "std" ];
+        };
+        resolvedDefaultFeatures = [ "default" "std" ];
+      };
+      "memchr" = rec {
+        crateName = "memchr";
+        version = "2.4.1";
+        edition = "2018";
+        sha256 = "0smq8xzd40njqpfzv5mghigj91fzlfrfg842iz8x0wqvw2dw731h";
+        authors = [
+          "Andrew Gallant <jamslam@gmail.com>"
+          "bluss"
+        ];
+        features = {
+          "default" = [ "std" ];
+          "rustc-dep-of-std" = [ "core" "compiler_builtins" ];
           "use_std" = [ "std" ];
         };
         resolvedDefaultFeatures = [ "default" "std" ];
@@ -648,6 +690,48 @@ rec {
         ];
 
       };
+      "regex" = rec {
+        crateName = "regex";
+        version = "1.5.4";
+        edition = "2018";
+        sha256 = "0qf479kjbmb582h4d1d6gfl75h0j8aq2nrdi5wg6zdcy6llqcynh";
+        authors = [
+          "The Rust Project Developers"
+        ];
+        dependencies = [
+          {
+            name = "aho-corasick";
+            packageId = "aho-corasick";
+            optional = true;
+          }
+          {
+            name = "memchr";
+            packageId = "memchr";
+            optional = true;
+          }
+          {
+            name = "regex-syntax";
+            packageId = "regex-syntax";
+            usesDefaultFeatures = false;
+          }
+        ];
+        features = {
+          "default" = [ "std" "perf" "unicode" "regex-syntax/default" ];
+          "perf" = [ "perf-cache" "perf-dfa" "perf-inline" "perf-literal" ];
+          "perf-literal" = [ "aho-corasick" "memchr" ];
+          "unicode" = [ "unicode-age" "unicode-bool" "unicode-case" "unicode-gencat" "unicode-perl" "unicode-script" "unicode-segment" "regex-syntax/unicode" ];
+          "unicode-age" = [ "regex-syntax/unicode-age" ];
+          "unicode-bool" = [ "regex-syntax/unicode-bool" ];
+          "unicode-case" = [ "regex-syntax/unicode-case" ];
+          "unicode-gencat" = [ "regex-syntax/unicode-gencat" ];
+          "unicode-perl" = [ "regex-syntax/unicode-perl" ];
+          "unicode-script" = [ "regex-syntax/unicode-script" ];
+          "unicode-segment" = [ "regex-syntax/unicode-segment" ];
+          "unstable" = [ "pattern" ];
+          "use_std" = [ "std" ];
+        };
+        resolvedDefaultFeatures = [ "aho-corasick" "default" "memchr" "perf" "perf-cache" "perf-dfa" "perf-inline" "perf-literal" "std" "unicode" "unicode-age" "unicode-bool" "unicode-case" "unicode-gencat" "unicode-perl" "unicode-script" "unicode-segment" ];
+      };
       "regex-syntax" = rec {
         crateName = "regex-syntax";
         version = "0.6.25";
@@ -841,7 +925,7 @@ rec {
 #
 
   /* Target (platform) data for conditional dependencies.
-    This corresponds roughly to what buildRustCrate is setting.
+     This corresponds roughly to what buildRustCrate is setting.
   */
   defaultTarget = {
     unix = true;
@@ -913,10 +997,10 @@ rec {
       );
 
   /* Returns a crate which depends on successful test execution
-    of crate given as the second argument.
+     of crate given as the second argument.
 
-    testCrateFlags: list of flags to pass to the test exectuable
-    testInputs: list of packages that should be available during test execution
+     testCrateFlags: list of flags to pass to the test exectuable
+     testInputs: list of packages that should be available during test execution
   */
   crateWithTest = { crate, testCrate, testCrateFlags, testInputs, testPreRun, testPostRun }:
     assert builtins.typeOf testCrateFlags == "list";
@@ -1057,7 +1141,7 @@ rec {
       { inherit features crateOverrides runTests testCrateFlags testInputs testPreRun testPostRun; };
 
   /* Returns an attr set with packageId mapped to the result of buildRustCrateForPkgsFunc
-    for the corresponding crate.
+     for the corresponding crate.
   */
   builtRustCratesWithFeatures =
     { packageId
@@ -1195,7 +1279,7 @@ rec {
       map depDerivation enabledDependencies;
 
   /* Returns a sanitized version of val with all values substituted that cannot
-    be serialized as JSON.
+     be serialized as JSON.
   */
   sanitizeForJson = val:
     if builtins.isAttrs val
@@ -1240,9 +1324,9 @@ rec {
     { internal = debug; };
 
   /* Returns differences between cargo default features and crate2nix default
-    features.
+     features.
 
-    This is useful for verifying the feature resolution in crate2nix.
+     This is useful for verifying the feature resolution in crate2nix.
   */
   diffDefaultPackageFeatures =
     { crateConfigs ? crates
@@ -1279,8 +1363,8 @@ rec {
 
   /* Returns an attrset mapping packageId to the list of enabled features.
 
-    If multiple paths to a dependency enable different features, the
-    corresponding feature sets are merged. Features in rust are additive.
+     If multiple paths to a dependency enable different features, the
+     corresponding feature sets are merged. Features in rust are additive.
   */
   mergePackageFeatures =
     { crateConfigs ? crates
@@ -1394,10 +1478,10 @@ rec {
     || startsWithPrefix;
 
   /* Returns the expanded features for the given inputFeatures by applying the
-    rules in featureMap.
+     rules in featureMap.
 
-    featureMap is an attribute set which maps feature names to lists of further
-    feature names to enable in case this feature is selected.
+     featureMap is an attribute set which maps feature names to lists of further
+     feature names to enable in case this feature is selected.
   */
   expandFeatures = featureMap: inputFeatures:
     assert (builtins.isAttrs featureMap);
@@ -1411,9 +1495,9 @@ rec {
     sortedUnique outFeatures;
 
   /* This function adds optional dependencies as features if they are enabled
-    indirectly by dependency features. This function mimics Cargo's behavior
-    described in a note at:
-    https://doc.rust-lang.org/nightly/cargo/reference/features.html#dependency-features
+     indirectly by dependency features. This function mimics Cargo's behavior
+     described in a note at:
+     https://doc.rust-lang.org/nightly/cargo/reference/features.html#dependency-features
   */
   enableFeatures = dependencies: features:
     assert (builtins.isList features);
@@ -1433,9 +1517,9 @@ rec {
     sortedUnique (features ++ additionalFeatures);
 
   /*
-    Returns the actual features for the given dependency.
+     Returns the actual features for the given dependency.
 
-    features: The features of the crate that refers this dependency.
+     features: The features of the crate that refers this dependency.
   */
   dependencyFeatures = features: dependency:
     assert (builtins.isList features);
