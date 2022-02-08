@@ -18,4 +18,8 @@ name = "hvm"
 test = false
 
 [dependencies]
+itertools = "0.10"
 num_cpus = "1.13"
+
+[dev-dependencies]
+proptest = "1.0"

@@ -394,15 +394,15 @@ pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
       let (state, _head) = parser::text("[", state)?;
       // let mut elems: Vec<Box<Term>> = Vec::new();
       let state = state;
-      let (state, elems) = 
-        parser::until(
-    Box::new(|x| parser::text("]", x)), 
-   Box::new(|x| { 
-            let (state, term) = parse_term(x)?;
-            let (state, _) = parser::maybe(Box::new(|x| parser::text(",", x)), state)?;
-            Ok((state, term))
-          })
-          , state)?;
+      let (state, elems) = parser::until(
+        Box::new(|x| parser::text("]", x)),
+        Box::new(|x| {
+          let (state, term) = parse_term(x)?;
+          let (state, _) = parser::maybe(Box::new(|x| parser::text(",", x)), state)?;
+          Ok((state, term))
+        }),
+        state,
+      )?;
       let empty = Term::Ctr { name: "Nil".to_string(), args: Vec::new() };
       let list = Box::new(elems.iter().rfold(empty, |t, h| Term::Ctr {
         name: "Cons".to_string(),

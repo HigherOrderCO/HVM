@@ -394,13 +394,13 @@ pub fn reduce(
         }
         DP0 | DP1 => {
           let arg0 = ask_arg(mem, term, 2);
-          //let argK = ask_arg(mem, term, if get_tag(term) == DP0 { 1 } else { 0 });
-          //if get_tag(argK) == ERA {
-            //let done = arg0;
-            //link(mem, host, done);
-            //init = 1;
-            //continue;
-          //}
+          // let argK = ask_arg(mem, term, if get_tag(term) == DP0 { 1 } else { 0 });
+          // if get_tag(argK) == ERA {
+          //   let done = arg0;
+          //   link(mem, host, done);
+          //   init = 1;
+          //   continue;
+          // }
           if get_tag(arg0) == LAM {
             //println!("dup-lam");
             inc_cost(mem);
@@ -736,7 +736,12 @@ pub fn show_mem(worker: &Worker) -> String {
   s
 }
 
-pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, String>>, focus: u64) -> String {
+pub fn show_term(
+  mem: &Worker,
+  term: Lnk,
+  opt_id_to_name: Option<&HashMap<u64, String>>,
+  focus: u64,
+) -> String {
   let mut lets: HashMap<u64, u64> = HashMap::new();
   let mut kinds: HashMap<u64, u64> = HashMap::new();
   let mut names: HashMap<u64, String> = HashMap::new();
@@ -873,10 +878,10 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
       _ => String::from("?"),
     };
     if term == focus {
-      return format!("${}", done);
+      format!("${}", done)
     } else {
-      return done;
-    };
+      done
+    }
   }
   find_lets(mem, term, &mut lets, &mut kinds, &mut names, &mut count);
   let mut text = go(mem, term, &names, opt_id_to_name, focus);
@@ -885,8 +890,10 @@ pub fn show_term(mem: &Worker, term: Lnk, opt_id_to_name: Option<&HashMap<u64, S
     let what = String::from("?");
     //let kind = kinds.get(&key).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
-    let nam0 = if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
-    let nam1 = if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+    let nam0 =
+      if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+    let nam1 =
+      if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
     text.push_str(&format!(
       "\ndup {} {} = {};",
       //kind,
