@@ -241,6 +241,19 @@ pub fn guard<'a, A: 'a>(
   }
 }
 
+pub fn parser_or<'a>(
+  parsers: &[Parser<'a, bool>],
+  state: State<'a>
+) -> Answer<'a, bool> {
+  for parser in parsers {
+    let (state, matched) = parser(state)?;
+    if matched {
+      return Ok((state, true));
+    }
+  }
+  Ok((state, false))
+}
+
 // Applies optional parsers in sequence.
 // Returns the first that succeeds.
 // If none succeeds, aborts.
@@ -267,7 +280,7 @@ pub fn maybe<'a, A: 'a>(parser: Parser<'a, A>, state: State<'a>) -> Answer<'a, O
     Ok((state, result)) => {
       Ok((state, Some(result)))
     },
-    Err(err) => {
+    Err(..) => {
       Ok((state, None))
     }
   }
