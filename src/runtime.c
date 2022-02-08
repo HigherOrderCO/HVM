@@ -110,6 +110,10 @@ typedef u64 Lnk;
 /*! GENERATED_CONSTRUCTOR_IDS !*/
 //GENERATED_CONSTRUCTOR_IDS_END//
 
+#ifndef _MAIN_
+#define _MAIN_ (0)
+#endif
+
 // Threads
 // -------
 
@@ -1320,7 +1324,7 @@ void debug_print_lnk(Lnk x) {
     case NIL: printf("NIL"); break;
     default : printf("???"); break;
   }
-  printf(":%lx:%lx", ext, val);
+  printf(":%llx:%llx", ext, val);
 }
 
 // Main
@@ -1367,8 +1371,8 @@ int main(int argc, char* argv[]) {
   // Prints result statistics
   u64 delta_time = (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec;
   double rwt_per_sec = (double)ffi_cost / (double)delta_time;
-  printf("Rewrites: %lu (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
-  printf("Mem.Size: %lu words.\n", ffi_size);
+  printf("Rewrites: %llu (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
+  printf("Mem.Size: %llu words.\n", ffi_size);
   printf("\n");
 
   // Prints result normal form

@@ -28,7 +28,7 @@ pub fn compile_code(code: &str, parallel: bool) -> String {
 }
 
 pub fn compile_name(name: &str) -> String {
-  // TODO: this can still cause some name collisions.  
+  // TODO: this can still cause some name collisions.
   // Note: avoiding the use of `$` because it is not an actually valid
   // identifier character in C.
   let name = name.replace("_", "__");
