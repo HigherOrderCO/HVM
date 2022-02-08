@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1324,7 +1325,7 @@ void debug_print_lnk(Lnk x) {
     case NIL: printf("NIL"); break;
     default : printf("???"); break;
   }
-  printf(":%llx:%llx", ext, val);
+  printf(":%"PRIx64":%"PRIx64"", ext, val);
 }
 
 // Main
@@ -1371,8 +1372,8 @@ int main(int argc, char* argv[]) {
   // Prints result statistics
   u64 delta_time = (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec;
   double rwt_per_sec = (double)ffi_cost / (double)delta_time;
-  printf("Rewrites: %llu (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
-  printf("Mem.Size: %llu words.\n", ffi_size);
+  printf("Rewrites: %"PRIu64" (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
+  printf("Mem.Size: %"PRIu64" words.\n", ffi_size);
   printf("\n");
 
   // Prints result normal form
