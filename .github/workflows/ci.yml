@@ -1,7 +1,7 @@
 on:
   push:
   pull_request:
-    types: [review_requested, ready_for_review]
+    types: [opened, review_requested, ready_for_review]
 
 name: Continuous Integration
 
@@ -101,4 +101,4 @@ jobs:
       with:
         extra_nix_config: |
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-    - run: nix flake check
+    - run: nix build -f . checks.x86_64-linux
