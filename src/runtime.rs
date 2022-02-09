@@ -169,10 +169,8 @@ pub fn get_loc(lnk: Lnk, arg: u64) -> u64 {
 // ------
 
 pub fn ask_lnk(mem: &Worker, loc: u64) -> Lnk {
-  unsafe {
-    return *mem.node.get_unchecked(loc as usize);
-  }
-  //return mem.node[loc as usize];
+  unsafe { *mem.node.get_unchecked(loc as usize) }
+  // mem.node[loc as usize]
 }
 
 pub fn ask_arg(mem: &Worker, term: Lnk, arg: u64) -> Lnk {
@@ -196,10 +194,9 @@ pub fn link(mem: &mut Worker, loc: u64, lnk: Lnk) -> Lnk {
 pub fn alloc(mem: &mut Worker, size: u64) -> u64 {
   if size == 0 {
     0
+  } else if let Some(reuse) = mem.free[size as usize].pop() {
+    reuse
   } else {
-    if let Some(reuse) = mem.free[size as usize].pop() {
-      return reuse;
-    }
     let loc = mem.size;
     mem.size += size;
     loc
@@ -512,48 +509,12 @@ pub fn reduce(
               XOR => (a ^ b) & 0xFFFFFFFF,
               SHL => (a << b) & 0xFFFFFFFF,
               SHR => (a >> b) & 0xFFFFFFFF,
-              LTN => {
-                if a < b {
-                  1
-                } else {
-                  0
-                }
-              }
-              LTE => {
-                if a <= b {
-                  1
-                } else {
-                  0
-                }
-              }
-              EQL => {
-                if a == b {
-                  1
-                } else {
-                  0
-                }
-              }
-              GTE => {
-                if a >= b {
-                  1
-                } else {
-                  0
-                }
-              }
-              GTN => {
-                if a > b {
-                  1
-                } else {
-                  0
-                }
-              }
-              NEQ => {
-                if a != b {
-                  1
-                } else {
-                  0
-                }
-              }
+              LTN => u64::from(a < b),
+              LTE => u64::from(a <= b),
+              EQL => u64::from(a == b),
+              GTE => u64::from(a >= b),
+              GTN => u64::from(a > b),
+              NEQ => u64::from(a != b),
               _ => 0,
             };
             let done = U_32(c);
