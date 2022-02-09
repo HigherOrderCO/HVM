@@ -509,48 +509,12 @@ pub fn reduce(
               XOR => (a ^ b) & 0xFFFFFFFF,
               SHL => (a << b) & 0xFFFFFFFF,
               SHR => (a >> b) & 0xFFFFFFFF,
-              LTN => {
-                if a < b {
-                  1
-                } else {
-                  0
-                }
-              }
-              LTE => {
-                if a <= b {
-                  1
-                } else {
-                  0
-                }
-              }
-              EQL => {
-                if a == b {
-                  1
-                } else {
-                  0
-                }
-              }
-              GTE => {
-                if a >= b {
-                  1
-                } else {
-                  0
-                }
-              }
-              GTN => {
-                if a > b {
-                  1
-                } else {
-                  0
-                }
-              }
-              NEQ => {
-                if a != b {
-                  1
-                } else {
-                  0
-                }
-              }
+              LTN => u64::from(a < b),
+              LTE => u64::from(a <= b),
+              EQL => u64::from(a == b),
+              GTE => u64::from(a >= b),
+              GTN => u64::from(a > b),
+              NEQ => u64::from(a != b),
               _ => 0,
             };
             let done = U_32(c);
