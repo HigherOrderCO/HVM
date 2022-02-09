@@ -23,12 +23,13 @@ fn run_cli() -> std::io::Result<()> {
     }
   }
 
-  if args.len() <= 1 {
-    show_help();
-    return Ok(());
-  }
-
-  let cmd = &args[1];
+  let cmd = match &args[..] {
+    [] | [_] => {
+      show_help();
+      return Ok(());
+    }
+    [_, c, ..] => c.as_str(),
+  };
 
   if matches!(cmd, "d" | "debug") && args.len() >= 3 {
     let file = &hvm(&args[2]);
