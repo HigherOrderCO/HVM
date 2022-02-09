@@ -840,7 +840,7 @@ Nats = (Cons 0 (Map λx(+ x 1) Nats))
 Main = (Head (Tail (Tail Nats)))
 ```
 
-It is an the usual recursive `Map` applied to an infinite `List`. Here, `Map` is
+It is the usual recursive `Map` applied to an infinite `List`. Here, `Map` is
 used in the function position, and the List constructors (`Nil` and `Cons`) are
 matched. The same program can be written in a corecursive fashion, by inverting
 everything: the `List` destructors (`Head`/`Tail`) are used in the function
