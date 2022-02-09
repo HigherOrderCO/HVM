@@ -302,9 +302,9 @@ main = do
 
 This chart isn't wrong: HVM is *exponentially* faster for function composition,
 due to optimality, depending on the target function. There is no parallelism
-involved here. In general, if the composition of a function `f` has a
-constant-size normal form, then `f^(2^N)(x)` is linear-time (`O(N)`) on HVM,
-and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
+involved here. In general, if the composition of a function `f` has a constant-
+size normal form, then `f^(2^N)(x)` is linear-time (`O(N)`) on HVM, and
+exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
 novel functional algorithms. I highly encourage you to try composing different
 functions and watching how their complexity behaves. Can you tell if it will be
 linear or exponential? Or how recursion will affect it? That's a very
@@ -399,19 +399,19 @@ Check [HOW.md](HOW.md).
 How can I help?
 ===============
 
-Most importantly, if you appreciate our work, help spreading the project! Posting on
-Reddit, communities, etc. helps more than you think.
+Most importantly, if you appreciate our work, please help spread word of the
+project! Sharing on Reddit, HN, and other communities helps more than you
+think.
 
 Second, I'm looking for partners! I believe HVM's current design is ready to
-scale and become the fastest runtime in the world, but much needs to be done to
-get there. We're also building interesting products built on top of it. If you'd
-like to get involved, please [email me](mailto:victor.taelin@gmail.com), or just
-send me a personal message on [Twitter](https://twitter.com/victortaelin).
+scale and become the fastest runtime in the world, but a lot still needs to be
+done to get there. We're also building interesting products built on top of it.
+If you'd like to get involved, please [email me](mailto:victor.taelin@gmail.com),
+or just send me a personal message on [Twitter](https://twitter.com/victortaelin).
 
 Community
 =========
 
-To just follow the project, join our [Telegram
-Chat](https://t.me/formality_lang), the [Kindelia community on
-Discord](https://discord.gg/VV7ppaVWYn) or
+To follow the project, please join our [Telegram Chat](https://t.me/formality_lang),
+the [Kindelia community on Discord](https://discord.gg/VV7ppaVWYn) or
 [Matrix](https://matrix.to/#/#kindelia:kde.org)!

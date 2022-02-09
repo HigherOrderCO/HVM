@@ -1,15 +1,5 @@
 #!/usr/bin/env sh
 
-if test -n "$(git diff Cargo.lock)"; then
-	if test -z "$(command -v crate2nix)"; then
-		printf "\033[33mWARNING:\033[0m \`crate2nix\` doesn't appear to be installed.\n";
-		printf "Please install it with \`nix-env -i -f https://github.com/kolloch/crate2nix/tarball/0.10.0\`,\n";
-		printf "or run this script in the Nix development shell with \`nix develop\`.\n";
-	else
-		printf 'Updating "Cargo.nix"...\n';
-		crate2nix generate;
-	fi;
-fi;
 printf "Linting...\n";
 cargo clippy -- -D warnings;
 while :; do
