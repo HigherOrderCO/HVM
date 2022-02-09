@@ -16,10 +16,10 @@ fn run_cli() -> std::io::Result<()> {
   let args: Vec<String> = std::env::args().collect();
 
   fn hvm(file: &str) -> String {
-    if !file.ends_with(".hvm") {
-      format!("{}.hvm", file)
-    } else {
+    if file.ends_with(".hvm") {
       file.to_string()
+    } else {
+      format!("{}.hvm", file)
     }
   }
 
