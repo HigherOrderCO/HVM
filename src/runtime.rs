@@ -169,10 +169,8 @@ pub fn get_loc(lnk: Lnk, arg: u64) -> u64 {
 // ------
 
 pub fn ask_lnk(mem: &Worker, loc: u64) -> Lnk {
-  unsafe {
-    return *mem.node.get_unchecked(loc as usize);
-  }
-  //return mem.node[loc as usize];
+  unsafe { *mem.node.get_unchecked(loc as usize) }
+  // mem.node[loc as usize]
 }
 
 pub fn ask_arg(mem: &Worker, term: Lnk, arg: u64) -> Lnk {
@@ -196,10 +194,9 @@ pub fn link(mem: &mut Worker, loc: u64, lnk: Lnk) -> Lnk {
 pub fn alloc(mem: &mut Worker, size: u64) -> u64 {
   if size == 0 {
     0
+  } else if let Some(reuse) = mem.free[size as usize].pop() {
+    reuse
   } else {
-    if let Some(reuse) = mem.free[size as usize].pop() {
-      return reuse;
-    }
     let loc = mem.size;
     mem.size += size;
     loc
