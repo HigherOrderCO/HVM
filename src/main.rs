@@ -30,17 +30,17 @@ fn run_cli() -> std::io::Result<()> {
 
   let cmd = &args[1];
 
-  if (cmd == "d" || cmd == "debug") && args.len() >= 3 {
+  if matches!(cmd, "d" | "debug") && args.len() >= 3 {
     let file = &hvm(&args[2]);
     return run_code(&load_file_code(file), true);
   }
 
-  if (cmd == "r" || cmd == "run") && args.len() >= 3 {
+  if matches!(cmd, "r" | "run") && args.len() >= 3 {
     let file = &hvm(&args[2]);
     return run_code(&load_file_code(file), false);
   }
 
-  if (cmd == "c" || cmd == "compile") && args.len() >= 3 {
+  if matches!(cmd, "c" | "compile") && args.len() >= 3 {
     let file = &hvm(&args[2]);
     let parallel = !(args.len() >= 4 && args[3] == "--single-thread");
     return compile_code(&load_file_code(file), file, parallel);

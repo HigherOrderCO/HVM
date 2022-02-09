@@ -286,19 +286,7 @@ pub fn parse_u32(state: parser::State) -> parser::Answer<Option<BTerm>> {
 
 pub fn parse_op2(state: parser::State) -> parser::Answer<Option<BTerm>> {
   fn is_op_char(chr: char) -> bool {
-    false
-      || chr == '+'
-      || chr == '-'
-      || chr == '*'
-      || chr == '/'
-      || chr == '%'
-      || chr == '&'
-      || chr == '|'
-      || chr == '^'
-      || chr == '<'
-      || chr == '>'
-      || chr == '='
-      || chr == '!'
+    matches!(chr, '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<' | '>' | '=' | '!')
   }
   fn parse_oper(state: parser::State) -> parser::Answer<Oper> {
     fn op<'a>(symbol: &'static str, oper: Oper) -> parser::Parser<'a, Option<Oper>> {
