@@ -58,6 +58,7 @@
         };
         buildInputs = [
           pkgs.hyperfine
+          pkgs.nodejs
           pkgs.time
         ];
         nativeBuildInputs = [
