@@ -44,7 +44,7 @@ typedef pthread_t Thd;
 #define HEAP_SIZE (8 * U64_PER_GB * sizeof(u64))
 
 #ifdef PARALLEL
-#define MAX_WORKERS (/*! GENERATED_NUM_THREADS */ 0 /* GENERATED_NUM_THREADS !*/)
+#define MAX_WORKERS (/*! GENERATED_NUM_THREADS */ 1 /* GENERATED_NUM_THREADS !*/)
 #else
 #define MAX_WORKERS (1)
 #endif

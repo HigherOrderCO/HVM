@@ -462,7 +462,7 @@ fn line(code: &mut String, tab: u64, line: &str) {
   code.push('\n');
 }
 
-/// String pattern that will be replaced on template C code.
+/// String pattern that will be replaced on the template code.  
 /// Syntax:
 /// ```c
 /// /*! <TAG> !*/
@@ -471,8 +471,9 @@ fn line(code: &mut String, tab: u64, line: &str) {
 /// ```c
 /// /*! <TAG> */ ... /* <TAG> !*/
 /// ```
+// Note: `(?s)` is the flag that allows `.` to match `\n`
 const REPLACEMENT_TOKEN_PATTERN: &str =
-  r"(?:/\*! *(\w+?) *!\*/)|(?:/\*! *(\w+?) *\*/.+/\* *(\w+?) *!\*/)";
+  r"(?s)(?:/\*! *(\w+?) *!\*/)|(?:/\*! *(\w+?) *\*/.+?/\* *(\w+?) *!\*/)";
 
 pub fn c_runtime_template(
   c_ids: &str,
