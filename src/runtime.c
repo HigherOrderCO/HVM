@@ -234,7 +234,7 @@ Lnk Arg(u64 pos) {
   return (ARG * TAG) | pos;
 }
 
-Lnk Era() {
+Lnk Era(void) {
   return (ERA * TAG);
 }
 
@@ -258,7 +258,7 @@ Lnk U_32(u64 val) {
   return (U32 * TAG) | val;
 }
 
-Lnk Nil() {
+Lnk Nil(void) {
   return NIL * TAG;
 }
 
@@ -836,7 +836,7 @@ u64  normal_join(u64 tid);
 
 u64 normal_seen_data[NORMAL_SEEN_MCAP];
 
-void normal_init() {
+void normal_init(void) {
   for (u64 i = 0; i < NORMAL_SEEN_MCAP; ++i) {
     normal_seen_data[i] = 0;
   }
