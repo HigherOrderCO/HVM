@@ -147,7 +147,7 @@ pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>>
   funcs
 }
 
-pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
+fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
 
   let arity = dynfun.redex.len() as u64;
@@ -228,7 +228,7 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
 }
 
 /// Converts a Lambolt Term to a Runtime Term
-pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
+fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
   fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
       lang::Oper::Add => rt::ADD,
@@ -320,7 +320,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
   convert_term(term, comp, 0, &mut vars)
 }
 
-pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
+fn build_body(term: &DynTerm, free_vars: u64) -> Body {
   fn link(nodes: &mut Vec<Node>, targ: u64, slot: u64, elem: Elem) {
     nodes[targ as usize][slot as usize] = elem;
     if let Elem::Loc { value, targ: var_targ, slot: var_slot } = elem {
@@ -430,7 +430,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
 }
 
 static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
-pub fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar]) -> rt::Lnk {
+fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar]) -> rt::Lnk {
   unsafe {
     let (elem, nodes) = body;
     let hosts = &mut ALLOC_BODY_WORKSPACE;
@@ -459,7 +459,7 @@ pub fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynV
   }
 }
 
-pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
+fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   let host = rt::alloc(mem, 1);
   let body = build_body(term, 0);
   let term = alloc_body(mem, 0, &body, &[]);
@@ -467,7 +467,7 @@ pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   host
 }
 
-pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) -> u64 {
+fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) -> u64 {
   alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
 }
 
