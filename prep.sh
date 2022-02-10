@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/bin/sh
 
 confirm() {
   while true; do

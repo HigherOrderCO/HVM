@@ -22,7 +22,7 @@ Usage
 
 First, install [Rust](https://www.rust-lang.org/). Then, type:
 
-```bash
+```sh
 cargo install hvm
 ```
 
@@ -48,7 +48,7 @@ them up. Since it is recursive, HVM will parallelize it automatically.
 
 #### 3. Run and compile
 
-```bash
+```sh
 hvm r main 10                      # runs it with n=10
 hvm c main                         # compiles HVM to C
 clang -O2 main.c -o main -lpthread # compiles C to BIN
