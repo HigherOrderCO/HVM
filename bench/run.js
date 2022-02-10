@@ -3,13 +3,13 @@ const fs = require("fs");
 const { exec, execSync } = require("child_process");
 const path = require("path");
 
-var dir = __dirname;
+let dir = __dirname;
 
 const RUNS = 3; // how many times run the same test
 
 function range(init, step, size) {
-  var arr = [];
-  for (var i = 0; i < size; ++i) {
+  let arr = [];
+  for (let i = 0; i < size; ++i) {
     arr.push(init);
     init = init + step;
   }
@@ -71,7 +71,7 @@ function run_pre_commands(evaluator, file_name, file_path) {
 
 function run_execution(evaluator, file_name, ctx) {
   let tests_perf = [];
-  var total_time = 0;
+  let total_time = 0;
   for (let i = 0; i < RUNS + 1; i++) {
     const command = evaluator.execution(file_name, ctx.n);
     //console.log(command);
@@ -126,8 +126,8 @@ function run_n(ctx) {
 function main() {
   // for each program
   for (let program_name in programs) {
-    var file_path = program_name;
-    var program = programs[program_name];
+    let file_path = program_name;
+    let program = programs[program_name];
 
     // will store the results
     let result = [];
@@ -136,7 +136,7 @@ function main() {
     for (evaluator_name in evaluators) {
       try {
         // for each n value
-        for (var n of program.vals) {
+        for (let n of program.vals) {
           //console.log("-", n, file_path, evaluator_name, n, RUNS, result, temp_dir);
           run_n({ program_name, file_path, evaluator_name, n, RUNS, result });
         }
@@ -155,25 +155,25 @@ function main() {
     // Saves results.
     // TODO: messy code, improve
     console.log("Done! Saving results...");
-    var chart = {
+    let chart = {
       X: programs[program_name].vals.slice(0),
     };
-    for (var eva in evaluators) {
+    for (let eva in evaluators) {
       chart[eva] = [];
     }
-    for (var res of result) {
+    for (let res of result) {
       chart[res.targ].push(res.time);
     }
-    var evas = Object.keys(evaluators);
-    var rows = [["X"].concat(evas)];
-    for (var i = 0; i < chart.X.length; ++i) {
-      var row = [chart.X[i]];
-      for (var eva of evas) {
+    let evas = Object.keys(evaluators);
+    let rows = [["X"].concat(evas)];
+    for (let i = 0; i < chart.X.length; ++i) {
+      let row = [chart.X[i]];
+      for (let eva of evas) {
         row.push(chart[eva][i]);
       }
       rows.push(row);
     }
-    var text = rows.map((row) => row.join(",")).join("\n") + "\n";
+    let text = rows.map((row) => row.join(",")).join("\n") + "\n";
     fs.writeFileSync(path.join(dir, "_results_", program_name + ".csv"), text);
     console.log("Results saved.");
   }
