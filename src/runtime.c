@@ -184,7 +184,7 @@ void stk_free(Stk* stack) {
 }
 
 void stk_push(Stk* stack, u64 val) {
-  if (UNLIKELY(stack->size == stack->mcap)) { 
+  if (UNLIKELY(stack->size == stack->mcap)) {
     stack->mcap = stack->mcap * stk_growth_factor;
     stack->data = realloc(stack->data, stack->mcap * sizeof(u64));
   }
@@ -266,7 +266,7 @@ Lnk Ctr(u64 ari, u64 fun, u64 pos) {
   return (CTR * TAG) | (ari * ARI) | (fun * EXT) | pos;
 }
 
-Lnk Cal(u64 ari, u64 fun, u64 pos) { 
+Lnk Cal(u64 ari, u64 fun, u64 pos) {
   return (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos;
 }
 
@@ -467,7 +467,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
     //for (u64 i = 0; i < 256; ++i) {
       //printf("- %llx ", i); debug_print_lnk(mem->node[i]); printf("\n");
     //}
-    
+
     if (init == 1) {
       switch (get_tag(term)) {
         case APP: {
@@ -504,7 +504,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
         case CAL: {
           u64 fun = get_ext(term);
           u64 ari = get_ari(term);
-          
+
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
           {
@@ -590,7 +590,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               u64 term_arg_0 = ask_arg(mem,term,0);
               link(mem, lam0+1, Dp0(get_ext(term), let0));
               subst(mem, term_arg_0, Lam(lam0));
-              u64 term_arg_1 = ask_arg(mem,term,1);                      
+              u64 term_arg_1 = ask_arg(mem,term,1);
               link(mem, lam1+1, Dp1(get_ext(term), let0));
               subst(mem, term_arg_1, Lam(lam1));
               u64 done = Lam(get_tag(term) == DP0 ? lam0 : lam1);
@@ -893,7 +893,7 @@ Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
     #ifdef PARALLEL
 
     //printf("ue %llu %llu\n", rec_size, slen);
-    
+
     if (rec_size >= 2 && slen >= rec_size) {
 
       u64 space = slen / rec_size;
@@ -1036,7 +1036,7 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {
 
   // Normalizes trm
   normal(&workers[0], (u64) host, 0, MAX_WORKERS);
-  
+
   // Computes total cost and size
   ffi_cost = 0;
   ffi_size = 0;
@@ -1378,7 +1378,7 @@ int main(int argc, char* argv[]) {
 
   // Prints result normal form
   const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
-  char* code_data = (char*)malloc(code_mcap * sizeof(char)); 
+  char* code_data = (char*)malloc(code_mcap * sizeof(char));
   assert(code_data);
   readback(code_data, code_mcap, &mem, mem.node[0], id_to_name_data, id_to_name_size);
   printf("%s\n", code_data);

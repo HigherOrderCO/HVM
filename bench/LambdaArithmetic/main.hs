@@ -31,7 +31,7 @@ add xs ys = app xs (\x -> inc x) ys
 
 -- Muls two Bits
 mul :: Bits -> Bits -> Bits
-mul xs ys = 
+mul xs ys =
   let e = end
       o = \p -> b0 (mul p ys)
       i = \p -> add ys (b1 (mul p ys))

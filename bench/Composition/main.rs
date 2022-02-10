@@ -6,7 +6,7 @@ fn comp<A>(n: u32, f: &dyn Fn(A) -> A, x: A) -> A {
   } else {
     comp(n-1, &|x| f(f(x)), x)
   }
-} 
+}
 
 fn main() {
   let args: Vec<String> = env::args().collect();

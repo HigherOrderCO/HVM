@@ -45,8 +45,4 @@ main :: IO ()
 main = do
   n <- read.head <$> getArgs :: IO Word32
   let list = randoms 1 (100000 * n)
-  print $ sun $ qsort pivot pivot $ list 
-
-
-
-
+  print $ sun $ qsort pivot pivot $ list

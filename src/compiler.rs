@@ -462,7 +462,7 @@ fn line(code: &mut String, tab: u64, line: &str) {
   code.push('\n');
 }
 
-/// String pattern that will be replaced on the template code.  
+/// String pattern that will be replaced on the template code.
 /// Syntax:
 /// ```c
 /// /*! <TAG> !*/

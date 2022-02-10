@@ -60,7 +60,7 @@ function run_pre_commands(evaluator, file_name, file_path) {
     for (pre_command of pres) {
       execSync(pre_command);
     }
-    
+
   } catch(e) {
     console.log(e);
     throw "Error while running pre commands";
