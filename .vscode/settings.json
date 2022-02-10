@@ -1,4 +1,7 @@
 {
+  "files.exclude": {
+    "target": true
+  },
   "cSpell.words": [
     "doctest",
     "dynfun",
