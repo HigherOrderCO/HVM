@@ -2,17 +2,13 @@ use std::env;
 
 enum List<A> {
   Nil,
-  Cons {head: A, tail: Box<List<A>>}
+  Cons { head: A, tail: Box<List<A>> },
 }
 
 fn fold<A, B>(list: &List<A>, c: &dyn Fn(&A, B) -> B, n: B) -> B {
   match list {
-    List::Nil => {
-      n
-    },
-    List::Cons{head, tail} => {
-      c(head, fold(tail, c, n))
-    }
+    List::Nil => n,
+    List::Cons { head, tail } => c(head, fold(tail, c, n)),
   }
 }
 
@@ -21,7 +17,7 @@ fn range(n: u32, list: List<u32>) -> List<u32> {
     list
   } else {
     let m = n - 1;
-    range(m, List::Cons{head: m, tail: Box::new(list)})
+    range(m, List::Cons { head: m, tail: Box::new(list) })
   }
 }
 
