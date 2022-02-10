@@ -20,14 +20,14 @@ pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> std
   Ok(())
 }
 
-pub fn compile_code(code: &str, parallel: bool) -> String {
+fn compile_code(code: &str, parallel: bool) -> String {
   let file = lang::read_file(code);
   let book = rb::gen_rulebook(&file);
   let (_, mut dups_count) = bd::build_runtime_functions(&book);
   compile_book(&mut dups_count, &book, parallel)
 }
 
-pub fn compile_name(name: &str) -> String {
+fn compile_name(name: &str) -> String {
   // TODO: this can still cause some name collisions.
   // Note: avoiding the use of `$` because it is not an actually valid
   // identifier character in C.
@@ -36,7 +36,7 @@ pub fn compile_name(name: &str) -> String {
   format!("_{}_", name.to_uppercase())
 }
 
-pub fn compile_book(dups_count: &mut bd::DupsCount, comp: &rb::RuleBook, parallel: bool) -> String {
+fn compile_book(dups_count: &mut bd::DupsCount, comp: &rb::RuleBook, parallel: bool) -> String {
   let mut dups = 0;
   let mut c_ids = String::new();
   let mut inits = String::new();
@@ -67,7 +67,7 @@ pub fn compile_book(dups_count: &mut bd::DupsCount, comp: &rb::RuleBook, paralle
   c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, parallel)
 }
 
-pub fn compile_func(
+fn compile_func(
   dups_count: &mut bd::DupsCount,
   comp: &rb::RuleBook,
   rules: &[lang::Rule],
@@ -184,7 +184,7 @@ pub fn compile_func(
   (init, code)
 }
 
-pub fn compile_func_rule_term(
+fn compile_func_rule_term(
   code: &mut String,
   tab: u64,
   term: &bd::DynTerm,
@@ -396,7 +396,7 @@ pub fn compile_func_rule_term(
 // This isn't used, but it is an alternative way to compile right-hand side bodies. It results in
 // slightly different code that might be faster since it inlines many memory writes. But it doesn't
 // optimize numeric operations to avoid extra rules, so that may make it slower, depending.
-pub fn compile_func_rule_body(
+fn compile_func_rule_body(
   code: &mut String,
   tab: u64,
   body: &bd::Body,
@@ -476,7 +476,7 @@ fn line(code: &mut String, tab: u64, line: &str) {
 const REPLACEMENT_TOKEN_PATTERN: &str =
   r"(?s)(?:/\*! *(\w+?) *!\*/)|(?:/\*! *(\w+?) *\*/.+?/\* *(\w+?) *!\*/)";
 
-pub fn c_runtime_template(
+fn c_runtime_template(
   c_ids: &str,
   inits: &str,
   codes: &str,
