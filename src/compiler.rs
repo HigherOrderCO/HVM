@@ -23,8 +23,8 @@ pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> std
 pub fn compile_code(code: &str, parallel: bool) -> String {
   let file = lang::read_file(code);
   let book = rb::gen_rulebook(&file);
-  let _funs = bd::build_runtime_functions(&book);
-  compile_book(&book, parallel)
+  let (_, mut dups_count) = bd::build_runtime_functions(&book);
+  compile_book(&mut dups_count, &book, parallel)
 }
 
 pub fn compile_name(name: &str) -> String {
@@ -36,7 +36,7 @@ pub fn compile_name(name: &str) -> String {
   format!("_{}_", name.to_uppercase())
 }
 
-pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
+pub fn compile_book(dups_count: &mut bd::DupsCount, comp: &rb::RuleBook, parallel: bool) -> String {
   let mut dups = 0;
   let mut c_ids = String::new();
   let mut inits = String::new();
@@ -46,7 +46,7 @@ pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
   }
   for (name, (_arity, rules)) in &comp.func_rules {
-    let (init, code) = compile_func(comp, rules, 7, &mut dups);
+    let (init, code) = compile_func(dups_count, comp, rules, 7, &mut dups);
 
     line(
       &mut c_ids,
@@ -68,12 +68,13 @@ pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
 }
 
 pub fn compile_func(
+  dups_count: &mut bd::DupsCount,
   comp: &rb::RuleBook,
   rules: &[lang::Rule],
   tab: u64,
   dups: &mut u64,
 ) -> (String, String) {
-  let dynfun = bd::build_dynfun(comp, rules);
+  let dynfun = bd::build_dynfun(dups_count, comp, rules);
 
   let mut init = String::new();
   let mut code = String::new();
