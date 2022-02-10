@@ -122,16 +122,23 @@ fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
   }
 }
 
-// This is used to color fan nodes. We need a globally unique color for each generated node. Right
-// now, we just increment this counter every time we generate a node. Node that this is done at
-// compile-time, so, calling the same function will always return the same fan node colors. That
-// is, colors are only globally unique across different functions, not across different function
-// calls. We could move this to the runtime, though, which would make Lambolt somewhat more
-// expressive. For example:
-// (Two)  = λf λx (f (f x))
-// (Main) = ((Two) (Two))
-// Isn't admissible in the current runtime, but it would if we generated new fan nodes per each
-// global function call.
+/// This is used to color fan nodes. We need a globally unique color for each
+/// generated node. Right now, we just increment this counter every time we
+/// generate a node. Node that this is done at compile-time, so, calling the
+/// same function will always return the same fan node colors. That is, colors
+/// are only globally unique across different functions, not across different
+/// function calls.
+///
+/// We could move this to the runtime, though, which would make Lambolt somewhat
+/// more expressive. For example:
+///
+/// ```not_rust
+/// (Two)  = λf λx (f (f x))
+/// (Main) = ((Two) (Two))
+/// ```
+///
+/// Isn't admissible in the current runtime, but it would if we generated new
+/// fan nodes per each global function call.
 static mut DUPS_COUNT: u64 = 0;
 
 pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
