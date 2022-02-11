@@ -15,10 +15,27 @@ scale towards uncharted levels of performance.
 
 **Welcome to the inevitable parallel, functional future of computers!**
 
+- [High-order Virtual Machine (HVM)](#high-order-virtual-machine-hvm)
+  - [Usage](#usage)
+    - [1. Install it](#1-install-it)
+    - [2. Create an HVM file](#2-create-an-hvm-file)
+    - [3. Run and compile](#3-run-and-compile)
+- [Benchmarks](#benchmarks)
+  - [List Fold (Sequential)](#list-fold-sequential)
+  - [Tree Sum (Parallel)](#tree-sum-parallel)
+  - [QuickSort (Parallel)](#quicksort-parallel)
+  - [Composition (Optimal)](#composition-optimal)
+  - [Lambda Arithmetic (Optimal)](#lambda-arithmetic-optimal)
+- [How is that possible?](#how-is-that-possible)
+- [How can I help?](#how-can-i-help)
+- [Community](#community)
+- [Building](#building)
+  - [with Nix](#with-nix)
+
 Usage
 -----
 
-#### 1. Install it
+### 1. Install it
 
 First, install [Rust](https://www.rust-lang.org/). Then, type:
 
@@ -26,7 +43,7 @@ First, install [Rust](https://www.rust-lang.org/). Then, type:
 cargo install hvm
 ```
 
-#### 2. Create an HVM file
+### 2. Create an HVM file
 
 HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 
@@ -46,7 +63,7 @@ HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 The program above creates a perfect binary tree with `2^n` elements and adds
 them up. Since it is recursive, HVM will parallelize it automatically.
 
-#### 3. Run and compile
+### 3. Run and compile
 
 ```bash
 hvm r main 10                      # runs it with n=10
@@ -71,7 +88,7 @@ is still an early prototype, so it **obviously** won't beat GHC in general, but
 it does quite well already and should improve steadily as optimizations are
 implemented. Tests were compiled with `ghc -O2` for Haskell and `clang -O2` for
 HVM, on an 8-core M1 Max processor. The complete files to replicate these
-results are in [the /bench directory](bench).
+results are in [the `bench/` directory](bench).
 
 List Fold (Sequential)
 ----------------------
@@ -415,3 +432,30 @@ Community
 To follow the project, please join our [Telegram Chat](https://t.me/formality_lang),
 the [Kindelia community on Discord](https://discord.gg/VV7ppaVWYn) or
 [Matrix](https://matrix.to/#/#kindelia:kde.org)!
+
+Building
+========
+
+Clone the repo:
+
+```sh
+git clone https://github.com/Kindelia/HVM.git
+cd HVM
+```
+
+To build and run from sources:
+
+```sh
+cargo run hvm foobar.hvm
+```
+
+To build and install the binary from sources:
+
+```sh
+cargo install --path .
+```
+
+with Nix
+--------
+
+To build with Nix [see here](./NIX.md).
