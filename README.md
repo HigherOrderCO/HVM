@@ -446,7 +446,7 @@ cd HVM
 To build and run from sources:
 
 ```sh
-cargo run hvm foobar.hvm
+cargo run -- run foobar.hvm
 ```
 
 To build and install the binary from sources:
