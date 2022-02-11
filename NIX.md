@@ -1,7 +1,7 @@
 Usage (Nix)
 -----------
 
-#### 1. Build HVM
+#### 1. Build and install HVM
 
 [Install Nix](https://nixos.org/manual/nix/stable/installation/installation.html) and [Nix Flakes](https://nixos.wiki/wiki/Flakes#Installing_flakes) then, in a shell, run:
 
