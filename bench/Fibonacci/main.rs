@@ -15,4 +15,3 @@ fn main() {
   let n = args[1].parse::<u32>().unwrap();
   println!("{}", fib(n));
 }
-

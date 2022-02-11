@@ -1,18 +1,16 @@
 {
+  "files.exclude": {
+    "target": true
+  },
   "cSpell.words": [
     "doctest",
     "dynfun",
+    "itertools",
     "lambolt",
     "oper",
     "readback",
     "rulebook"
   ],
-  "cSpell.ignoreWords": [
-    "argm",
-    "arit",
-    "askama",
-    "ctrs",
-    "dups",
-    "ropey"
-  ]
+  "cSpell.ignoreWords": ["argm", "arit", "askama", "ctrs", "dups", "ropey"],
+  "rust-analyzer.checkOnSave.command": "clippy"
 }

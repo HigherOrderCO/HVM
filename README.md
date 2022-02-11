@@ -22,7 +22,7 @@ Usage
 
 First, install [Rust](https://www.rust-lang.org/). Then, type:
 
-```bash
+```sh
 cargo install hvm
 ```
 
@@ -48,7 +48,7 @@ them up. Since it is recursive, HVM will parallelize it automatically.
 
 #### 3. Run and compile
 
-```bash
+```sh
 hvm r main 10                      # runs it with n=10
 hvm c main                         # compiles HVM to C
 clang -O2 main.c -o main -lpthread # compiles C to BIN
@@ -244,7 +244,7 @@ split p s (Cons x xs) min max =
 main = do
   n <- read.head <$> getArgs :: IO Word32
   let list = randoms 1 (100000 * n)
-  print $ sun $ qsort pivot pivot $ list 
+  print $ sun $ qsort pivot pivot $ list
 ```
 
 </td>
@@ -333,7 +333,7 @@ Lambda Arithmetic (Optimal)
 (Add xs ys) = (App xs λx(Inc x) ys)
 
 // Multiplies two Bits
-(Mul xs ys) = 
+(Mul xs ys) =
   let e = End
   let o = λp (B0 (Mul p ys))
   let i = λp (Add ys (B0 (Mul p ys)))
@@ -361,7 +361,7 @@ inc xs = Bits $ \ex -> \ox -> \ix ->
 add xs ys = app xs (\x -> inc x) ys
 
 -- Multiplies two Bits
-mul xs ys = 
+mul xs ys =
   let e = end
       o = \p -> b0 (mul p ys)
       i = \p -> add ys (b1 (mul p ys))

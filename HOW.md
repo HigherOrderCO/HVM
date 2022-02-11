@@ -226,7 +226,7 @@ non-GC'd and inherently parallel is easy. At its base, it has the same "linear"
 core that both Haskell and Rust share in common (which, as we've just
 established, already exhibit these properties). The difference is that, instead
 of adding some kind of clever reference system to circumvent the cost of
-cloning... **HVM introduces a pervasive, lazy clone primitive**. 
+cloning... **HVM introduces a pervasive, lazy clone primitive**.
 
 **HVM's runtime has no references. Instead, it features a `.clone()` primitive
 that has zero cost, until the cloned value needs to be read. Once it does,
@@ -800,7 +800,7 @@ let h = λf(λx(f (f x)))
 ```
 
 And all the other "hardcore" functional programming tools are compatible.
-Y-Combinators, Church encodings, nested maps of maps, all work just fine. 
+Y-Combinators, Church encodings, nested maps of maps, all work just fine.
 If you think you'll reach this limitation in practice, you're probably
 misunderstanding how esoteric a program must be for it to happen. It
 is a common (and annoying) misconception that this limit has much relevance in
@@ -953,7 +953,7 @@ Then we lift the shared lambdas up:
 
 This makes `λx (Inc (Inc x))` have a constant-space normal form, which in turn
 makes the composition of `Inc` fast, allowing `Add` to be efficiently
-implemented as repeated increment. 
+implemented as repeated increment.
 
 Similar uses of this idea can greatly speed up functional algorithms. For
 example, a clever way to implement a `Data.List` would be to let all algorithms

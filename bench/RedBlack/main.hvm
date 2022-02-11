@@ -193,7 +193,7 @@
       child3
     )
   )
-  
+
 (RedBlack.balance color left key value right) = (RedBlack.tie color left key value right)
 
 

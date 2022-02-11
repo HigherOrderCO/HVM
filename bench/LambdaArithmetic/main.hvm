@@ -21,7 +21,7 @@
 (Add xs ys) = (App xs λx(Inc x) ys)
 
 // Multiplies two Bits
-(Mul xs ys) = 
+(Mul xs ys) =
   let e = End
   let o = λp (B0 (Mul p ys))
   let i = λp (Add ys (B0 (Mul p ys)))

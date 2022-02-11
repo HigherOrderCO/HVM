@@ -20,14 +20,14 @@ pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> std
   Ok(())
 }
 
-pub fn compile_code(code: &str, parallel: bool) -> String {
+fn compile_code(code: &str, parallel: bool) -> String {
   let file = lang::read_file(code);
   let book = rb::gen_rulebook(&file);
-  let _funs = bd::build_runtime_functions(&book);
-  compile_book(&book, parallel)
+  let (_, mut dups_count) = bd::build_runtime_functions(&book);
+  compile_book(&mut dups_count, &book, parallel)
 }
 
-pub fn compile_name(name: &str) -> String {
+fn compile_name(name: &str) -> String {
   // TODO: this can still cause some name collisions.
   // Note: avoiding the use of `$` because it is not an actually valid
   // identifier character in C.
@@ -36,7 +36,7 @@ pub fn compile_name(name: &str) -> String {
   format!("_{}_", name.to_uppercase())
 }
 
-pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
+fn compile_book(dups_count: &mut bd::DupsCount, comp: &rb::RuleBook, parallel: bool) -> String {
   let mut dups = 0;
   let mut c_ids = String::new();
   let mut inits = String::new();
@@ -46,7 +46,7 @@ pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
   }
   for (name, (_arity, rules)) in &comp.func_rules {
-    let (init, code) = compile_func(comp, rules, 7, &mut dups);
+    let (init, code) = compile_func(dups_count, comp, rules, 7, &mut dups);
 
     line(
       &mut c_ids,
@@ -67,13 +67,14 @@ pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, parallel)
 }
 
-pub fn compile_func(
+fn compile_func(
+  dups_count: &mut bd::DupsCount,
   comp: &rb::RuleBook,
   rules: &[lang::Rule],
   tab: u64,
   dups: &mut u64,
 ) -> (String, String) {
-  let dynfun = bd::build_dynfun(comp, rules);
+  let dynfun = bd::build_dynfun(dups_count, comp, rules);
 
   let mut init = String::new();
   let mut code = String::new();
@@ -183,7 +184,7 @@ pub fn compile_func(
   (init, code)
 }
 
-pub fn compile_func_rule_term(
+fn compile_func_rule_term(
   code: &mut String,
   tab: u64,
   term: &bd::DynTerm,
@@ -395,7 +396,7 @@ pub fn compile_func_rule_term(
 // This isn't used, but it is an alternative way to compile right-hand side bodies. It results in
 // slightly different code that might be faster since it inlines many memory writes. But it doesn't
 // optimize numeric operations to avoid extra rules, so that may make it slower, depending.
-pub fn compile_func_rule_body(
+fn compile_func_rule_body(
   code: &mut String,
   tab: u64,
   body: &bd::Body,
@@ -462,7 +463,7 @@ fn line(code: &mut String, tab: u64, line: &str) {
   code.push('\n');
 }
 
-/// String pattern that will be replaced on the template code.  
+/// String pattern that will be replaced on the template code.
 /// Syntax:
 /// ```c
 /// /*! <TAG> !*/
@@ -475,7 +476,7 @@ fn line(code: &mut String, tab: u64, line: &str) {
 const REPLACEMENT_TOKEN_PATTERN: &str =
   r"(?s)(?:/\*! *(\w+?) *!\*/)|(?:/\*! *(\w+?) *\*/.+?/\* *(\w+?) *!\*/)";
 
-pub fn c_runtime_template(
+fn c_runtime_template(
   c_ids: &str,
   inits: &str,
   codes: &str,
