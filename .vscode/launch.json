@@ -7,15 +7,15 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'lambdavm'",
+      "name": "Debug executable 'hvm'",
       "cargo": {
         "args": [
           "build",
-          "--bin=lambdavm",
-          "--package=lambdavm"
+          "--bin=hvm",
+          "--package=hvm"
         ],
         "filter": {
-          "name": "lambdavm",
+          "name": "hvm",
           "kind": "bin"
         }
       },
@@ -25,16 +25,16 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in executable 'lambdavm'",
+      "name": "Debug unit tests in executable 'hvm'",
       "cargo": {
         "args": [
           "test",
           "--no-run",
-          "--bin=lambdavm",
-          "--package=lambdavm"
+          "--bin=hvm",
+          "--package=hvm"
         ],
         "filter": {
-          "name": "lambdavm",
+          "name": "hvm",
           "kind": "bin"
         }
       },
