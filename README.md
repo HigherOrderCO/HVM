@@ -15,23 +15,6 @@ scale towards uncharted levels of performance.
 
 **Welcome to the inevitable parallel, functional future of computers!**
 
-- [High-order Virtual Machine (HVM)](#high-order-virtual-machine-hvm)
-  - [Usage](#usage)
-    - [1. Install it](#1-install-it)
-    - [2. Create an HVM file](#2-create-an-hvm-file)
-    - [3. Run and compile](#3-run-and-compile)
-- [Benchmarks](#benchmarks)
-  - [List Fold (Sequential)](#list-fold-sequential)
-  - [Tree Sum (Parallel)](#tree-sum-parallel)
-  - [QuickSort (Parallel)](#quicksort-parallel)
-  - [Composition (Optimal)](#composition-optimal)
-  - [Lambda Arithmetic (Optimal)](#lambda-arithmetic-optimal)
-- [How is that possible?](#how-is-that-possible)
-- [How can I help?](#how-can-i-help)
-- [Community](#community)
-- [Building](#building)
-  - [with Nix](#with-nix)
-
 Usage
 -----
 
@@ -78,6 +61,8 @@ machine with GHC. This is HVM: write a functional program, get a parallel C
 runtime. And that's just the tip of iceberg!
 
 [See Nix usage documentation here.](./NIX.md)
+
+[See build instructions here.](./BUILDING.md)
 
 Benchmarks
 ==========
@@ -432,30 +417,3 @@ Community
 To follow the project, please join our [Telegram Chat](https://t.me/formality_lang),
 the [Kindelia community on Discord](https://discord.gg/VV7ppaVWYn) or
 [Matrix](https://matrix.to/#/#kindelia:kde.org)!
-
-Building
-========
-
-Clone the repo:
-
-```sh
-git clone https://github.com/Kindelia/HVM.git
-cd HVM
-```
-
-To build and run:
-
-```sh
-cargo run -- run foobar.hvm
-```
-
-To build and install the binary:
-
-```sh
-cargo install --path .
-```
-
-with Nix
---------
-
-To build with Nix [see here](./NIX.md).
