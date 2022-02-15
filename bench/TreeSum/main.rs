@@ -1,22 +1,22 @@
 use std::env;
 
 enum Tree {
-  Leaf{val: u32},
-  Node{left: Box<Tree>, right: Box<Tree>}
+  Leaf { val: u32 },
+  Node { left: Box<Tree>, right: Box<Tree> },
 }
 
 fn gen(n: u32) -> Tree {
-  if n == 0{
-    Tree::Leaf{val: 1}
+  if n == 0 {
+    Tree::Leaf { val: 1 }
   } else {
-    Tree::Node{left: Box::new(gen(n-1)), right: Box::new(gen(n-1))}
+    Tree::Node { left: Box::new(gen(n - 1)), right: Box::new(gen(n - 1)) }
   }
 }
 
 fn sum(tree: &Tree) -> u32 {
   match tree {
-    Tree::Leaf{val} => *val,
-    Tree::Node{left, right} => sum(left) + sum(right)
+    Tree::Leaf { val } => *val,
+    Tree::Node { left, right } => sum(left) + sum(right),
   }
 }
 

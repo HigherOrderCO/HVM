@@ -1,10 +1,12 @@
 #![allow(clippy::identity_op)]
 
+use regex::Regex;
+use std::io::Write;
+
 use crate::builder as bd;
 use crate::language as lang;
 use crate::rulebook as rb;
 use crate::runtime as rt;
-use std::io::Write;
 
 pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> std::io::Result<()> {
   let as_clang = compile_code(code, parallel);
@@ -18,18 +20,23 @@ pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> std
   Ok(())
 }
 
-pub fn compile_code(code: &str, parallel: bool) -> String {
+fn compile_code(code: &str, parallel: bool) -> String {
   let file = lang::read_file(code);
   let book = rb::gen_rulebook(&file);
-  let _funs = bd::build_runtime_functions(&book);
-  compile_book(&book, parallel)
+  let (_, mut dups_count) = bd::build_runtime_functions(&book);
+  compile_book(&mut dups_count, &book, parallel)
 }
 
-pub fn compile_name(name: &str) -> String {
-  str::replace(&format!("_{}_", name.to_uppercase()), ".", "$")
+fn compile_name(name: &str) -> String {
+  // TODO: this can still cause some name collisions.
+  // Note: avoiding the use of `$` because it is not an actually valid
+  // identifier character in C.
+  let name = name.replace("_", "__");
+  let name = name.replace(".", "_");
+  format!("_{}_", name.to_uppercase())
 }
 
-pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
+fn compile_book(dups_count: &mut bd::DupsCount, comp: &rb::RuleBook, parallel: bool) -> String {
   let mut dups = 0;
   let mut c_ids = String::new();
   let mut inits = String::new();
@@ -39,12 +46,12 @@ pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
   }
   for (name, (_arity, rules)) in &comp.func_rules {
-    let (init, code) = compile_func(comp, rules, 7, &mut dups);
+    let (init, code) = compile_func(dups_count, comp, rules, 7, &mut dups);
 
     line(
       &mut c_ids,
       0,
-      &format!("const u64 {} = {};", &compile_name(name), comp.name_to_id.get(name).unwrap_or(&0)),
+      &format!("#define {} ({})", &compile_name(name), comp.name_to_id.get(name).unwrap_or(&0)),
     );
 
     line(&mut inits, 6, &format!("case {}: {{", &compile_name(name)));
@@ -60,13 +67,14 @@ pub fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, parallel)
 }
 
-pub fn compile_func(
+fn compile_func(
+  dups_count: &mut bd::DupsCount,
   comp: &rb::RuleBook,
   rules: &[lang::Rule],
   tab: u64,
   dups: &mut u64,
 ) -> (String, String) {
-  let dynfun = bd::build_dynfun(comp, rules);
+  let dynfun = bd::build_dynfun(dups_count, comp, rules);
 
   let mut init = String::new();
   let mut code = String::new();
@@ -176,7 +184,7 @@ pub fn compile_func(
   (init, code)
 }
 
-pub fn compile_func_rule_term(
+fn compile_func_rule_term(
   code: &mut String,
   tab: u64,
   term: &bd::DynTerm,
@@ -388,7 +396,7 @@ pub fn compile_func_rule_term(
 // This isn't used, but it is an alternative way to compile right-hand side bodies. It results in
 // slightly different code that might be faster since it inlines many memory writes. But it doesn't
 // optimize numeric operations to avoid extra rules, so that may make it slower, depending.
-pub fn compile_func_rule_body(
+fn compile_func_rule_body(
   code: &mut String,
   tab: u64,
   body: &bd::Body,
@@ -455,7 +463,20 @@ fn line(code: &mut String, tab: u64, line: &str) {
   code.push('\n');
 }
 
-pub fn c_runtime_template(
+/// String pattern that will be replaced on the template code.
+/// Syntax:
+/// ```c
+/// /*! <TAG> !*/
+/// ```
+/// or:
+/// ```c
+/// /*! <TAG> */ ... /* <TAG> !*/
+/// ```
+// Note: `(?s)` is the flag that allows `.` to match `\n`
+const REPLACEMENT_TOKEN_PATTERN: &str =
+  r"(?s)(?:/\*! *(\w+?) *!\*/)|(?:/\*! *(\w+?) *\*/.+?/\* *(\w+?) *!\*/)";
+
+fn c_runtime_template(
   c_ids: &str,
   inits: &str,
   codes: &str,
@@ -464,60 +485,52 @@ pub fn c_runtime_template(
   parallel: bool,
 ) -> String {
   const C_RUNTIME_TEMPLATE: &str = include_str!("runtime.c");
-  const C_PARALLEL_FLAG_CONTENT: &str = "/* GENERATED_PARALLEL_FLAG_CONTENT */";
-  const C_CONSTRUCTOR_IDS_CONTENT: &str = "/* GENERATED_CONSTRUCTOR_IDS_CONTENT */";
-  const C_REWRITE_RULES_STEP_0_CONTENT: &str = "/* GENERATED_REWRITE_RULES_STEP_0_CONTENT */";
-  const C_REWRITE_RULES_STEP_1_CONTENT: &str = "/* GENERATED_REWRITE_RULES_STEP_1_CONTENT */";
-  const C_NAME_COUNT_CONTENT: &str = "/* GENERATED_NAME_COUNT_CONTENT */";
-  const C_ID_TO_NAME_DATA_CONTENT: &str = "/* GENERATED_ID_TO_NAME_DATA_CONTENT */";
-  const C_NUM_THREADS_CONTENT: &str = "/* GENERATED_NUM_THREADS_CONTENT */";
+  // Instantiate the template with the given sections' content
 
-  // Sanity checks: the generated section tokens we're looking for must be present in the runtime C
-  // file.
-  debug_assert!(
-    C_RUNTIME_TEMPLATE.contains(C_CONSTRUCTOR_IDS_CONTENT),
-    "The runtime C file is missing the constructor ids section token: {}",
-    C_CONSTRUCTOR_IDS_CONTENT
-  );
-  debug_assert!(
-    C_RUNTIME_TEMPLATE.contains(C_PARALLEL_FLAG_CONTENT),
-    "The runtime C file is missing parallel flag token: {}",
-    C_PARALLEL_FLAG_CONTENT
-  );
-  debug_assert!(
-    C_RUNTIME_TEMPLATE.contains(C_REWRITE_RULES_STEP_0_CONTENT),
-    "The runtime C file is missing the rewrite rules step 0 section token: {}",
-    C_REWRITE_RULES_STEP_0_CONTENT
-  );
-  debug_assert!(
-    C_RUNTIME_TEMPLATE.contains(C_REWRITE_RULES_STEP_1_CONTENT),
-    "The runtime C file is missing the rewrite rules step 1 section token: {}",
-    C_REWRITE_RULES_STEP_1_CONTENT
-  );
-  debug_assert!(
-    C_RUNTIME_TEMPLATE.contains(C_NAME_COUNT_CONTENT),
-    "The runtime C file is missing name count section token: {}",
-    C_NAME_COUNT_CONTENT
-  );
-  debug_assert!(
-    C_RUNTIME_TEMPLATE.contains(C_ID_TO_NAME_DATA_CONTENT),
-    "The runtime C file is missing the id to name data section token: {}",
-    C_ID_TO_NAME_DATA_CONTENT
-  );
-  debug_assert!(
-    C_RUNTIME_TEMPLATE.contains(C_NUM_THREADS_CONTENT),
-    "The runtime C file is missing the num threads section token: {}",
-    C_NUM_THREADS_CONTENT
-  );
+  const C_PARALLEL_FLAG_TAG: &str = "GENERATED_PARALLEL_FLAG";
+  const C_NUM_THREADS_TAG: &str = "GENERATED_NUM_THREADS";
+  const C_CONSTRUCTOR_IDS_TAG: &str = "GENERATED_CONSTRUCTOR_IDS";
+  const C_REWRITE_RULES_STEP_0_TAG: &str = "GENERATED_REWRITE_RULES_STEP_0";
+  const C_REWRITE_RULES_STEP_1_TAG: &str = "GENERATED_REWRITE_RULES_STEP_1";
+  const C_NAME_COUNT_TAG: &str = "GENERATED_NAME_COUNT";
+  const C_ID_TO_NAME_DATA_TAG: &str = "GENERATED_ID_TO_NAME_DATA";
+
+  // TODO: Sanity checks: all tokens we're looking for must be present in the
+  // `runtime.c` file.
+
+  let re = Regex::new(REPLACEMENT_TOKEN_PATTERN).unwrap();
 
   // Instantiate the template with the given sections' content
 
-  C_RUNTIME_TEMPLATE
-    .replace(C_PARALLEL_FLAG_CONTENT, if parallel { "#define PARALLEL" } else { "" })
-    .replace(C_NUM_THREADS_CONTENT, &num_cpus::get().to_string())
-    .replace(C_CONSTRUCTOR_IDS_CONTENT, c_ids)
-    .replace(C_REWRITE_RULES_STEP_0_CONTENT, inits)
-    .replace(C_REWRITE_RULES_STEP_1_CONTENT, codes)
-    .replace(C_NAME_COUNT_CONTENT, &names_count.to_string())
-    .replace(C_ID_TO_NAME_DATA_CONTENT, id2nm)
+  let result = re.replace_all(C_RUNTIME_TEMPLATE, |caps: &regex::Captures| {
+    let tag = if let Some(cap1) = caps.get(1) {
+      cap1.as_str()
+    } else if let Some(cap2) = caps.get(2) {
+      let cap2 = cap2.as_str();
+      if let Some(cap3) = caps.get(3) {
+        let cap3 = cap3.as_str();
+        debug_assert!(cap2 == cap3, "Closing block tag name must match opening tag: {}.", cap2);
+      }
+      cap2
+    } else {
+      panic!("Replacement token must have a tag.")
+    };
+
+    let parallel_flag = if parallel { "#define PARALLEL" } else { "" };
+    let num_threads = &num_cpus::get().to_string();
+    let names_count = &names_count.to_string();
+    match tag {
+      C_PARALLEL_FLAG_TAG => parallel_flag,
+      C_NUM_THREADS_TAG => num_threads,
+      C_CONSTRUCTOR_IDS_TAG => c_ids,
+      C_REWRITE_RULES_STEP_0_TAG => inits,
+      C_REWRITE_RULES_STEP_1_TAG => codes,
+      C_NAME_COUNT_TAG => names_count,
+      C_ID_TO_NAME_DATA_TAG => id2nm,
+      _ => panic!("Unknown replacement tag."),
+    }
+    .to_string()
+  });
+
+  (*result).to_string()
 }

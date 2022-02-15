@@ -57,39 +57,29 @@
           inherit system overlays;
         };
         buildInputs = [
-          # TODO: Remove this when `generatedCargoNix` works.
-          pkgs.crate2nix
           pkgs.hyperfine
+          pkgs.nodejs
           pkgs.time
         ];
         nativeBuildInputs = [
           pkgs.clang
           pkgs.ghc
         ];
-        # TODO: The following is currently blocked by https://github.com/kolloch/crate2nix/issues/213 but should be a cleaner alternative to generating Cargo.nix manually once the fix is upstreamed.
-        # inherit (import "${crate2nix}/tools.nix" { inherit pkgs; })
-        #   generatedCargoNix;
-        # cargoNix = import
-        #   (generatedCargoNix {
-        #     inherit name;
-        #     src = ./.;
-        #   })
-        #   {
-        #     inherit pkgs;
-        #     defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-        #       ${name} = attrs: {
-        #         inherit buildInputs nativeBuildInputs;
-        #       };
-        #     };
-        #   };
-        cargoNix = import ./Cargo.nix {
-          inherit pkgs;
-          defaultCrateOverrides = pkgs.defaultCrateOverrides // {
-            ${name} = attrs: {
-              inherit buildInputs nativeBuildInputs;
+        inherit (import "${crate2nix}/tools.nix" { inherit pkgs; })
+          generatedCargoNix;
+        cargoNix = import
+          (generatedCargoNix {
+            inherit name;
+            src = ./.;
+          })
+          {
+            inherit pkgs;
+            defaultCrateOverrides = pkgs.defaultCrateOverrides // {
+              ${name} = attrs: {
+                inherit buildInputs nativeBuildInputs;
+              };
             };
           };
-        };
       in
       {
         packages.${name} = cargoNix.rootCrate.build;

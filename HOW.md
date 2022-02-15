@@ -2,7 +2,7 @@
 
 **Note: this is a public draft. It contains a lot of errors and may be too
 meme-ish and handholding in some parts. I know it needs improvements. I'll
-review and finish in a future. Corrections and feedbacks are welcome!**
+review and finish in the future. Corrections and feedbacks are welcome!**
 
 How?
 ====
@@ -47,7 +47,14 @@ and similar. And this is just a prototype I wrote in about a month. I don't even
 consider myself proficient in C, so I have expectations for the long-term
 potential of HVM.
 
-HVM's optimality and complexity reasoning comes from the vast literature on the optimal evaluation of functional programming languages. [This book](https://www.amazon.com/Implementation-Functional-Programming-Languages-Theoretical/dp/0521621127), by Andrea Asperti and Stefano Guerrini, has a great overview. HVM is merely a practical, efficient implementation of the bookkeeping-free reduction machine depicted on the book (pages 14-39). Its high-order machinery has a 1-to-1 relationship to the theoretical model, and the same complexity bounds, and respective proofs (chapter 10) apply. HVM has additional features (machine integers, datatypes) that do not affect complexity.
+HVM's optimality and complexity reasoning comes from the vast literature on the
+optimal evaluation of functional programming languages. [This book](https://www.amazon.com/Implementation-Functional-Programming-Languages-Theoretical/dp/0521621127),
+by Andrea Asperti and Stefano Guerrini, has a great overview. HVM is merely a
+practical, efficient implementation of the bookkeeping-free reduction machine
+depicted in the book (pages 14-39). Its higher-order machinery has a 1-to-1
+relationship to the theoretical model, and the same complexity bounds, and
+respective proofs (chapter 10) apply. HVM has additional features (machine
+integers, datatypes) that do not affect complexity.
 
 That's about it. Now, onto the long, in-depth explanation.
 
@@ -217,16 +224,16 @@ Clones aren't bad. They just need to relax.
 Once you understand the context above, grasping how HVM can be optimally lazy,
 non-GC'd and inherently parallel is easy. At its base, it has the same "linear"
 core that both Haskell and Rust share in common (which, as we've just
-established, is already all these things). The difference is that, instead of
-adding some kind of clever reference system to circumvent the cost of
-cloning... **HVM introduces a pervasive, lazy clone primitive**. 
+established, already exhibit these properties). The difference is that, instead
+of adding some kind of clever reference system to circumvent the cost of
+cloning... **HVM introduces a pervasive, lazy clone primitive**.
 
 **HVM's runtime has no references. Instead, it features a `.clone()` primitive
 that has zero cost, until the cloned value needs to be read. Once it does,
 instead of being copied whole, it's done layer by layer, on-demand.**
 
 For the purpose of lazy evaluation, HVM's lazy clones works like Haskell's
-thunks, except they do not break down on lambdas. For the context of garbage
+thunks, except they do not break down on lambdas. In the context of garbage
 collection, since the data is actually copied, there are no shared references,
 so memory can be freed when values go out of scope.  For the same reason,
 parallelism becomes trivial, and the runtime's `reduce()` procedure is almost
@@ -273,7 +280,7 @@ Operations
 
 ```
 (<op> x y)
-------- Op2-U32
+------------------- Op2-U32
 x +  y if <op> is +
 x -  y if <op> is -
 x *  y if <op> is *
@@ -382,8 +389,8 @@ that's fine.
 **5.** Even though the user-facing language makes no distinction between
 constructors and functions, the runtime does, for optimality purposes.
 Specifically, a duplication is only applied for constructors that are not used
-as functions. This equal treatment means we can write Copatterns easily in HVM;
-see the bonus section.
+as functions. This equal treatment means we can write Copatterns easily in HVM
+([more on this in the bonus section](#bonus-copatterns)).
 
 #### Example
 
@@ -509,7 +516,7 @@ dup x y = (Cons (+ 3 3) Nil)
 Notice how only the minimal amount of copying was performed. The first part of
 the list (`(Cons (+ 1 1) ...)`) was copied twice, the second part
 (`(Cons (+ 2 2) ...)`) was copied once, and the rest (`(Cons (+ 3 3) Nil)`) was
-collected without even touching it. Collection is orchestrated by variables
+simply collected as garbage. Collection is orchestrated by variables
 that go out of scope. For example, in the last lines, `x` and `y` both aren't
 referenced anywhere. That triggers the collection of the remaining list.
 
@@ -530,7 +537,8 @@ of the lambda `λx(body)` to the argument `arg` reduces to `body`, and the
 substitution of `x` by `arg`"*. For example, `(λx(Single x) 42)` is reduced to
 `(Single 42)`. Remember that variables only occur once. Because of that,
 beta-reduction is a very fast operation. A modern CPU can perform more than 200
-million beta-reductions per second, in a single core. As an example:
+million beta-reductions per second, in a single core. Here's an example of it
+in action:
 
 ```javascript
 (λxλy(Pair x y) 2 3)
@@ -647,30 +655,30 @@ reduction:
 ```javascript
 dup f g = ((λx λy (Pair (+ x x) y)) 2)
 (Pair (f 10) (g 20))
------------------------------------ App-Lam
+-------------------------------------- App-Lam
 dup f g = λy (Pair (+ 2 2) y)
 (Pair (f 10) (g 20))
------------------------------------ Dup-Lam
+-------------------------------------- Dup-Lam
 dup f g = (Pair (+ 2 2) {y0 y1})
 (Pair (λy0(f) 10) (λy1(g) 20))
------------------------------------ App-Lam
+-------------------------------------- App-Lam
 dup f g = (Pair (+ 2 2) {10 y1})
 (Pair f (λy1(g) 20))
------------------------------------ App-Lam
+-------------------------------------- App-Lam
 dup f g = (Pair (+ 2 2) {10 20})
 (Pair f g)
------------------------------------ Dup-Ctr
+-------------------------------------- Dup-Ctr
 dup a b = (+ 2 2)
 dup c d = {10 20}
 (Pair (Pair a c) (Pair b d))
------------------------------------ Op2-U32
+-------------------------------------- Op2-U32
 dup a b = 4
 dup c d = {10 20}
 (Pair (Pair a c) (Pair b d))
------------------------------------ Dup-U32
+-------------------------------------- Dup-U32
 dup c d = {10 20}
 (Pair (Pair 4 c) (Pair 4 d))
------------------------------------ Dup-sup
+-------------------------------------- Dup-Sup
 (Pair (Pair 4 10) (Pair 4 20))
 ```
 
@@ -687,22 +695,22 @@ now on, nothing too surprising will happen.
 Superposed Application
 ----------------------
 
-Since duplications are pervasive, it may happen that a superposition will end
-up in the function position of an application. For example, the situation below
-can happen at runtime:
+Since duplications are pervasive, what may happen is that a superposition will
+end up in the function position of an application. For example, the situation
+below can happen at runtime:
 
 ```javascript
 ({λx(x) λy(y)} 10)
 ```
 
 This represents two superposed lambdas, applied to an argument `10`. If we
-leave this expression as is, certain programs would be stuck, and we wouldn't
+leave this expression as is, certain programs would get stuck, and we wouldn't
 be able to evaluate them. We need a way out. Because of that, there is a
 superposed application rule that deals with that situation:
 
 ```javascript
 ({a b} c)
------------------------ App-Sup
+--------------- App-Sup
 dup x0 x1 = c
 {(a x0) (b x1)}
 ```
@@ -717,13 +725,13 @@ Superposed Operation
 
 ```javascript
 (+ {a0 a1} b)
-------------- Op2-Sup-A
+--------------------- Op2-Sup-A
 dup b0 b1 = b
 {(+ a0 b0) (+ a1 b1)}
 
 
 (+ a {b0 b1})
-------------- Op2-Sup-B
+--------------------- Op2-Sup-B
 dup a0 a1 = a
 {(+ a0 b0) (+ a1 b1)}
 ```
@@ -739,7 +747,7 @@ There is one last rule that is worth discussing.
 
 ```javascript
 dup x y = {a b}
---------------- DUP-SUP (different)
+--------------- Dup-Sup (different)
 x <- {xA xB}
 y <- {yA yB}
 dup xA yA = a
@@ -753,10 +761,10 @@ of `x` by the superposition `{xA xB}`, and the substitution of `y` by `{yA
 yB}`"*.  At that point, the formal notation is probably doing a better job than
 English at conveying this information.
 
-If you've paid close attention, though, you may have noticed the DUP-SUP has
+If you've paid close attention, though, you may have noticed the Dup-Sup has
 already been defined, on the *Lambda Application* section. So, what is going on
-here? Well, it turns out that DUP-SUP is a special case that has two different
-reduction rules. If this DUP-SUP represents the end of a duplication process, it
+here? Well, it turns out that Dup-Sup is a special case that has two different
+reduction rules. If this Dup-Sup represents the end of a duplication process, it
 must go with the former rule. However, if you're duplicating a term, which
 itself duplicates something, then this rule must be used. Due to the extremely
 local nature of HVM reductions though, determining when each rule should be
@@ -780,9 +788,9 @@ first clone attempts to clone the second clone. That is considered undefined
 behavior, and a typed language that compiles to HVM must check that this kind of
 situation won't happen.
 
-How common is this? Well, unless you like multiplying Church encoded natural
+How common is this? Well, unless you like multiplying Church-encoded natural
 numbers in a loop, you've probably never seen a program that reaches this
-limitation in your entire career. Even if you're a fan of λ-encodings, you're
+limitation in your entire career. Even if you're a fan of λ encodings, you're
 fine. For example, the program above can be fixed by just avoiding one clone:
 
 ```javascript
@@ -792,20 +800,20 @@ let h = λf(λx(f (f x)))
 ```
 
 And all the other "hardcore" functional programming tools are compatible.
-Y-Combinators, Church encodings, nested maps of maps, all work just fine. 
+Y-Combinators, Church encodings, nested maps of maps, all work just fine.
 If you think you'll reach this limitation in practice, you're probably
-misunderstanding how esoteric a program must be for that to happen. It
+misunderstanding how esoteric a program must be for it to happen. It
 is a common (and annoying) misconception that this limit has much relevance in
 practice. C programmers survived without closures, for decades. Rust programmers
 live well with far more restrictive limitations on what shapes of programs
 they're allowed to write. HVM has all sorts of extremely high-level closures you
-can think of. You just can't have a clone clone its own clone. Without this
+can use. You just can't have a clone clone its own clone. Without this
 limitation, which is almost irrelevant in practice, it wouldn't be possible for
 HVM to achieve its current performance, so we believe it is justified.
 
 As a last note, HVM's current implementation is slightly more restrictive than
 it should be, since each occurrence of a global definition counts as a clone of
-itself. That is not necessary, and will soon be patched. Regardless, even in
+itself. This is unnecessary, and will soon be patched. Regardless, even in
 this version, it is very unlikely you'll find this in practice.
 
 HVM's Low-level Implementation
@@ -840,7 +848,7 @@ Nats = (Cons 0 (Map λx(+ x 1) Nats))
 Main = (Head (Tail (Tail Nats)))
 ```
 
-It is an the usual recursive `Map` applied to an infinite `List`. Here, `Map` is
+This is the usual recursive `Map` applied to an infinite `List`. Here, `Map` is
 used in the function position, and the List constructors (`Nil` and `Cons`) are
 matched. The same program can be written in a corecursive fashion, by inverting
 everything: the `List` destructors (`Head`/`Tail`) are used in the function
@@ -863,7 +871,7 @@ Bonus: Abusing Beta-Optimality
 ==============================
 
 By abusing beta-optimality, we're able to turn some exponential-time algorithms
-in linear-time ones. That is why we're able to implement `Add` on `BitStrings`
+into linear-time ones. That is why we're able to implement `Add` on `BitStrings`
 as repeated applications of increment:
 
 
@@ -885,7 +893,7 @@ don't, then the normal form will not be small. For example:
 ```
 
 This is easy to read, but then `λx (Not (Not x))` will not have a small normal
-form. If we use λ-encodings, we can write `Not` as:
+form. If we use λ encodings, we can write `Not` as:
 
 ```javascript
 True  = λt λf t
@@ -912,8 +920,8 @@ False = λt λf f
 Not   = λb λt λf (b f t)
 ```
 
-This will make the normal form of `λx (Not (Not x))` small: i.e., it becomes `λx
-λt λf (b t f)`. This makes `Not^(2^N)` linear time in `N`!
+This will make the normal form of `λx (Not (Not x))` small: i.e., it becomes
+`λx λt λf (b t f)`. This makes `Not^(2^N)` linear time in `N`!
 
 The same technique also applies for `Inc`. We start with the usual definition:
 
@@ -945,15 +953,15 @@ Then we lift the shared lambdas up:
 
 This makes `λx (Inc (Inc x))` have a constant-space normal form, which in turn
 makes the composition of `Inc` fast, allowing `Add` to be efficiently
-implemented as repeated increment. 
+implemented as repeated increment.
 
-Similar uses of this idea can greatly speed-up functional algorithms. For
+Similar uses of this idea can greatly speed up functional algorithms. For
 example, a clever way to implement a `Data.List` would be to let all algorithms
-operate on λ-encoded Church Lists under the hoods, converting as needed. This
-has the same "deforestation" effect of Haskell's rewrite pragmas, without any
-hard-coded compile-time rewriting, and in a more flexible way. For example, using
-`map` in a loop is "deforested" in HVM. GHC can't do that, because the number of
-applications is not known statically.
+operate on Church-encoded Lists under the hoods, converting as needed. This has
+the same "deforestation" effect of Haskell's rewrite pragmas, without any hard-
+coded compile-time rewriting, and in a more flexible way. For example, using
+`map` in a loop is "deforested" in HVM. GHC can't do that, because the number
+of applications is not known statically.
 
 Note that too much cloning will often make your normal forms large, so avoid
 these by keeping your programs linear. For example, instead of:

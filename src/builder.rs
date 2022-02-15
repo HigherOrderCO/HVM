@@ -58,7 +58,11 @@ pub struct DynFun {
   pub rules: Vec<DynRule>,
 }
 
-pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
+pub fn build_dynfun(
+  dups_count: &mut DupsCount,
+  comp: &rb::RuleBook,
+  rules: &[lang::Rule],
+) -> DynFun {
   let mut redex = if let lang::Term::Ctr { name: _, ref args } = *rules[0].lhs {
     vec![false; args.len()]
   } else {
@@ -103,7 +107,7 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
         }
 
         let term = term_to_dynterm(comp, &rule.rhs, vars.len() as u64);
-        let body = build_body(&term, vars.len() as u64);
+        let body = build_body(dups_count, &term, vars.len() as u64);
 
         Some(DynRule { cond, vars, term, body, free })
       } else {
@@ -122,33 +126,55 @@ fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
   }
 }
 
-// This is used to color fan nodes. We need a globally unique color for each generated node. Right
-// now, we just increment this counter every time we generate a node. Node that this is done at
-// compile-time, so, calling the same function will always return the same fan node colors. That
-// is, colors are only globally unique across different functions, not across different function
-// calls. We could move this to the runtime, though, which would make Lambolt somewhat more
-// expressive. For example:
-// (Two)  = λf λx (f (f x))
-// (Main) = ((Two) (Two))
-// Isn't admissible in the current runtime, but it would if we generated new fan nodes per each
-// global function call.
-static mut DUPS_COUNT: u64 = 0;
+/// This is used to color fan nodes. We need a globally unique color for each
+/// generated node. Right now, we just increment this counter every time we
+/// generate a node. Node that this is done at compile-time, so, calling the
+/// same function will always return the same fan node colors. That is, colors
+/// are only globally unique across different functions, not across different
+/// function calls.
+///
+/// We could move this to the runtime, though, which would make Lambolt somewhat
+/// more expressive. For example:
+///
+/// ```not_rust
+/// (Two)  = λf λx (f (f x))
+/// (Main) = ((Two) (Two))
+/// ```
+///
+/// Isn't admissible in the current runtime, but it would if we generated new
+/// fan nodes per each global function call.
+#[derive(Debug)]
+pub struct DupsCount(u64);
 
-pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
-  unsafe {
-    DUPS_COUNT = 0;
+impl DupsCount {
+  fn new() -> Self {
+    Self(0)
   }
+
+  fn next(&mut self) -> u64 {
+    let ret = self.0;
+    self.0 += 1;
+    ret
+  }
+}
+
+pub fn build_runtime_functions(comp: &rb::RuleBook) -> (Vec<Option<rt::Function>>, DupsCount) {
+  let mut dups_count = DupsCount::new();
   let mut funcs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect();
   for (name, rules_info) in &comp.func_rules {
     let fnid = comp.name_to_id.get(name).unwrap_or(&0);
-    let func = build_runtime_function(comp, &rules_info.1);
+    let func = build_runtime_function(&mut dups_count, comp, &rules_info.1);
     funcs[*fnid as usize] = Some(func);
   }
-  funcs
+  (funcs, dups_count)
 }
 
-pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
-  let dynfun = build_dynfun(comp, rules);
+fn build_runtime_function(
+  dups_count: &mut DupsCount,
+  comp: &rb::RuleBook,
+  rules: &[lang::Rule],
+) -> rt::Function {
+  let dynfun = build_dynfun(dups_count, comp, rules);
 
   let arity = dynfun.redex.len() as u64;
   let mut stricts = Vec::new();
@@ -228,7 +254,7 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
 }
 
 /// Converts a Lambolt Term to a Runtime Term
-pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
+fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
   fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
       lang::Oper::Add => rt::ADD,
@@ -320,7 +346,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
   convert_term(term, comp, 0, &mut vars)
 }
 
-pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
+fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Body {
   fn link(nodes: &mut Vec<Node>, targ: u64, slot: u64, elem: Elem) {
     nodes[targ as usize][slot as usize] = elem;
     if let Elem::Loc { value, targ: var_targ, slot: var_slot } = elem {
@@ -331,7 +357,12 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
       }
     }
   }
-  fn go(term: &DynTerm, vars: &mut Vec<Elem>, nodes: &mut Vec<Node>) -> Elem {
+  fn go(
+    term: &DynTerm,
+    dups_count: &mut DupsCount,
+    vars: &mut Vec<Elem>,
+    nodes: &mut Vec<Node>,
+  ) -> Elem {
     match term {
       DynTerm::Var { bidx } => {
         if *bidx < vars.len() as u64 {
@@ -343,26 +374,22 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
       DynTerm::Dup { eras: _, expr, body } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 3]);
-        let dupk;
-        unsafe {
-          dupk = DUPS_COUNT;
-          DUPS_COUNT += 1;
-        }
+        let dupk = dups_count.next();
         link(nodes, targ, 0, Elem::Fix { value: rt::Era() });
         link(nodes, targ, 1, Elem::Fix { value: rt::Era() });
-        let expr = go(expr, vars, nodes);
+        let expr = go(expr, dups_count, vars, nodes);
         link(nodes, targ, 2, expr);
         vars.push(Elem::Loc { value: rt::Dp0(dupk, 0), targ, slot: 0 });
         vars.push(Elem::Loc { value: rt::Dp1(dupk, 0), targ, slot: 0 });
-        let body = go(body, vars, nodes);
+        let body = go(body, dups_count, vars, nodes);
         vars.pop();
         vars.pop();
         body
       }
       DynTerm::Let { expr, body } => {
-        let expr = go(expr, vars, nodes);
+        let expr = go(expr, dups_count, vars, nodes);
         vars.push(expr);
-        let body = go(body, vars, nodes);
+        let body = go(body, dups_count, vars, nodes);
         vars.pop();
         body
       }
@@ -371,7 +398,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
         link(nodes, targ, 0, Elem::Fix { value: rt::Era() });
         vars.push(Elem::Loc { value: rt::Var(0), targ, slot: 0 });
-        let body = go(body, vars, nodes);
+        let body = go(body, dups_count, vars, nodes);
         link(nodes, targ, 1, body);
         vars.pop();
         Elem::Loc { value: rt::Lam(0), targ, slot: 0 }
@@ -379,9 +406,9 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
       DynTerm::App { func, argm } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
-        let func = go(func, vars, nodes);
+        let func = go(func, dups_count, vars, nodes);
         link(nodes, targ, 0, func);
-        let argm = go(argm, vars, nodes);
+        let argm = go(argm, dups_count, vars, nodes);
         link(nodes, targ, 1, argm);
         Elem::Loc { value: rt::App(0), targ, slot: 0 }
       }
@@ -390,7 +417,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
           let targ = nodes.len() as u64;
           nodes.push(vec![Elem::Fix { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
-            let arg = go(arg, vars, nodes);
+            let arg = go(arg, dups_count, vars, nodes);
             link(nodes, targ, i as u64, arg);
           }
           Elem::Loc { value: rt::Cal(args.len() as u64, *func, 0), targ, slot: 0 }
@@ -403,7 +430,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
           let targ = nodes.len() as u64;
           nodes.push(vec![Elem::Fix { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
-            let arg = go(arg, vars, nodes);
+            let arg = go(arg, dups_count, vars, nodes);
             link(nodes, targ, i as u64, arg);
           }
           Elem::Loc { value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0 }
@@ -415,9 +442,9 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
       DynTerm::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
-        let val0 = go(val0, vars, nodes);
+        let val0 = go(val0, dups_count, vars, nodes);
         link(nodes, targ, 0, val0);
-        let val1 = go(val1, vars, nodes);
+        let val1 = go(val1, dups_count, vars, nodes);
         link(nodes, targ, 1, val1);
         Elem::Loc { value: rt::Op2(*oper, 0), targ, slot: 0 }
       }
@@ -425,12 +452,12 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
   }
   let mut nodes: Vec<Node> = Vec::new();
   let mut vars: Vec<Elem> = (0..free_vars).map(|i| Elem::Ext { index: i }).collect();
-  let elem = go(term, &mut vars, &mut nodes);
+  let elem = go(term, dups_count, &mut vars, &mut nodes);
   (elem, nodes)
 }
 
 static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
-pub fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar]) -> rt::Lnk {
+fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar]) -> rt::Lnk {
   unsafe {
     let (elem, nodes) = body;
     let hosts = &mut ALLOC_BODY_WORKSPACE;
@@ -459,16 +486,21 @@ pub fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynV
   }
 }
 
-pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
+fn alloc_closed_dynterm(dups_count: &mut DupsCount, mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   let host = rt::alloc(mem, 1);
-  let body = build_body(term, 0);
+  let body = build_body(dups_count, term, 0);
   let term = alloc_body(mem, 0, &body, &[]);
   rt::link(mem, host, term);
   host
 }
 
-pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) -> u64 {
-  alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
+fn alloc_term(
+  dups_count: &mut DupsCount,
+  mem: &mut rt::Worker,
+  comp: &rb::RuleBook,
+  term: &lang::Term,
+) -> u64 {
+  alloc_closed_dynterm(dups_count, mem, &term_to_dynterm(comp, term, 0))
 }
 
 // Evaluates a Lambolt term to normal form
@@ -483,10 +515,10 @@ pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> (Box<lang::Term>
   let book = rb::gen_rulebook(&file);
 
   // Builds dynamic functions
-  let funs = build_runtime_functions(&book);
+  let (funs, mut dups_count) = build_runtime_functions(&book);
 
   // Allocates the main term
-  let host = alloc_term(&mut worker, &book, call);
+  let host = alloc_term(&mut dups_count, &mut worker, &book, call);
 
   // Normalizes it
   let init = Instant::now();

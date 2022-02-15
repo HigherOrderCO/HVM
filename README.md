@@ -18,15 +18,15 @@ scale towards uncharted levels of performance.
 Usage
 -----
 
-#### 1. Install it
+### 1. Install it
 
 First, install [Rust](https://www.rust-lang.org/). Then, type:
 
-```bash
+```sh
 cargo install hvm
 ```
 
-#### 2. Create an HVM file
+### 2. Create an HVM file
 
 HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 
@@ -46,9 +46,9 @@ HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 The program above creates a perfect binary tree with `2^n` elements and adds
 them up. Since it is recursive, HVM will parallelize it automatically.
 
-#### 3. Run and compile
+### 3. Run and compile
 
-```bash
+```sh
 hvm r main 10                      # runs it with n=10
 hvm c main                         # compiles HVM to C
 clang -O2 main.c -o main -lpthread # compiles C to BIN
@@ -62,6 +62,8 @@ runtime. And that's just the tip of iceberg!
 
 [See Nix usage documentation here.](./NIX.md)
 
+[See build instructions here.](./BUILDING.md)
+
 Benchmarks
 ==========
 
@@ -71,7 +73,7 @@ is still an early prototype, so it **obviously** won't beat GHC in general, but
 it does quite well already and should improve steadily as optimizations are
 implemented. Tests were compiled with `ghc -O2` for Haskell and `clang -O2` for
 HVM, on an 8-core M1 Max processor. The complete files to replicate these
-results are in [the /bench directory](bench).
+results are in [the `bench/` directory](bench).
 
 List Fold (Sequential)
 ----------------------
@@ -244,7 +246,7 @@ split p s (Cons x xs) min max =
 main = do
   n <- read.head <$> getArgs :: IO Word32
   let list = randoms 1 (100000 * n)
-  print $ sun $ qsort pivot pivot $ list 
+  print $ sun $ qsort pivot pivot $ list
 ```
 
 </td>
@@ -302,9 +304,9 @@ main = do
 
 This chart isn't wrong: HVM is *exponentially* faster for function composition,
 due to optimality, depending on the target function. There is no parallelism
-involved here. In general, if the composition of a function `f` has a
-constant-size normal form, then `f^(2^N)(x)` is linear-time (`O(N)`) on HVM,
-and exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
+involved here. In general, if the composition of a function `f` has a constant-
+size normal form, then `f^(2^N)(x)` is linear-time (`O(N)`) on HVM, and
+exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
 novel functional algorithms. I highly encourage you to try composing different
 functions and watching how their complexity behaves. Can you tell if it will be
 linear or exponential? Or how recursion will affect it? That's a very
@@ -333,7 +335,7 @@ Lambda Arithmetic (Optimal)
 (Add xs ys) = (App xs λx(Inc x) ys)
 
 // Multiplies two Bits
-(Mul xs ys) = 
+(Mul xs ys) =
   let e = End
   let o = λp (B0 (Mul p ys))
   let i = λp (Add ys (B0 (Mul p ys)))
@@ -361,7 +363,7 @@ inc xs = Bits $ \ex -> \ox -> \ix ->
 add xs ys = app xs (\x -> inc x) ys
 
 -- Multiplies two Bits
-mul xs ys = 
+mul xs ys =
   let e = end
       o = \p -> b0 (mul p ys)
       i = \p -> add ys (b1 (mul p ys))
@@ -399,19 +401,19 @@ Check [HOW.md](HOW.md).
 How can I help?
 ===============
 
-Most importantly, if you appreciate our work, help spreading the project! Posting on
-Reddit, communities, etc. helps more than you think.
+Most importantly, if you appreciate our work, please help spread word of the
+project! Sharing on Reddit, HN, and other communities helps more than you
+think.
 
 Second, I'm looking for partners! I believe HVM's current design is ready to
-scale and become the fastest runtime in the world, but much needs to be done to
-get there. We're also building interesting products built on top of it. If you'd
-like to get involved, please [email me](mailto:victor.taelin@gmail.com), or just
-send me a personal message on [Twitter](https://twitter.com/victortaelin).
+scale and become the fastest runtime in the world, but a lot still needs to be
+done to get there. We're also building interesting products built on top of it.
+If you'd like to get involved, please [email me](mailto:victor.taelin@gmail.com),
+or just send me a personal message on [Twitter](https://twitter.com/victortaelin).
 
 Community
 =========
 
-To just follow the project, join our [Telegram
-Chat](https://t.me/formality_lang), the [Kindelia community on
-Discord](https://discord.gg/VV7ppaVWYn) or
+To follow the project, please join our [Telegram Chat](https://t.me/formality_lang),
+the [Kindelia community on Discord](https://discord.gg/VV7ppaVWYn) or
 [Matrix](https://matrix.to/#/#kindelia:kde.org)!

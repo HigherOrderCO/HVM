@@ -26,7 +26,7 @@
 // Check the Testree example at the bottom of this file.
 
 #![allow(dead_code)]
-use itertools::Itertools;
+use itertools::Itertools as _;
 
 // Types
 // =====

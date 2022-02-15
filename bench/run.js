@@ -3,13 +3,13 @@ const fs = require("fs");
 const { exec, execSync } = require("child_process");
 const path = require("path");
 
-var dir = __dirname;
+let dir = __dirname;
 
 const RUNS = 3; // how many times run the same test
 
 function range(init, step, size) {
-  var arr = [];
-  for (var i = 0; i < size; ++i) {
+  let arr = [];
+  for (let i = 0; i < size; ++i) {
     arr.push(init);
     init = init + step;
   }
@@ -26,9 +26,9 @@ const programs = {
 
 const evaluators = {
   //HvmInterpreter: {
-    //pre: (name, file_path, temp_dir) => [],
-    //execution: (name, n, temp_dir) => `hvm run ${name} ${n}`,
-    //extension: ".hvm",
+  //pre: (name, file_path, temp_dir) => [],
+  //execution: (name, n, temp_dir) => `hvm run ${name} ${n}`,
+  //extension: ".hvm",
   //},
   // RUST: {
   //   pre: (name, file_path) => [`rustc -O ${name} -o ${dir}/.bin/rust`],
@@ -41,7 +41,10 @@ const evaluators = {
   //   extension: ".js"
   // },
   HVM: {
-    pre: (name, file_path) => ["hvm compile " + name, `clang -O2 -lpthread ${file_path}/main.c -o ${dir}/.bin/hvm`],
+    pre: (name, file_path) => [
+      "hvm compile " + name,
+      `clang -O2 -lpthread ${file_path}/main.c -o ${dir}/.bin/hvm`,
+    ],
     execution: (name, n) => `${dir}/.bin/hvm ${n}`,
     extension: ".hvm",
   },
@@ -50,7 +53,7 @@ const evaluators = {
     execution: (name, n) => `${dir}/.bin/ghc ${n}`,
     extension: ".hs",
   },
-}
+};
 
 function run_pre_commands(evaluator, file_name, file_path) {
   try {
@@ -60,8 +63,7 @@ function run_pre_commands(evaluator, file_name, file_path) {
     for (pre_command of pres) {
       execSync(pre_command);
     }
-    
-  } catch(e) {
+  } catch (e) {
     console.log(e);
     throw "Error while running pre commands";
   }
@@ -69,8 +71,8 @@ function run_pre_commands(evaluator, file_name, file_path) {
 
 function run_execution(evaluator, file_name, ctx) {
   let tests_perf = [];
-  var total_time = 0;
-  for (let i = 0; i < RUNS+1; i++) {
+  let total_time = 0;
+  for (let i = 0; i < RUNS + 1; i++) {
     const command = evaluator.execution(file_name, ctx.n);
     //console.log(command);
     // exec evaluator and measure its time
@@ -82,13 +84,14 @@ function run_execution(evaluator, file_name, ctx) {
     let time = end - start;
     console.log(`Time ${i}: ${time}`);
 
-    if (i > 0) { // ignore first run
+    if (i > 0) {
+      // ignore first run
       total_time += time;
       //test_results.push({
-        //test: ctx.program_name,
-        //targ: ctx.evaluator_name,
-        //argm: ctx.n,
-        //time: time,
+      //test: ctx.program_name,
+      //targ: ctx.evaluator_name,
+      //argm: ctx.n,
+      //time: time,
       //});
     }
   }
@@ -103,8 +106,8 @@ function run_execution(evaluator, file_name, ctx) {
   return tests_perf;
 }
 
-function run_n (ctx) {
-  const {file_path, evaluator_name, n} = ctx;
+function run_n(ctx) {
+  const { file_path, evaluator_name, n } = ctx;
   const abs_file_path = path.join(dir, file_path);
   const evaluator = evaluators[evaluator_name];
 
@@ -112,7 +115,7 @@ function run_n (ctx) {
   run_pre_commands(evaluator, file_name, abs_file_path);
 
   // consoles
-  console.log("===========================")
+  console.log("===========================");
   console.log(`[${evaluator_name}] ${file_path} ${n}`);
 
   // process.chdir(temp_dir);
@@ -123,8 +126,8 @@ function run_n (ctx) {
 function main() {
   // for each program
   for (let program_name in programs) {
-    var file_path = program_name;
-    var program = programs[program_name];
+    let file_path = program_name;
+    let program = programs[program_name];
 
     // will store the results
     let result = [];
@@ -133,12 +136,18 @@ function main() {
     for (evaluator_name in evaluators) {
       try {
         // for each n value
-        for (var n of program.vals) {
+        for (let n of program.vals) {
           //console.log("-", n, file_path, evaluator_name, n, RUNS, result, temp_dir);
-          run_n({program_name, file_path, evaluator_name, n, RUNS, result});
+          run_n({ program_name, file_path, evaluator_name, n, RUNS, result });
         }
-      } catch(e) {
-        console.log("Could not run for " + file_path + ": " + evaluator_name + " target. Verify if it exist.");
+      } catch (e) {
+        console.log(
+          "Could not run for " +
+            file_path +
+            ": " +
+            evaluator_name +
+            " target. Verify if it exist.",
+        );
         console.log("Details: ", e);
       }
     }
@@ -146,38 +155,36 @@ function main() {
     // Saves results.
     // TODO: messy code, improve
     console.log("Done! Saving results...");
-    var chart = {
+    let chart = {
       X: programs[program_name].vals.slice(0),
     };
-    for (var eva in evaluators) {
+    for (let eva in evaluators) {
       chart[eva] = [];
     }
-    for (var res of result) {
+    for (let res of result) {
       chart[res.targ].push(res.time);
     }
-    var evas = Object.keys(evaluators);
-    var rows = [["X"].concat(evas)];
-    for (var i = 0; i < chart.X.length; ++i) {
-      var row = [chart.X[i]];
-      for (var eva of evas) {
+    let evas = Object.keys(evaluators);
+    let rows = [["X"].concat(evas)];
+    for (let i = 0; i < chart.X.length; ++i) {
+      let row = [chart.X[i]];
+      for (let eva of evas) {
         row.push(chart[eva][i]);
       }
       rows.push(row);
     }
-    var text = rows.map(row => row.join(",")).join("\n");
-    fs.writeFileSync(path.join(dir, "_results_", program_name+".csv"), text);
+    let text = rows.map((row) => row.join(",")).join("\n") + "\n";
+    fs.writeFileSync(path.join(dir, "_results_", program_name + ".csv"), text);
     console.log("Results saved.");
-  };
+  }
 
   // delete temp folder
   //fs.rmSync(temp_dir, {recursive: true});
-
 }
-
 
 try {
   main();
-} catch(e) {
+} catch (e) {
   console.log(e);
 }
 // console.log(exec("hvm", ()));

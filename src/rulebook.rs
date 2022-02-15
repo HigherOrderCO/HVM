@@ -427,19 +427,19 @@ mod tests {
     // code and expected code after sanitize
     let codes = [
       (
-        "(Foo a b c) = (+c (+c (+b (+ b b))))", 
+        "(Foo a b c) = (+c (+c (+b (+ b b))))",
         "(Foo * x1 x2) = dup x2.0 x2.1 = x2; dup c.0 x1.0 = x1; dup x1.1 x1.2 = c.0; (+ x2.0 (+ x2.1 (+ x1.0 (+ x1.1 x1.2))))",
       ),
       (
-        "(Foo a b c d e f g h i j k l m n) = (+ (+ a a) i)", 
+        "(Foo a b c d e f g h i j k l m n) = (+ (+ a a) i)",
         "(Foo x0 * * * * * * * x8 * * * * *) = let x8.0 = x8; dup x0.0 x0.1 = x0; (+ (+ x0.0 x0.1) x8.0)"
       ),
       (
-        "(Double (Zero)) = (Zero)", 
+        "(Double (Zero)) = (Zero)",
         "(Double (Zero)) = (Zero)"
       ),
       (
-        "(Double (Succ a)) = (Double (Succ (Succ a)))", 
+        "(Double (Succ a)) = (Double (Succ (Succ a)))",
         "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
       )
     ];
