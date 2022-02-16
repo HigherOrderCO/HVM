@@ -350,6 +350,22 @@ pub fn parse_var(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
+pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+  parser::guard(
+    Box::new(|state| {
+      let (state, head) = parser::get_char(state)?;
+      Ok((state, head == '\''))
+    }),
+    Box::new(|state| {
+      let (state, _) = parser::text("'", state)?;
+      let (state, c) = parser::get_char(state)?;
+      let (state, _) = parser::text("'", state)?;
+      Ok((state, Box::new(Term::U32{numb: c as u32})))
+    }),
+    state,
+  )
+}
+
 // TODO: parse escape sequences
 pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   parser::guard(
@@ -362,13 +378,14 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
       let mut chars: Vec<char> = Vec::new();
       let mut state = state;
       loop {
-        let (new_state, next) = parser::get_char(state)?;
-        if next == '"' || next == '\0' {
-          state = new_state;
-          break;
-        } else {
-          chars.push(next);
-          state = new_state;
+        if let Some(next) = parser::head(state) {
+          if next == '"' || next == '\0' {
+            state = parser::tail(state);
+            break;
+          } else {
+            chars.push(next);
+            state = parser::tail(state);
+          }
         }
       }
       let empty = Term::Ctr { name: "StrNil".to_string(), args: Vec::new() };
@@ -424,6 +441,7 @@ pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
       Box::new(parse_op2),
       Box::new(parse_app),
       Box::new(parse_u32),
+      Box::new(parse_chr_sugar),
       Box::new(parse_str_sugar),
       Box::new(parse_lst_sugar),
       Box::new(parse_var),
