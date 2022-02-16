@@ -358,9 +358,13 @@ pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
     }),
     Box::new(|state| {
       let (state, _) = parser::text("'", state)?;
-      let (state, c) = parser::get_char(state)?;
-      let (state, _) = parser::text("'", state)?;
-      Ok((state, Box::new(Term::U32{numb: c as u32})))
+      if let Some(c) = parser::head(state) {
+        let state      = parser::tail(state);
+        let (state, _) = parser::text("'", state)?;
+        Ok((state, Box::new(Term::U32{numb: c as u32})))
+      } else {
+        parser::expected("character", 1, state)
+      }
     }),
     state,
   )
