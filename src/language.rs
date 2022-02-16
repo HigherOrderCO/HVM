@@ -147,13 +147,15 @@ impl fmt::Display for Term {
       Self::Lam { name, body } => write!(f, "λ{} {}", name, body),
       Self::App { func, argm } => write!(f, "({} {})", func, argm),
       Self::Ctr { name, args } => {
-        if let Some(term) = str_sugar(self) {
-          write!(f, "{}", term)
-        } else if let Some(term) = lst_sugar(self) {
-          write!(f, "{}", term)
-        } else {
-          write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
+        // Ctr sugars
+        let sugars = [str_sugar, lst_sugar];
+        for sugar in sugars {
+          if let Some(term) = sugar(self) {
+            return write!(f, "{}", term)
+          }
         }
+        
+        write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
       Self::U32 { numb } => write!(f, "{}", numb),
       Self::Op2 { oper, val0, val1 } => write!(f, "({} {} {})", oper, val0, val1),
