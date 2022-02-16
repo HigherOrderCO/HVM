@@ -94,6 +94,28 @@ impl fmt::Display for Term {
   // WARN: I think this could overflow, might need to rewrite it to be iterative instead of recursive?
   // NOTE: Another issue is complexity. This function is O(N^2). Should use ropes to be linear.
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn lst_sugar(term: &Term) -> Option<String> {
+      fn go(term: &Term, text: &mut String, fst: bool) -> Option<()> {
+        if let Term::Ctr { name, args } = term {
+          if name == "Cons" && args.len() == 2 {
+            text.push(if fst {'\0'} else {','});
+            text.push_str(&format!("{}", args[0]));
+            go(&args[1], text, false)?;
+            return Some(());
+          }
+          if name == "Nil" && args.is_empty() {
+            return Some(());
+          }
+        }
+        None
+      }
+      let mut result = String::new();
+      result.push('[');
+      go(term, &mut result, true)?;
+      result.push(']');
+      Some(result)
+    }
+
     fn str_sugar(term: &Term) -> Option<String> {
       fn go(term: &Term, text: &mut String) -> Option<()> {
         if let Term::Ctr { name, args } = term {
@@ -126,6 +148,8 @@ impl fmt::Display for Term {
       Self::App { func, argm } => write!(f, "({} {})", func, argm),
       Self::Ctr { name, args } => {
         if let Some(term) = str_sugar(self) {
+          write!(f, "{}", term)
+        } else if let Some(term) = lst_sugar(self) {
           write!(f, "{}", term)
         } else {
           write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
