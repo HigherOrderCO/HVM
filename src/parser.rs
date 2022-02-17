@@ -386,9 +386,7 @@ pub fn highlight(from_index: usize, to_index: usize, code: &str) -> String {
   let close_color = "\x1b[0m";
   let mut from_line = 0;
   let mut to_line = 0;
-  for (i, c) in
-    code.chars().enumerate().filter(|(_, c)| c == &'\n').take_while(|(i, _)| i < &to_index)
-  {
+  for (i, c) in code.char_indices().filter(|(_, c)| c == &'\n').take_while(|(i, _)| i < &to_index) {
     if i < from_index {
       from_line += c.len_utf8();
     }
