@@ -447,7 +447,7 @@ mod tests {
     // test if after sanitize all are equal
     // to the expected
     for (code, expected) in codes {
-      let rule = read_rule(code);
+      let rule = read_rule(code).unwrap();
       match rule {
         None => panic!("Rule not parsed"),
         Some(v) => {
@@ -472,7 +472,7 @@ mod tests {
     ];
 
     for code in FAILS {
-      let rule = read_rule(code);
+      let rule = read_rule(code).unwrap();
       match rule {
         None => panic!("Rule not parsed"),
         Some(v) => {
@@ -490,7 +490,7 @@ mod tests {
       (Double (Succ x)) = (Succ ( Succ (Double x)))
     ";
 
-    let file = read_file(file);
+    let file = read_file(file).unwrap();
     let rulebook = gen_rulebook(&file);
 
     // func_rules testing

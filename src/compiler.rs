@@ -8,23 +8,23 @@ use crate::language as lang;
 use crate::rulebook as rb;
 use crate::runtime as rt;
 
-pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> std::io::Result<()> {
-  let as_clang = compile_code(code, parallel);
+pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> Result<(), String> {
+  let as_clang = compile_code(code, parallel)?;
   let mut file = std::fs::OpenOptions::new()
     .read(true)
     .write(true)
     .create(true)
     .truncate(true)
-    .open(file_name)?;
-  file.write_all(as_clang.as_bytes())?;
+    .open(file_name).map_err(|err| err.to_string())?;
+  file.write_all(as_clang.as_bytes()).map_err(|err| err.to_string())?;
   Ok(())
 }
 
-fn compile_code(code: &str, parallel: bool) -> String {
-  let file = lang::read_file(code);
+fn compile_code(code: &str, parallel: bool) -> Result<String, String> {
+  let file = lang::read_file(code)?;
   let book = rb::gen_rulebook(&file);
   let (_, mut dups_count) = bd::build_runtime_functions(&book);
-  compile_book(&mut dups_count, &book, parallel)
+  Ok(compile_book(&mut dups_count, &book, parallel))
 }
 
 fn compile_name(name: &str) -> String {

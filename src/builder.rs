@@ -504,12 +504,12 @@ fn alloc_term(
 }
 
 // Evaluates a Lambolt term to normal form
-pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> (Box<lang::Term>, u64, u64, u64) {
+pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> Result<(Box<lang::Term>, u64, u64, u64), String> {
   // Creates a new Runtime worker
   let mut worker = rt::new_worker();
 
   // Parses and reads the input file
-  let file = lang::read_file(code);
+  let file = lang::read_file(code)?;
 
   // Converts the Lambolt file to a rulebook file
   let book = rb::gen_rulebook(&file);
@@ -526,8 +526,8 @@ pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> (Box<lang::Term>
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string
-  let norm = rd::as_term(&worker, &Some(book), host);
+  let norm = rd::as_term(&worker, &Some(book), host)?;
 
   // Returns the normal form and the gas cost
-  (norm, worker.cost, worker.size, time)
+  Ok((norm, worker.cost, worker.size, time))
 }

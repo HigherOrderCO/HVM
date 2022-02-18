@@ -12,10 +12,10 @@ pub mod runtime;
 
 pub use builder::eval_code;
 
-pub fn make_call(func: &str, args: &[&str]) -> language::Term {
-  let args = args.iter().map(|par| language::read_term(par)).collect();
+pub fn make_call(func: &str, args: &[&str]) -> Result<language::Term, String> {
+  let args = args.iter().map(|par| language::read_term(par).unwrap()).collect();
   let name = func.to_string();
-  language::Term::Ctr { name, args }
+  Ok(language::Term::Ctr { name, args })
 }
 
 #[cfg(test)]
@@ -32,7 +32,7 @@ mod tests {
     (Main) = (Fn 20)
     ";
 
-    let (norm, _cost, _size, _time) = eval_code(&make_call("Main", &[]), code, false);
+    let (norm, _cost, _size, _time) = eval_code(&make_call("Main", &[]).unwrap(), code, false).unwrap();
     let norm = norm.to_string();
     assert_eq!(norm, "6765");
   }

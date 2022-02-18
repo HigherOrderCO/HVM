@@ -53,12 +53,11 @@ pub fn find(text: &str, target: &str) -> usize {
   text.find(target).unwrap_or_else(|| panic!("`{}` not in `{}`.", target, text))
 }
 
-pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> A {
+pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> Result<A, String> {
   match parser(State { code, index: 0 }) {
-    Ok((_, value)) => value,
+    Ok((_, value)) => Ok(value),
     Err(msg) => {
-      println!("{}", msg);
-      panic!("No parse.");
+      Err(msg)
     }
   }
 }

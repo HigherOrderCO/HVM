@@ -501,15 +501,15 @@ pub fn parse_file(state: parser::State) -> parser::Answer<File> {
   Ok((state, File { rules }))
 }
 
-pub fn read_term(code: &str) -> Box<Term> {
+pub fn read_term(code: &str) -> Result<Box<Term>, String> {
   parser::read(Box::new(parse_term), code)
 }
 
-pub fn read_file(code: &str) -> File {
+pub fn read_file(code: &str) -> Result<File, String> {
   parser::read(Box::new(parse_file), code)
 }
 
 #[allow(dead_code)]
-pub fn read_rule(code: &str) -> Option<Rule> {
+pub fn read_rule(code: &str) -> Result<Option<Rule>, String> {
   parser::read(Box::new(parse_rule), code)
 }
