@@ -159,7 +159,7 @@ fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
 pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
   //let mut dups_count = DupsCount::new();
   let mut funcs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect();
-  for (name, rules_info) in &comp.func_rules {
+  for (name, rules_info) in &comp.rule_group {
     let fnid = comp.name_to_id.get(name).unwrap_or(&0);
     let func = build_runtime_function(comp, &rules_info.1);
     funcs[*fnid as usize] = Some(func);

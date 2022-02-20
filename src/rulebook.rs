@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 // ========
 
 // A RuleBook is a file ready for compilation. It includes:
-// - func_rules: sanitized rules grouped by function
+// - rule_group: sanitized rules grouped by function
 // - id_to_name: maps ctr ids to names
 // - name_to_id: maps ctr names to ids
 // - ctr_is_cal: true if a ctr is used as a function
@@ -13,124 +13,118 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 // Variables that are never used are renamed to "*".
 #[derive(Debug)]
 pub struct RuleBook {
-  pub func_rules: HashMap<String, (usize, Vec<lang::Rule>)>,
+  pub rule_group: HashMap<String, RuleGroup>,
+  pub name_count: u64,
   pub id_to_name: HashMap<u64, String>,
   pub name_to_id: HashMap<String, u64>,
   pub ctr_is_cal: HashMap<String, bool>,
 }
 
+pub type RuleGroup = (usize, Vec<lang::Rule>);
+
+// Creates an empty rulebook
+pub fn new_rulebook() -> RuleBook {
+  RuleBook {
+    rule_group: HashMap::new(),
+    name_count: 0,
+    name_to_id: HashMap::new(),
+    id_to_name: HashMap::new(),
+    ctr_is_cal: HashMap::new(),
+  }
+}
+
+// Adds a group to a rulebook
+pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
+
+  fn register_names(book: &mut RuleBook, term: &lang::Term) {
+    match term {
+      lang::Term::Dup { expr, body, .. } => {
+        register_names(book, expr);
+        register_names(book, body);
+      }
+      lang::Term::Let { expr, body, .. } => {
+        register_names(book, expr);
+        register_names(book, body);
+      }
+      lang::Term::Lam { body, .. } => {
+        register_names(book, body);
+      }
+      lang::Term::App { func, argm, .. } => {
+        register_names(book, func);
+        register_names(book, argm);
+      }
+      lang::Term::Op2 { val0, val1, .. } => {
+        register_names(book, val0);
+        register_names(book, val1);
+      }
+      lang::Term::Ctr { name, args } => {
+        let id = book.name_to_id.get(name);
+        if id.is_none() {
+          book.name_to_id.insert(name.clone(), book.name_count);
+          book.id_to_name.insert(book.name_count, name.clone());
+          book.name_count += 1;
+        }
+        for arg in args {
+          register_names(book, arg);
+        }
+      }
+      _ => (),
+    }
+  }
+
+  // Inserts the group on the book
+  book.rule_group.insert(name.clone(), group.clone());
+
+  // Builds its metadata (name_to_id, id_to_name, ctr_is_cal)
+  for rule in &group.1 {
+    register_names(book, &rule.lhs);
+    register_names(book, &rule.rhs);
+    if let lang::Term::Ctr { ref name, .. } = *rule.lhs {
+      book.ctr_is_cal.insert(name.clone(), true);
+    }
+  }
+
+}
+
+// Converts a file to a rulebook
 pub fn gen_rulebook(file: &lang::File) -> RuleBook {
-  // Generates a name table for a whole program. That table links constructor
-  // names (such as `cons` and `succ`) to small ids (such as `0` and `1`).
-  pub type NameToId = HashMap<String, u64>;
-  pub type IdToName = HashMap<u64, String>;
-  pub fn gen_name_to_id(rules: &[lang::Rule]) -> NameToId {
-    fn find_ctrs(term: &lang::Term, table: &mut NameToId, fresh: &mut u64) {
-      match term {
-        lang::Term::Dup { expr, body, .. } => {
-          find_ctrs(expr, table, fresh);
-          find_ctrs(body, table, fresh);
-        }
-        lang::Term::Let { expr, body, .. } => {
-          find_ctrs(expr, table, fresh);
-          find_ctrs(body, table, fresh);
-        }
-        lang::Term::Lam { body, .. } => {
-          find_ctrs(body, table, fresh);
-        }
-        lang::Term::App { func, argm, .. } => {
-          find_ctrs(func, table, fresh);
-          find_ctrs(argm, table, fresh);
-        }
-        lang::Term::Op2 { val0, val1, .. } => {
-          find_ctrs(val0, table, fresh);
-          find_ctrs(val1, table, fresh);
-        }
-        lang::Term::Ctr { name, args } => {
-          let id = table.get(name);
-          if id.is_none() {
-            let first_char = name.chars().next();
-            if let Some(c) = first_char {
-              if c == '.' {
-                let id = &name[1..].parse::<u64>();
-                if let Ok(id) = id {
-                  table.insert(name.clone(), *id);
-                }
-              } else {
-                table.insert(name.clone(), *fresh);
-                *fresh += 1;
-              }
-            }
-          }
-          for arg in args {
-            find_ctrs(arg, table, fresh);
-          }
-        }
-        _ => (),
-      }
-    }
-    let mut table = HashMap::new();
-    let mut fresh = 0;
-    for rule in rules {
-      find_ctrs(&rule.lhs, &mut table, &mut fresh);
-      find_ctrs(&rule.rhs, &mut table, &mut fresh);
-    }
-    table
-  }
-  pub fn invert(name_to_id: &NameToId) -> IdToName {
-    let mut id_to_name: IdToName = HashMap::new();
-    for (name, id) in name_to_id {
-      id_to_name.insert(*id, name.clone());
-    }
-    id_to_name
+
+  // Creates an empty rulebook
+  let mut book = new_rulebook();
+
+  // Flattens, sanitizes and groups this file's rules
+  let groups = group_rules(&sanitize_rules(&flatten(&file.rules)));
+
+  // Adds each group
+  for (name, group) in groups.iter() {
+    add_group(&mut book, name, group);
   }
 
-  // Finds constructors that are used as functions.
-  pub type IsFunctionTable = HashMap<String, bool>;
-  pub fn gen_ctr_is_cal(rules: &[lang::Rule]) -> IsFunctionTable {
-    let mut is_call: IsFunctionTable = HashMap::new();
-    for rule in rules {
-      let term = &rule.lhs;
-      if let lang::Term::Ctr { ref name, .. } = **term {
-        // FIXME: this looks wrong, will check later
-        is_call.insert(name.clone(), true);
-      }
-    }
-    is_call
-  }
+  book
+}
 
-  // Groups rules by name. For example:
-  //   (add (succ a) (succ b)) = (succ (succ (add a b)))
-  //   (add (succ a) (zero)  ) = (succ a)
-  //   (add (zero)   (succ b)) = (succ b)
-  //   (add (zero)   (zero)  ) = (zero)
-  // This is a group of 4 rules starting with the "add" name.
-  pub type FuncRules = HashMap<String, (usize, Vec<lang::Rule>)>;
-  pub fn gen_func_rules(rules: &[lang::Rule]) -> FuncRules {
-    let mut groups: FuncRules = HashMap::new();
-    for rule in rules {
-      if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
-        let group = groups.get_mut(name);
-        let rule = sanitize_rule(rule).unwrap();
-        match group {
-          None => {
-            groups.insert(name.clone(), (args.len(), Vec::from([rule])));
-          }
-          Some((_arity, rules)) => {
-            rules.push(rule);
-          }
+// Groups rules by name. For example:
+//   (add (succ a) (succ b)) = (succ (succ (add a b)))
+//   (add (succ a) (zero)  ) = (succ a)
+//   (add (zero)   (succ b)) = (succ b)
+//   (add (zero)   (zero)  ) = (zero)
+// This is a group of 4 rules starting with the "add" name.
+pub fn group_rules(rules: &[lang::Rule]) -> HashMap<String, RuleGroup> {
+  let mut groups: HashMap<String, RuleGroup> = HashMap::new();
+  for rule in rules {
+    if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
+      let group = groups.get_mut(name);
+      match group {
+        None => {
+          groups.insert(name.clone(), (args.len(), Vec::from([rule.clone()])));
+        }
+        Some((_arity, rules)) => {
+          rules.push(rule.clone());
         }
       }
     }
-    groups
   }
-
-  let flat_rules = flatten(&file.rules);
-  let func_rules = gen_func_rules(&flat_rules);
-  let name_to_id = gen_name_to_id(&flat_rules);
-  let id_to_name = invert(&name_to_id);
-  let ctr_is_cal = gen_ctr_is_cal(&flat_rules);
-  RuleBook { func_rules, name_to_id, id_to_name, ctr_is_cal }
+  groups
 }
 
 // Sanitize
@@ -142,6 +136,7 @@ pub struct SanitizedRule {
   pub uses: HashMap<String, u64>,
 }
 
+// TODO: could we allow unscoped variables? There are use cases for them.
 // This big function sanitizes a rule. That has the following effect:
 // - All variables are renamed to have a global unique name.
 // - All variables are linearized.
@@ -415,6 +410,11 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
   Ok(lang::Rule { lhs, rhs })
 }
 
+// Sanitizes all rules in a vector
+pub fn sanitize_rules(rules: &[lang::Rule]) -> Vec<lang::Rule> {
+  rules.iter().map(|rule| sanitize_rule(rule).unwrap()).collect()
+}
+
 #[cfg(test)]
 mod tests {
   use core::panic;
@@ -493,15 +493,15 @@ mod tests {
     let file = read_file(file).unwrap();
     let rulebook = gen_rulebook(&file);
 
-    // func_rules testing
+    // rule_group testing
     // contains expected key
-    assert!(rulebook.func_rules.contains_key("Double"));
+    assert!(rulebook.rule_group.contains_key("Double"));
     // contains expected number of keys
-    assert_eq!(rulebook.func_rules.len(), 1);
+    assert_eq!(rulebook.rule_group.len(), 1);
     // key contains expected number of rules
-    assert_eq!(rulebook.func_rules.get("Double").unwrap().1.len(), 2);
+    assert_eq!(rulebook.rule_group.get("Double").unwrap().1.len(), 2);
     // key contains expected arity
-    assert_eq!(rulebook.func_rules.get("Double").unwrap().0, 1);
+    assert_eq!(rulebook.rule_group.get("Double").unwrap().0, 1);
 
     // id_to_name e name_to_id testing
     // check expected length

@@ -44,7 +44,7 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   for (id, name) in &comp.id_to_name {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
   }
-  for (name, (_arity, rules)) in &comp.func_rules {
+  for (name, (_arity, rules)) in &comp.rule_group {
     let (init, code) = compile_func(comp, rules, 7);
 
     line(

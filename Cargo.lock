@@ -93,7 +93,7 @@ dependencies = [
 
 [[package]]
 name = "hvm"
-version = "0.1.11"
+version = "0.1.12"
 dependencies = [
  "itertools",
  "num_cpus",
