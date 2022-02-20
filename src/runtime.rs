@@ -59,7 +59,7 @@ pub const NEQ: u64 = 0xF;
 
 pub type Lnk = u64;
 
-pub type Rewriter = Box<dyn Fn(&mut Worker, u64, Lnk) -> bool>;
+pub type Rewriter = Box<dyn Fn(&mut Worker, &mut u64, u64, Lnk) -> bool>;
 
 pub struct Function {
   pub arity: u64,
@@ -75,7 +75,12 @@ pub struct Worker {
 }
 
 pub fn new_worker() -> Worker {
-  Worker { node: vec![0; 6 * 0x8000000], size: 0, free: vec![vec![]; 16], cost: 0 }
+  Worker {
+    node: vec![0; 6 * 0x8000000],
+    size: 0,
+    free: vec![vec![]; 16],
+    cost: 0
+  }
 }
 
 // Globals
@@ -296,6 +301,7 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk
 
 pub fn reduce(
   mem: &mut Worker,
+  dups: &mut u64,
   funcs: &[Option<Function>],
   root: u64,
   _opt_id_to_name: Option<&HashMap<u64, String>>,
@@ -558,7 +564,7 @@ pub fn reduce(
           let fun = get_ext(term);
           let _ari = get_ari(term);
           if let Some(f) = &funcs[fun as usize] {
-            if (f.rewriter)(mem, host, term) {
+            if (f.rewriter)(mem, dups, host, term) {
               //println!("cal-fun");
               init = 1;
               continue;
@@ -591,6 +597,7 @@ pub fn get_bit(bits: &[u64], bit: u64) -> bool {
 
 pub fn normal_go(
   mem: &mut Worker,
+  dups: &mut u64,
   funcs: &[Option<Function>],
   host: u64,
   seen: &mut [u64],
@@ -601,7 +608,7 @@ pub fn normal_go(
   if get_bit(seen, host) {
     term
   } else {
-    let term = reduce(mem, funcs, host, opt_id_to_name, debug);
+    let term = reduce(mem, dups, funcs, host, opt_id_to_name, debug);
     set_bit(seen, host);
     let mut rec_locs = Vec::with_capacity(16);
     match get_tag(term) {
@@ -631,7 +638,7 @@ pub fn normal_go(
       _ => {}
     }
     for loc in rec_locs {
-      let lnk: Lnk = normal_go(mem, funcs, loc, seen, opt_id_to_name, debug);
+      let lnk: Lnk = normal_go(mem, dups, funcs, loc, seen, opt_id_to_name, debug);
       link(mem, loc, lnk);
     }
     term
@@ -646,7 +653,8 @@ pub fn normal(
   debug: bool,
 ) -> Lnk {
   let mut seen = vec![0; 4194304];
-  normal_go(mem, funcs, host, &mut seen, opt_id_to_name, debug)
+  let mut dups = 0;
+  normal_go(mem, &mut dups, funcs, host, &mut seen, opt_id_to_name, debug)
 }
 
 // Debug

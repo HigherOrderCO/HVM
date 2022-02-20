@@ -49,6 +49,7 @@ typedef pthread_t Thd;
 #define MAX_WORKERS (1)
 #endif
 
+#define MAX_DUPS (16777216)
 #define MAX_DYNFUNS (65536)
 #define MAX_ARITY (16)
 
@@ -135,6 +136,7 @@ typedef struct {
   u64  size;
   Stk  free[MAX_ARITY];
   u64  cost;
+  u64  dups;
 
   #ifdef PARALLEL
   u64             has_work;
@@ -404,6 +406,10 @@ void collect(Worker* mem, Lnk term) {
 
 void inc_cost(Worker* mem) {
   mem->cost++;
+}
+
+u64 gen_dupk(Worker* mem) {
+  return mem->dups++ & 0xFFFFFF;
 }
 
 // Performs a `x <- value` substitution. It just calls link if the substituted
@@ -1016,6 +1022,7 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {
       stk_init(&workers[t].free[a]);
     }
     workers[t].cost = 0;
+    workers[t].dups = MAX_DUPS * t / MAX_WORKERS;
     #ifdef PARALLEL
     workers[t].has_work = -1;
     pthread_mutex_init(&workers[t].has_work_mutex, NULL);
