@@ -2,6 +2,7 @@
 
 use regex::Regex;
 use std::io::Write;
+use std::collections::{HashMap};
 
 use crate::builder as bd;
 use crate::language as lang;
@@ -187,12 +188,29 @@ fn compile_func_rule_term(
   term: &bd::DynTerm,
   vars: &[bd::DynVar],
 ) -> String {
-  fn go(
+  fn alloc_lam(
     code: &mut String,
     tab: u64,
-    term: &bd::DynTerm,
+    nams: &mut u64,
+    globs: &mut HashMap<u64,String>,
+    glob: u64,
+  ) -> String {
+    if let Some(got) = globs.get(&glob) {
+      got.clone()
+    } else {
+      let name = fresh(nams, "lam");
+      line(code, tab, &format!("u64 {} = alloc(mem, 2);", name));
+      globs.insert(glob, name.clone());
+      name
+    }
+  }
+  fn compile_term(
+    code: &mut String,
+    tab: u64,
     vars: &mut Vec<String>,
     nams: &mut u64,
+    globs: &mut HashMap<u64,String>,
+    term: &bd::DynTerm,
   ) -> String {
     const INLINE_NUMBERS: bool = true;
     //println!("compile {:?}", term);
@@ -205,6 +223,9 @@ fn compile_func_rule_term(
           panic!("Unbound variable.");
         }
       }
+      bd::DynTerm::Glo { glob } => {
+        format!("Var({})", alloc_lam(code, tab, nams, globs, *glob))
+      }
       bd::DynTerm::Dup { eras, expr, body } => {
         //if INLINE_NUMBERS {
         //line(code, tab + 0, &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1));
@@ -213,7 +234,7 @@ fn compile_func_rule_term(
         let copy = fresh(nams, "cpy");
         let dup0 = fresh(nams, "dp0");
         let dup1 = fresh(nams, "dp1");
-        let expr = go(code, tab, expr, vars, nams);
+        let expr = compile_term(code, tab, vars, nams, globs, expr);
         line(code, tab, &format!("u64 {} = {};", copy, expr));
         line(code, tab, &format!("u64 {};", dup0));
         line(code, tab, &format!("u64 {};", dup1));
@@ -244,23 +265,22 @@ fn compile_func_rule_term(
         }
         vars.push(dup0);
         vars.push(dup1);
-        let body = go(code, tab + 0, body, vars, nams);
+        let body = compile_term(code, tab + 0, vars, nams, globs, body);
         vars.pop();
         vars.pop();
         body
       }
       bd::DynTerm::Let { expr, body } => {
-        let expr = go(code, tab, expr, vars, nams);
+        let expr = compile_term(code, tab, vars, nams, globs, expr);
         vars.push(expr);
-        let body = go(code, tab, body, vars, nams);
+        let body = compile_term(code, tab, vars, nams, globs, body);
         vars.pop();
         body
       }
-      bd::DynTerm::Lam { eras, body } => {
-        let name = fresh(nams, "lam");
-        line(code, tab, &format!("u64 {} = alloc(mem, 2);", name));
+      bd::DynTerm::Lam { eras, glob, body } => {
+        let name = alloc_lam(code, tab, nams, globs, *glob);
         vars.push(format!("Var({})", name));
-        let body = go(code, tab, body, vars, nams);
+        let body = compile_term(code, tab, vars, nams, globs, body);
         vars.pop();
         if *eras {
           line(code, tab, &format!("link(mem, {} + 0, Era());", name));
@@ -270,8 +290,8 @@ fn compile_func_rule_term(
       }
       bd::DynTerm::App { func, argm } => {
         let name = fresh(nams, "app");
-        let func = go(code, tab, func, vars, nams);
-        let argm = go(code, tab, argm, vars, nams);
+        let func = compile_term(code, tab, vars, nams, globs, func);
+        let argm = compile_term(code, tab, vars, nams, globs, argm);
         line(code, tab, &format!("u64 {} = alloc(mem, 2);", name));
         line(code, tab, &format!("link(mem, {} + 0, {});", name, func));
         line(code, tab, &format!("link(mem, {} + 1, {});", name, argm));
@@ -279,7 +299,7 @@ fn compile_func_rule_term(
       }
       bd::DynTerm::Ctr { func, args } => {
         let ctr_args: Vec<String> =
-          args.iter().map(|arg| go(code, tab, arg, vars, nams)).collect();
+          args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
         let name = fresh(nams, "ctr");
         line(code, tab, &format!("u64 {} = alloc(mem, {});", name, ctr_args.len()));
         for (i, arg) in ctr_args.iter().enumerate() {
@@ -289,7 +309,7 @@ fn compile_func_rule_term(
       }
       bd::DynTerm::Cal { func, args } => {
         let cal_args: Vec<String> =
-          args.iter().map(|arg| go(code, tab, arg, vars, nams)).collect();
+          args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
         let name = fresh(nams, "cal");
         line(code, tab, &format!("u64 {} = alloc(mem, {});", name, cal_args.len()));
         for (i, arg) in cal_args.iter().enumerate() {
@@ -303,8 +323,8 @@ fn compile_func_rule_term(
       bd::DynTerm::Op2 { oper, val0, val1 } => {
         let retx = fresh(nams, "ret");
         let name = fresh(nams, "op2");
-        let val0 = go(code, tab, val0, vars, nams);
-        let val1 = go(code, tab, val1, vars, nams);
+        let val0 = compile_term(code, tab, vars, nams, globs, val0);
+        let val1 = compile_term(code, tab, vars, nams, globs, val1);
         line(code, tab + 0, &format!("u64 {};", retx));
         // Optimization: do inline operation, avoiding Op2 allocation, when operands are already number
         if INLINE_NUMBERS {
@@ -384,59 +404,60 @@ fn compile_func_rule_term(
       }
     })
     .collect();
-  go(code, tab, term, &mut vars, &mut nams)
+  let mut globs: HashMap<u64, String> = HashMap::new();
+  compile_term(code, tab, &mut vars, &mut nams, &mut globs, term)
 }
 
 #[allow(dead_code)]
 // This isn't used, but it is an alternative way to compile right-hand side bodies. It results in
 // slightly different code that might be faster since it inlines many memory writes. But it doesn't
 // optimize numeric operations to avoid extra rules, so that may make it slower, depending.
-fn compile_func_rule_body(
-  code: &mut String,
-  tab: u64,
-  body: &bd::Body,
-  vars: &[bd::DynVar],
-) -> String {
-  let (elem, nodes) = body;
-  for (i, node) in nodes.iter().enumerate() {
-    line(code, tab + 0, &format!("u64 loc_{} = alloc(mem, {});", i, node.len()));
-  }
-  for (i, node) in nodes.iter().enumerate() {
-    for (j, element) in node.iter().enumerate() {
-      match element {
-        bd::Elem::Fix { value } => {
-          //mem.node[(host + j) as usize] = *value;
-          line(code, tab + 0, &format!("mem->node[loc_{} + {}] = {:#x}u;", i, j, value));
-        }
-        bd::Elem::Ext { index } => {
-          //rt::link(mem, host + j, get_var(mem, term, &vars[*index as usize]));
-          line(
-            code,
-            tab + 0,
-            &format!("link(mem, loc_{} + {}, {});", i, j, get_var(&vars[*index as usize])),
-          );
-          //line(code, tab + 0, &format!("u64 lnk = {};", get_var(&vars[*index as usize])));
-          //line(code, tab + 0, &format!("u64 tag = get_tag(lnk);"));
-          //line(code, tab + 0, &format!("mem.node[loc_{} + {}] = lnk;", i, j));
-          //line(code, tab + 0, &format!("if (tag <= VAR) mem.node[get_loc(lnk, tag & 1)] = Arg(loc_{} + {});", i, j));
-        }
-        bd::Elem::Loc { value, targ, slot } => {
-          //mem.node[(host + j) as usize] = value + hosts[*targ as usize] + slot;
-          line(
-            code,
-            tab + 0,
-            &format!("mem->node[loc_{} + {}] = {:#x}u + loc_{} + {};", i, j, value, targ, slot),
-          );
-        }
-      }
-    }
-  }
-  match elem {
-    bd::Elem::Fix { value } => format!("{}u", value),
-    bd::Elem::Ext { index } => get_var(&vars[*index as usize]),
-    bd::Elem::Loc { value, targ, slot } => format!("({}u + loc_{} + {})", value, targ, slot),
-  }
-}
+//fn compile_func_rule_body(
+  //code: &mut String,
+  //tab: u64,
+  //body: &bd::Body,
+  //vars: &[bd::DynVar],
+//) -> String {
+  //let (elem, nodes) = body;
+  //for (i, node) in nodes.iter().enumerate() {
+    //line(code, tab + 0, &format!("u64 loc_{} = alloc(mem, {});", i, node.len()));
+  //}
+  //for (i, node) in nodes.iter().enumerate() {
+    //for (j, element) in node.iter().enumerate() {
+      //match element {
+        //bd::Elem::Fix { value } => {
+          ////mem.node[(host + j) as usize] = *value;
+          //line(code, tab + 0, &format!("mem->node[loc_{} + {}] = {:#x}u;", i, j, value));
+        //}
+        //bd::Elem::Ext { index } => {
+          ////rt::link(mem, host + j, get_var(mem, term, &vars[*index as usize]));
+          //line(
+            //code,
+            //tab + 0,
+            //&format!("link(mem, loc_{} + {}, {});", i, j, get_var(&vars[*index as usize])),
+          //);
+          ////line(code, tab + 0, &format!("u64 lnk = {};", get_var(&vars[*index as usize])));
+          ////line(code, tab + 0, &format!("u64 tag = get_tag(lnk);"));
+          ////line(code, tab + 0, &format!("mem.node[loc_{} + {}] = lnk;", i, j));
+          ////line(code, tab + 0, &format!("if (tag <= VAR) mem.node[get_loc(lnk, tag & 1)] = Arg(loc_{} + {});", i, j));
+        //}
+        //bd::Elem::Loc { value, targ, slot } => {
+          ////mem.node[(host + j) as usize] = value + hosts[*targ as usize] + slot;
+          //line(
+            //code,
+            //tab + 0,
+            //&format!("mem->node[loc_{} + {}] = {:#x}u + loc_{} + {};", i, j, value, targ, slot),
+          //);
+        //}
+      //}
+    //}
+  //}
+  //match elem {
+    //bd::Elem::Fix { value } => format!("{}u", value),
+    //bd::Elem::Ext { index } => get_var(&vars[*index as usize]),
+    //bd::Elem::Loc { value, targ, slot } => format!("({}u + loc_{} + {})", value, targ, slot),
+  //}
+//}
 
 fn get_var(var: &bd::DynVar) -> String {
   let bd::DynVar { param, field, erase: _ } = var;

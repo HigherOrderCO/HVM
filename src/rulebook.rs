@@ -127,6 +127,10 @@ pub fn group_rules(rules: &[lang::Rule]) -> HashMap<String, RuleGroup> {
   groups
 }
 
+pub fn is_global_name(name: &str) -> bool {
+  name.len() > 0 && name.starts_with(&".")
+}
+
 // Sanitize
 // ========
 
@@ -199,7 +203,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
     ctx: &mut CtxSanitizeTerm,
   ) -> Result<Box<lang::Term>, String> {
     fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
-      if uses.get(name).copied() <= Some(0) {
+      if !is_global_name(name) && uses.get(name).copied() <= Some(0) {
         *name = "*".to_string();
       }
     }
@@ -217,8 +221,11 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
             let used = { *ctx.uses.entry(name.clone()).and_modify(|x| *x += 1).or_insert(1) };
             let name = format!("{}.{}", name, used - 1);
             Box::new(lang::Term::Var { name })
+          } else if is_global_name(&name) {
+            //println!("Allowed unbound variable: {}", name);
+            Box::new(lang::Term::Var { name: name.clone() })
           } else {
-            return Err(format!("Error: unbound variable {}.", name));
+            panic!("Unbound variable: {}", name);
           }
         }
       }
@@ -231,9 +238,11 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         tbl.insert(nam0.clone(), new_nam0.clone());
         tbl.insert(nam1.clone(), new_nam1.clone());
         let body = sanitize_term(body, lhs, tbl, ctx)?;
+        tbl.remove(nam0);
         if let Some(x) = got_nam0 {
           tbl.insert(nam0.clone(), x);
         }
+        tbl.remove(nam1);
         if let Some(x) = got_nam1 {
           tbl.insert(nam1.clone(), x);
         }
@@ -248,16 +257,18 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         let got_name = tbl.remove(name);
         tbl.insert(name.clone(), new_name.clone());
         let body = sanitize_term(body, lhs, tbl, ctx)?;
+        tbl.remove(name);
         if let Some(x) = got_name {
           tbl.insert(name.clone(), x);
         }
         duplicator(&new_name, expr, body, ctx.uses)
       }
       lang::Term::Lam { name, body } => {
-        let mut new_name = (ctx.fresh)();
+        let mut new_name = if is_global_name(&name) { name.clone() } else { (ctx.fresh)() };
         let got_name = tbl.remove(name);
         tbl.insert(name.clone(), new_name.clone());
         let body = sanitize_term(body, lhs, tbl, ctx)?;
+        tbl.remove(name);
         if let Some(x) = got_name {
           tbl.insert(name.clone(), x);
         }

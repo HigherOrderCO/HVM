@@ -317,7 +317,8 @@ pub fn reduce(
 
     if debug {
       println!("------------------------");
-      println!("{}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name, term));
+      println!("{}", show_term(mem, ask_lnk(mem, 0), _opt_id_to_name, term));
+      //println!("{}", show_mem(mem));
     }
 
     if init == 1 {
