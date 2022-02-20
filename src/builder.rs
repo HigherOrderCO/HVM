@@ -59,7 +59,6 @@ pub struct DynFun {
 }
 
 pub fn build_dynfun(
-  dups_count: &mut DupsCount,
   comp: &rb::RuleBook,
   rules: &[lang::Rule],
 ) -> DynFun {
@@ -107,7 +106,7 @@ pub fn build_dynfun(
         }
 
         let term = term_to_dynterm(comp, &rule.rhs, vars.len() as u64);
-        let body = build_body(dups_count, &term, vars.len() as u64);
+        let body = build_body(&term, vars.len() as u64);
 
         Some(DynRule { cond, vars, term, body, free })
       } else {
@@ -143,38 +142,36 @@ fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
 ///
 /// Isn't admissible in the current runtime, but it would if we generated new
 /// fan nodes per each global function call.
-#[derive(Debug)]
-pub struct DupsCount(u64);
 
-impl DupsCount {
-  fn new() -> Self {
-    Self(0)
-  }
+//#[derive(Debug)]
+//pub struct DupsCount(u64);
+//impl DupsCount {
+  //fn new() -> Self {
+    //Self(0)
+  //}
+  //fn next(&mut self) -> u64 {
+    //let ret = self.0;
+    //self.0 += 1;
+    //ret
+  //}
+//}
 
-  fn next(&mut self) -> u64 {
-    let ret = self.0;
-    self.0 += 1;
-    ret
-  }
-}
-
-pub fn build_runtime_functions(comp: &rb::RuleBook) -> (Vec<Option<rt::Function>>, DupsCount) {
-  let mut dups_count = DupsCount::new();
+pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
+  //let mut dups_count = DupsCount::new();
   let mut funcs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect();
   for (name, rules_info) in &comp.func_rules {
     let fnid = comp.name_to_id.get(name).unwrap_or(&0);
-    let func = build_runtime_function(&mut dups_count, comp, &rules_info.1);
+    let func = build_runtime_function(comp, &rules_info.1);
     funcs[*fnid as usize] = Some(func);
   }
-  (funcs, dups_count)
+  funcs
 }
 
 fn build_runtime_function(
-  dups_count: &mut DupsCount,
   comp: &rb::RuleBook,
   rules: &[lang::Rule],
 ) -> rt::Function {
-  let dynfun = build_dynfun(dups_count, comp, rules);
+  let dynfun = build_dynfun(comp, rules);
 
   let arity = dynfun.redex.len() as u64;
   let mut stricts = Vec::new();
@@ -184,7 +181,7 @@ fn build_runtime_function(
     }
   }
 
-  let rewriter: rt::Rewriter = Box::new(move |mem, host, term| {
+  let rewriter: rt::Rewriter = Box::new(move |mem, dups, host, term| {
     // For each argument, if it is a redex and a PAR, apply the cal_par rule
     for (i, redex) in dynfun.redex.iter().enumerate() {
       let i = i as u64;
@@ -225,7 +222,7 @@ fn build_runtime_function(
         rt::inc_cost(mem);
 
         // Builds the right-hand side term (ex: `(Succ (Add a b))`)
-        let done = alloc_body(mem, term, &dynrule.body, &dynrule.vars);
+        let done = alloc_body(mem, term, &dynrule.body, &dynrule.vars, dups);
 
         // Links the host location to it
         rt::link(mem, host, done);
@@ -346,7 +343,7 @@ fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> Dy
   convert_term(term, comp, 0, &mut vars)
 }
 
-fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Body {
+fn build_body(term: &DynTerm, free_vars: u64) -> Body {
   fn link(nodes: &mut Vec<Node>, targ: u64, slot: u64, elem: Elem) {
     nodes[targ as usize][slot as usize] = elem;
     if let Elem::Loc { value, targ: var_targ, slot: var_slot } = elem {
@@ -359,7 +356,6 @@ fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Bod
   }
   fn go(
     term: &DynTerm,
-    dups_count: &mut DupsCount,
     vars: &mut Vec<Elem>,
     nodes: &mut Vec<Node>,
   ) -> Elem {
@@ -374,22 +370,22 @@ fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Bod
       DynTerm::Dup { eras: _, expr, body } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 3]);
-        let dupk = dups_count.next();
+        //let dupk = dups_count.next();
         link(nodes, targ, 0, Elem::Fix { value: rt::Era() });
         link(nodes, targ, 1, Elem::Fix { value: rt::Era() });
-        let expr = go(expr, dups_count, vars, nodes);
+        let expr = go(expr, vars, nodes);
         link(nodes, targ, 2, expr);
-        vars.push(Elem::Loc { value: rt::Dp0(dupk, 0), targ, slot: 0 });
-        vars.push(Elem::Loc { value: rt::Dp1(dupk, 0), targ, slot: 0 });
-        let body = go(body, dups_count, vars, nodes);
+        vars.push(Elem::Loc { value: rt::Dp0(0, 0), targ, slot: 0 });
+        vars.push(Elem::Loc { value: rt::Dp1(0, 0), targ, slot: 0 });
+        let body = go(body, vars, nodes);
         vars.pop();
         vars.pop();
         body
       }
       DynTerm::Let { expr, body } => {
-        let expr = go(expr, dups_count, vars, nodes);
+        let expr = go(expr, vars, nodes);
         vars.push(expr);
-        let body = go(body, dups_count, vars, nodes);
+        let body = go(body, vars, nodes);
         vars.pop();
         body
       }
@@ -398,7 +394,7 @@ fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Bod
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
         link(nodes, targ, 0, Elem::Fix { value: rt::Era() });
         vars.push(Elem::Loc { value: rt::Var(0), targ, slot: 0 });
-        let body = go(body, dups_count, vars, nodes);
+        let body = go(body, vars, nodes);
         link(nodes, targ, 1, body);
         vars.pop();
         Elem::Loc { value: rt::Lam(0), targ, slot: 0 }
@@ -406,9 +402,9 @@ fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Bod
       DynTerm::App { func, argm } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
-        let func = go(func, dups_count, vars, nodes);
+        let func = go(func, vars, nodes);
         link(nodes, targ, 0, func);
-        let argm = go(argm, dups_count, vars, nodes);
+        let argm = go(argm, vars, nodes);
         link(nodes, targ, 1, argm);
         Elem::Loc { value: rt::App(0), targ, slot: 0 }
       }
@@ -417,7 +413,7 @@ fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Bod
           let targ = nodes.len() as u64;
           nodes.push(vec![Elem::Fix { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
-            let arg = go(arg, dups_count, vars, nodes);
+            let arg = go(arg, vars, nodes);
             link(nodes, targ, i as u64, arg);
           }
           Elem::Loc { value: rt::Cal(args.len() as u64, *func, 0), targ, slot: 0 }
@@ -430,7 +426,7 @@ fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Bod
           let targ = nodes.len() as u64;
           nodes.push(vec![Elem::Fix { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
-            let arg = go(arg, dups_count, vars, nodes);
+            let arg = go(arg, vars, nodes);
             link(nodes, targ, i as u64, arg);
           }
           Elem::Loc { value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0 }
@@ -442,9 +438,9 @@ fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Bod
       DynTerm::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
-        let val0 = go(val0, dups_count, vars, nodes);
+        let val0 = go(val0, vars, nodes);
         link(nodes, targ, 0, val0);
-        let val1 = go(val1, dups_count, vars, nodes);
+        let val1 = go(val1, vars, nodes);
         link(nodes, targ, 1, val1);
         Elem::Loc { value: rt::Op2(*oper, 0), targ, slot: 0 }
       }
@@ -452,12 +448,12 @@ fn build_body(dups_count: &mut DupsCount, term: &DynTerm, free_vars: u64) -> Bod
   }
   let mut nodes: Vec<Node> = Vec::new();
   let mut vars: Vec<Elem> = (0..free_vars).map(|i| Elem::Ext { index: i }).collect();
-  let elem = go(term, dups_count, &mut vars, &mut nodes);
+  let elem = go(term, &mut vars, &mut nodes);
   (elem, nodes)
 }
 
 static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
-fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar]) -> rt::Lnk {
+fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar], dups: &mut u64) -> rt::Lnk {
   unsafe {
     let (elem, nodes) = body;
     let hosts = &mut ALLOC_BODY_WORKSPACE;
@@ -474,7 +470,15 @@ fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar])
           rt::link(mem, (host + j) as u64, get_var(mem, term, &vars[*index as usize]));
         }
         Elem::Loc { value, targ, slot } => {
-          mem.node[host + j] = value + hosts[*targ as usize] + slot;
+          let mut val = value + hosts[*targ as usize] + slot;
+          if rt::get_tag(*value) == rt::DP0 {
+            val += (*dups & 0xFFFFFF) * rt::EXT; // FIXME: should be changed if the pointer format changes
+          }
+          if rt::get_tag(*value) == rt::DP1 {
+            val += (*dups & 0xFFFFFF) * rt::EXT; // FIXME: should be changed if the pointer format changes
+            *dups += 1;
+          }
+          mem.node[host + j] = val;
         }
       });
     });
@@ -486,21 +490,21 @@ fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar])
   }
 }
 
-fn alloc_closed_dynterm(dups_count: &mut DupsCount, mem: &mut rt::Worker, term: &DynTerm) -> u64 {
+fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
+  let mut dups = 0;
   let host = rt::alloc(mem, 1);
-  let body = build_body(dups_count, term, 0);
-  let term = alloc_body(mem, 0, &body, &[]);
+  let body = build_body(term, 0);
+  let term = alloc_body(mem, 0, &body, &[], &mut dups);
   rt::link(mem, host, term);
   host
 }
 
 fn alloc_term(
-  dups_count: &mut DupsCount,
   mem: &mut rt::Worker,
   comp: &rb::RuleBook,
   term: &lang::Term,
 ) -> u64 {
-  alloc_closed_dynterm(dups_count, mem, &term_to_dynterm(comp, term, 0))
+  alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
 }
 
 // Evaluates a Lambolt term to normal form
@@ -515,10 +519,10 @@ pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> Result<(Box<lang
   let book = rb::gen_rulebook(&file);
 
   // Builds dynamic functions
-  let (funs, mut dups_count) = build_runtime_functions(&book);
+  let funs = build_runtime_functions(&book);
 
   // Allocates the main term
-  let host = alloc_term(&mut dups_count, &mut worker, &book, call);
+  let host = alloc_term(&mut worker, &book, call);
 
   // Normalizes it
   let init = Instant::now();
