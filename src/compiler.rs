@@ -15,7 +15,8 @@ pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> Res
     .write(true)
     .create(true)
     .truncate(true)
-    .open(file_name).map_err(|err| err.to_string())?;
+    .open(file_name)
+    .map_err(|err| err.to_string())?;
   file.write_all(as_clang.as_bytes()).map_err(|err| err.to_string())?;
   Ok(())
 }
@@ -66,11 +67,7 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, parallel)
 }
 
-fn compile_func(
-  comp: &rb::RuleBook,
-  rules: &[lang::Rule],
-  tab: u64,
-) -> (String, String) {
+fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String, String) {
   let dynfun = bd::build_dynfun(comp, rules);
 
   let mut init = String::new();
@@ -278,8 +275,7 @@ fn compile_func_rule_term(
         format!("App({})", name)
       }
       bd::DynTerm::Ctr { func, args } => {
-        let ctr_args: Vec<String> =
-          args.iter().map(|arg| go(code, tab, arg, vars, nams)).collect();
+        let ctr_args: Vec<String> = args.iter().map(|arg| go(code, tab, arg, vars, nams)).collect();
         let name = fresh(nams, "ctr");
         line(code, tab, &format!("u64 {} = alloc(mem, {});", name, ctr_args.len()));
         for (i, arg) in ctr_args.iter().enumerate() {
@@ -288,8 +284,7 @@ fn compile_func_rule_term(
         format!("Ctr({}, {}, {})", ctr_args.len(), func, name)
       }
       bd::DynTerm::Cal { func, args } => {
-        let cal_args: Vec<String> =
-          args.iter().map(|arg| go(code, tab, arg, vars, nams)).collect();
+        let cal_args: Vec<String> = args.iter().map(|arg| go(code, tab, arg, vars, nams)).collect();
         let name = fresh(nams, "cal");
         line(code, tab, &format!("u64 {} = alloc(mem, {});", name, cal_args.len()));
         for (i, arg) in cal_args.iter().enumerate() {

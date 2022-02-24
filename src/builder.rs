@@ -58,10 +58,7 @@ pub struct DynFun {
   pub rules: Vec<DynRule>,
 }
 
-pub fn build_dynfun(
-  comp: &rb::RuleBook,
-  rules: &[lang::Rule],
-) -> DynFun {
+pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
   let mut redex = if let lang::Term::Ctr { name: _, ref args } = *rules[0].lhs {
     vec![false; args.len()]
   } else {
@@ -146,14 +143,14 @@ fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
 //#[derive(Debug)]
 //pub struct DupsCount(u64);
 //impl DupsCount {
-  //fn new() -> Self {
-    //Self(0)
-  //}
-  //fn next(&mut self) -> u64 {
-    //let ret = self.0;
-    //self.0 += 1;
-    //ret
-  //}
+//fn new() -> Self {
+//Self(0)
+//}
+//fn next(&mut self) -> u64 {
+//let ret = self.0;
+//self.0 += 1;
+//ret
+//}
 //}
 
 pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
@@ -167,10 +164,7 @@ pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>>
   funcs
 }
 
-fn build_runtime_function(
-  comp: &rb::RuleBook,
-  rules: &[lang::Rule],
-) -> rt::Function {
+fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
 
   let arity = dynfun.redex.len() as u64;
@@ -354,11 +348,7 @@ fn build_body(term: &DynTerm, free_vars: u64) -> Body {
       }
     }
   }
-  fn go(
-    term: &DynTerm,
-    vars: &mut Vec<Elem>,
-    nodes: &mut Vec<Node>,
-  ) -> Elem {
+  fn go(term: &DynTerm, vars: &mut Vec<Elem>, nodes: &mut Vec<Node>) -> Elem {
     match term {
       DynTerm::Var { bidx } => {
         if *bidx < vars.len() as u64 {
@@ -453,7 +443,13 @@ fn build_body(term: &DynTerm, free_vars: u64) -> Body {
 }
 
 static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
-fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, body: &Body, vars: &[DynVar], dups: &mut u64) -> rt::Lnk {
+fn alloc_body(
+  mem: &mut rt::Worker,
+  term: rt::Lnk,
+  body: &Body,
+  vars: &[DynVar],
+  dups: &mut u64,
+) -> rt::Lnk {
   unsafe {
     let (elem, nodes) = body;
     let hosts = &mut ALLOC_BODY_WORKSPACE;
@@ -499,16 +495,16 @@ fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   host
 }
 
-fn alloc_term(
-  mem: &mut rt::Worker,
-  comp: &rb::RuleBook,
-  term: &lang::Term,
-) -> u64 {
+fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) -> u64 {
   alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
 }
 
 // Evaluates a Lambolt term to normal form
-pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> Result<(Box<lang::Term>, u64, u64, u64), String> {
+pub fn eval_code(
+  call: &lang::Term,
+  code: &str,
+  debug: bool,
+) -> Result<(Box<lang::Term>, u64, u64, u64), String> {
   // Creates a new Runtime worker
   let mut worker = rt::new_worker();
 

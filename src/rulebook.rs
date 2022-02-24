@@ -34,8 +34,7 @@ pub fn new_rulebook() -> RuleBook {
 }
 
 // Adds a group to a rulebook
-pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
-
+pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
   fn register_names(book: &mut RuleBook, term: &lang::Term) {
     match term {
       lang::Term::Dup { expr, body, .. } => {
@@ -73,7 +72,7 @@ pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
   }
 
   // Inserts the group on the book
-  book.rule_group.insert(name.clone(), group.clone());
+  book.rule_group.insert(name.to_string(), group.clone());
 
   // Builds its metadata (name_to_id, id_to_name, ctr_is_cal)
   for rule in &group.1 {
@@ -83,12 +82,10 @@ pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
       book.ctr_is_cal.insert(name.clone(), true);
     }
   }
-
 }
 
 // Converts a file to a rulebook
 pub fn gen_rulebook(file: &lang::File) -> RuleBook {
-
   // Creates an empty rulebook
   let mut book = new_rulebook();
 
