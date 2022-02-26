@@ -330,7 +330,7 @@ pub fn list<'a, A: 'a, B: 'a>(
 
 /// Checks if input is a valid character for names.
 fn is_letter(chr: char) -> bool {
-  chr.is_ascii_alphanumeric() || chr == '_' || chr == '.'
+  chr.is_ascii_alphanumeric() || chr == '_' || chr == '.' || chr == '$'
 }
 
 /// Parses a name right after the parsing cursor.

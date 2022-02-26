@@ -201,6 +201,9 @@ fn compile_func_rule_term(
       let name = fresh(nams, "lam");
       line(code, tab, &format!("u64 {} = alloc(mem, 2);", name));
       if glob != 0 {
+        // FIXME: sanitizer still can't detect if a scopeless lambda doesn't use its bound
+        // variable, so we must write an Era() here. When it does, we can remove this line.
+        line(code, tab, &format!("link(mem, {} + 0, Era());", name));
         globs.insert(glob, name.clone());
       }
       name

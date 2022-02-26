@@ -128,7 +128,7 @@ pub fn group_rules(rules: &[lang::Rule]) -> HashMap<String, RuleGroup> {
 }
 
 pub fn is_global_name(name: &str) -> bool {
-  name.len() > 0 && name.starts_with(&".")
+  name.len() > 0 && name.starts_with(&"$")
 }
 
 // Sanitize
@@ -140,7 +140,9 @@ pub struct SanitizedRule {
   pub uses: HashMap<String, u64>,
 }
 
-// TODO: could we allow unscoped variables? There are use cases for them.
+// FIXME: right now, the sanitizer isn't able to identify if a scopeless lambda doesn't use its
+// bound variable, so it won't set the "eras" flag to "true" in this case, but it should.
+
 // This big function sanitizes a rule. That has the following effect:
 // - All variables are renamed to have a global unique name.
 // - All variables are linearized.
@@ -214,18 +216,27 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
           rename_erased(&mut name, ctx.uses);
           Box::new(lang::Term::Var { name })
         } else {
-          // create a var with the name generated before
-          // concatenated with '.{{times_used}}'
-          let gen_name = tbl.get(name);
-          if let Some(name) = gen_name {
-            let used = { *ctx.uses.entry(name.clone()).and_modify(|x| *x += 1).or_insert(1) };
-            let name = format!("{}.{}", name, used - 1);
-            Box::new(lang::Term::Var { name })
-          } else if is_global_name(&name) {
-            //println!("Allowed unbound variable: {}", name);
-            Box::new(lang::Term::Var { name: name.clone() })
+          if is_global_name(&name) {
+            println!("hmm {}", name);
+            if let Some(_) = tbl.get(name) {
+              panic!("Using a global variable more than once isn't supported yet. Use an explicit 'let' to clone it. {} {:?}", name, tbl.get(name));
+            } else {
+              tbl.insert(name.clone(), String::new());
+              Box::new(lang::Term::Var { name: name.clone() })
+            }
           } else {
-            panic!("Unbound variable: {}", name);
+            // create a var with the name generated before
+            // concatenated with '.{{times_used}}'
+            if let Some(name) = tbl.get(name) {
+              let used = { *ctx.uses.entry(name.clone()).and_modify(|x| *x += 1).or_insert(1) };
+              let name = format!("{}.{}", name, used - 1);
+              Box::new(lang::Term::Var { name })
+            //} else if is_global_name(&name) {
+              //println!("Allowed unbound variable: {}", name);
+              //Box::new(lang::Term::Var { name: name.clone() })
+            } else {
+              panic!("Unbound variable: {}", name);
+            }
           }
         }
       }

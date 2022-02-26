@@ -339,6 +339,7 @@ fn build_body(term: &DynTerm, free_vars: u64) -> Body {
     } else {
       let targ = nodes.len() as u64;
       nodes.push(vec![Elem::Fix { value: 0 }; 2]);
+      link(nodes, targ, 0, Elem::Fix { value: rt::Era() });
       if glob != 0 {
         globs.insert(glob, targ);
       }
@@ -389,9 +390,6 @@ fn build_body(term: &DynTerm, free_vars: u64) -> Body {
       DynTerm::Lam { eras: _, glob, body } => {
         let targ = alloc_lam(globs, nodes, *glob);
         let var = Elem::Loc { value: rt::Var(0), targ, slot: 0 };
-        if *glob == 0 {
-          links.push((targ, 0, Elem::Fix { value: rt::Era() }));
-        }
         vars.push(var);
         let body = gen_elems(body, vars, globs, nodes, links);
         links.push((targ, 1, body));
