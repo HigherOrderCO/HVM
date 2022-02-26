@@ -317,7 +317,7 @@ pub fn reduce(
 
     if debug {
       println!("------------------------");
-      println!("{}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name, term));
+      println!("{}", show_term(mem, ask_lnk(mem, 0), _opt_id_to_name, term));
     }
 
     if init == 1 {
@@ -432,8 +432,7 @@ pub fn reduce(
               inc_cost(mem);
               subst(mem, ask_arg(mem, term, 0), ask_arg(mem, arg0, 0));
               subst(mem, ask_arg(mem, term, 1), ask_arg(mem, arg0, 1));
-              let _done =
-                link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
+              let _done = link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
               clear(mem, get_loc(term, 0), 3);
               clear(mem, get_loc(arg0, 0), 2);
               init = 1;
@@ -494,6 +493,14 @@ pub fn reduce(
               let done = Ctr(arit, func, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
               link(mem, host, done);
             }
+          } else if get_tag(arg0) == ERA {
+            inc_cost(mem);
+            subst(mem, ask_arg(mem, term, 0), Era());
+            subst(mem, ask_arg(mem, term, 1), Era());
+            link(mem, host, Era());
+            clear(mem, get_loc(term, 0), 3);
+            init = 1;
+            continue;
           }
         }
         OP2 => {
@@ -652,9 +659,19 @@ pub fn normal(
   opt_id_to_name: Option<&HashMap<u64, String>>,
   debug: bool,
 ) -> Lnk {
-  let mut seen = vec![0; 4194304];
+  let mut done;
   let mut dups = 0;
-  normal_go(mem, &mut dups, funcs, host, &mut seen, opt_id_to_name, debug)
+  let mut cost = mem.cost;
+  loop {
+    let mut seen = vec![0; 4194304];
+    done = normal_go(mem, &mut dups, funcs, host, &mut seen, opt_id_to_name, debug);
+    if mem.cost != cost {
+      cost = mem.cost;
+    } else {
+      break;
+    }
+  }
+  done
 }
 
 // Debug
@@ -688,7 +705,7 @@ pub fn show_lnk(x: Lnk) -> String {
       F32 => "F32",
       OUT => "OUT",
       NIL => "NIL",
-      _ => "???",
+      _   => "?",
     };
     format!("{}{}:{:x}:{:x}", tgs, ari, ext, val)
   }
@@ -777,16 +794,16 @@ pub fn show_term(
   ) -> String {
     let done = match get_tag(term) {
       DP0 => {
-        format!("a{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")))
+        format!("a{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?a")))
       }
       DP1 => {
-        format!("b{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")))
+        format!("b{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?b")))
       }
       VAR => {
-        format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")))
+        format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?c")))
       }
       LAM => {
-        let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?")));
+        let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?d")));
         format!("λ{} {}", name, go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus))
       }
       APP => {
@@ -821,7 +838,7 @@ pub fn show_term(
           0xD => ">=",
           0xE => ">",
           0xF => "!=",
-          _   => "?",
+          _   => "?e",
         };
         format!("({} {} {})", symb, val0, val1)
       }
@@ -834,7 +851,7 @@ pub fn show_term(
         let args: Vec<String> =
           (0..arit).map(|i| go(mem, ask_arg(mem, term, i), names, opt_id_to_name, focus)).collect();
         let name = if let Some(id_to_name) = opt_id_to_name {
-          id_to_name.get(&func).unwrap_or(&String::from("?")).clone()
+          id_to_name.get(&func).unwrap_or(&String::from("?f")).clone()
         } else {
           format!(
             "{}{}",
@@ -844,7 +861,10 @@ pub fn show_term(
         };
         format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
-      _ => String::from("?"),
+      ERA => {
+        format!("*")
+      }
+      _ => format!("?g({})", get_tag(term)),
     };
     if term == focus {
       format!("${}", done)
@@ -856,13 +876,11 @@ pub fn show_term(
   let mut text = go(mem, term, &names, opt_id_to_name, focus);
   for (_key, pos) in lets {
     // todo: reverse
-    let what = String::from("?");
+    let what = String::from("?h");
     //let kind = kinds.get(&key).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
-    let nam0 =
-      if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
-    let nam1 =
-      if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+    let nam0 = if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+    let nam1 = if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
     text.push_str(&format!(
       "\ndup {} {} = {};",
       //kind,

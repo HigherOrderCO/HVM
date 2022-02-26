@@ -151,7 +151,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
           let val1 = rt::ask_arg(ctx.mem, term, 1);
           let val0_txt = go(ctx, stacks, val0, depth + 1);
           let val1_txt = go(ctx, stacks, val1, depth + 1);
-          format!("<{} {}>", val0_txt, val1_txt)
+          format!("{{{} {}}}", val0_txt, val1_txt)
         }
       }
       rt::DP0 => {

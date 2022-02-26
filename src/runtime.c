@@ -706,6 +706,20 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               break;
             }
 
+            // dup x y = *
+            // ----------- DUP-CTR
+            // x <- *
+            // y <- *
+            case ERA: {
+              inc_cost(mem);
+              subst(mem, ask_arg(mem, term, 0), Era());
+              subst(mem, ask_arg(mem, term, 1), Era());
+              link(mem, host, Era());
+              clear(mem, get_loc(term, 0), 3);
+              init = 1;
+              continue;
+            }
+
           }
           #ifdef PARALLEL
           atomic_flag* flag = ((atomic_flag*)(mem->node + get_loc(term,0))) + 6;
@@ -942,8 +956,18 @@ Lnk normal(Worker* mem, u64 host, u64 sidx, u64 slen) {
   // we call `normal_go()` a second time, with no thread space, to eliminate lasting redexes.
   normal_init();
   normal_go(mem, host, sidx, slen);
-  normal_init();
-  return normal_go(mem, host, 0, 1);
+  u64 done;
+  u64 cost = mem->cost;
+  while (1) {
+    normal_init();
+    done = normal_go(mem, host, 0, 1);
+    if (mem->cost != cost) {
+      cost = mem->cost;
+    } else {
+      break;
+    }
+  }
+  return done;
 }
 
 
@@ -1161,7 +1185,7 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char*
   //printf("- readback_term: "); debug_print_lnk(term); printf("\n");
   switch (get_tag(term)) {
     case LAM: {
-      stk_push(chrs, '%');
+      stk_push(chrs, '@');
       if (get_tag(ask_arg(mem, term, 0)) == ERA) {
         stk_push(chrs, '_');
       } else {

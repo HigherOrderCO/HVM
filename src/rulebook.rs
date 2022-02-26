@@ -217,7 +217,6 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
           Box::new(lang::Term::Var { name })
         } else {
           if is_global_name(&name) {
-            println!("hmm {}", name);
             if let Some(_) = tbl.get(name) {
               panic!("Using a global variable more than once isn't supported yet. Use an explicit 'let' to clone it. {} {:?}", name, tbl.get(name));
             } else {
