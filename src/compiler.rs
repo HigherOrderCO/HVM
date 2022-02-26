@@ -200,7 +200,9 @@ fn compile_func_rule_term(
     } else {
       let name = fresh(nams, "lam");
       line(code, tab, &format!("u64 {} = alloc(mem, 2);", name));
-      globs.insert(glob, name.clone());
+      if glob != 0 {
+        globs.insert(glob, name.clone());
+      }
       name
     }
   }
