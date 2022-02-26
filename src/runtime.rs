@@ -317,8 +317,7 @@ pub fn reduce(
 
     if debug {
       println!("------------------------");
-      println!("{}", show_term(mem, ask_lnk(mem, 0), _opt_id_to_name, term));
-      //println!("{}", show_mem(mem));
+      println!("{}", show_term(mem, ask_lnk(mem, root), _opt_id_to_name, term));
     }
 
     if init == 1 {
@@ -806,23 +805,23 @@ pub fn show_term(
         let val0 = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name, focus);
         let val1 = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus);
         let symb = match oper {
-          0x00 => "+",
-          0x01 => "-",
-          0x02 => "*",
-          0x03 => "/",
-          0x04 => "%",
-          0x05 => "&",
-          0x06 => "|",
-          0x07 => "^",
-          0x08 => "<<",
-          0x09 => ">>",
-          0x10 => "<",
-          0x11 => "<=",
-          0x12 => "=",
-          0x13 => ">=",
-          0x14 => ">",
-          0x15 => "!=",
-          _ => "?",
+          0x0 => "+",
+          0x1 => "-",
+          0x2 => "*",
+          0x3 => "/",
+          0x4 => "%",
+          0x5 => "&",
+          0x6 => "|",
+          0x7 => "^",
+          0x8 => "<<",
+          0x9 => ">>",
+          0xA => "<",
+          0xB => "<=",
+          0xC => "=",
+          0xD => ">=",
+          0xE => ">",
+          0xF => "!=",
+          _   => "?",
         };
         format!("({} {} {})", symb, val0, val1)
       }
