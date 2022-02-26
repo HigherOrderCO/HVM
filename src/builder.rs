@@ -40,7 +40,6 @@ pub enum Elem {
   Fix { value: u64 }, // Fixed value, doesn't require adjustment
   Loc { value: u64, targ: u64, slot: u64 }, // Local link, requires adjustment
   Ext { index: u64 }, // Link to an external variable
-  //Glo { value: u64 }, // A temporary global link, internal use only
 }
 
 #[derive(Debug)]
@@ -326,7 +325,7 @@ fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> Dy
 
 fn build_body(term: &DynTerm, free_vars: u64) -> Body {
   fn link(nodes: &mut Vec<Node>, targ: u64, slot: u64, elem: Elem) {
-    nodes[targ as usize][slot as usize] = elem.clone();
+    nodes[targ as usize][slot as usize] = elem;
     if let Elem::Loc { value, targ: var_targ, slot: var_slot } = elem {
       let tag = rt::get_tag(value);
       if tag <= rt::VAR {
@@ -487,9 +486,6 @@ fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, vars: &[DynVar], dups: &mut u
             }
             val
           }
-          //Elem::Glo { .. } => {
-            //0 // Unreachable
-          //}
         }
       }
     }

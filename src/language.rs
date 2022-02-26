@@ -354,7 +354,7 @@ pub fn parse_var(state: parser::State) -> parser::Answer<Option<BTerm>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
-      Ok((state, ('a'..='z').contains(&head) || head == '_' || head == '.'))
+      Ok((state, ('a'..='z').contains(&head) || head == '_' || head == '$'))
     }),
     Box::new(|state| {
       let (state, name) = parser::name(state)?;

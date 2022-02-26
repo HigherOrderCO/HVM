@@ -410,57 +410,6 @@ fn compile_func_rule_term(
   compile_term(code, tab, &mut vars, &mut nams, &mut globs, term)
 }
 
-#[allow(dead_code)]
-// This isn't used, but it is an alternative way to compile right-hand side bodies. It results in
-// slightly different code that might be faster since it inlines many memory writes. But it doesn't
-// optimize numeric operations to avoid extra rules, so that may make it slower, depending.
-//fn compile_func_rule_body(
-  //code: &mut String,
-  //tab: u64,
-  //body: &bd::Body,
-  //vars: &[bd::DynVar],
-//) -> String {
-  //let (elem, nodes) = body;
-  //for (i, node) in nodes.iter().enumerate() {
-    //line(code, tab + 0, &format!("u64 loc_{} = alloc(mem, {});", i, node.len()));
-  //}
-  //for (i, node) in nodes.iter().enumerate() {
-    //for (j, element) in node.iter().enumerate() {
-      //match element {
-        //bd::Elem::Fix { value } => {
-          ////mem.node[(host + j) as usize] = *value;
-          //line(code, tab + 0, &format!("mem->node[loc_{} + {}] = {:#x}u;", i, j, value));
-        //}
-        //bd::Elem::Ext { index } => {
-          ////rt::link(mem, host + j, get_var(mem, term, &vars[*index as usize]));
-          //line(
-            //code,
-            //tab + 0,
-            //&format!("link(mem, loc_{} + {}, {});", i, j, get_var(&vars[*index as usize])),
-          //);
-          ////line(code, tab + 0, &format!("u64 lnk = {};", get_var(&vars[*index as usize])));
-          ////line(code, tab + 0, &format!("u64 tag = get_tag(lnk);"));
-          ////line(code, tab + 0, &format!("mem.node[loc_{} + {}] = lnk;", i, j));
-          ////line(code, tab + 0, &format!("if (tag <= VAR) mem.node[get_loc(lnk, tag & 1)] = Arg(loc_{} + {});", i, j));
-        //}
-        //bd::Elem::Loc { value, targ, slot } => {
-          ////mem.node[(host + j) as usize] = value + hosts[*targ as usize] + slot;
-          //line(
-            //code,
-            //tab + 0,
-            //&format!("mem->node[loc_{} + {}] = {:#x}u + loc_{} + {};", i, j, value, targ, slot),
-          //);
-        //}
-      //}
-    //}
-  //}
-  //match elem {
-    //bd::Elem::Fix { value } => format!("{}u", value),
-    //bd::Elem::Ext { index } => get_var(&vars[*index as usize]),
-    //bd::Elem::Loc { value, targ, slot } => format!("({}u + loc_{} + {})", value, targ, slot),
-  //}
-//}
-
 fn get_var(var: &bd::DynVar) -> String {
   let bd::DynVar { param, field, erase: _ } = var;
   match field {
