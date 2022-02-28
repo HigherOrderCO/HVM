@@ -135,7 +135,7 @@ fn compile_func(
         matched.push(format!("({} && {})", same_tag, same_val));
       }
       if rt::get_tag(*cond) == rt::CTR {
-        let some_tag = format!("(get_tag(ask_arg(mem, term, {})) - CTR < 2)", i);
+        let some_tag = format!("get_tag(ask_arg(mem, term, {})) == CTR", i);
         let some_ext = format!("get_ext(ask_arg(mem, term, {})) == {}u", i, rt::get_ext(*cond));
         matched.push(format!("({} && {})", some_tag, some_ext));
       }

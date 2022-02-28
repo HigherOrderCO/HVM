@@ -189,8 +189,7 @@ fn build_runtime_function(
           }
           rt::CTR => {
             //println!("Didn't match because of CTR. i={} {} {}", i, rt::get_tag(rt::ask_arg(mem, term, i)), rt::get_val(*cond));
-            let ctor_tag = rt::get_tag(rt::ask_arg(mem, term, i));
-            let same_tag = ctor_tag == rt::CTR || ctor_tag == rt::CAL;
+            let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR;
             let same_ext = rt::get_ext(rt::ask_arg(mem, term, i)) == rt::get_ext(*cond);
             matched = matched && same_tag && same_ext;
           }
