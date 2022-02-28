@@ -572,7 +572,6 @@ pub fn reduce(
           let _ari = get_ari(term);
           if let Some(f) = &funcs[fun as usize] {
             if (f.rewriter)(mem, dups, host, term) {
-              //println!("cal-fun");
               init = 1;
               continue;
             }
