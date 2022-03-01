@@ -436,121 +436,6 @@ pub fn sanitize_rules(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   rules.iter().map(|rule| sanitize_rule(rule).unwrap()).collect()
 }
 
-#[cfg(test)]
-mod tests {
-  use core::panic;
-
-  use super::{gen_rulebook, sanitize_rule};
-  use crate::language::{read_file, read_rule};
-
-  #[test]
-  fn test_sanitize_expected_code() {
-    // code and expected code after sanitize
-    let codes = [
-      (
-        "(Foo a b c) = (+c (+c (+b (+ b b))))",
-        "(Foo * x1 x2) = dup x2.0 x2.1 = x2; dup c.0 x1.0 = x1; dup x1.1 x1.2 = c.0; (+ x2.0 (+ x2.1 (+ x1.0 (+ x1.1 x1.2))))",
-      ),
-      (
-        "(Foo a b c d e f g h i j k l m n) = (+ (+ a a) i)",
-        "(Foo x0 * * * * * * * x8 * * * * *) = let x8.0 = x8; dup x0.0 x0.1 = x0; (+ (+ x0.0 x0.1) x8.0)"
-      ),
-      (
-        "(Double (Zero)) = (Zero)",
-        "(Double (Zero)) = (Zero)"
-      ),
-      (
-        "(Double (Succ a)) = (Double (Succ (Succ a)))",
-        "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
-      )
-    ];
-
-    // test if after sanitize all are equal
-    // to the expected
-    for (code, expected) in codes {
-      let rule = read_rule(code).unwrap();
-      match rule {
-        None => panic!("Rule not parsed"),
-        Some(v) => {
-          let result = sanitize_rule(&v);
-          match result {
-            Ok(rule) => assert_eq!(rule.to_string(), expected),
-            Err(_) => panic!("Rule not sanitized"),
-          }
-        }
-      }
-    }
-  }
-
-  #[test]
-  fn test_sanitize_fail_code() {
-    // code that has to fail
-    const FAILS: [&str; 2] = [
-      // more than one nesting in constructors
-      "(Foo (Bar (Zaz x))) = (x)",
-      // variable not declared in lhs
-      "(Succ x) = (j)",
-    ];
-
-    for code in FAILS {
-      let rule = read_rule(code).unwrap();
-      match rule {
-        None => panic!("Rule not parsed"),
-        Some(v) => {
-          let result = sanitize_rule(&v);
-          assert!(matches!(result, Err(_)));
-        }
-      }
-    }
-  }
-
-  #[test]
-  fn test_rulebook_expected() {
-    let file = "
-      (Double (Zero)) = (Zero)
-      (Double (Succ x)) = (Succ ( Succ (Double x)))
-    ";
-
-    let file = read_file(file).unwrap();
-    let rulebook = gen_rulebook(&file);
-
-    // rule_group testing
-    // contains expected key
-    assert!(rulebook.rule_group.contains_key("Double"));
-    // contains expected number of keys
-    assert_eq!(rulebook.rule_group.len(), 1);
-    // key contains expected number of rules
-    assert_eq!(rulebook.rule_group.get("Double").unwrap().1.len(), 2);
-    // key contains expected arity
-    assert_eq!(rulebook.rule_group.get("Double").unwrap().0, 1);
-
-    // id_to_name e name_to_id testing
-    // check expected length
-    assert_eq!(rulebook.id_to_name.len(), 3);
-    // check determinism and existence
-    assert_eq!(rulebook.id_to_name.get(&0).unwrap(), "Double");
-    assert_eq!(rulebook.id_to_name.get(&1).unwrap(), "Zero");
-    assert_eq!(rulebook.id_to_name.get(&2).unwrap(), "Succ");
-    // check cohesion
-    let _size = rulebook.id_to_name.len();
-    for (id, name) in rulebook.id_to_name {
-      // assert name_to_id id will have same
-      // id that generate name in id_to_name
-      // also checks if the two maps have same length
-      let id_to_compare = rulebook.name_to_id.get(&name).unwrap();
-      assert_eq!(*id_to_compare, id);
-    }
-
-    // ctr_is_cal testing
-    // expected key exist
-    assert!(rulebook.ctr_is_cal.contains_key("Double"));
-    // contains expected number of keys
-    assert_eq!(rulebook.ctr_is_cal.len(), 1);
-    // key contains expected value
-    assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
-  }
-}
-
 // Split rules that have nested cases, flattening them.
 // I'm not proud of this code. Must improve considerably.
 pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
@@ -756,4 +641,170 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   }
 
   new_rules
+}
+
+pub fn new_flatten(_rules: &[lang::Rule]) -> Vec<Vec<lang::Rule>> {
+  // iterate through rules return remaining rules and aux rules to go recursively
+//  let mut ret: Vec<lang::Rule> = Vec::new();
+//  let mut remaining = Vec::from(rules);
+//  let mut filtered: Vec<lang::Rule> = Vec::new();
+//  while remaining.len() > 0 {
+//      break;
+//  }
+  Vec::new()
+}
+
+#[cfg(test)]
+mod tests {
+  use core::panic;
+
+  use super::{gen_rulebook, sanitize_rule, new_flatten, flatten};
+  use crate::language as lang;
+  use crate::language::{read_file, read_rule};
+
+  #[test]
+  fn test_sanitize_expected_code() {
+    // code and expected code after sanitize
+    let codes = [
+      (
+        "(Foo a b c) = (+c (+c (+b (+ b b))))",
+        "(Foo * x1 x2) = dup x2.0 x2.1 = x2; dup c.0 x1.0 = x1; dup x1.1 x1.2 = c.0; (+ x2.0 (+ x2.1 (+ x1.0 (+ x1.1 x1.2))))",
+      ),
+      (
+        "(Foo a b c d e f g h i j k l m n) = (+ (+ a a) i)",
+        "(Foo x0 * * * * * * * x8 * * * * *) = let x8.0 = x8; dup x0.0 x0.1 = x0; (+ (+ x0.0 x0.1) x8.0)"
+      ),
+      (
+        "(Double (Zero)) = (Zero)",
+        "(Double (Zero)) = (Zero)"
+      ),
+      (
+        "(Double (Succ a)) = (Double (Succ (Succ a)))",
+        "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
+      )
+    ];
+
+    // test if after sanitize all are equal
+    // to the expected
+    for (code, expected) in codes {
+      let rule = read_rule(code).unwrap();
+      match rule {
+        None => panic!("Rule not parsed"),
+        Some(v) => {
+          let result = sanitize_rule(&v);
+          match result {
+            Ok(rule) => assert_eq!(rule.to_string(), expected),
+            Err(_) => panic!("Rule not sanitized"),
+          }
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn test_sanitize_fail_code() {
+    // code that has to fail
+    const FAILS: [&str; 2] = [
+      // more than one nesting in constructors
+      "(Foo (Bar (Zaz x))) = (x)",
+      // variable not declared in lhs
+      "(Succ x) = (j)",
+    ];
+
+    for code in FAILS {
+      let rule = read_rule(code).unwrap();
+      match rule {
+        None => panic!("Rule not parsed"),
+        Some(v) => {
+          let result = sanitize_rule(&v);
+          assert!(matches!(result, Err(_)));
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn test_rulebook_expected() {
+    let file = "
+      (Double (Zero)) = (Zero)
+      (Double (Succ x)) = (Succ ( Succ (Double x)))
+    ";
+
+    let file = read_file(file).unwrap();
+    let rulebook = gen_rulebook(&file);
+
+    // rule_group testing
+    // contains expected key
+    assert!(rulebook.rule_group.contains_key("Double"));
+    // contains expected number of keys
+    assert_eq!(rulebook.rule_group.len(), 1);
+    // key contains expected number of rules
+    assert_eq!(rulebook.rule_group.get("Double").unwrap().1.len(), 2);
+    // key contains expected arity
+    assert_eq!(rulebook.rule_group.get("Double").unwrap().0, 1);
+
+    // id_to_name e name_to_id testing
+    // check expected length
+    assert_eq!(rulebook.id_to_name.len(), 3);
+    // check determinism and existence
+    assert_eq!(rulebook.id_to_name.get(&0).unwrap(), "Double");
+    assert_eq!(rulebook.id_to_name.get(&1).unwrap(), "Zero");
+    assert_eq!(rulebook.id_to_name.get(&2).unwrap(), "Succ");
+    // check cohesion
+    let _size = rulebook.id_to_name.len();
+    for (id, name) in rulebook.id_to_name {
+      // assert name_to_id id will have same
+      // id that generate name in id_to_name
+      // also checks if the two maps have same length
+      let id_to_compare = rulebook.name_to_id.get(&name).unwrap();
+      assert_eq!(*id_to_compare, id);
+    }
+
+    // ctr_is_cal testing
+    // expected key exist
+    assert!(rulebook.ctr_is_cal.contains_key("Double"));
+    // contains expected number of keys
+    assert_eq!(rulebook.ctr_is_cal.len(), 1);
+    // key contains expected value
+    assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
+  }
+
+  // this extracts the first layer of a rule with nested patterns
+  // or returns none if the rule isn't nested
+  // TODO
+  fn first_layer(rule: &lang::Rule) -> Option<lang::Rule> {
+      if let lang::Term::Ctr { .. } = *rule.lhs {
+          None
+      } else {
+          None
+      }
+  }
+  #[test]
+  fn first_layer_half() {
+    let nested = "
+      (Half (Succ (Succ x))) = (Succ (Half x))
+    ";
+
+    let expected_first_layer = "
+      (Half (Succ .0)) = (Half.0 .0)
+    ";
+
+    let nested: lang::Rule = lang::read_rule(nested).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(expected_first_layer).unwrap().unwrap());
+    assert_eq!(first_layer(&nested), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_test() {
+    let file = "
+      (Half (Succ (Succ x))) = (Succ (Half x))
+    ";
+
+    let file = read_file(file).unwrap();
+    let old_flattened = flatten(&file.rules);
+    let new_flattened = new_flatten(&file.rules);
+    println!("old:\n{:?}", old_flattened);
+    println!("new:\n{:?}", new_flattened);
+    assert_eq!(2 + 2, 4);
+  }
 }
