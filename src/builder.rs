@@ -1,4 +1,5 @@
-// Moving Lambolt Terms to/from runtime, and building dynamic functions.
+/// Moves HVM Terms to runtime, and building dynamic functions.
+
 // TODO: "dups" still needs to be moved out on alloc_body etc.
 
 use crate::language as lang;
@@ -231,13 +232,13 @@ fn build_runtime_function(
   rt::Function { arity, stricts, rewriter }
 }
 
-/// Converts a Lambolt Term to a Runtime Term
+/// Converts a language Term to a runtime Term
 fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
   fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
       lang::Oper::Add => rt::ADD,
       lang::Oper::Sub => rt::SUB,
-      lang::Oper::Mul => rt::MUL,
+      lang::Oper::Mul => rt::MUL, 
       lang::Oper::Div => rt::DIV,
       lang::Oper::Mod => rt::MOD,
       lang::Oper::And => rt::AND,
@@ -522,26 +523,25 @@ fn alloc_term(
   alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
 }
 
-// Evaluates a Lambolt term to normal form
+// Evaluates a HVM term to normal form
 pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> Result<(String, u64, u64, u64), String> {
-  // Creates a new Runtime worker
   let mut worker = rt::new_worker();
 
   // Parses and reads the input file
   let file = lang::read_file(code)?;
 
-  // Converts the Lambolt file to a rulebook file
+  // Converts the HVM "file" to a Rulebook
   let book = rb::gen_rulebook(&file);
 
   // Builds dynamic functions
-  let funs = build_runtime_functions(&book);
+  let functions = build_runtime_functions(&book);
 
   // Allocates the main term
   let host = alloc_term(&mut worker, &book, call);
 
   // Normalizes it
   let init = Instant::now();
-  rt::normal(&mut worker, host, &funs, Some(&book.id_to_name), debug);
+  rt::normal(&mut worker, host, &functions, Some(&book.id_to_name), debug);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string

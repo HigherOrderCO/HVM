@@ -9,7 +9,7 @@ use std::fmt;
 
 #[derive(Clone, Debug)]
 pub enum Term {
-  Var { name: String },
+  Var { name: String }, // TODO: add `global: bool`
   Dup { nam0: String, nam1: String, expr: BTerm, body: BTerm },
   Let { name: String, expr: BTerm, body: BTerm },
   Lam { name: String, body: BTerm },

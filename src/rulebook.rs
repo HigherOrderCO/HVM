@@ -482,6 +482,7 @@ mod tests {
     }
   }
 
+  // FIXME: panicking
   #[test]
   fn test_sanitize_fail_code() {
     // code that has to fail
