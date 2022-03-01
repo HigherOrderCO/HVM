@@ -780,13 +780,13 @@ mod tests {
       }
   }
   #[test]
-  fn first_layer_half() {
+  fn first_layer_0() {
     let nested = "
       (Half (Succ (Succ x))) = (Succ (Half x))
     ";
 
     let expected_first_layer = "
-      (Half (Succ .0)) = (Half.0 .0)
+      (Half (Succ x.0)) = (Half.0 x.0)
     ";
 
     let nested: lang::Rule = lang::read_rule(nested).unwrap().unwrap();
@@ -795,16 +795,31 @@ mod tests {
   }
 
   #[test]
-  fn flatten_test() {
-    let file = "
-      (Half (Succ (Succ x))) = (Succ (Half x))
+  fn first_layer_1() {
+    let nested = "
+      (Foo (Succ (Succ x)) x0) = (Succ (Half x))
     ";
 
-    let file = read_file(file).unwrap();
-    let old_flattened = flatten(&file.rules);
-    let new_flattened = new_flatten(&file.rules);
-    println!("old:\n{:?}", old_flattened);
-    println!("new:\n{:?}", new_flattened);
-    assert_eq!(2 + 2, 4);
+    let expected_first_layer = "
+      (Half (Succ x.0)) = (Half.0 x.0)
+    ";
+
+    let nested: lang::Rule = lang::read_rule(nested).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(expected_first_layer).unwrap().unwrap());
+    assert_eq!(first_layer(&nested), expected_first_layer);
   }
+
+//  #[test]
+//  fn flatten_test() {
+//    let file = "
+//      (Half (Succ (Succ x))) = (Succ (Half x))
+//    ";
+//
+//    let file = read_file(file).unwrap();
+//    let old_flattened = flatten(&file.rules);
+//    let new_flattened = new_flatten(&file.rules);
+//    println!("old:\n{:?}", old_flattened);
+//    println!("new:\n{:?}", new_flattened);
+//    assert_eq!(2 + 2, 4);
+//  }
 }
