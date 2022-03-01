@@ -98,7 +98,9 @@ impl fmt::Display for Term {
       fn go(term: &Term, text: &mut String, fst: bool) -> Option<()> {
         if let Term::Ctr { name, args } = term {
           if name == "Cons" && args.len() == 2 {
-            text.push(if fst { '\0' } else { ',' });
+            if !fst {
+              text.push_str(", ");
+            }
             text.push_str(&format!("{}", args[0]));
             go(&args[1], text, false)?;
             return Some(());
