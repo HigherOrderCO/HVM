@@ -5,12 +5,17 @@
   "cSpell.words": [
     "doctest",
     "dynfun",
+    "dynrule",
+    "dynrules",
+    "dynterm",
+    "dynvar",
     "itertools",
     "lambolt",
     "oper",
     "readback",
+    "redex",
     "rulebook"
   ],
-  "cSpell.ignoreWords": ["argm", "arit", "askama", "ctrs", "dups", "ropey"],
+  "cSpell.ignoreWords": ["argm", "arit", "ctrs", "dups"],
   "rust-analyzer.checkOnSave.command": "clippy"
 }

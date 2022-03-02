@@ -1,4 +1,4 @@
-// Moving Lambolt Terms to/from runtime, and building dynamic functions.
+/// Moves HVM Terms from runtime, and building dynamic functions.
 
 use crate::language as lang;
 use crate::rulebook as rb;
@@ -81,10 +81,6 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
     // count: &'a mut u32,
   }
 
-  // TODO: more efficient, immutable data structure
-  // Note: Because of clone? Use a bit-string:
-  // struct BitString { O{...}, I{...}, E }
-  #[derive(Clone)]
   struct Stacks {
     stacks: HashMap<Lnk, Vec<bool>>,
   }
@@ -113,7 +109,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
     // Should investigate if it is needed or not.
 
     //if ctx.seen.contains(&term) {
-    //"@".to_string()
+    //  "@".to_string()
     //} else {
     match rt::get_tag(term) {
       rt::LAM => {
