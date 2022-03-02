@@ -213,50 +213,119 @@ pub fn clear(mem: &mut Worker, loc: u64, size: u64) {
 }
 
 pub fn collect(mem: &mut Worker, term: Lnk) {
-  match get_tag(term) {
-    DP0 => {
-      link(mem, get_loc(term, 0), Era());
-      //r_educe(mem, get_loc(ask_arg(mem,term,1),0));
-    }
-    DP1 => {
-      link(mem, get_loc(term, 1), Era());
-      //r_educe(mem, get_loc(ask_arg(mem,term,0),0));
-    }
-    VAR => {
-      link(mem, get_loc(term, 0), Era());
-    }
-    LAM => {
-      if get_tag(ask_arg(mem, term, 0)) != ERA {
-        link(mem, get_loc(ask_arg(mem, term, 0), 0), Era());
+  let mut stack : Vec<Lnk> = Vec::new();
+  let mut next = term;
+  loop {
+    let term = next;
+    match get_tag(term) {
+      DP0 => {
+        link(mem, get_loc(term, 0), Era());
+        //r_educe(mem, get_loc(ask_arg(mem,term,1),0));
       }
-      collect(mem, ask_arg(mem, term, 1));
-      clear(mem, get_loc(term, 0), 2);
-    }
-    APP => {
-      collect(mem, ask_arg(mem, term, 0));
-      collect(mem, ask_arg(mem, term, 1));
-      clear(mem, get_loc(term, 0), 2);
-    }
-    PAR => {
-      collect(mem, ask_arg(mem, term, 0));
-      collect(mem, ask_arg(mem, term, 1));
-      clear(mem, get_loc(term, 0), 2);
-    }
-    OP2 => {
-      collect(mem, ask_arg(mem, term, 0));
-      collect(mem, ask_arg(mem, term, 1));
-    }
-    U32 => {}
-    CTR | CAL => {
-      let arity = get_ari(term);
-      for i in 0..arity {
-        collect(mem, ask_arg(mem, term, i));
+      DP1 => {
+        link(mem, get_loc(term, 1), Era());
+        //r_educe(mem, get_loc(ask_arg(mem,term,0),0));
       }
-      clear(mem, get_loc(term, 0), arity);
+      VAR => {
+        link(mem, get_loc(term, 0), Era());
+      }
+      LAM => {
+        if get_tag(ask_arg(mem, term, 0)) != ERA {
+          link(mem, get_loc(ask_arg(mem, term, 0), 0), Era());
+        }
+        next = ask_arg(mem, term, 1);
+        clear(mem, get_loc(term, 0), 2);
+        continue;
+      }
+      APP => {
+        stack.push(ask_arg(mem, term, 0));
+        next = ask_arg(mem, term, 1);
+        clear(mem, get_loc(term, 0), 2);
+        continue;
+      }
+      PAR => {
+        stack.push(ask_arg(mem, term, 0));
+        next = ask_arg(mem, term, 1);
+        clear(mem, get_loc(term, 0), 2);
+        continue;
+      }
+      OP2 => {
+        stack.push(ask_arg(mem, term, 0));
+        next = ask_arg(mem, term, 1);
+        clear(mem, get_loc(term, 0), 2);
+        continue;
+      }
+      U32 => {}
+      CTR | CAL => {
+        let arity = get_ari(term);
+        for i in 0..arity {
+          if i < arity - 1 {
+            stack.push(ask_arg(mem, term, i));
+          } else {
+            next = ask_arg(mem, term, i);
+          }
+        }
+        clear(mem, get_loc(term, 0), arity);
+        if arity > 0 {
+          continue;
+        }
+      }
+      _ => {}
     }
-    _ => {}
+    if let Some(got) = stack.pop() {
+      next = got;
+    } else {
+      break;
+    }
   }
 }
+
+//pub fn collect(mem: &mut Worker, term: Lnk) {
+  //match get_tag(term) {
+    //DP0 => {
+      //link(mem, get_loc(term, 0), Era());
+      ////r_educe(mem, get_loc(ask_arg(mem,term,1),0));
+    //}
+    //DP1 => {
+      //link(mem, get_loc(term, 1), Era());
+      ////r_educe(mem, get_loc(ask_arg(mem,term,0),0));
+    //}
+    //VAR => {
+      //link(mem, get_loc(term, 0), Era());
+    //}
+    //LAM => {
+      //if get_tag(ask_arg(mem, term, 0)) != ERA {
+        //link(mem, get_loc(ask_arg(mem, term, 0), 0), Era());
+      //}
+      //collect(mem, ask_arg(mem, term, 1));
+      //clear(mem, get_loc(term, 0), 2);
+    //}
+    //APP => {
+      //collect(mem, ask_arg(mem, term, 0));
+      //collect(mem, ask_arg(mem, term, 1));
+      //clear(mem, get_loc(term, 0), 2);
+    //}
+    //PAR => {
+      //collect(mem, ask_arg(mem, term, 0));
+      //collect(mem, ask_arg(mem, term, 1));
+      //clear(mem, get_loc(term, 0), 2);
+    //}
+    //OP2 => {
+      //collect(mem, ask_arg(mem, term, 0));
+      //collect(mem, ask_arg(mem, term, 1));
+      //clear(mem, get_loc(term, 0), 2);
+    //}
+    //U32 => {}
+    //CTR | CAL => {
+      //let arity = get_ari(term);
+      //for i in 0..arity {
+        //collect(mem, ask_arg(mem, term, i));
+      //}
+      //clear(mem, get_loc(term, 0), arity);
+    //}
+    //_ => {}
+  //}
+//}
 
 pub fn inc_cost(mem: &mut Worker) {
   mem.cost += 1;

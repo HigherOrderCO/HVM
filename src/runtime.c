@@ -385,6 +385,7 @@ void collect(Worker* mem, Lnk term) {
     case OP2: {
       collect(mem, ask_arg(mem,term,0));
       collect(mem, ask_arg(mem,term,1));
+      clear(mem, get_loc(term,0), 2);
       break;
     }
     case U32: {
