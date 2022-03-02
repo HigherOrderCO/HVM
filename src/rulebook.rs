@@ -824,6 +824,8 @@ mod tests {
         None
     }
   }
+  // defines the auxiliary function that's on the right hand side
+  // of the output of first_layer(rule, n)
   fn aux_def(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
     if let lang::Term::Ctr { name: ref lhs_name, args: ref lhs_args } = *rule.lhs {
       let mut ok = true;
@@ -833,8 +835,8 @@ mod tests {
           lang::Term::Ctr { args: ref arg_args, .. } => {
             lhs_new_args.append(&mut arg_args.clone());
           },
-          lang::Term::Var { .. } => {
-            ()
+          lang::Term::Var { ref name } => {
+            lhs_new_args.push(Box::new(lang::Term::Var{ name: name.clone() }));
           },
           _ => {
             ok = false;
@@ -852,6 +854,28 @@ mod tests {
       None
     }
   }
+
+  // checks that if a matches, then b matches
+  fn sub_pattern(a: &lang::Rule, b: &lang::Rule) -> bool {
+    sub_pattern_aux(a.lhs, b.lhs)
+  }
+  fn sub_pattern_aux(a: &lang::Term, b: &lang::Term) -> bool {
+    match (a, b) {
+      (lang::Term::Var { .. }, lang::Term::Var { .. }) => true,
+      (lang::Term::Ctr { .. }, lang::Term::Var { .. }) => true,
+      (
+        lang::Term::Ctr { name: a_name, args: a_args },
+        lang::Term::Ctr { name: b_name, args: b_args }
+      ) => {
+        let mut compatible = true;
+        for (a_arg, b_arg) in a_arg.iter().zip(b_arg) {
+          compatible = compatible && sub_pattern_aux(a_arg, b_arg);
+        }
+        (a_name == b_name) && compatible
+      },
+      _ => false,
+    }
+  }
   // examples for flattening algorithm
   const EQ0: &str = "(Half (Succ (Succ x))) = (Succ (Half x))";
   const EQ0_FIRST_LAYER: &str = "(Half (Succ x.0)) = (Half.0 x.0)";
@@ -859,41 +883,55 @@ mod tests {
 
   const EQ1: &str = "(Foo (A (B x0)) x1 (B (C x2 x3) x4)) = (Bar x1 (Baz (C x4 x3) x2))";
   const EQ1_FIRST_LAYER: &str = "(Foo (A x.0) x.1 (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
-//  const EQ1_AUX_DEF: &str = "(Foo.0 (B x0) x1 (C x2 x3) x4) = (Bar x1 (Baz (C x4 x3) x2))";
-//
-  const EQ2: &str = "(Foo x0 (A (C x1 x2)) (B x3 x4)) = (Bar Zero (Baz x2 x3))";
+  const EQ1_AUX_DEF: &str = "(Foo.0 (B x0) x1 (C x2 x3) x4) = (Bar x1 (Baz (C x4 x3) x2))";
+
+  const EQ2: &str = "(Foo abacate (A (C banana cereja)) (B d e)) = (Bar Zero (Baz cereja d))";
   const EQ2_FIRST_LAYER: &str = "(Foo x.0 (A x.1) (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
-//  const EQ2_AUX_DEF: &str = "(Foo.0 x.0 (C x.1 x.2) x.3 x.4) = (Bar Zero (Baz x.2 x.3))";
-//
+  const EQ2_AUX_DEF: &str = "(Foo.0 abacate (C banana cereja) d e) = (Bar Zero (Baz cereja d))";
+
 //  const EQ1_EQ2_AUX_DEF: &str = "(Foo.0 x0 (A (C x1 x2)) x.3 x.4) = (Bar Zero (Baz x.2 x.3))";
 //  const EQ2_EQ1_AUX_DEF: &str = "(Foo (A (B x.0)) x.1 (C x.2 x.3) x.4) = (Bar (A x.1) (Baz (C x.4 x.3) x.2)";
 
   // TODO add tests that return None
   #[test]
-  fn first_layer_0() {
+  fn flatten_first_layer_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
     let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
-  fn first_layer_1() {
+  fn flatten_first_layer_1() {
     let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
     let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
-  fn first_layer_2() {
+  fn flatten_first_layer_2() {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
     let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
-  fn aux_def_0() {
+  fn flatten_aux_def_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
     let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap());
+    assert_eq!(aux_def(&nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_aux_def_1() {
+    let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap());
+    assert_eq!(aux_def(&nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_aux_def_2() {
+    let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap());
     assert_eq!(aux_def(&nested, 0), expected_first_layer);
   }
 
