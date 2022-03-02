@@ -515,7 +515,7 @@ fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   host
 }
 
-fn alloc_term(
+pub fn alloc_term(
   mem: &mut rt::Worker,
   comp: &rb::RuleBook,
   term: &lang::Term,
