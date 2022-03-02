@@ -769,55 +769,97 @@ mod tests {
     assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
   }
 
-  // this extracts the first layer of a rule with nested patterns
-  // TODO
   fn show_var(i: i32) -> String {
-    "x.".to_owned() + &i.to_string()
+    put_suffix("x", i)
   }
+  fn put_suffix(prefix: &str, i: i32) -> String {
+      prefix.to_owned() + "." + &i.to_string()
+  }
+
+  // this function takes a rule that may have nested patterns and returns
+  // a rule that only matches one layer of constructors and then calls an
+  // auxiliary def.
+  // look at "first_layer" tests for examples
   fn first_layer(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
-      if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
-          let mut i = 0;
-          let mut lhs_args: Vec<Box<lang::Term>> = Vec::new();
-          let mut rhs_args: Vec<Box<lang::Term>> = Vec::new();
-          for arg in args {
-            match **arg {
-              lang::Term::Ctr { name: ref arg_name, args: ref arg_args, .. } => {
-                let mut new_arg_args: Vec<Box<lang::Term>> = Vec::new();
-                for _ in arg_args {
-                  let var_name = show_var(i);
-                  i += 1;
-                  let var = Box::new(lang::Term::Var { name: var_name });
-                  new_arg_args.push(var.clone());
-                  rhs_args.push(var);
-                }
-                let new_arg = Box::new(lang::Term::Ctr { name: arg_name.clone(), args: new_arg_args });
-                lhs_args.push(new_arg);
-              },
-              lang::Term::Var { .. } => {
-                let var_name = show_var(i);
-                i += 1;
-                let new_var = Box::new(lang::Term::Var { name: var_name } );
-                rhs_args.push(new_var.clone());
-                lhs_args.push(new_var);
-              }
-              _ => (),
+    if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
+      let mut i = 0;
+      let mut lhs_args: Vec<Box<lang::Term>> = Vec::new();
+      let mut rhs_args: Vec<Box<lang::Term>> = Vec::new();
+      let mut ok = true;
+      for arg in args {
+        match **arg {
+          lang::Term::Ctr { name: ref arg_name, args: ref arg_args } => {
+            let mut new_arg_args: Vec<Box<lang::Term>> = Vec::new();
+            for _ in arg_args {
+              let var_name = show_var(i);
+              i += 1;
+              let var = Box::new(lang::Term::Var { name: var_name });
+              new_arg_args.push(var.clone());
+              rhs_args.push(var);
             }
+            let new_arg = Box::new(lang::Term::Ctr { name: arg_name.clone(), args: new_arg_args });
+            lhs_args.push(new_arg);
+          },
+          lang::Term::Var { .. } => {
+            let var_name = show_var(i);
+            i += 1;
+            let new_var = Box::new(lang::Term::Var { name: var_name } );
+            rhs_args.push(new_var.clone());
+            lhs_args.push(new_var);
           }
-          let lhs = Box::new(lang::Term::Ctr { name: name.to_string(), args: lhs_args });
-          let rhs = Box::new(lang::Term::Ctr { name: name.to_string() + "." + &n.to_string(), args: rhs_args });
-          Some(lang::Rule { lhs, rhs })
-      } else {
-          None
+          _ => {
+            ok = false;
+            break;
+          },
+        }
       }
+      if ok {
+        let lhs = Box::new(lang::Term::Ctr { name: name.to_string(), args: lhs_args });
+        let rhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: rhs_args });
+        Some(lang::Rule { lhs, rhs })
+      } else {
+        None
+      }
+    } else {
+        None
+    }
+  }
+  fn aux_def(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
+    if let lang::Term::Ctr { name: ref lhs_name, args: ref lhs_args } = *rule.lhs {
+      let mut ok = true;
+      let mut lhs_new_args: Vec<Box<lang::Term>> = Vec::new();
+      for arg in lhs_args {
+        match **arg {
+          lang::Term::Ctr { args: ref arg_args, .. } => {
+            lhs_new_args.append(&mut arg_args.clone());
+          },
+          lang::Term::Var { .. } => {
+            ()
+          },
+          _ => {
+            ok = false;
+            break;
+          }
+        }
+      }
+      if ok {
+        let lhs = Box::new(lang::Term::Ctr { name: put_suffix(lhs_name, n), args: lhs_new_args });
+        Some(lang::Rule { lhs, rhs: rule.rhs.clone() })
+      } else {
+        None
+      }
+    } else {
+      None
+    }
   }
   // examples for flattening algorithm
   const EQ0: &str = "(Half (Succ (Succ x))) = (Succ (Half x))";
   const EQ0_FIRST_LAYER: &str = "(Half (Succ x.0)) = (Half.0 x.0)";
-//  const EQ0_AUX_DEF: &str = "(Half.0 (Succ x.0)) = (Succ (Half x.0))";
+  const EQ0_AUX_DEF: &str = "(Half.0 (Succ x)) = (Succ (Half x))";
 
   const EQ1: &str = "(Foo (A (B x0)) x1 (B (C x2 x3) x4)) = (Bar x1 (Baz (C x4 x3) x2))";
   const EQ1_FIRST_LAYER: &str = "(Foo (A x.0) x.1 (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
-//  const EQ1_AUX_DEF: &str = "(Foo.0 (B x.0) x.1 (C x.2 x.3) x.4) = (Bar x.1 (Baz (C x.4 x.3) x.2))";
+//  const EQ1_AUX_DEF: &str = "(Foo.0 (B x0) x1 (C x2 x3) x4) = (Bar x1 (Baz (C x4 x3) x2))";
 //
   const EQ2: &str = "(Foo x0 (A (C x1 x2)) (B x3 x4)) = (Bar Zero (Baz x2 x3))";
   const EQ2_FIRST_LAYER: &str = "(Foo x.0 (A x.1) (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
@@ -826,6 +868,7 @@ mod tests {
 //  const EQ1_EQ2_AUX_DEF: &str = "(Foo.0 x0 (A (C x1 x2)) x.3 x.4) = (Bar Zero (Baz x.2 x.3))";
 //  const EQ2_EQ1_AUX_DEF: &str = "(Foo (A (B x.0)) x.1 (C x.2 x.3) x.4) = (Bar (A x.1) (Baz (C x.4 x.3) x.2)";
 
+  // TODO add tests that return None
   #[test]
   fn first_layer_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
@@ -845,6 +888,13 @@ mod tests {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
     let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn aux_def_0() {
+    let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap());
+    assert_eq!(aux_def(&nested, 0), expected_first_layer);
   }
 
 //  #[test]
