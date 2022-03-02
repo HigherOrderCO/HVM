@@ -496,31 +496,46 @@ Test1 = (Test "
 
 // Checks type-level computations
 Test2 = (Test "
-  def Bool : Type =
-    ∀(p: Type) ∀(t: p) ∀(f: p) p
-
-  def true : Bool =
-    λp λt λf t
-
-  def false : Bool =
-    λp λt λf f
-
-  def not : ∀(b : Bool) Bool =
-    λb λp λt λf (((b p) f) t)
-
-  def Equal : ∀(t: Type) ∀(a: t) ∀(b: t) Type =
-    λt λa λb
-    ∀ (p: ∀(b: t) Type)
-    ∀ (r: (p a))
-    (p b)
-
-  def refl : ∀(t: Type) ∀(a: t) (((Equal t) a) a) =
-    λt λa λp λr r
-
-  def test : (((Equal Bool) true) (not false)) =
-    ((refl Bool) true)
-
-  test
+  def Equal : ∀(t: Type) ∀(a: t) ∀(b: t) Type = λt λa λb ∀ (p: ∀(b: t) Type) ∀ (r: (p a)) (p b)
+  def refl : ∀(t: Type) ∀(a: t) (((Equal t) a) a) = λt λa λp λr r
+  def Nat : Type = ∀(p: Type) ∀(s: ∀(n: p) p) ∀(z: p) p
+  def zero : Nat = λp λs λz z
+  def succ : ∀(n: Nat) Nat = λn λp λs λz (s (((n p) s) z))
+  def mul : ∀(n: Nat) ∀(n: Nat) Nat = λn λm λp λs λz (((n p) ((m p) s)) z)
+  def exp : ∀(n: Nat) ∀(n: Nat) Nat = λn λm λp ((m ∀(x:p) p) (n p))
+  def n0 : Nat = zero
+  def n1 : Nat = (succ n0)
+  def n2 : Nat = (succ n1)
+  def n3 : Nat = (succ n2)
+  def n4 : Nat = (succ n3)
+  def n5 : Nat = (succ n4)
+  def n6 : Nat = (succ n5)
+  def n7 : Nat = (succ n6)
+  def n8 : Nat = (succ n7)
+  def n9 : Nat = (succ n8)
+  def n10 : Nat = (succ n9)
+  def n11 : Nat = (succ n10)
+  def n12 : Nat = (succ n11)
+  def n13 : Nat = (succ n12)
+  def n14 : Nat = (succ n13)
+  def n15 : Nat = (succ n14)
+  def n16 : Nat = (succ n15)
+  def n17 : Nat = (succ n16)
+  def n18 : Nat = (succ n17)
+  def n19 : Nat = (succ n18)
+  def n20 : Nat = (succ n19)
+  def n21 : Nat = (succ n20)
+  def n22 : Nat = (succ n21)
+  def n23 : Nat = (succ n22)
+  def n24 : Nat = (succ n23)
+  def Bool : Type = ∀(p: Type) ∀(t: p) ∀(f: p) p
+  def true : Bool = λp λt λf t
+  def false : Bool = λp λt λf f
+  def not : ∀(b: Bool) Bool = λb λp λt λf (((b p) f) t)
+  def xor : ∀(a: Bool) ∀(b: Bool) Bool = λa λb ((((a ∀(b:Bool) Bool) λb(((b Bool) false) true)) λb(((b Bool) true) false)) b)
+  def slow : ∀(n: Nat) Bool = λn (((n Bool) λr((xor r) r)) false)
+  def main : (((Equal Bool) (slow n24)) false) = ((refl Bool) false)
+  main
 ")
 
 (Main n) =
