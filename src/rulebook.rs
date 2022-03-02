@@ -779,33 +779,33 @@ mod tests {
           None
       }
   }
+  // examples for flattening algorithm
+  const EQ0: &str = "(Half (Succ (Succ x))) = (Succ (Half x))";
+  const EQ0_FIRST_LAYER: &str = "(Half (Succ x.0)) = (Half.0 x.0)";
+  const EQ0_AUX_DEF: &str = "(Half.0 (Succ x.0)) = (Succ (Half x.0))";
+
+  const EQ1: &str = "(Foo (A (B x0)) x1 (B (C x2 x3) x4)) = (Bar x1 (Baz (C x4 x3) x2))";
+  const EQ1_FIRST_LAYER: &str = "(Foo (A x.0) x.1 (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
+  const EQ1_AUX_DEF: &str = "(Foo.0 (B x.0) x.1 (C x.2 x.3) x.4) = (Bar x.1 (Baz (C x.4 x.3) x.2))";
+
+  const EQ2: &str = "(Foo x0 (A (C x1 x2)) (B x3 x4)) = (Bar Zero (Baz x2 x3))";
+  const EQ2_FIRST_LAYER: &str = "(Foo x.0 (A x.1) (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
+  const EQ2_AUX_DEF: &str = "(Foo.0 x.0 (C x.1 x.2) x.3 x.4) = (Bar Zero (Baz x.2 x.3))";
+
+  const EQ1_EQ2_AUX_DEF: &str = "(Foo.0 x0 (A (C x1 x2)) x.3 x.4) = (Bar Zero (Baz x.2 x.3))";
+  const EQ2_EQ1_AUX_DEF: &str = "(Foo (A (B x.0)) x.1 (C x.2 x.3) x.4) = (Bar (A x.1) (Baz (C x.4 x.3) x.2)";
+
   #[test]
   fn first_layer_0() {
-    let nested = "
-      (Half (Succ (Succ x))) = (Succ (Half x))
-    ";
-
-    let expected_first_layer = "
-      (Half (Succ x.0)) = (Half.0 x.0)
-    ";
-
-    let nested: lang::Rule = lang::read_rule(nested).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(expected_first_layer).unwrap().unwrap());
+    let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested), expected_first_layer);
   }
 
   #[test]
   fn first_layer_1() {
-    let nested = "
-      (Foo (Succ (Succ x)) x0) = (Succ (Half x))
-    ";
-
-    let expected_first_layer = "
-      (Half (Succ x.0)) = (Half.0 x.0)
-    ";
-
-    let nested: lang::Rule = lang::read_rule(nested).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(expected_first_layer).unwrap().unwrap());
+    let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested), expected_first_layer);
   }
 
