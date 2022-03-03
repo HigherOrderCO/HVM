@@ -35,7 +35,6 @@ pub fn new_rulebook() -> RuleBook {
 
 // Adds a group to a rulebook
 pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
-
   fn register_names(book: &mut RuleBook, term: &lang::Term) {
     match term {
       lang::Term::Dup { expr, body, .. } => {
@@ -83,12 +82,10 @@ pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
       book.ctr_is_cal.insert(name.clone(), true);
     }
   }
-
 }
 
 // Converts a file to a rulebook
 pub fn gen_rulebook(file: &lang::File) -> RuleBook {
-
   // Creates an empty rulebook
   let mut book = new_rulebook();
 
@@ -231,8 +228,8 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
               let name = format!("{}.{}", name, used - 1);
               Box::new(lang::Term::Var { name })
             //} else if is_global_name(&name) {
-              //println!("Allowed unbound variable: {}", name);
-              //Box::new(lang::Term::Var { name: name.clone() })
+            //println!("Allowed unbound variable: {}", name);
+            //Box::new(lang::Term::Var { name: name.clone() })
             } else {
               panic!("Unbound variable: {}", name);
             }
@@ -773,13 +770,14 @@ mod tests {
     put_suffix("x", i)
   }
   fn put_suffix(prefix: &str, i: i32) -> String {
-      prefix.to_owned() + "." + &i.to_string()
+    prefix.to_owned() + "." + &i.to_string()
   }
 
   // this function takes a rule that may have nested patterns and returns
   // a rule that only matches one layer of constructors and then calls an
   // auxiliary def.
   // look at "first_layer" tests for examples
+  // i bet this could be shorter and clearer, but I'm still getting used to rust
   fn first_layer(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
     if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
       let mut i = 0;
@@ -799,18 +797,18 @@ mod tests {
             }
             let new_arg = Box::new(lang::Term::Ctr { name: arg_name.clone(), args: new_arg_args });
             lhs_args.push(new_arg);
-          },
+          }
           lang::Term::Var { .. } => {
             let var_name = show_var(i);
             i += 1;
-            let new_var = Box::new(lang::Term::Var { name: var_name } );
+            let new_var = Box::new(lang::Term::Var { name: var_name });
             rhs_args.push(new_var.clone());
             lhs_args.push(new_var);
           }
           _ => {
             ok = false;
             break;
-          },
+          }
         }
       }
       if ok {
@@ -821,7 +819,7 @@ mod tests {
         None
       }
     } else {
-        None
+      None
     }
   }
   // defines the auxiliary function that's on the right hand side
@@ -834,10 +832,10 @@ mod tests {
         match **arg {
           lang::Term::Ctr { args: ref arg_args, .. } => {
             lhs_new_args.append(&mut arg_args.clone());
-          },
+          }
           lang::Term::Var { ref name } => {
-            lhs_new_args.push(Box::new(lang::Term::Var{ name: name.clone() }));
-          },
+            lhs_new_args.push(Box::new(lang::Term::Var { name: name.clone() }));
+          }
           _ => {
             ok = false;
             break;
@@ -855,28 +853,89 @@ mod tests {
     }
   }
 
-  // checks that if a matches, then b matches
+  // checks that if a matches, then b matches, for a valid pair of rules
   fn sub_pattern(a: &lang::Rule, b: &lang::Rule) -> bool {
-    sub_pattern_aux(a.lhs, b.lhs)
+    sub_pattern_aux(&*a.lhs, &*b.lhs)
   }
+  // i'm actually proud of this code
   fn sub_pattern_aux(a: &lang::Term, b: &lang::Term) -> bool {
     match (a, b) {
       (lang::Term::Var { .. }, lang::Term::Var { .. }) => true,
       (lang::Term::Ctr { .. }, lang::Term::Var { .. }) => true,
       (
         lang::Term::Ctr { name: a_name, args: a_args },
-        lang::Term::Ctr { name: b_name, args: b_args }
+        lang::Term::Ctr { name: b_name, args: b_args },
       ) => {
         let mut compatible = true;
-        for (a_arg, b_arg) in a_arg.iter().zip(b_arg) {
-          compatible = compatible && sub_pattern_aux(a_arg, b_arg);
+        for (a_arg, b_arg) in a_args.iter().zip(b_args) {
+          compatible = compatible && sub_pattern_aux(&a_arg, &b_arg);
         }
-        (a_name == b_name) && compatible
-      },
+        (a_name == b_name) && (a_args.len() == b_args.len()) && compatible
+      }
       _ => false,
     }
   }
+  // specializes rule_left to a subpattern of rule_right, if that's possible
+  fn specialize_left_aux(
+    rule_left_lhs: &lang::Term,
+    rule_left_rhs: &lang::Term,
+    rule_right_lhs: &lang::Term,
+    rule_right_rhs: &lang::Term,
+  ) -> Option<lang::Rule> {
+    match (rule_left_lhs, rule_right_lhs) {
+      (lang::Term::Var { .. }, lang::Term::Var { .. }) => None,
+      _ => None,
+    }
+  }
+
+  // TODO this will stackoverflow if the terms are big
+  // but since we don't expect big terms on the rhs of equations i think this is ok
+  fn replace(from: &str, to: &lang::Term, here: &lang::Term) -> lang::Term {
+    match here {
+      lang::Term::Var { name } => {
+        if name == from {
+          to.clone()
+        } else {
+          here.clone()
+        }
+      }
+      lang::Term::Dup { nam0, nam1, expr, body } => lang::Term::Dup {
+        nam0: nam0.clone(),
+        nam1: nam1.clone(),
+        expr: Box::new(replace(from, to, expr)),
+        body: Box::new(replace(from, to, body)),
+      },
+      lang::Term::Let { name, expr, body } => lang::Term::Let {
+        name: name.clone(),
+        expr: Box::new(replace(from, to, expr)),
+        body: Box::new(replace(from, to, body)),
+      },
+      lang::Term::Lam { name, body } => {
+        lang::Term::Lam { name: name.clone(), body: Box::new(replace(from, to, body)) }
+      }
+      lang::Term::App { func, argm } => lang::Term::App {
+        func: Box::new(replace(from, to, func)),
+        argm: Box::new(replace(from, to, argm)),
+      },
+      lang::Term::Ctr { name, args } => {
+        let mut new_args = Vec::new();
+        for arg in args {
+          let new_arg = Box::new(replace(from, to, arg));
+          new_args.push(new_arg);
+        }
+        lang::Term::Ctr { name: name.clone(), args: new_args }
+      }
+      lang::Term::U32 { numb } => lang::Term::U32 { numb: *numb },
+      lang::Term::Op2 { oper, val0, val1 } => lang::Term::Op2 {
+        oper: *oper,
+        val0: Box::new(replace(from, to, val0)),
+        val1: Box::new(replace(from, to, val1)),
+      },
+    }
+  }
+
   // examples for flattening algorithm
+  // TODO include U32 in patterns too
   const EQ0: &str = "(Half (Succ (Succ x))) = (Succ (Half x))";
   const EQ0_FIRST_LAYER: &str = "(Half (Succ x.0)) = (Half.0 x.0)";
   const EQ0_AUX_DEF: &str = "(Half.0 (Succ x)) = (Succ (Half x))";
@@ -889,63 +948,121 @@ mod tests {
   const EQ2_FIRST_LAYER: &str = "(Foo x.0 (A x.1) (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
   const EQ2_AUX_DEF: &str = "(Foo.0 abacate (C banana cereja) d e) = (Bar Zero (Baz cereja d))";
 
-//  const EQ1_EQ2_AUX_DEF: &str = "(Foo.0 x0 (A (C x1 x2)) x.3 x.4) = (Bar Zero (Baz x.2 x.3))";
-//  const EQ2_EQ1_AUX_DEF: &str = "(Foo (A (B x.0)) x.1 (C x.2 x.3) x.4) = (Bar (A x.1) (Baz (C x.4 x.3) x.2)";
+  //  const EQ1_EQ2_AUX_DEF: &str = "(Foo.0 x0 (A (C x1 x2)) x.3 x.4) = (Bar Zero (Baz x.2 x.3))";
+  //  const EQ2_EQ1_AUX_DEF: &str = "(Foo (A (B x.0)) x.1 (C x.2 x.3) x.4) = (Bar (A x.1) (Baz (C x.4 x.3) x.2)";
+
+  const TERM_VAR: &str = "x";
+  const TERM_DUP: &str = "dup a b = x; x";
+  const TERM_LET: &str = "let a = x; x";
+  const TERM_LAM: &str = "λa x";
+  const TERM_APP: &str = "(x x)";
+  const TERM_CTR: &str = "(Pair x y x)";
+  const TERM_U32: &str = "2";
+  const TERM_OP2: &str = "(+ x x)";
+
+  const TERM_TO: &str = "(Succ Zero)";
+
+  const REPLACED_TERM_VAR: &str = "(Succ Zero)";
+  const REPLACED_TERM_DUP: &str = "dup a b = (Succ Zero); (Succ Zero)";
+  const REPLACED_TERM_LET: &str = "let a = (Succ Zero); (Succ Zero)";
+  const REPLACED_TERM_LAM: &str = "λa (Succ Zero)";
+  const REPLACED_TERM_APP: &str = "((Succ Zero) (Succ Zero))";
+  const REPLACED_TERM_CTR: &str = "(Pair (Succ Zero) y (Succ Zero))";
+  const REPLACED_TERM_U32: &str = "2";
+  const REPLACED_TERM_OP2: &str = "(+ (Succ Zero) (Succ Zero))";
+  #[test]
+  fn replace_0() {
+    let term_from = "x";
+    let term_to = lang::read_term(TERM_TO).unwrap();
+
+    let term_var = lang::read_term(TERM_VAR).unwrap();
+    let term_dup = lang::read_term(TERM_DUP).unwrap();
+    let term_let = lang::read_term(TERM_LET).unwrap();
+    let term_lam = lang::read_term(TERM_LAM).unwrap();
+    let term_app = lang::read_term(TERM_APP).unwrap();
+    let term_ctr = lang::read_term(TERM_CTR).unwrap();
+    let term_u32 = lang::read_term(TERM_U32).unwrap();
+    let term_op2 = lang::read_term(TERM_OP2).unwrap();
+
+    let replaced_term_var = lang::read_term(REPLACED_TERM_VAR).unwrap();
+    let replaced_term_dup = lang::read_term(REPLACED_TERM_DUP).unwrap();
+    let replaced_term_let = lang::read_term(REPLACED_TERM_LET).unwrap();
+    let replaced_term_lam = lang::read_term(REPLACED_TERM_LAM).unwrap();
+    let replaced_term_app = lang::read_term(REPLACED_TERM_APP).unwrap();
+    let replaced_term_ctr = lang::read_term(REPLACED_TERM_CTR).unwrap();
+    let replaced_term_u32 = lang::read_term(REPLACED_TERM_U32).unwrap();
+    let replaced_term_op2 = lang::read_term(REPLACED_TERM_OP2).unwrap();
+
+    assert_eq!(replace(term_from, &term_to, &term_var), *replaced_term_var);
+    assert_eq!(replace(term_from, &term_to, &term_dup), *replaced_term_dup);
+    assert_eq!(replace(term_from, &term_to, &term_let), *replaced_term_let);
+    assert_eq!(replace(term_from, &term_to, &term_lam), *replaced_term_lam);
+    assert_eq!(replace(term_from, &term_to, &term_app), *replaced_term_app);
+    assert_eq!(replace(term_from, &term_to, &term_ctr), *replaced_term_ctr);
+    assert_eq!(replace(term_from, &term_to, &term_u32), *replaced_term_u32);
+    assert_eq!(replace(term_from, &term_to, &term_op2), *replaced_term_op2);
+  }
 
   // TODO add tests that return None
   #[test]
   fn flatten_first_layer_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap());
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_first_layer_1() {
     let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap());
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_first_layer_2() {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap());
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap());
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_aux_def_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap());
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap());
     assert_eq!(aux_def(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_aux_def_1() {
     let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap());
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap());
     assert_eq!(aux_def(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_aux_def_2() {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> = Some(lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap());
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap());
     assert_eq!(aux_def(&nested, 0), expected_first_layer);
   }
 
-//  #[test]
-//  fn flatten_test() {
-//    let file = "
-//      (Half (Succ (Succ x))) = (Succ (Half x))
-//    ";
-//
-//    let file = read_file(file).unwrap();
-//    let old_flattened = flatten(&file.rules);
-//    let new_flattened = new_flatten(&file.rules);
-//    println!("old:\n{:?}", old_flattened);
-//    println!("new:\n{:?}", new_flattened);
-//    assert_eq!(2 + 2, 4);
-//  }
+  //  #[test]
+  //  fn flatten_test() {
+  //    let file = "
+  //      (Half (Succ (Succ x))) = (Succ (Half x))
+  //    ";
+  //
+  //    let file = read_file(file).unwrap();
+  //    let old_flattened = flatten(&file.rules);
+  //    let new_flattened = new_flatten(&file.rules);
+  //    println!("old:\n{:?}", old_flattened);
+  //    println!("new:\n{:?}", new_flattened);
+  //    assert_eq!(2 + 2, 4);
+  //  }
 }
