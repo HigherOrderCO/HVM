@@ -822,6 +822,7 @@ mod tests {
       None
     }
   }
+
   // defines the auxiliary function that's on the right hand side
   // of the output of first_layer(rule, n)
   fn aux_def(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
@@ -862,6 +863,7 @@ mod tests {
     match (a, b) {
       (lang::Term::Var { .. }, lang::Term::Var { .. }) => true,
       (lang::Term::Ctr { .. }, lang::Term::Var { .. }) => true,
+      (lang::Term::U32 { .. }, lang::Term::Var { .. }) => true,
       (
         lang::Term::Ctr { name: a_name, args: a_args },
         lang::Term::Ctr { name: b_name, args: b_args },
@@ -872,64 +874,107 @@ mod tests {
         }
         (a_name == b_name) && (a_args.len() == b_args.len()) && compatible
       }
+      (lang::Term::U32 { numb: a_numb }, lang::Term::U32 { numb: b_numb }) => a_numb == b_numb,
       _ => false,
     }
   }
   // specializes rule_left to a subpattern of rule_right, if that's possible
   fn specialize_left_aux(
-    rule_left_lhs: &lang::Term,
-    rule_left_rhs: &lang::Term,
+    rule_left_lhs: lang::Term,
+    rule_left_rhs: lang::Term,
     rule_right_lhs: &lang::Term,
-    rule_right_rhs: &lang::Term,
-  ) -> Option<lang::Rule> {
+  ) -> Option<(lang::Term, lang::Term)> {
     match (rule_left_lhs, rule_right_lhs) {
-      (lang::Term::Var { .. }, lang::Term::Var { .. }) => None,
+      // nothing happens
+      (lang::Term::Var { name }, lang::Term::Var { .. }) =>
+        Some((lang::Term::Var { name }, rule_left_rhs)),
+      (lang::Term::Ctr { name, args }, lang::Term::Var { .. }) =>
+        Some((lang::Term::Ctr { name, args }, rule_left_rhs)),
+      (lang::Term::U32 { numb }, lang::Term::Var { .. }) =>
+        Some((lang::Term::U32 { numb }, rule_left_rhs)),
+
+      // TODO what about name collisions? can be avoided if the names of the vars determine the
+      // location on the trie. since all replaced vars are in new locations, there won't be any
+      // conflicts.
+      //
+      // var is replaced
+      (lang::Term::Var { name: ref var_name }, lang::Term::Ctr { .. }) =>
+        Some((rule_right_lhs.clone(), replace(var_name, rule_right_lhs, rule_left_rhs))),
+      (lang::Term::Var { name: ref var_name }, lang::Term::U32 { .. }) =>
+        Some((rule_right_lhs.clone(), replace(var_name, rule_right_lhs, rule_left_rhs))),
+
+      // match same Ctr and recurse
+      (lang::Term::Ctr { name: left_name, args: left_args }, lang::Term::Ctr { name: right_name, args: right_args }) => {
+        if &left_name == right_name && left_args.len() == right_args.len() {
+          let mut new_left_args: Vec<Box<lang::Term>> = Vec::new();
+          let mut rule_left_rhs = rule_left_rhs;
+          for (left_arg, right_arg) in left_args.into_iter().zip(right_args) {
+            let (new_arg, temp_rule_left_rhs) = specialize_left_aux(*left_arg, rule_left_rhs, right_arg)?;
+            rule_left_rhs = temp_rule_left_rhs;
+            new_left_args.push(Box::new(new_arg));
+          }
+          Some((lang::Term::Ctr { name: left_name, args: new_left_args }, rule_left_rhs))
+        } else {
+          None
+        }
+      },
+
+      // match same U32
+      (lang::Term::U32 { numb: left_numb }, lang::Term::U32 { numb: right_numb }) =>
+        if left_numb == *right_numb {
+            Some((lang::Term::U32 { numb: left_numb }, rule_left_rhs))
+        } else {
+            None
+        }
+
+      // error
       _ => None,
     }
   }
 
   // TODO this will stackoverflow if the terms are big
   // but since we don't expect big terms on the rhs of equations i think this is ok
-  fn replace(from: &str, to: &lang::Term, here: &lang::Term) -> lang::Term {
+  // however i'll take ownership to avoid unnecessary copies
+  fn replace(from: &str, to: &lang::Term, here: lang::Term) -> lang::Term {
     match here {
-      lang::Term::Var { name } => {
+      lang::Term::Var { ref name } => {
         if name == from {
           to.clone()
         } else {
-          here.clone()
+          here
         }
       }
       lang::Term::Dup { nam0, nam1, expr, body } => lang::Term::Dup {
-        nam0: nam0.clone(),
-        nam1: nam1.clone(),
-        expr: Box::new(replace(from, to, expr)),
-        body: Box::new(replace(from, to, body)),
+        nam0: nam0,
+        nam1: nam1,
+        expr: Box::new(replace(from, to, *expr)),
+        body: Box::new(replace(from, to, *body)),
       },
       lang::Term::Let { name, expr, body } => lang::Term::Let {
-        name: name.clone(),
-        expr: Box::new(replace(from, to, expr)),
-        body: Box::new(replace(from, to, body)),
+        name: name,
+        expr: Box::new(replace(from, to, *expr)),
+        body: Box::new(replace(from, to, *body)),
       },
       lang::Term::Lam { name, body } => {
-        lang::Term::Lam { name: name.clone(), body: Box::new(replace(from, to, body)) }
+        lang::Term::Lam { name: name, body: Box::new(replace(from, to, *body)) }
       }
       lang::Term::App { func, argm } => lang::Term::App {
-        func: Box::new(replace(from, to, func)),
-        argm: Box::new(replace(from, to, argm)),
+        func: Box::new(replace(from, to, *func)),
+        argm: Box::new(replace(from, to, *argm)),
       },
       lang::Term::Ctr { name, args } => {
         let mut new_args = Vec::new();
         for arg in args {
-          let new_arg = Box::new(replace(from, to, arg));
+          let new_arg = Box::new(replace(from, to, *arg));
           new_args.push(new_arg);
         }
-        lang::Term::Ctr { name: name.clone(), args: new_args }
+        lang::Term::Ctr { name: name, args: new_args }
       }
-      lang::Term::U32 { numb } => lang::Term::U32 { numb: *numb },
+      lang::Term::U32 { numb } => lang::Term::U32 { numb: numb },
       lang::Term::Op2 { oper, val0, val1 } => lang::Term::Op2 {
-        oper: *oper,
-        val0: Box::new(replace(from, to, val0)),
-        val1: Box::new(replace(from, to, val1)),
+        oper,
+        val0: Box::new(replace(from, to, *val0)),
+        val1: Box::new(replace(from, to, *val1)),
       },
     }
   }
@@ -993,14 +1038,14 @@ mod tests {
     let replaced_term_u32 = lang::read_term(REPLACED_TERM_U32).unwrap();
     let replaced_term_op2 = lang::read_term(REPLACED_TERM_OP2).unwrap();
 
-    assert_eq!(replace(term_from, &term_to, &term_var), *replaced_term_var);
-    assert_eq!(replace(term_from, &term_to, &term_dup), *replaced_term_dup);
-    assert_eq!(replace(term_from, &term_to, &term_let), *replaced_term_let);
-    assert_eq!(replace(term_from, &term_to, &term_lam), *replaced_term_lam);
-    assert_eq!(replace(term_from, &term_to, &term_app), *replaced_term_app);
-    assert_eq!(replace(term_from, &term_to, &term_ctr), *replaced_term_ctr);
-    assert_eq!(replace(term_from, &term_to, &term_u32), *replaced_term_u32);
-    assert_eq!(replace(term_from, &term_to, &term_op2), *replaced_term_op2);
+    assert_eq!(replace(term_from, &term_to, *term_var), *replaced_term_var);
+    assert_eq!(replace(term_from, &term_to, *term_dup), *replaced_term_dup);
+    assert_eq!(replace(term_from, &term_to, *term_let), *replaced_term_let);
+    assert_eq!(replace(term_from, &term_to, *term_lam), *replaced_term_lam);
+    assert_eq!(replace(term_from, &term_to, *term_app), *replaced_term_app);
+    assert_eq!(replace(term_from, &term_to, *term_ctr), *replaced_term_ctr);
+    assert_eq!(replace(term_from, &term_to, *term_u32), *replaced_term_u32);
+    assert_eq!(replace(term_from, &term_to, *term_op2), *replaced_term_op2);
   }
 
   // TODO add tests that return None
