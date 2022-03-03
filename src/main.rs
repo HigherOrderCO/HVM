@@ -9,7 +9,7 @@ mod runtime;
 fn main() {
   //match run_example() {
   match run_cli() {
-    Ok(..) => {},
+    Ok(..) => {}
     Err(err) => {
       eprintln!("{}", err);
     }

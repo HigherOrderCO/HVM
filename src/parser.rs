@@ -56,9 +56,7 @@ pub fn find(text: &str, target: &str) -> usize {
 pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> Result<A, String> {
   match parser(State { code, index: 0 }) {
     Ok((_, value)) => Ok(value),
-    Err(msg) => {
-      Err(msg)
-    }
+    Err(msg) => Err(msg),
   }
 }
 
