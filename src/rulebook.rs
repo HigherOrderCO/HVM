@@ -35,7 +35,6 @@ pub fn new_rulebook() -> RuleBook {
 
 // Adds a group to a rulebook
 pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
-
   fn register_names(book: &mut RuleBook, term: &lang::Term) {
     match term {
       lang::Term::Dup { expr, body, .. } => {
@@ -83,12 +82,10 @@ pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
       book.ctr_is_cal.insert(name.clone(), true);
     }
   }
-
 }
 
 // Converts a file to a rulebook
 pub fn gen_rulebook(file: &lang::File) -> RuleBook {
-
   // Creates an empty rulebook
   let mut book = new_rulebook();
 
@@ -231,8 +228,8 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
               let name = format!("{}.{}", name, used - 1);
               Box::new(lang::Term::Var { name })
             //} else if is_global_name(&name) {
-              //println!("Allowed unbound variable: {}", name);
-              //Box::new(lang::Term::Var { name: name.clone() })
+            //println!("Allowed unbound variable: {}", name);
+            //Box::new(lang::Term::Var { name: name.clone() })
             } else {
               panic!("Unbound variable: {}", name);
             }
@@ -434,122 +431,6 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
 // Sanitizes all rules in a vector
 pub fn sanitize_rules(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   rules.iter().map(|rule| sanitize_rule(rule).unwrap()).collect()
-}
-
-#[cfg(test)]
-mod tests {
-  use core::panic;
-
-  use super::{gen_rulebook, sanitize_rule};
-  use crate::language::{read_file, read_rule};
-
-  #[test]
-  fn test_sanitize_expected_code() {
-    // code and expected code after sanitize
-    let codes = [
-      (
-        "(Foo a b c) = (+c (+c (+b (+ b b))))",
-        "(Foo * x1 x2) = dup x2.0 x2.1 = x2; dup c.0 x1.0 = x1; dup x1.1 x1.2 = c.0; (+ x2.0 (+ x2.1 (+ x1.0 (+ x1.1 x1.2))))",
-      ),
-      (
-        "(Foo a b c d e f g h i j k l m n) = (+ (+ a a) i)",
-        "(Foo x0 * * * * * * * x8 * * * * *) = let x8.0 = x8; dup x0.0 x0.1 = x0; (+ (+ x0.0 x0.1) x8.0)"
-      ),
-      (
-        "(Double (Zero)) = (Zero)",
-        "(Double (Zero)) = (Zero)"
-      ),
-      (
-        "(Double (Succ a)) = (Double (Succ (Succ a)))",
-        "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
-      )
-    ];
-
-    // test if after sanitize all are equal
-    // to the expected
-    for (code, expected) in codes {
-      let rule = read_rule(code).unwrap();
-      match rule {
-        None => panic!("Rule not parsed"),
-        Some(v) => {
-          let result = sanitize_rule(&v);
-          match result {
-            Ok(rule) => assert_eq!(rule.to_string(), expected),
-            Err(_) => panic!("Rule not sanitized"),
-          }
-        }
-      }
-    }
-  }
-
-  // FIXME: panicking
-  #[test]
-  fn test_sanitize_fail_code() {
-    // code that has to fail
-    const FAILS: [&str; 2] = [
-      // more than one nesting in constructors
-      "(Foo (Bar (Zaz x))) = (x)",
-      // variable not declared in lhs
-      "(Succ x) = (j)",
-    ];
-
-    for code in FAILS {
-      let rule = read_rule(code).unwrap();
-      match rule {
-        None => panic!("Rule not parsed"),
-        Some(v) => {
-          let result = sanitize_rule(&v);
-          assert!(matches!(result, Err(_)));
-        }
-      }
-    }
-  }
-
-  #[test]
-  fn test_rulebook_expected() {
-    let file = "
-      (Double (Zero)) = (Zero)
-      (Double (Succ x)) = (Succ ( Succ (Double x)))
-    ";
-
-    let file = read_file(file).unwrap();
-    let rulebook = gen_rulebook(&file);
-
-    // rule_group testing
-    // contains expected key
-    assert!(rulebook.rule_group.contains_key("Double"));
-    // contains expected number of keys
-    assert_eq!(rulebook.rule_group.len(), 1);
-    // key contains expected number of rules
-    assert_eq!(rulebook.rule_group.get("Double").unwrap().1.len(), 2);
-    // key contains expected arity
-    assert_eq!(rulebook.rule_group.get("Double").unwrap().0, 1);
-
-    // id_to_name e name_to_id testing
-    // check expected length
-    assert_eq!(rulebook.id_to_name.len(), 3);
-    // check determinism and existence
-    assert_eq!(rulebook.id_to_name.get(&0).unwrap(), "Double");
-    assert_eq!(rulebook.id_to_name.get(&1).unwrap(), "Zero");
-    assert_eq!(rulebook.id_to_name.get(&2).unwrap(), "Succ");
-    // check cohesion
-    let _size = rulebook.id_to_name.len();
-    for (id, name) in rulebook.id_to_name {
-      // assert name_to_id id will have same
-      // id that generate name in id_to_name
-      // also checks if the two maps have same length
-      let id_to_compare = rulebook.name_to_id.get(&name).unwrap();
-      assert_eq!(*id_to_compare, id);
-    }
-
-    // ctr_is_cal testing
-    // expected key exist
-    assert!(rulebook.ctr_is_cal.contains_key("Double"));
-    // contains expected number of keys
-    assert_eq!(rulebook.ctr_is_cal.len(), 1);
-    // key contains expected value
-    assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
-  }
 }
 
 // Split rules that have nested cases, flattening them.
@@ -757,4 +638,431 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   }
 
   new_rules
+}
+
+//pub fn new_flatten(_rules: &[lang::Rule]) -> Vec<Vec<lang::Rule>> {
+//  // iterate through rules return remaining rules and aux rules to go recursively
+//  let mut ret: Vec<lang::Rule> = Vec::new();
+//  let mut remaining = Vec::from(rules);
+//  let mut filtered: Vec<lang::Rule> = Vec::new();
+//  while remaining.len() > 0 {
+//      break;
+//  }
+//  Vec::new()
+//}
+
+#[cfg(test)]
+mod tests {
+  use core::panic;
+
+  use super::{gen_rulebook, sanitize_rule};
+  use crate::language as lang;
+  use crate::language::{read_file, read_rule};
+
+  #[test]
+  fn test_sanitize_expected_code() {
+    // code and expected code after sanitize
+    let codes = [
+      (
+        "(Foo a b c) = (+c (+c (+b (+ b b))))",
+        "(Foo * x1 x2) = dup x2.0 x2.1 = x2; dup c.0 x1.0 = x1; dup x1.1 x1.2 = c.0; (+ x2.0 (+ x2.1 (+ x1.0 (+ x1.1 x1.2))))",
+      ),
+      (
+        "(Foo a b c d e f g h i j k l m n) = (+ (+ a a) i)",
+        "(Foo x0 * * * * * * * x8 * * * * *) = let x8.0 = x8; dup x0.0 x0.1 = x0; (+ (+ x0.0 x0.1) x8.0)"
+      ),
+      (
+        "(Double (Zero)) = (Zero)",
+        "(Double (Zero)) = (Zero)"
+      ),
+      (
+        "(Double (Succ a)) = (Double (Succ (Succ a)))",
+        "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
+      )
+    ];
+
+    // test if after sanitize all are equal
+    // to the expected
+    for (code, expected) in codes {
+      let rule = read_rule(code).unwrap();
+      match rule {
+        None => panic!("Rule not parsed"),
+        Some(v) => {
+          let result = sanitize_rule(&v);
+          match result {
+            Ok(rule) => assert_eq!(rule.to_string(), expected),
+            Err(_) => panic!("Rule not sanitized"),
+          }
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn test_sanitize_fail_code() {
+    // code that has to fail
+    const FAILS: [&str; 2] = [
+      // more than one nesting in constructors
+      "(Foo (Bar (Zaz x))) = (x)",
+      // variable not declared in lhs
+      "(Succ x) = (j)",
+    ];
+
+    for code in FAILS {
+      let rule = read_rule(code).unwrap();
+      match rule {
+        None => panic!("Rule not parsed"),
+        Some(v) => {
+          let result = sanitize_rule(&v);
+          assert!(matches!(result, Err(_)));
+        }
+      }
+    }
+  }
+
+  #[test]
+  fn test_rulebook_expected() {
+    let file = "
+      (Double (Zero)) = (Zero)
+      (Double (Succ x)) = (Succ ( Succ (Double x)))
+    ";
+
+    let file = read_file(file).unwrap();
+    let rulebook = gen_rulebook(&file);
+
+    // rule_group testing
+    // contains expected key
+    assert!(rulebook.rule_group.contains_key("Double"));
+    // contains expected number of keys
+    assert_eq!(rulebook.rule_group.len(), 1);
+    // key contains expected number of rules
+    assert_eq!(rulebook.rule_group.get("Double").unwrap().1.len(), 2);
+    // key contains expected arity
+    assert_eq!(rulebook.rule_group.get("Double").unwrap().0, 1);
+
+    // id_to_name e name_to_id testing
+    // check expected length
+    assert_eq!(rulebook.id_to_name.len(), 3);
+    // check determinism and existence
+    assert_eq!(rulebook.id_to_name.get(&0).unwrap(), "Double");
+    assert_eq!(rulebook.id_to_name.get(&1).unwrap(), "Zero");
+    assert_eq!(rulebook.id_to_name.get(&2).unwrap(), "Succ");
+    // check cohesion
+    let _size = rulebook.id_to_name.len();
+    for (id, name) in rulebook.id_to_name {
+      // assert name_to_id id will have same
+      // id that generate name in id_to_name
+      // also checks if the two maps have same length
+      let id_to_compare = rulebook.name_to_id.get(&name).unwrap();
+      assert_eq!(*id_to_compare, id);
+    }
+
+    // ctr_is_cal testing
+    // expected key exist
+    assert!(rulebook.ctr_is_cal.contains_key("Double"));
+    // contains expected number of keys
+    assert_eq!(rulebook.ctr_is_cal.len(), 1);
+    // key contains expected value
+    assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
+  }
+
+  fn show_var(i: i32) -> String {
+    put_suffix("x", i)
+  }
+  fn put_suffix(prefix: &str, i: i32) -> String {
+    prefix.to_owned() + "." + &i.to_string()
+  }
+
+  // this function takes a rule that may have nested patterns and returns
+  // a rule that only matches one layer of constructors and then calls an
+  // auxiliary def.
+  // look at "first_layer" tests for examples
+  // i bet this could be shorter and clearer, but I'm still getting used to rust
+  fn first_layer(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
+    if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
+      let mut i = 0;
+      let mut lhs_args: Vec<Box<lang::Term>> = Vec::new();
+      let mut rhs_args: Vec<Box<lang::Term>> = Vec::new();
+      let mut ok = true;
+      for arg in args {
+        match **arg {
+          lang::Term::Ctr { name: ref arg_name, args: ref arg_args } => {
+            let mut new_arg_args: Vec<Box<lang::Term>> = Vec::new();
+            for _ in arg_args {
+              let var_name = show_var(i);
+              i += 1;
+              let var = Box::new(lang::Term::Var { name: var_name });
+              new_arg_args.push(var.clone());
+              rhs_args.push(var);
+            }
+            let new_arg = Box::new(lang::Term::Ctr { name: arg_name.clone(), args: new_arg_args });
+            lhs_args.push(new_arg);
+          }
+          lang::Term::Var { .. } => {
+            let var_name = show_var(i);
+            i += 1;
+            let new_var = Box::new(lang::Term::Var { name: var_name });
+            rhs_args.push(new_var.clone());
+            lhs_args.push(new_var);
+          }
+          _ => {
+            ok = false;
+            break;
+          }
+        }
+      }
+      if ok {
+        let lhs = Box::new(lang::Term::Ctr { name: name.to_string(), args: lhs_args });
+        let rhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: rhs_args });
+        Some(lang::Rule { lhs, rhs })
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  }
+  // defines the auxiliary function that's on the right hand side
+  // of the output of first_layer(rule, n)
+  fn aux_def(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
+    if let lang::Term::Ctr { name: ref lhs_name, args: ref lhs_args } = *rule.lhs {
+      let mut ok = true;
+      let mut lhs_new_args: Vec<Box<lang::Term>> = Vec::new();
+      for arg in lhs_args {
+        match **arg {
+          lang::Term::Ctr { args: ref arg_args, .. } => {
+            lhs_new_args.append(&mut arg_args.clone());
+          }
+          lang::Term::Var { ref name } => {
+            lhs_new_args.push(Box::new(lang::Term::Var { name: name.clone() }));
+          }
+          _ => {
+            ok = false;
+            break;
+          }
+        }
+      }
+      if ok {
+        let lhs = Box::new(lang::Term::Ctr { name: put_suffix(lhs_name, n), args: lhs_new_args });
+        Some(lang::Rule { lhs, rhs: rule.rhs.clone() })
+      } else {
+        None
+      }
+    } else {
+      None
+    }
+  }
+
+  // checks that if a matches, then b matches, for a valid pair of rules
+  fn sub_pattern(a: &lang::Rule, b: &lang::Rule) -> bool {
+    sub_pattern_aux(&*a.lhs, &*b.lhs)
+  }
+  // i'm actually proud of this code
+  fn sub_pattern_aux(a: &lang::Term, b: &lang::Term) -> bool {
+    match (a, b) {
+      (lang::Term::Var { .. }, lang::Term::Var { .. }) => true,
+      (lang::Term::Ctr { .. }, lang::Term::Var { .. }) => true,
+      (
+        lang::Term::Ctr { name: a_name, args: a_args },
+        lang::Term::Ctr { name: b_name, args: b_args },
+      ) => {
+        let mut compatible = true;
+        for (a_arg, b_arg) in a_args.iter().zip(b_args) {
+          compatible = compatible && sub_pattern_aux(&a_arg, &b_arg);
+        }
+        (a_name == b_name) && (a_args.len() == b_args.len()) && compatible
+      }
+      _ => false,
+    }
+  }
+  // specializes rule_left to a subpattern of rule_right, if that's possible
+  fn specialize_left_aux(
+    rule_left_lhs: &lang::Term,
+    rule_left_rhs: &lang::Term,
+    rule_right_lhs: &lang::Term,
+    rule_right_rhs: &lang::Term,
+  ) -> Option<lang::Rule> {
+    match (rule_left_lhs, rule_right_lhs) {
+      (lang::Term::Var { .. }, lang::Term::Var { .. }) => None,
+      _ => None,
+    }
+  }
+
+  // TODO this will stackoverflow if the terms are big
+  // but since we don't expect big terms on the rhs of equations i think this is ok
+  fn replace(from: &str, to: &lang::Term, here: &lang::Term) -> lang::Term {
+    match here {
+      lang::Term::Var { name } => {
+        if name == from {
+          to.clone()
+        } else {
+          here.clone()
+        }
+      }
+      lang::Term::Dup { nam0, nam1, expr, body } => lang::Term::Dup {
+        nam0: nam0.clone(),
+        nam1: nam1.clone(),
+        expr: Box::new(replace(from, to, expr)),
+        body: Box::new(replace(from, to, body)),
+      },
+      lang::Term::Let { name, expr, body } => lang::Term::Let {
+        name: name.clone(),
+        expr: Box::new(replace(from, to, expr)),
+        body: Box::new(replace(from, to, body)),
+      },
+      lang::Term::Lam { name, body } => {
+        lang::Term::Lam { name: name.clone(), body: Box::new(replace(from, to, body)) }
+      }
+      lang::Term::App { func, argm } => lang::Term::App {
+        func: Box::new(replace(from, to, func)),
+        argm: Box::new(replace(from, to, argm)),
+      },
+      lang::Term::Ctr { name, args } => {
+        let mut new_args = Vec::new();
+        for arg in args {
+          let new_arg = Box::new(replace(from, to, arg));
+          new_args.push(new_arg);
+        }
+        lang::Term::Ctr { name: name.clone(), args: new_args }
+      }
+      lang::Term::U32 { numb } => lang::Term::U32 { numb: *numb },
+      lang::Term::Op2 { oper, val0, val1 } => lang::Term::Op2 {
+        oper: *oper,
+        val0: Box::new(replace(from, to, val0)),
+        val1: Box::new(replace(from, to, val1)),
+      },
+    }
+  }
+
+  // examples for flattening algorithm
+  // TODO include U32 in patterns too
+  const EQ0: &str = "(Half (Succ (Succ x))) = (Succ (Half x))";
+  const EQ0_FIRST_LAYER: &str = "(Half (Succ x.0)) = (Half.0 x.0)";
+  const EQ0_AUX_DEF: &str = "(Half.0 (Succ x)) = (Succ (Half x))";
+
+  const EQ1: &str = "(Foo (A (B x0)) x1 (B (C x2 x3) x4)) = (Bar x1 (Baz (C x4 x3) x2))";
+  const EQ1_FIRST_LAYER: &str = "(Foo (A x.0) x.1 (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
+  const EQ1_AUX_DEF: &str = "(Foo.0 (B x0) x1 (C x2 x3) x4) = (Bar x1 (Baz (C x4 x3) x2))";
+
+  const EQ2: &str = "(Foo abacate (A (C banana cereja)) (B d e)) = (Bar Zero (Baz cereja d))";
+  const EQ2_FIRST_LAYER: &str = "(Foo x.0 (A x.1) (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
+  const EQ2_AUX_DEF: &str = "(Foo.0 abacate (C banana cereja) d e) = (Bar Zero (Baz cereja d))";
+
+  //  const EQ1_EQ2_AUX_DEF: &str = "(Foo.0 x0 (A (C x1 x2)) x.3 x.4) = (Bar Zero (Baz x.2 x.3))";
+  //  const EQ2_EQ1_AUX_DEF: &str = "(Foo (A (B x.0)) x.1 (C x.2 x.3) x.4) = (Bar (A x.1) (Baz (C x.4 x.3) x.2)";
+
+  const TERM_VAR: &str = "x";
+  const TERM_DUP: &str = "dup a b = x; x";
+  const TERM_LET: &str = "let a = x; x";
+  const TERM_LAM: &str = "λa x";
+  const TERM_APP: &str = "(x x)";
+  const TERM_CTR: &str = "(Pair x y x)";
+  const TERM_U32: &str = "2";
+  const TERM_OP2: &str = "(+ x x)";
+
+  const TERM_TO: &str = "(Succ Zero)";
+
+  const REPLACED_TERM_VAR: &str = "(Succ Zero)";
+  const REPLACED_TERM_DUP: &str = "dup a b = (Succ Zero); (Succ Zero)";
+  const REPLACED_TERM_LET: &str = "let a = (Succ Zero); (Succ Zero)";
+  const REPLACED_TERM_LAM: &str = "λa (Succ Zero)";
+  const REPLACED_TERM_APP: &str = "((Succ Zero) (Succ Zero))";
+  const REPLACED_TERM_CTR: &str = "(Pair (Succ Zero) y (Succ Zero))";
+  const REPLACED_TERM_U32: &str = "2";
+  const REPLACED_TERM_OP2: &str = "(+ (Succ Zero) (Succ Zero))";
+  #[test]
+  fn replace_0() {
+    let term_from = "x";
+    let term_to = lang::read_term(TERM_TO).unwrap();
+
+    let term_var = lang::read_term(TERM_VAR).unwrap();
+    let term_dup = lang::read_term(TERM_DUP).unwrap();
+    let term_let = lang::read_term(TERM_LET).unwrap();
+    let term_lam = lang::read_term(TERM_LAM).unwrap();
+    let term_app = lang::read_term(TERM_APP).unwrap();
+    let term_ctr = lang::read_term(TERM_CTR).unwrap();
+    let term_u32 = lang::read_term(TERM_U32).unwrap();
+    let term_op2 = lang::read_term(TERM_OP2).unwrap();
+
+    let replaced_term_var = lang::read_term(REPLACED_TERM_VAR).unwrap();
+    let replaced_term_dup = lang::read_term(REPLACED_TERM_DUP).unwrap();
+    let replaced_term_let = lang::read_term(REPLACED_TERM_LET).unwrap();
+    let replaced_term_lam = lang::read_term(REPLACED_TERM_LAM).unwrap();
+    let replaced_term_app = lang::read_term(REPLACED_TERM_APP).unwrap();
+    let replaced_term_ctr = lang::read_term(REPLACED_TERM_CTR).unwrap();
+    let replaced_term_u32 = lang::read_term(REPLACED_TERM_U32).unwrap();
+    let replaced_term_op2 = lang::read_term(REPLACED_TERM_OP2).unwrap();
+
+    assert_eq!(replace(term_from, &term_to, &term_var), *replaced_term_var);
+    assert_eq!(replace(term_from, &term_to, &term_dup), *replaced_term_dup);
+    assert_eq!(replace(term_from, &term_to, &term_let), *replaced_term_let);
+    assert_eq!(replace(term_from, &term_to, &term_lam), *replaced_term_lam);
+    assert_eq!(replace(term_from, &term_to, &term_app), *replaced_term_app);
+    assert_eq!(replace(term_from, &term_to, &term_ctr), *replaced_term_ctr);
+    assert_eq!(replace(term_from, &term_to, &term_u32), *replaced_term_u32);
+    assert_eq!(replace(term_from, &term_to, &term_op2), *replaced_term_op2);
+  }
+
+  // TODO add tests that return None
+  #[test]
+  fn flatten_first_layer_0() {
+    let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap());
+    assert_eq!(first_layer(&nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_first_layer_1() {
+    let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap());
+    assert_eq!(first_layer(&nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_first_layer_2() {
+    let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap());
+    assert_eq!(first_layer(&nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_aux_def_0() {
+    let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap());
+    assert_eq!(aux_def(&nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_aux_def_1() {
+    let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap());
+    assert_eq!(aux_def(&nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_aux_def_2() {
+    let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
+    let expected_first_layer: Option<lang::Rule> =
+      Some(lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap());
+    assert_eq!(aux_def(&nested, 0), expected_first_layer);
+  }
+
+  //  #[test]
+  //  fn flatten_test() {
+  //    let file = "
+  //      (Half (Succ (Succ x))) = (Succ (Half x))
+  //    ";
+  //
+  //    let file = read_file(file).unwrap();
+  //    let old_flattened = flatten(&file.rules);
+  //    let new_flattened = new_flatten(&file.rules);
+  //    println!("old:\n{:?}", old_flattened);
+  //    println!("new:\n{:?}", new_flattened);
+  //    assert_eq!(2 + 2, 4);
+  //  }
 }

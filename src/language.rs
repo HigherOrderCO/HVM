@@ -7,7 +7,7 @@ use std::fmt;
 // Term
 // ----
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Term {
   Var { name: String }, // TODO: add `global: bool`
   Dup { nam0: String, nam1: String, expr: BTerm, body: BTerm },
@@ -21,7 +21,7 @@ pub enum Term {
 
 pub type BTerm = Box<Term>;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Oper {
   Add,
   Sub,
@@ -44,7 +44,7 @@ pub enum Oper {
 // Rule
 // ----
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Rule {
   pub lhs: BTerm,
   pub rhs: BTerm,
