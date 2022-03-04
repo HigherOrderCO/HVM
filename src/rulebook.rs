@@ -101,10 +101,10 @@ pub fn gen_rulebook(file: &lang::File) -> RuleBook {
 }
 
 // Groups rules by name. For example:
-//   (add (succ a) (succ b)) = (succ (succ (add a b)))
-//   (add (succ a) (zero)  ) = (succ a)
-//   (add (zero)   (succ b)) = (succ b)
-//   (add (zero)   (zero)  ) = (zero)
+//   (Add (Succ a) (Succ b)) = (Succ (Succ (Add a b)))
+//   (Add (Succ a) (Zero)  ) = (Succ a)
+//   (Add (Zero)   (Succ b)) = (Succ b)
+//   (Add (Zero)   (Zero)  ) = (Zero)
 // This is a group of 4 rules starting with the "add" name.
 pub fn group_rules(rules: &[lang::Rule]) -> HashMap<String, RuleGroup> {
   let mut groups: HashMap<String, RuleGroup> = HashMap::new();
@@ -805,6 +805,9 @@ mod tests {
             rhs_args.push(new_var.clone());
             lhs_args.push(new_var);
           }
+          lang::Term::U32 { numb } => {
+            lhs_args.push(Box::new(lang::Term::U32 { numb }));
+          },
           _ => {
             ok = false;
             break;
@@ -823,43 +826,78 @@ mod tests {
     }
   }
 
-  // defines the auxiliary function that's on the right hand side
+  // takes a pattern, a subpattern and defines the auxiliary function that's on the right hand side
   // of the output of first_layer(rule, n)
-  fn aux_def(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
-    if let lang::Term::Ctr { name: ref lhs_name, args: ref lhs_args } = *rule.lhs {
-      let mut ok = true;
-      let mut lhs_new_args: Vec<Box<lang::Term>> = Vec::new();
-      for arg in lhs_args {
-        match **arg {
-          lang::Term::Ctr { args: ref arg_args, .. } => {
-            lhs_new_args.append(&mut arg_args.clone());
-          }
-          lang::Term::Var { ref name } => {
-            lhs_new_args.push(Box::new(lang::Term::Var { name: name.clone() }));
-          }
+  //
+  // preconditions:
+  //  P0: subpattern(pattern, subpattern) == true
+  //  P1: both lhs' should be Ctr
+  fn denest_with_pattern(pattern: &lang::Rule, subpattern: &lang::Rule, n: i32) -> Option<lang::Rule> {
+    if let (
+      lang::Term::Ctr { ref name, ref args },
+      lang::Term::Ctr { name: ref _sub_name, args: ref sub_args },
+    ) = (&*pattern.lhs, &*subpattern.lhs) {
+      // P0.0: name == _sub_name
+      // P0.1: args.len() == sub_args.len()
+      // P0.2: for (arg, sub_args) in args.iter().zip(sub_args) {
+      //         subpattern_aux(arg, sub_arg) == true
+      //       }
+      let mut new_args: Vec<Box<lang::Term>> = Vec::new();
+      for (arg, sub_arg) in args.iter().zip(sub_args) {
+        match (&**arg, &**sub_arg) {
+          (
+            lang::Term::Ctr { .. },
+            lang::Term::Ctr { args, .. },
+          ) => {
+            new_args.append(&mut args.clone());
+          },
+          (lang::Term::U32 { .. }, _) => (),
           _ => {
-            ok = false;
-            break;
-          }
+            new_args.push(sub_arg.clone());
+          },
         }
       }
-      if ok {
-        let lhs = Box::new(lang::Term::Ctr { name: put_suffix(lhs_name, n), args: lhs_new_args });
-        Some(lang::Rule { lhs, rhs: rule.rhs.clone() })
-      } else {
-        None
-      }
+      let lhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: new_args });
+      let rhs = subpattern.rhs.clone();
+      Some(lang::Rule { lhs, rhs })
     } else {
+      // absurd, contradicts P1
       None
     }
+//    if let lang::Term::Ctr { name: ref sub_lhs_name, args: ref sub_lhs_args } = *subpattern.lhs {
+//      let mut ok = true;
+//      let mut lhs_new_args: Vec<Box<lang::Term>> = Vec::new();
+//      for arg in sub_lhs_args {
+//        match **arg {
+//          lang::Term::Ctr { args: ref arg_args, .. } => {
+//            lhs_new_args.append(&mut arg_args.clone());
+//          }
+//          lang::Term::Var { ref name } => {
+//            lhs_new_args.push(Box::new(lang::Term::Var { name: name.clone() }));
+//          }
+//          _ => {
+//            ok = false;
+//            break;
+//          }
+//        }
+//      }
+//      if ok {
+//        let lhs = Box::new(lang::Term::Ctr { name: put_suffix(sub_lhs_name, n), args: lhs_new_args });
+//        Some(lang::Rule { lhs, rhs: subpattern.rhs.clone() })
+//      } else {
+//        None
+//      }
+//    } else {
+//      None
+//    }
   }
 
   // checks that if a matches, then b matches, for a valid pair of rules
-  fn sub_pattern(a: &lang::Rule, b: &lang::Rule) -> bool {
-    sub_pattern_aux(&*a.lhs, &*b.lhs)
+  fn subpattern(a: &lang::Rule, b: &lang::Rule) -> bool {
+    subpattern_aux(&*a.lhs, &*b.lhs)
   }
   // i'm actually proud of this code
-  fn sub_pattern_aux(a: &lang::Term, b: &lang::Term) -> bool {
+  fn subpattern_aux(a: &lang::Term, b: &lang::Term) -> bool {
     match (a, b) {
       (lang::Term::Var { .. }, lang::Term::Var { .. }) => true,
       (lang::Term::Ctr { .. }, lang::Term::Var { .. }) => true,
@@ -870,7 +908,7 @@ mod tests {
       ) => {
         let mut compatible = true;
         for (a_arg, b_arg) in a_args.iter().zip(b_args) {
-          compatible = compatible && sub_pattern_aux(&a_arg, &b_arg);
+          compatible = compatible && subpattern_aux(&a_arg, &b_arg);
         }
         (a_name == b_name) && (a_args.len() == b_args.len()) && compatible
       }
@@ -980,14 +1018,13 @@ mod tests {
   }
 
   // examples for flattening algorithm
-  // TODO include U32 in patterns too
   const EQ0: &str = "(Half (Succ (Succ x))) = (Succ (Half x))";
   const EQ0_FIRST_LAYER: &str = "(Half (Succ x.0)) = (Half.0 x.0)";
   const EQ0_AUX_DEF: &str = "(Half.0 (Succ x)) = (Succ (Half x))";
 
-  const EQ1: &str = "(Foo (A (B x0)) x1 (B (C x2 x3) x4)) = (Bar x1 (Baz (C x4 x3) x2))";
-  const EQ1_FIRST_LAYER: &str = "(Foo (A x.0) x.1 (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
-  const EQ1_AUX_DEF: &str = "(Foo.0 (B x0) x1 (C x2 x3) x4) = (Bar x1 (Baz (C x4 x3) x2))";
+  const EQ1: &str = "(Foo (A (B x0)) 2 (B (C x2 x3) x4)) = (Bar 2 (Baz (C x4 x3) x2))";
+  const EQ1_FIRST_LAYER: &str = "(Foo (A x.0) 2 (B x.1 x.2)) = (Foo.0 x.0 x.1 x.2)";
+  const EQ1_AUX_DEF: &str = "(Foo.0 (B x0) (C x2 x3) x4) = (Bar 2 (Baz (C x4 x3) x2))";
 
   const EQ2: &str = "(Foo abacate (A (C banana cereja)) (B d e)) = (Bar Zero (Baz cereja d))";
   const EQ2_FIRST_LAYER: &str = "(Foo x.0 (A x.1) (B x.2 x.3)) = (Foo.0 x.0 x.1 x.2 x.3)";
@@ -1074,27 +1111,27 @@ mod tests {
   }
 
   #[test]
-  fn flatten_aux_def_0() {
+  fn flatten_denest_with_pattern_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
     let expected_first_layer: Option<lang::Rule> =
       Some(lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap());
-    assert_eq!(aux_def(&nested, 0), expected_first_layer);
+    assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
   #[test]
-  fn flatten_aux_def_1() {
+  fn flatten_denest_with_pattern_1() {
     let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
     let expected_first_layer: Option<lang::Rule> =
       Some(lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap());
-    assert_eq!(aux_def(&nested, 0), expected_first_layer);
+    assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
   #[test]
-  fn flatten_aux_def_2() {
+  fn flatten_denest_with_pattern_2() {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
     let expected_first_layer: Option<lang::Rule> =
       Some(lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap());
-    assert_eq!(aux_def(&nested, 0), expected_first_layer);
+    assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
   //  #[test]
