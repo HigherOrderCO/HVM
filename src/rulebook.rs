@@ -451,7 +451,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
 /*  */for arg in args {
 /*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
 /*   A  */for field in arg_args {
-/*    D   */if is_tested(field) {
+/*    D   */if let lang::Term::Ctr { .. } = **field {
 /* ─=≡ΣO)   */return true;
 /*    U   */}
 /*   K  */}
@@ -640,16 +640,6 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   new_rules
 }
 
-//pub fn new_flatten(_rules: &[lang::Rule]) -> Vec<Vec<lang::Rule>> {
-//  // iterate through rules return remaining rules and aux rules to go recursively
-//  let mut ret: Vec<lang::Rule> = Vec::new();
-//  let mut remaining = Vec::from(rules);
-//  let mut filtered: Vec<lang::Rule> = Vec::new();
-//  while remaining.len() > 0 {
-//      break;
-//  }
-//  Vec::new()
-//}
 
 #[cfg(test)]
 mod tests {
@@ -765,6 +755,54 @@ mod tests {
     // key contains expected value
     assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
   }
+  pub fn new_flatten(rules: Vec<lang::Rule>) -> Vec<lang::Rule> {
+  // Checks if this rule has nested patterns, and must be splitted
+    #[rustfmt::skip]
+    fn nested_pattern(rule: &lang::Rule) -> bool {
+  /**/if let lang::Term::Ctr { ref args, .. } = *rule.lhs {
+  /*  */for arg in args {
+  /*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
+  /*   A  */for field in arg_args {
+  /*    D   */if let lang::Term::Ctr { .. } = **field {
+  /* ─=≡ΣO)   */return true;
+  /*    U   */}
+  /*   K  */}
+  /*  E */}
+  /* N*/}
+  /**/} false
+    }
+
+    let mut ret: Vec<lang::Rule> = Vec::new();
+    let mut remaining: Vec<lang::Rule> = Vec::from(rules);
+    remaining.reverse();
+    let mut i = 0;
+    while let Some(reference_pattern) = remaining.pop() {
+      if nested_pattern(&reference_pattern) {
+        ret.push(first_layer(&reference_pattern, i));
+        let mut temp_new: Vec<lang::Rule> = Vec::new();
+        let mut temp_again: Vec<lang::Rule> = Vec::new();
+        for pattern in remaining.iter() {
+          let specialized_pattern = specialize_left(&pattern, &reference_pattern);
+          if let Some(specialized_pattern) = specialized_pattern {
+            if !subpattern(&pattern, &reference_pattern) {
+              temp_again.push(pattern.clone())
+            } else {
+              temp_new.push(denest_with_pattern(&reference_pattern, &specialized_pattern, i))
+            }
+          } else {
+            temp_again.push(pattern.clone());
+          }
+        }
+        ret.append(&mut new_flatten(temp_new));
+        remaining.append(&mut temp_again);
+        i += 1;
+      } else {
+        ret.push(reference_pattern);
+      }
+    }
+    ret.reverse();
+    ret
+  }
 
   fn show_var(i: i32) -> String {
     put_suffix("x", i)
@@ -778,7 +816,7 @@ mod tests {
   // auxiliary def.
   // look at "first_layer" tests for examples
   // i bet this could be shorter and clearer, but I'm still getting used to rust
-  fn first_layer(rule: &lang::Rule, n: i32) -> Option<lang::Rule> {
+  fn first_layer(rule: &lang::Rule, n: i32) -> lang::Rule {
     if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
       let mut i = 0;
       let mut lhs_args: Vec<Box<lang::Term>> = Vec::new();
@@ -817,12 +855,12 @@ mod tests {
       if ok {
         let lhs = Box::new(lang::Term::Ctr { name: name.to_string(), args: lhs_args });
         let rhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: rhs_args });
-        Some(lang::Rule { lhs, rhs })
+        lang::Rule { lhs, rhs }
       } else {
-        None
+        panic!("Tried to extract first layer of invalid pattern: {}", rule)
       }
     } else {
-      None
+      panic!("Tried to extract first layer of invalid pattern: {}", rule)
     }
   }
 
@@ -832,7 +870,7 @@ mod tests {
   // preconditions:
   //  P0: subpattern(pattern, subpattern) == true
   //  P1: both lhs' should be Ctr
-  fn denest_with_pattern(pattern: &lang::Rule, subpattern: &lang::Rule, n: i32) -> Option<lang::Rule> {
+  fn denest_with_pattern(pattern: &lang::Rule, subpattern: &lang::Rule, n: i32) -> lang::Rule {
     if let (
       lang::Term::Ctr { ref name, ref args },
       lang::Term::Ctr { name: ref _sub_name, args: ref sub_args },
@@ -859,37 +897,11 @@ mod tests {
       }
       let lhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: new_args });
       let rhs = subpattern.rhs.clone();
-      Some(lang::Rule { lhs, rhs })
+      lang::Rule { lhs, rhs }
     } else {
       // absurd, contradicts P1
-      None
+      panic!("Tried to denest invalid patterns:\n{}\n{}", pattern, subpattern);
     }
-//    if let lang::Term::Ctr { name: ref sub_lhs_name, args: ref sub_lhs_args } = *subpattern.lhs {
-//      let mut ok = true;
-//      let mut lhs_new_args: Vec<Box<lang::Term>> = Vec::new();
-//      for arg in sub_lhs_args {
-//        match **arg {
-//          lang::Term::Ctr { args: ref arg_args, .. } => {
-//            lhs_new_args.append(&mut arg_args.clone());
-//          }
-//          lang::Term::Var { ref name } => {
-//            lhs_new_args.push(Box::new(lang::Term::Var { name: name.clone() }));
-//          }
-//          _ => {
-//            ok = false;
-//            break;
-//          }
-//        }
-//      }
-//      if ok {
-//        let lhs = Box::new(lang::Term::Ctr { name: put_suffix(sub_lhs_name, n), args: lhs_new_args });
-//        Some(lang::Rule { lhs, rhs: subpattern.rhs.clone() })
-//      } else {
-//        None
-//      }
-//    } else {
-//      None
-//    }
   }
 
   // checks that if a matches, then b matches, for a valid pair of rules
@@ -915,6 +927,15 @@ mod tests {
       (lang::Term::U32 { numb: a_numb }, lang::Term::U32 { numb: b_numb }) => a_numb == b_numb,
       _ => false,
     }
+  }
+
+  fn specialize_left(
+    left: &lang::Rule,
+    right: &lang::Rule,
+  ) -> Option<lang::Rule> {
+    let (lhs, rhs) = specialize_left_aux(*left.lhs.clone(), *left.rhs.clone(), &right.lhs)?;
+    let (lhs, rhs) = (Box::new(lhs), Box::new(rhs));
+    Some(lang::Rule { lhs, rhs })
   }
   // specializes rule_left to a subpattern of rule_right, if that's possible
   fn specialize_left_aux(
@@ -1089,48 +1110,48 @@ mod tests {
   #[test]
   fn flatten_first_layer_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> =
-      Some(lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap());
+    let expected_first_layer: lang::Rule =
+      lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap();
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_first_layer_1() {
     let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> =
-      Some(lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap());
+    let expected_first_layer: lang::Rule =
+      lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap();
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_first_layer_2() {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> =
-      Some(lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap());
+    let expected_first_layer: lang::Rule =
+      lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap();
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_denest_with_pattern_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> =
-      Some(lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap());
+    let expected_first_layer: lang::Rule =
+      lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap();
     assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_denest_with_pattern_1() {
     let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> =
-      Some(lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap());
+    let expected_first_layer: lang::Rule =
+      lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap();
     assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_denest_with_pattern_2() {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
-    let expected_first_layer: Option<lang::Rule> =
-      Some(lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap());
+    let expected_first_layer: lang::Rule =
+      lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap();
     assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
