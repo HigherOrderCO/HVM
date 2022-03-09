@@ -451,13 +451,17 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
 /*  */for arg in args {
 /*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
 /*   A  */for field in arg_args {
-/*    D   */if let lang::Term::Ctr { .. } = **field {
+/*    D   */if is_tested(field) {
 /* ─=≡ΣO)   */return true;
 /*    U   */}
 /*   K  */}
 /*  E */}
 /* N*/}
 /**/} false
+  }
+
+  fn is_tested(term: &lang::Term) -> bool {
+    matches!(term, lang::Term::Ctr { .. } | lang::Term::U32 { .. })
   }
 
   // Checks true if every time that `a` matches, `b` will match too
@@ -759,13 +763,17 @@ mod tests {
   /*  */for arg in args {
   /*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
   /*   A  */for field in arg_args {
-  /*    D   */if let lang::Term::Ctr { .. } = **field {
+  /*    D   */if is_tested(field) {
   /* ─=≡ΣO)   */return true;
   /*    U   */}
   /*   K  */}
   /*  E */}
   /* N*/}
   /**/} false
+    }
+
+    fn is_tested(term: &lang::Term) -> bool {
+      matches!(term, lang::Term::Ctr { .. } | lang::Term::U32 { .. })
     }
 
     // holds denested rules to be returned in reverse order
