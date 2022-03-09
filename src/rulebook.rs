@@ -640,7 +640,6 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   new_rules
 }
 
-
 #[cfg(test)]
 mod tests {
   use core::panic;
@@ -756,7 +755,7 @@ mod tests {
     assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
   }
   pub fn new_flatten(rules: Vec<lang::Rule>) -> Vec<lang::Rule> {
-  // Checks if this rule has nested patterns, and must be splitted
+    // Checks if this rule has nested patterns, and must be splitted
     #[rustfmt::skip]
     fn nested_pattern(rule: &lang::Rule) -> bool {
   /**/if let lang::Term::Ctr { ref args, .. } = *rule.lhs {
@@ -798,7 +797,11 @@ mod tests {
               return_to_remaining.push(pattern.clone());
             } else {
             }
-            recurse.push(denest_with_pattern(&first_layer_reference_pattern, &specialized_pattern, i));
+            recurse.push(denest_with_pattern(
+              &first_layer_reference_pattern,
+              &specialized_pattern,
+              i,
+            ));
           } else {
             return_to_remaining.push(pattern.clone());
           }
@@ -855,7 +858,7 @@ mod tests {
           }
           lang::Term::U32 { numb } => {
             lhs_args.push(Box::new(lang::Term::U32 { numb }));
-          },
+          }
           _ => {
             ok = false;
             break;
@@ -884,7 +887,8 @@ mod tests {
     if let (
       lang::Term::Ctr { ref name, ref args },
       lang::Term::Ctr { name: ref _sub_name, args: ref sub_args },
-    ) = (&*pattern.lhs, &*subpattern.lhs) {
+    ) = (&*pattern.lhs, &*subpattern.lhs)
+    {
       // P0.0: name == _sub_name
       // P0.1: args.len() == sub_args.len()
       // P0.2: for (arg, sub_args) in args.iter().zip(sub_args) {
@@ -893,16 +897,13 @@ mod tests {
       let mut new_args: Vec<Box<lang::Term>> = Vec::new();
       for (arg, sub_arg) in args.iter().zip(sub_args) {
         match (&**arg, &**sub_arg) {
-          (
-            lang::Term::Ctr { .. },
-            lang::Term::Ctr { args, .. },
-          ) => {
+          (lang::Term::Ctr { .. }, lang::Term::Ctr { args, .. }) => {
             new_args.append(&mut args.clone());
-          },
+          }
           (lang::Term::U32 { .. }, _) => (),
           _ => {
             new_args.push(sub_arg.clone());
-          },
+          }
         }
       }
       let lhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: new_args });
@@ -939,10 +940,7 @@ mod tests {
     }
   }
 
-  fn specialize_left(
-    left: &lang::Rule,
-    right: &lang::Rule,
-  ) -> Option<lang::Rule> {
+  fn specialize_left(left: &lang::Rule, right: &lang::Rule) -> Option<lang::Rule> {
     let (lhs, rhs) = specialize_left_aux(*left.lhs.clone(), *left.rhs.clone(), &right.lhs)?;
     let (lhs, rhs) = (Box::new(lhs), Box::new(rhs));
     Some(lang::Rule { lhs, rhs })
@@ -955,30 +953,39 @@ mod tests {
   ) -> Option<(lang::Term, lang::Term)> {
     match (rule_left_lhs, rule_right_lhs) {
       // nothing happens
-      (lang::Term::Var { name }, lang::Term::Var { .. }) =>
-        Some((lang::Term::Var { name }, rule_left_rhs)),
-      (lang::Term::Ctr { name, args }, lang::Term::Var { .. }) =>
-        Some((lang::Term::Ctr { name, args }, rule_left_rhs)),
-      (lang::Term::U32 { numb }, lang::Term::Var { .. }) =>
-        Some((lang::Term::U32 { numb }, rule_left_rhs)),
+      (lang::Term::Var { name }, lang::Term::Var { .. }) => {
+        Some((lang::Term::Var { name }, rule_left_rhs))
+      }
+      (lang::Term::Ctr { name, args }, lang::Term::Var { .. }) => {
+        Some((lang::Term::Ctr { name, args }, rule_left_rhs))
+      }
+      (lang::Term::U32 { numb }, lang::Term::Var { .. }) => {
+        Some((lang::Term::U32 { numb }, rule_left_rhs))
+      }
 
       // TODO what about name collisions? can be avoided if the names of the vars determine the
       // location on the trie. since all replaced vars are in new locations, there won't be any
       // conflicts.
       //
       // var is replaced
-      (lang::Term::Var { name: ref var_name }, lang::Term::Ctr { .. }) =>
-        Some((rule_right_lhs.clone(), replace(var_name, rule_right_lhs, rule_left_rhs))),
-      (lang::Term::Var { name: ref var_name }, lang::Term::U32 { .. }) =>
-        Some((rule_right_lhs.clone(), replace(var_name, rule_right_lhs, rule_left_rhs))),
+      (lang::Term::Var { name: ref var_name }, lang::Term::Ctr { .. }) => {
+        Some((rule_right_lhs.clone(), replace(var_name, rule_right_lhs, rule_left_rhs)))
+      }
+      (lang::Term::Var { name: ref var_name }, lang::Term::U32 { .. }) => {
+        Some((rule_right_lhs.clone(), replace(var_name, rule_right_lhs, rule_left_rhs)))
+      }
 
       // match same Ctr and recurse
-      (lang::Term::Ctr { name: left_name, args: left_args }, lang::Term::Ctr { name: right_name, args: right_args }) => {
+      (
+        lang::Term::Ctr { name: left_name, args: left_args },
+        lang::Term::Ctr { name: right_name, args: right_args },
+      ) => {
         if &left_name == right_name && left_args.len() == right_args.len() {
           let mut new_left_args: Vec<Box<lang::Term>> = Vec::new();
           let mut rule_left_rhs = rule_left_rhs;
           for (left_arg, right_arg) in left_args.into_iter().zip(right_args) {
-            let (new_arg, temp_rule_left_rhs) = specialize_left_aux(*left_arg, rule_left_rhs, right_arg)?;
+            let (new_arg, temp_rule_left_rhs) =
+              specialize_left_aux(*left_arg, rule_left_rhs, right_arg)?;
             rule_left_rhs = temp_rule_left_rhs;
             new_left_args.push(Box::new(new_arg));
           }
@@ -986,15 +993,16 @@ mod tests {
         } else {
           None
         }
-      },
+      }
 
       // match same U32
-      (lang::Term::U32 { numb: left_numb }, lang::Term::U32 { numb: right_numb }) =>
+      (lang::Term::U32 { numb: left_numb }, lang::Term::U32 { numb: right_numb }) => {
         if left_numb == *right_numb {
-            Some((lang::Term::U32 { numb: left_numb }, rule_left_rhs))
+          Some((lang::Term::U32 { numb: left_numb }, rule_left_rhs))
         } else {
-            None
+          None
         }
+      }
 
       // error
       _ => None,
@@ -1097,18 +1105,18 @@ mod tests {
     (IntHalf a               (Succ (Succ b)) acc_left acc_right) = (IntHalf a b acc_left (Succ acc_right))
     (IntHalf Zero            Zero            acc_left acc_right) = (Int acc_left acc_right)
   ";
-//  // TODO correct nesting detection
-//  const FILE_4: &str = "
-//  (Pattern (Succ 0)) = 0
-//  (Pattern (Succ 1)) = 1
-//  (Pattern (Succ 2)) = 2
-//  (Pattern n) = n
-//  ";
-//  const FILE_3: &str = "
-//(Balance Black (Tie x11 x0) x3 (Succ (Succ x13))) = 0
-//(Balance Black x4 (Tie x12 x5) (Succ (Succ x14))) = 1
-//(RedBlack.balance x8 x9 x10 x15) = 2
-//";
+  //  // TODO correct nesting detection
+  //  const FILE_4: &str = "
+  //  (Pattern (Succ 0)) = 0
+  //  (Pattern (Succ 1)) = 1
+  //  (Pattern (Succ 2)) = 2
+  //  (Pattern n) = n
+  //  ";
+  //  const FILE_3: &str = "
+  //(Balance Black (Tie x11 x0) x3 (Succ (Succ x13))) = 0
+  //(Balance Black x4 (Tie x12 x5) (Succ (Succ x14))) = 1
+  //(RedBlack.balance x8 x9 x10 x15) = 2
+  //";
   const FILE_3: &str = "
 (RedBlack.balance
   Color.black
@@ -1286,61 +1294,55 @@ mod tests {
   #[test]
   fn flatten_first_layer_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
-    let expected_first_layer: lang::Rule =
-      lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap();
+    let expected_first_layer: lang::Rule = lang::read_rule(EQ0_FIRST_LAYER).unwrap().unwrap();
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_first_layer_1() {
     let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
-    let expected_first_layer: lang::Rule =
-      lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap();
+    let expected_first_layer: lang::Rule = lang::read_rule(EQ1_FIRST_LAYER).unwrap().unwrap();
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_first_layer_2() {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
-    let expected_first_layer: lang::Rule =
-      lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap();
+    let expected_first_layer: lang::Rule = lang::read_rule(EQ2_FIRST_LAYER).unwrap().unwrap();
     assert_eq!(first_layer(&nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_denest_with_pattern_0() {
     let nested: lang::Rule = lang::read_rule(EQ0).unwrap().unwrap();
-    let expected_first_layer: lang::Rule =
-      lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap();
+    let expected_first_layer: lang::Rule = lang::read_rule(EQ0_AUX_DEF).unwrap().unwrap();
     assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_denest_with_pattern_1() {
     let nested: lang::Rule = lang::read_rule(EQ1).unwrap().unwrap();
-    let expected_first_layer: lang::Rule =
-      lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap();
+    let expected_first_layer: lang::Rule = lang::read_rule(EQ1_AUX_DEF).unwrap().unwrap();
     assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_denest_with_pattern_2() {
     let nested: lang::Rule = lang::read_rule(EQ2).unwrap().unwrap();
-    let expected_first_layer: lang::Rule =
-      lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap();
+    let expected_first_layer: lang::Rule = lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap();
     assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
   }
 
   #[test]
   fn flatten_0() {
     let nested: Vec<lang::Rule> = lang::read_file(FILE_3).unwrap().rules;
-//    let first_layer_rule = first_layer(&nested[0], 0);
-//    let denested = denest_with_pattern(&first_layer_rule, &nested[1], 0);
-//    let denested_first_layer = first_layer(&denested, 0);
+    //    let first_layer_rule = first_layer(&nested[0], 0);
+    //    let denested = denest_with_pattern(&first_layer_rule, &nested[1], 0);
+    //    let denested_first_layer = first_layer(&denested, 0);
     let denested = new_flatten(nested);
     println!("");
     for rule in denested {
-        println!("{}", rule);
+      println!("{}", rule);
     }
   }
   #[test]
@@ -1348,9 +1350,9 @@ mod tests {
     let reference = lang::read_rule("(Pattern A) = 0").unwrap().unwrap();
     let catchall = lang::read_rule("(Pattern n) = n").unwrap().unwrap();
     if subpattern(&reference, &catchall) {
-        println!("if");
+      println!("if");
     } else {
-        println!("else");
+      println!("else");
     }
   }
 
