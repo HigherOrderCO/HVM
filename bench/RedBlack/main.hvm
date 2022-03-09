@@ -11,48 +11,48 @@
 //   tie(color: Color, left: RedBlack<A>, key: U32, val: A, right: RedBlack<A>)
 // }
 
-// RedBlack.member: <A: Type> -> (key: U32, map: RedBlack<A>) -> Maybe<A>
-(RedBlack.member member_key RedBlack.tip) = None
-(RedBlack.member member_key (RedBlack.tie color left key value right)) =
+// Get: <A: Type> -> (key: U32, map: RedBlack<A>) -> Maybe<A>
+(Get Empty member_key) = None
+(Get (Tie color left key value right) member_key) =
   (IfElse
     (< member_key key)
-    (RedBlack.member member_key left)
+    (Get left member_key)
     (IfElse
       (> member_key key)
-      (RedBlack.member member_key right)
+      (Get right member_key)
       (Some value)
     )
   )
 
-(RedBlack.insert insert_key value RedBlack.tip) =
-  (RedBlack.tie
+(Set Empty insert_key value) =
+  (Tie
     Color.red
-    RedBlack.tip
+    Empty
     insert_key
     value
-    RedBlack.tip
+    Empty
   )
 
-(RedBlack.insert insert_key insert_value (RedBlack.tie color left key value right)) =
+(Set (Tie color left key value right) insert_key insert_value) =
   (IfElse
     (< insert_key key)
-    (RedBlack.balance
+    (Balance
       color
-      (RedBlack.insert insert_key insert_value left)
+      (Set left insert_key insert_value)
       key
       value
       right
     )
     (IfElse
       (> insert_key key)
-      (RedBlack.balance
+      (Balance
         color
         left
         key
         value
-        (RedBlack.insert insert_key insert_value right)
+        (Set right insert_key insert_value)
       )
-      (RedBlack.tie
+      (Tie
         color
         left
         insert_key
@@ -62,139 +62,219 @@
     )
   )
 
-(RedBlack.balance
-  Color.black
-  (RedBlack.tie
-    Color.red
-    (RedBlack.tie Color.red child0 key0 value0 child1)
-    key1
-    value1
-    child2
-  )
-  key2
-  value2
-  child3
-) =
-  (RedBlack.tie
-    Color.red
-    (RedBlack.tie
-      Color.black
-      child0
-      key0
-      value0
-      child1
-    )
-    key1
-    value1
-    (RedBlack.tie
-      Color.black
-      child2
-      key2
-      value2
-      child3
-    )
-  )
+//// before flattening
+//(Balance
+//  Color.black
+//  (Tie
+//    Color.red
+//    (Tie Color.red child0 key0 value0 child1)
+//    key1
+//    value1
+//    child2
+//  )
+//  key2
+//  value2
+//  child3
+//) =
+//  (Tie
+//    Color.red
+//    (Tie
+//      Color.black
+//      child0
+//      key0
+//      value0
+//      child1
+//    )
+//    key1
+//    value1
+//    (Tie
+//      Color.black
+//      child2
+//      key2
+//      value2
+//      child3
+//    )
+//  )
+//
+//(Balance
+//  Color.black
+//  (Tie
+//    Color.red
+//    child0
+//    key0
+//    value0
+//    (Tie Color.red child1 key1 value1 child2)
+//  )
+//  key2
+//  value2
+//  child3
+//) =
+//  (Tie
+//    Color.red
+//    (Tie
+//      Color.black
+//      child0
+//      key0
+//      value0
+//      child1
+//    )
+//    key1
+//    value1
+//    (Tie
+//      Color.black
+//      child2
+//      key2
+//      value2
+//      child3
+//    )
+//  )
+//
+//(Balance
+//  Color.black
+//  child0
+//  key0
+//  value0
+//  (Tie
+//    Color.red
+//    (Tie Color.red child1 key1 value1 child2)
+//    key2
+//    value2
+//    child3
+//  )
+//) =
+//  (Tie
+//    Color.red
+//    (Tie
+//      Color.black
+//      child0
+//      key0
+//      value0
+//      child1
+//    )
+//    key1
+//    value1
+//    (Tie
+//      Color.black
+//      child2
+//      key2
+//      value2
+//      child3
+//    )
+//  )
+//
+//(Balance
+//  Color.black
+//  child0
+//  key0
+//  value0
+//  (Tie
+//    Color.red
+//    child1
+//    key1
+//    value1
+//    (Tie Color.red child2 key2 value2 child3)
+//  )
+//) =
+//  (Tie
+//    Color.red
+//    (Tie
+//      Color.black
+//      child0
+//      key0
+//      value0
+//      child1
+//    )
+//    key1
+//    value1
+//    (Tie
+//      Color.black
+//      child2
+//      key2
+//      value2
+//      child3
+//    )
+//  )
+//
+//(Balance color left key value right) = (Tie color left key value right)
 
-(RedBlack.balance
-  Color.black
-  (RedBlack.tie
-    Color.red
-    child0
-    key0
-    value0
-    (RedBlack.tie Color.red child1 key1 value1 child2)
-  )
-  key2
-  value2
-  child3
-) =
-  (RedBlack.tie
-    Color.red
-    (RedBlack.tie
-      Color.black
-      child0
-      key0
-      value0
-      child1
-    )
-    key1
-    value1
-    (RedBlack.tie
-      Color.black
-      child2
-      key2
-      value2
-      child3
-    )
-  )
+// after flattening
+(Balance (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) x.5 x.6 x.7) = (Balance.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7)
+(Balance.0 (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.5 x.6 x.7 x.8 x.9 x.10) = (Balance.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10)
+(Balance.0.0 (Color.red) child0 key0 value0 child1 key1 value1 child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) child0 key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 (Tie x.7 x.8 x.9 x.10 x.11) x.12 x.13 x.14) = (Balance.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14)
+(Balance.0.0.0 x.0 x.1 x.2 x.3 x.4 key0 value0 (Color.red) child1 key1 value1 child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 (Tie x.14 x.15 x.16 x.17 x.18)) = (Balance.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17 x.18)
+(Balance.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 (Color.red) (Tie x.14 x.15 x.16 x.17 x.18) x.19 x.20 x.21) = (Balance.0.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17 x.18 x.19 x.20 x.21)
+(Balance.0.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.7 x.8 x.9 x.10 x.11 key0 value0 (Color.red) child1 key1 value1 child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17 x.18 x.19 x.20 (Tie x.21 x.22 x.23 x.24 x.25)) = (Balance.0.0.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17 x.18 x.19 x.20 x.21 x.22 x.23 x.24 x.25)
+(Balance.0.0.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.7 x.8 x.9 x.10 x.11 key0 value0 x.14 x.15 x.16 x.17 x.18 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) key0 value0 (Tie x.14 x.15 x.16 x.17 x.18)) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.0.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.7 x.8 x.9 x.10 x.11 key value x.14 x.15 x.16 x.17 x.18 x.16 x.17 x.21 x.22 x.23 x.24 x.25) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) key value (Tie (Color.red) (Tie x.14 x.15 x.16 x.17 (Tie x.21 x.22 x.23 x.24 x.25)) x.16 x.17 (Tie x.21 x.22 x.23 x.24 x.25)))
+(Balance.0.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.7 x.8 x.9 x.10 x.11 key value x.14 x.15 x.16 x.17 x.18 x.16 x.17 x.18) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) key value (Tie (Color.red) (Tie x.14 x.15 x.16 x.17 x.18) x.16 x.17 x.18))
+(Balance.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 (Color.red) x.14 x.15 x.16 (Tie x.17 x.18 x.19 x.20 x.21)) = (Balance.0.0.0.0.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17 x.18 x.19 x.20 x.21)
+(Balance.0.0.0.0.1 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.7 x.8 x.9 x.10 x.11 key0 value0 child1 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.0.0.0.1 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.7 x.8 x.9 x.10 x.11 key value x.15 x.16 x.17 x.17 x.18 x.19 x.20 x.21) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) key value (Tie (Color.red) x.15 x.16 x.17 (Tie x.17 x.18 x.19 x.20 x.21)))
+(Balance.0.0.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.7 x.8 x.9 x.10 x.11 key value x.14 x.15 x.16 x.17 x.18) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) key value (Tie x.14 x.15 x.16 x.17 x.18))
+(Balance.0.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.7 x.8 x.9 x.10 x.11 key value right) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) x.2 x.3 (Tie x.7 x.8 x.9 x.10 x.11)) key value right)
+(Balance.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 (Tie x.10 x.11 x.12 x.13 x.14)) = (Balance.0.0.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14)
+(Balance.0.0.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 (Color.red) (Tie x.10 x.11 x.12 x.13 x.14) x.15 x.16 x.17) = (Balance.0.0.1.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17)
+(Balance.0.0.1.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.4 key0 value0 (Color.red) child1 key1 value1 child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.2 x.3 x.4) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.0.1.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 (Tie x.17 x.18 x.19 x.20 x.21)) = (Balance.0.0.1.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17 x.18 x.19 x.20 x.21)
+(Balance.0.0.1.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.4 key0 value0 x.10 x.11 x.12 x.13 x.14 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.2 x.3 x.4) key0 value0 (Tie x.10 x.11 x.12 x.13 x.14)) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.0.1.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.4 key value x.10 x.11 x.12 x.13 x.14 x.12 x.13 x.17 x.18 x.19 x.20 x.21) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.2 x.3 x.4) key value (Tie (Color.red) (Tie x.10 x.11 x.12 x.13 (Tie x.17 x.18 x.19 x.20 x.21)) x.12 x.13 (Tie x.17 x.18 x.19 x.20 x.21)))
+(Balance.0.0.1.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.4 key value x.10 x.11 x.12 x.13 x.14 x.12 x.13 x.14) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.2 x.3 x.4) key value (Tie (Color.red) (Tie x.10 x.11 x.12 x.13 x.14) x.12 x.13 x.14))
+(Balance.0.0.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 (Color.red) x.10 x.11 x.12 (Tie x.13 x.14 x.15 x.16 x.17)) = (Balance.0.0.1.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17)
+(Balance.0.0.1.1 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.4 key0 value0 child1 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.2 x.3 x.4) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.0.1.1 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.4 key value x.11 x.12 x.13 x.13 x.14 x.15 x.16 x.17) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.2 x.3 x.4) key value (Tie (Color.red) x.11 x.12 x.13 (Tie x.13 x.14 x.15 x.16 x.17)))
+(Balance.0.0.1 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.4 key value x.10 x.11 x.12 x.13 x.14) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.2 x.3 x.4) key value (Tie x.10 x.11 x.12 x.13 x.14))
+(Balance.0.0 x.0 x.1 x.2 x.3 x.4 x.2 x.3 x.4 key value right) = (Tie (Color.black) (Tie (Color.red) (Tie x.0 x.1 x.2 x.3 x.4) x.2 x.3 x.4) key value right)
+(Balance.0 (Color.red) x.0 x.1 x.2 (Tie x.3 x.4 x.5 x.6 x.7) x.8 x.9 x.10) = (Balance.0.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10)
+(Balance.0.1 child0 key0 value0 (Color.red) child1 key1 value1 child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) child0 key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 (Tie x.10 x.11 x.12 x.13 x.14)) = (Balance.0.1.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14)
+(Balance.0.1.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 (Color.red) (Tie x.10 x.11 x.12 x.13 x.14) x.15 x.16 x.17) = (Balance.0.1.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17)
+(Balance.0.1.0.0 x.1 x.2 x.3 x.3 x.4 x.5 x.6 x.7 key0 value0 (Color.red) child1 key1 value1 child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) x.1 x.2 x.3 (Tie x.3 x.4 x.5 x.6 x.7)) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.1.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 (Tie x.17 x.18 x.19 x.20 x.21)) = (Balance.0.1.0.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17 x.18 x.19 x.20 x.21)
+(Balance.0.1.0.0.0 x.1 x.2 x.3 x.3 x.4 x.5 x.6 x.7 key0 value0 x.10 x.11 x.12 x.13 x.14 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) x.1 x.2 x.3 (Tie x.3 x.4 x.5 x.6 x.7)) key0 value0 (Tie x.10 x.11 x.12 x.13 x.14)) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.1.0.0.0 x.1 x.2 x.3 x.3 x.4 x.5 x.6 x.7 key value x.10 x.11 x.12 x.13 x.14 x.12 x.13 x.17 x.18 x.19 x.20 x.21) = (Tie (Color.black) (Tie (Color.red) x.1 x.2 x.3 (Tie x.3 x.4 x.5 x.6 x.7)) key value (Tie (Color.red) (Tie x.10 x.11 x.12 x.13 (Tie x.17 x.18 x.19 x.20 x.21)) x.12 x.13 (Tie x.17 x.18 x.19 x.20 x.21)))
+(Balance.0.1.0.0 x.1 x.2 x.3 x.3 x.4 x.5 x.6 x.7 key value x.10 x.11 x.12 x.13 x.14 x.12 x.13 x.14) = (Tie (Color.black) (Tie (Color.red) x.1 x.2 x.3 (Tie x.3 x.4 x.5 x.6 x.7)) key value (Tie (Color.red) (Tie x.10 x.11 x.12 x.13 x.14) x.12 x.13 x.14))
+(Balance.0.1.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 (Color.red) x.10 x.11 x.12 (Tie x.13 x.14 x.15 x.16 x.17)) = (Balance.0.1.0.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17)
+(Balance.0.1.0.1 x.1 x.2 x.3 x.3 x.4 x.5 x.6 x.7 key0 value0 child1 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie (Color.red) x.1 x.2 x.3 (Tie x.3 x.4 x.5 x.6 x.7)) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.1.0.1 x.1 x.2 x.3 x.3 x.4 x.5 x.6 x.7 key value x.11 x.12 x.13 x.13 x.14 x.15 x.16 x.17) = (Tie (Color.black) (Tie (Color.red) x.1 x.2 x.3 (Tie x.3 x.4 x.5 x.6 x.7)) key value (Tie (Color.red) x.11 x.12 x.13 (Tie x.13 x.14 x.15 x.16 x.17)))
+(Balance.0.1.0 x.1 x.2 x.3 x.3 x.4 x.5 x.6 x.7 key value x.10 x.11 x.12 x.13 x.14) = (Tie (Color.black) (Tie (Color.red) x.1 x.2 x.3 (Tie x.3 x.4 x.5 x.6 x.7)) key value (Tie x.10 x.11 x.12 x.13 x.14))
+(Balance.0.1 x.1 x.2 x.3 x.3 x.4 x.5 x.6 x.7 key value right) = (Tie (Color.black) (Tie (Color.red) x.1 x.2 x.3 (Tie x.3 x.4 x.5 x.6 x.7)) key value right)
+(Balance.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 (Tie x.7 x.8 x.9 x.10 x.11)) = (Balance.0.2 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11)
+(Balance.0.2 x.0 x.1 x.2 x.3 x.4 x.5 x.6 (Color.red) (Tie x.7 x.8 x.9 x.10 x.11) x.12 x.13 x.14) = (Balance.0.2.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14)
+(Balance.0.2.0 x.0 x.1 x.2 x.3 x.4 key0 value0 (Color.red) child1 key1 value1 child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.2.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 (Tie x.14 x.15 x.16 x.17 x.18)) = (Balance.0.2.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14 x.15 x.16 x.17 x.18)
+(Balance.0.2.0.0 x.0 x.1 x.2 x.3 x.4 key0 value0 x.7 x.8 x.9 x.10 x.11 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key0 value0 (Tie x.7 x.8 x.9 x.10 x.11)) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.2.0.0 x.0 x.1 x.2 x.3 x.4 key value x.7 x.8 x.9 x.10 x.11 x.9 x.10 x.14 x.15 x.16 x.17 x.18) = (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key value (Tie (Color.red) (Tie x.7 x.8 x.9 x.10 (Tie x.14 x.15 x.16 x.17 x.18)) x.9 x.10 (Tie x.14 x.15 x.16 x.17 x.18)))
+(Balance.0.2.0 x.0 x.1 x.2 x.3 x.4 key value x.7 x.8 x.9 x.10 x.11 x.9 x.10 x.11) = (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key value (Tie (Color.red) (Tie x.7 x.8 x.9 x.10 x.11) x.9 x.10 x.11))
+(Balance.0.2 x.0 x.1 x.2 x.3 x.4 x.5 x.6 (Color.red) x.7 x.8 x.9 (Tie x.10 x.11 x.12 x.13 x.14)) = (Balance.0.2.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14)
+(Balance.0.2.1 x.0 x.1 x.2 x.3 x.4 key0 value0 child1 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.0.2.1 x.0 x.1 x.2 x.3 x.4 key value x.8 x.9 x.10 x.10 x.11 x.12 x.13 x.14) = (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key value (Tie (Color.red) x.8 x.9 x.10 (Tie x.10 x.11 x.12 x.13 x.14)))
+(Balance.0.2 x.0 x.1 x.2 x.3 x.4 key value x.7 x.8 x.9 x.10 x.11) = (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key value (Tie x.7 x.8 x.9 x.10 x.11))
+(Balance.0 x.0 x.1 x.2 x.3 x.4 key value right) = (Tie (Color.black) (Tie x.0 x.1 x.2 x.3 x.4) key value right)
+(Balance (Color.black) x.0 x.1 x.2 (Tie x.3 x.4 x.5 x.6 x.7)) = (Balance.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7)
+(Balance.1 x.0 x.1 x.2 (Color.red) (Tie x.3 x.4 x.5 x.6 x.7) x.8 x.9 x.10) = (Balance.1.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10)
+(Balance.1.0 child0 key0 value0 (Color.red) child1 key1 value1 child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) child0 key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.1.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 (Tie x.10 x.11 x.12 x.13 x.14)) = (Balance.1.0.0 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10 x.11 x.12 x.13 x.14)
+(Balance.1.0.0 child0 key0 value0 x.3 x.4 x.5 x.6 x.7 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) child0 key0 value0 (Tie x.3 x.4 x.5 x.6 x.7)) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.1.0.0 left key value x.3 x.4 x.5 x.6 x.7 x.5 x.6 x.10 x.11 x.12 x.13 x.14) = (Tie (Color.black) left key value (Tie (Color.red) (Tie x.3 x.4 x.5 x.6 (Tie x.10 x.11 x.12 x.13 x.14)) x.5 x.6 (Tie x.10 x.11 x.12 x.13 x.14)))
+(Balance.1.0 left key value x.3 x.4 x.5 x.6 x.7 x.5 x.6 x.7) = (Tie (Color.black) left key value (Tie (Color.red) (Tie x.3 x.4 x.5 x.6 x.7) x.5 x.6 x.7))
+(Balance.1 x.0 x.1 x.2 (Color.red) x.3 x.4 x.5 (Tie x.6 x.7 x.8 x.9 x.10)) = (Balance.1.1 x.0 x.1 x.2 x.3 x.4 x.5 x.6 x.7 x.8 x.9 x.10)
+(Balance.1.1 child0 key0 value0 child1 key1 value1 (Color.red) child2 key2 value2 child3) = (Tie (Color.red) (Tie (Color.black) child0 key0 value0 child1) key1 value1 (Tie (Color.black) child2 key2 value2 child3))
+(Balance.1.1 left key value x.4 x.5 x.6 x.6 x.7 x.8 x.9 x.10) = (Tie (Color.black) left key value (Tie (Color.red) x.4 x.5 x.6 (Tie x.6 x.7 x.8 x.9 x.10)))
+(Balance.1 left key value x.3 x.4 x.5 x.6 x.7) = (Tie (Color.black) left key value (Tie x.3 x.4 x.5 x.6 x.7))
+(Balance color left key value right) = (Tie color left key value right)
 
-(RedBlack.balance
-  Color.black
-  child0
-  key0
-  value0
-  (RedBlack.tie
-    Color.red
-    (RedBlack.tie Color.red child1 key1 value1 child2)
-    key2
-    value2
-    child3
-  )
-) =
-  (RedBlack.tie
-    Color.red
-    (RedBlack.tie
-      Color.black
-      child0
-      key0
-      value0
-      child1
-    )
-    key1
-    value1
-    (RedBlack.tie
-      Color.black
-      child2
-      key2
-      value2
-      child3
-    )
-  )
+// Empty : (U32Map a)
+// (Get map: (U32Map a), key: U32): (Maybe a)
+// (Set map: (U32Map a), key: U32, val: a): U32Map
 
-(RedBlack.balance
-  Color.black
-  child0
-  key0
-  value0
-  (RedBlack.tie
-    Color.red
-    child1
-    key1
-    value1
-    (RedBlack.tie Color.red child2 key2 value2 child3)
-  )
-) =
-  (RedBlack.tie
-    Color.red
-    (RedBlack.tie
-      Color.black
-      child0
-      key0
-      value0
-      child1
-    )
-    key1
-    value1
-    (RedBlack.tie
-      Color.black
-      child2
-      key2
-      value2
-      child3
-    )
-  )
+// setting even numbers until 32 in random order
+// maps n => "N"+to_string(n)
+//(TestMap) = (Set (Set (Set (Set (Set (Set (Set (Set (Set (Set (Set (Set (Set (Set (Set (Set Empty 4 N2) 6 N3) 14 N7) 8 N4) 26 N13) 20 N10) 28 N14) 16 N8) 32 N16) 10 N5) 12 N6) 18 N9) 30 N15) 2 N1) 24 N12) 22 N11)
 
-(RedBlack.balance color left key value right) = (RedBlack.tie color left key value right)
+// precomputed map
+(TestMap) = (Tie (Color.red) (Tie (Color.red) (Empty) 2 (N2) (Empty)) 4 (N4) (Tie (Color.red) (Empty) 6 (N6) (Tie (Color.red) (Tie (Color.red) (Empty) 8 (N8) (Tie (Color.red) (Empty) 10 (N10) (Tie (Color.red) (Empty) 12 (N12) (Empty)))) 14 (N14) (Tie (Color.red) (Tie (Color.red) (Tie (Color.red) (Empty) 16 (N16) (Tie (Color.red) (Empty) 18 (N18) (Empty))) 20 (N20) (Tie (Color.red) (Tie (Color.red) (Empty) 22 (N22) (Empty)) 24 (N24) (Empty))) 26 (N26) (Tie (Color.red) (Empty) 28 (N28) (Tie (Color.red) (Tie (Color.red) (Empty) 30 (N30) (Empty)) 32 (N32) (Empty)))))))
 
-
-(Main) = (RedBlack.Member RedBlack.tip)
+(Main) = (Get TestMap 33)
