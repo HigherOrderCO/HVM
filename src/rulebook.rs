@@ -460,10 +460,6 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
 /**/} false
   }
 
-  fn is_tested(term: &lang::Term) -> bool {
-    matches!(term, lang::Term::Ctr { .. } | lang::Term::U32 { .. })
-  }
-
   // Checks true if every time that `a` matches, `b` will match too
   fn matches_together(a: &lang::Rule, b: &lang::Rule) -> bool {
     if let (
@@ -772,35 +768,41 @@ mod tests {
   /**/} false
     }
 
+    // holds denested rules to be returned in reverse order
     let mut ret: Vec<lang::Rule> = Vec::new();
+    // holds rules that could need to be denested
     let mut remaining: Vec<lang::Rule> = Vec::from(rules);
     remaining.reverse();
     let mut i = 0;
     while let Some(reference_pattern) = remaining.pop() {
       if nested_pattern(&reference_pattern) {
-        ret.push(first_layer(&reference_pattern, i));
-        let mut temp_new: Vec<lang::Rule> = Vec::new();
-        let mut temp_again: Vec<lang::Rule> = Vec::new();
-        for pattern in remaining.iter() {
-          let specialized_pattern = specialize_left(&pattern, &reference_pattern);
+        // denested rules for recursive call
+        let mut recurse: Vec<lang::Rule> = Vec::new();
+        // rules that will be returned `remaining` after iteration ends
+        let mut return_to_remaining: Vec<lang::Rule> = Vec::new();
+        let first_layer_reference_pattern = first_layer(&reference_pattern, i);
+        ret.push(first_layer_reference_pattern.clone());
+        recurse.push(denest_with_pattern(&first_layer_reference_pattern, &reference_pattern, i));
+        for pattern in remaining.iter().rev() {
+          let specialized_pattern = specialize_left(&pattern, &first_layer_reference_pattern);
           if let Some(specialized_pattern) = specialized_pattern {
-            if !subpattern(&pattern, &reference_pattern) {
-              temp_again.push(pattern.clone())
+            if !subpattern(&pattern, &first_layer_reference_pattern) {
+              return_to_remaining.push(pattern.clone());
             } else {
-              temp_new.push(denest_with_pattern(&reference_pattern, &specialized_pattern, i))
             }
+            recurse.push(denest_with_pattern(&first_layer_reference_pattern, &specialized_pattern, i));
           } else {
-            temp_again.push(pattern.clone());
+            return_to_remaining.push(pattern.clone());
           }
         }
-        ret.append(&mut new_flatten(temp_new));
-        remaining.append(&mut temp_again);
+        ret.append(&mut new_flatten(recurse));
+        return_to_remaining.reverse();
+        remaining = return_to_remaining;
         i += 1;
       } else {
         ret.push(reference_pattern);
       }
     }
-    ret.reverse();
     ret
   }
 
@@ -1073,6 +1075,172 @@ mod tests {
   const REPLACED_TERM_CTR: &str = "(Pair (Succ Zero) y (Succ Zero))";
   const REPLACED_TERM_U32: &str = "2";
   const REPLACED_TERM_OP2: &str = "(+ (Succ Zero) (Succ Zero))";
+
+  const FILE_0: &str = "
+    (Half (Succ (Succ x))) = (Succ x)
+    (Half n) = n
+  ";
+  const FILE_1: &str = "
+    (Third (Succ (Succ (Succ x)))) = (Succ x)
+    (Third n) = n
+  ";
+  const FILE_2: &str = "
+    (IntHalf (Succ (Succ a)) b               acc_left acc_right) = (IntHalf a b (Succ acc_left) acc_right)
+    (IntHalf a               (Succ (Succ b)) acc_left acc_right) = (IntHalf a b acc_left (Succ acc_right))
+    (IntHalf Zero            Zero            acc_left acc_right) = (Int acc_left acc_right)
+  ";
+//  // TODO correct nesting detection
+//  const FILE_4: &str = "
+//  (Pattern (Succ 0)) = 0
+//  (Pattern (Succ 1)) = 1
+//  (Pattern (Succ 2)) = 2
+//  (Pattern n) = n
+//  ";
+//  const FILE_3: &str = "
+//(Balance Black (Tie x11 x0) x3 (Succ (Succ x13))) = 0
+//(Balance Black x4 (Tie x12 x5) (Succ (Succ x14))) = 1
+//(RedBlack.balance x8 x9 x10 x15) = 2
+//";
+  const FILE_3: &str = "
+(RedBlack.balance
+  Color.black
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie Color.red child0 key0 value0 child1)
+    key1
+    value1
+    child2
+  )
+  key2
+  value2
+  child3
+) =
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie
+      Color.black
+      child0
+      key0
+      value0
+      child1
+    )
+    key1
+    value1
+    (RedBlack.tie
+      Color.black
+      child2
+      key2
+      value2
+      child3
+    )
+  )
+
+//(RedBlack.balance
+//  Color.black
+//  (RedBlack.tie
+//    Color.red
+//    child0
+//    key0
+//    value0
+//    (RedBlack.tie Color.red child1 key1 value1 child2)
+//  )
+//  key2
+//  value2
+//  child3
+//) =
+//  (RedBlack.tie
+//    Color.red
+//    (RedBlack.tie
+//      Color.black
+//      child0
+//      key0
+//      value0
+//      child1
+//    )
+//    key1
+//    value1
+//    (RedBlack.tie
+//      Color.black
+//      child2
+//      key2
+//      value2
+//      child3
+//    )
+//  )
+
+(RedBlack.balance
+  Color.black
+  child0
+  key0
+  value0
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie Color.red child1 key1 value1 child2)
+    key2
+    value2
+    child3
+  )
+) =
+  (RedBlack.tie
+    Color.red
+    (RedBlack.tie
+      Color.black
+      child0
+      key0
+      value0
+      child1
+    )
+    key1
+    value1
+    (RedBlack.tie
+      Color.black
+      child2
+      key2
+      value2
+      child3
+    )
+  )
+
+//(RedBlack.balance
+//  Color.black
+//  child0
+//  key0
+//  value0
+//  (RedBlack.tie
+//    Color.red
+//    child1
+//    key1
+//    value1
+//    (RedBlack.tie Color.red child2 key2 value2 child3)
+//  )
+//) =
+//  (RedBlack.tie
+//    Color.red
+//    (RedBlack.tie
+//      Color.black
+//      child0
+//      key0
+//      value0
+//      child1
+//    )
+//    key1
+//    value1
+//    (RedBlack.tie
+//      Color.black
+//      child2
+//      key2
+//      value2
+//      child3
+//    )
+//  )
+
+(RedBlack.balance color child0 key0 value0 child1) = (RedBlack.tie Color.red child0 key0 value0 child1)
+";
+  const FILE_5: &str = "
+  (Pattern (Succ (Pair a        (Succ a)) c)) = 0
+  (Pattern (Succ c (Pair (Succ b) b       ))) = 1
+  (Pattern n) = n
+  ";
   #[test]
   fn replace_0() {
     let term_from = "x";
@@ -1153,6 +1321,29 @@ mod tests {
     let expected_first_layer: lang::Rule =
       lang::read_rule(EQ2_AUX_DEF).unwrap().unwrap();
     assert_eq!(denest_with_pattern(&nested, &nested, 0), expected_first_layer);
+  }
+
+  #[test]
+  fn flatten_0() {
+    let nested: Vec<lang::Rule> = lang::read_file(FILE_3).unwrap().rules;
+//    let first_layer_rule = first_layer(&nested[0], 0);
+//    let denested = denest_with_pattern(&first_layer_rule, &nested[1], 0);
+//    let denested_first_layer = first_layer(&denested, 0);
+    let denested = new_flatten(nested);
+    println!("");
+    for rule in denested {
+        println!("{}", rule);
+    }
+  }
+  #[test]
+  fn subpattern_thing() {
+    let reference = lang::read_rule("(Pattern A) = 0").unwrap().unwrap();
+    let catchall = lang::read_rule("(Pattern n) = n").unwrap().unwrap();
+    if subpattern(&reference, &catchall) {
+        println!("if");
+    } else {
+        println!("else");
+    }
   }
 
   //  #[test]
