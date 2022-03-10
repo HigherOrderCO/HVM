@@ -789,7 +789,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
             return_to_remaining.push(pattern.clone());
           }
         }
-        ret.append(&mut flatten(&recurse));
+        ret.append(&mut flatten_aux(&recurse));
         return_to_remaining.reverse();
         remaining = return_to_remaining;
         i += 1;
@@ -1139,6 +1139,35 @@ mod tests {
   //    (Pattern x (Succ (Succ k))) = (Ctor k)
   //    (Pattern (Succ x.1) y) = 0
   //  ";
+  const FILE_7: &str = "
+  // (Compare U32 U32) : Comparison
+  (Compare a b) = (CompareGo (< a b) (> a b))
+    (CompareGo 1 0) = LT
+    (CompareGo 0 1) = GT
+    (CompareGo a b) = EQ
+
+  // (Insert a (Map a)) : (Map a)
+  (Insert x s) = (MakeBlack (InsertGo x s))
+    (MakeBlack (T c a x b))       = (T B a x b)
+    (InsertGo x E)                = (T R E x E)
+    (InsertGo x (T col a y b))    = (InsertGoTest (Compare x y) x col a y b)
+      (InsertGoTest LT x col a y b) = (Balance (T col (InsertGo x a) y b))
+      (InsertGoTest EQ x col a y b) = (T col a y b)
+      (InsertGoTest GT x col a y b) = (Balance (T col a y (InsertGo x b)))
+
+  // (Balance (Map a)) : (Map a)
+  (Balance (T B (T R (T R a x b) y c) z d)) = (T R (T B a x b) y (T B c z d))
+  (Balance (T B (T R a x (T R b y c)) z d)) = (T R (T B a x b) y (T B c z d))
+  (Balance (T B a x (T R (T R b y c) z d))) = (T R (T B a x b) y (T B c z d))
+  (Balance (T B a x (T R b y (T R c z d)))) = (T R (T B a x b) y (T B c z d))
+  (Balance tree)                            = tree
+
+  (Main n) =
+    let map = E
+    let map = (Insert 90 map)
+    let map = (Insert 10 map)
+    map
+  ";
   //  #[test]
   //  fn replace_0() {
   //    let term_from = "x";
@@ -1217,7 +1246,7 @@ mod tests {
 
   #[test]
   fn flatten_0() {
-    let nested: Vec<lang::Rule> = lang::read_file(FILE_3).unwrap().rules;
+    let nested: Vec<lang::Rule> = lang::read_file(FILE_7).unwrap().rules;
     //    let first_layer_rule = first_layer(&nested[0], 0);
     //    let denested = denest_with_pattern(&first_layer_rule, &nested[1], 0);
     //    let denested_first_layer = first_layer(&denested, 0);
