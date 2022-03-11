@@ -434,372 +434,7 @@ pub fn sanitize_rules(rules: &[lang::Rule]) -> Vec<lang::Rule> {
 }
 
 // Split rules that have nested cases, flattening them.
-// I'm not proud of this code. Must improve considerably.
 pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
-  // Checks if this rule has nested patterns, and must be splitted
-  #[rustfmt::skip]
-  fn nested_pattern(rule: &lang::Rule) -> bool {
-/**/if let lang::Term::Ctr { ref args, .. } = *rule.lhs {
-/*  */for arg in args {
-/*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
-/*   A  */for field in arg_args {
-/*    D   */if is_tested(field) {
-/* ─=≡ΣO)   */return true;
-/*    U   */}
-/*   K  */}
-/*  E */}
-/* N*/}
-/**/} false
-  }
-
-  fn is_tested(term: &lang::Term) -> bool {
-    matches!(term, lang::Term::Ctr { .. } | lang::Term::U32 { .. })
-  }
-  fn show_var(i: usize) -> String {
-    put_suffix("x", i)
-  }
-  fn put_suffix(prefix: &str, i: usize) -> String {
-    prefix.to_owned() + "." + &i.to_string()
-  }
-
-  // this function takes a rule that may have nested patterns and returns
-  // a rule that only matches one layer of constructors and then calls an
-  // auxiliary def.
-  // look at "first_layer" tests for examples
-  // i bet this could be shorter and clearer, but I'm still getting used to rust
-  fn first_layer(rule: &lang::Rule, n: usize) -> lang::Rule {
-    if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
-      let mut i = 0;
-      let mut lhs_args: Vec<Box<lang::Term>> = Vec::new();
-      let mut rhs_args: Vec<Box<lang::Term>> = Vec::new();
-      let mut ok = true;
-      for arg in args {
-        match **arg {
-          lang::Term::Ctr { name: ref arg_name, args: ref arg_args } => {
-            let mut new_arg_args: Vec<Box<lang::Term>> = Vec::new();
-            for _ in arg_args {
-              let var_name = show_var(i);
-              i += 1;
-              let var = Box::new(lang::Term::Var { name: var_name });
-              new_arg_args.push(var.clone());
-              rhs_args.push(var);
-            }
-            let new_arg = Box::new(lang::Term::Ctr { name: arg_name.clone(), args: new_arg_args });
-            lhs_args.push(new_arg);
-          }
-          lang::Term::Var { .. } => {
-            let var_name = show_var(i);
-            i += 1;
-            let new_var = Box::new(lang::Term::Var { name: var_name });
-            rhs_args.push(new_var.clone());
-            lhs_args.push(new_var);
-          }
-          lang::Term::U32 { numb } => {
-            lhs_args.push(Box::new(lang::Term::U32 { numb }));
-          }
-          _ => {
-            ok = false;
-            break;
-          }
-        }
-      }
-      if ok {
-        let lhs = Box::new(lang::Term::Ctr { name: name.to_string(), args: lhs_args });
-        let rhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: rhs_args });
-        lang::Rule { lhs, rhs }
-      } else {
-        panic!("Tried to extract first layer of invalid pattern: {}", rule)
-      }
-    } else {
-      panic!("Tried to extract first layer of invalid pattern: {}", rule)
-    }
-  }
-
-  // takes a pattern, a subpattern and defines the auxiliary function that's on the right hand side
-  // of the output of first_layer(rule, n)
-  //
-  // preconditions:
-  //  P0: subpattern(pattern, subpattern) == true
-  //  P1: both lhs' should be Ctr
-  fn denest_with_pattern(pattern: &lang::Rule, subpattern: &lang::Rule, n: usize) -> lang::Rule {
-    if let (
-      lang::Term::Ctr { ref name, ref args },
-      lang::Term::Ctr { name: ref _sub_name, args: ref sub_args },
-    ) = (&*pattern.lhs, &*subpattern.lhs)
-    {
-      // P0.0: name == _sub_name
-      // P0.1: args.len() == sub_args.len()
-      // P0.2: for (arg, sub_args) in args.iter().zip(sub_args) {
-      //         subpattern_aux(arg, sub_arg) == true
-      //       }
-      let mut new_args: Vec<Box<lang::Term>> = Vec::new();
-      for (arg, sub_arg) in args.iter().zip(sub_args) {
-        match (&**arg, &**sub_arg) {
-          (lang::Term::Ctr { .. }, lang::Term::Ctr { args, .. }) => {
-            new_args.append(&mut args.clone());
-          }
-          (lang::Term::U32 { .. }, _) => (),
-          _ => {
-            new_args.push(sub_arg.clone());
-          }
-        }
-      }
-      let lhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: new_args });
-      let rhs = subpattern.rhs.clone();
-      lang::Rule { lhs, rhs }
-    } else {
-      // absurd, contradicts P1
-      panic!("Tried to denest invalid patterns:\n{}\n{}", pattern, subpattern);
-    }
-  }
-
-  // checks that if a matches, then b matches, for a valid pair of rules
-  // preconditions:
-  // - valid_pattern(a)
-  // - valid_pattern(b)
-  fn subpattern(a: &lang::Rule, b: &lang::Rule) -> bool {
-    subpattern_aux(&*a.lhs, &*b.lhs)
-  }
-  // i'm actually proud of this code
-  // preconditions:
-  // - valid_pattern(a)
-  // - valid_pattern(b)
-  fn subpattern_aux(a: &lang::Term, b: &lang::Term) -> bool {
-    match (a, b) {
-      (lang::Term::Var { .. }, lang::Term::Var { .. }) => true,
-      (lang::Term::Ctr { .. }, lang::Term::Var { .. }) => true,
-      (lang::Term::U32 { .. }, lang::Term::Var { .. }) => true,
-      (
-        lang::Term::Ctr { name: a_name, args: a_args },
-        lang::Term::Ctr { name: b_name, args: b_args },
-      ) => {
-        let mut compatible = true;
-        for (a_arg, b_arg) in a_args.iter().zip(b_args) {
-          compatible = compatible && subpattern_aux(&a_arg, &b_arg);
-        }
-        (a_name == b_name) && (a_args.len() == b_args.len()) && compatible
-      }
-      (lang::Term::U32 { numb: a_numb }, lang::Term::U32 { numb: b_numb }) => a_numb == b_numb,
-      _ => false,
-    }
-  }
-
-  // specializes rule_left to a subpattern of rule_right, if that's possible
-  // all variables will receive fresh names to avoid name collisions
-  fn specialize_left(left: &lang::Rule, right: &lang::Rule) -> Option<lang::Rule> {
-    let (lhs, rhs, _i) = specialize_left_aux(*left.lhs.clone(), *left.rhs.clone(), &right.lhs, 0)?;
-    let (lhs, rhs) = (Box::new(lhs), Box::new(rhs));
-    Some(lang::Rule { lhs, rhs })
-  }
-  // preconditions:
-  // P0: valid_pattern(rule_left_lhs)
-  // P1: valid_pattern(rule_right_lhs)
-  fn specialize_left_aux(
-    rule_left_lhs: lang::Term,
-    rule_left_rhs: lang::Term,
-    rule_right_lhs: &lang::Term,
-    i: usize,
-  ) -> Option<(lang::Term, lang::Term, usize)> {
-    match (rule_left_lhs, rule_right_lhs) {
-      // nothing happens
-      (lang::Term::Var { name }, lang::Term::Var { .. }) => {
-        let fresh_var = lang::Term::Var { name: show_var(i) };
-        let rule_left_rhs = replace(&name, &fresh_var, rule_left_rhs);
-        Some((fresh_var, rule_left_rhs, 1 + i))
-      }
-      (lang::Term::Ctr { name, args }, lang::Term::Var { .. }) => {
-        let mut j = i;
-        let mut new_args = Vec::new();
-        let mut subs: Vec<(String, Box<lang::Term>)> = Vec::new();
-        for arg in args {
-          let (new_arg, temp_subs, i) = freshen_vars(*arg, subs, j);
-          subs = temp_subs;
-          j = i;
-          new_args.push(Box::new(new_arg));
-        }
-        let rule_left_rhs = multi_replace(&subs, rule_left_rhs);
-        Some((lang::Term::Ctr { name, args: new_args }, rule_left_rhs, j))
-      }
-      (lang::Term::U32 { numb }, lang::Term::Var { .. }) => {
-        Some((lang::Term::U32 { numb }, rule_left_rhs, i))
-      }
-
-      // var is replaced
-      (lang::Term::Var { name: ref var_name }, lang::Term::Ctr { .. }) => {
-        let (rule_right_lhs, _subs, i) = freshen_vars(rule_right_lhs.clone(), Vec::new(), i);
-        Some((rule_right_lhs.clone(), replace(var_name, &rule_right_lhs, rule_left_rhs), i))
-      }
-      (lang::Term::Var { name: ref var_name }, lang::Term::U32 { .. }) => {
-        // freshen is unecessary because rule_left_rhs doesn't have subterms
-        Some((rule_right_lhs.clone(), replace(var_name, rule_right_lhs, rule_left_rhs), i))
-      }
-
-      // match same Ctr and recurse
-      (
-        lang::Term::Ctr { name: left_name, args: left_args },
-        lang::Term::Ctr { name: right_name, args: right_args },
-      ) => {
-        if &left_name == right_name && left_args.len() == right_args.len() {
-          let mut new_left_args: Vec<Box<lang::Term>> = Vec::new();
-          let mut rule_left_rhs = rule_left_rhs;
-          let mut j = i;
-          for (left_arg, right_arg) in left_args.into_iter().zip(right_args) {
-            let (new_arg, temp_rule_left_rhs, temp_j) =
-              specialize_left_aux(*left_arg, rule_left_rhs, right_arg, j)?;
-            rule_left_rhs = temp_rule_left_rhs;
-            j = temp_j;
-            new_left_args.push(Box::new(new_arg));
-          }
-          Some((lang::Term::Ctr { name: left_name, args: new_left_args }, rule_left_rhs, j))
-        } else {
-          None
-        }
-      }
-
-      // match same U32
-      (lang::Term::U32 { numb: left_numb }, lang::Term::U32 { numb: right_numb }) => {
-        if left_numb == *right_numb {
-          Some((lang::Term::U32 { numb: left_numb }, rule_left_rhs, i))
-        } else {
-          None
-        }
-      }
-
-      // error
-      _ => None,
-    }
-  }
-
-  // renames the nth variable in left first depth first order to "x.n"
-  // along with a vector of all substitutions made
-  // preconditions:
-  // - valid_pattern(pattern)
-  // example:
-  // freshen_vars((Pair (Pair a b) 2 (Succ n)), [], 0)
-  //   == (
-  //     (Pair (Pair x.0 x.1) 2 (Succ x.2)),
-  //     vec![("a", x.0), ("b", x.1), ("n", x.2)],
-  //     3
-  //   )
-  fn freshen_vars(
-    pattern: lang::Term,
-    mut subs: Vec<(String, Box<lang::Term>)>,
-    i: usize,
-  ) -> (lang::Term, Vec<(String, Box<lang::Term>)>, usize) {
-    match pattern {
-      lang::Term::Var { name } => {
-        subs.push((name.clone(), Box::new(lang::Term::Var { name: show_var(i) })));
-        (lang::Term::Var { name: show_var(i) }, subs, 1 + i)
-      }
-      lang::Term::Ctr { name, args } => {
-        let mut j = i;
-        let mut new_args = Vec::new();
-        for arg in args {
-          let (arg, temp_subs, temp_j) = freshen_vars(*arg, subs, j);
-          subs = temp_subs;
-          j = temp_j;
-          new_args.push(Box::new(arg));
-        }
-        (lang::Term::Ctr { name, args: new_args }, subs, j)
-      }
-      lang::Term::U32 { numb } => (lang::Term::U32 { numb }, subs, i),
-      _ => panic!("Tried to call freshen_vars on invalid_pattern."),
-    }
-  }
-
-  // replaces every var named `from` with term `to` inside `here`
-  fn replace(from: &String, to: &lang::Term, here: lang::Term) -> lang::Term {
-    multi_replace(&vec![(from.clone(), Box::new(to.clone()))], here)
-  }
-  fn multi_replace(from_to: &Vec<(String, Box<lang::Term>)>, here: lang::Term) -> lang::Term {
-    match here {
-      lang::Term::Var { ref name } => {
-        for (from, to) in from_to {
-          if name == from {
-            return *to.clone();
-          }
-        }
-        return here;
-      }
-      // TODO should shadowing stop replaces?
-      // I think it should but currently it doesn't
-      lang::Term::Dup { nam0, nam1, expr, body } => lang::Term::Dup {
-        nam0: nam0,
-        nam1: nam1,
-        expr: Box::new(multi_replace(from_to, *expr)),
-        body: Box::new(multi_replace(from_to, *body)),
-      },
-      lang::Term::Let { name, expr, body } => lang::Term::Let {
-        name: name,
-        expr: Box::new(multi_replace(from_to, *expr)),
-        body: Box::new(multi_replace(from_to, *body)),
-      },
-      lang::Term::Lam { name, body } => {
-        lang::Term::Lam { name: name, body: Box::new(multi_replace(from_to, *body)) }
-      }
-
-      lang::Term::App { func, argm } => lang::Term::App {
-        func: Box::new(multi_replace(from_to, *func)),
-        argm: Box::new(multi_replace(from_to, *argm)),
-      },
-      lang::Term::Ctr { name, args } => {
-        let mut new_args = Vec::new();
-        for arg in args {
-          let new_arg = Box::new(multi_replace(from_to, *arg));
-          new_args.push(new_arg);
-        }
-        lang::Term::Ctr { name: name, args: new_args }
-      }
-      lang::Term::U32 { numb } => lang::Term::U32 { numb: numb },
-      lang::Term::Op2 { oper, val0, val1 } => lang::Term::Op2 {
-        oper,
-        val0: Box::new(multi_replace(from_to, *val0)),
-        val1: Box::new(multi_replace(from_to, *val1)),
-      },
-    }
-  }
-  pub fn flatten_aux(rules: &[lang::Rule]) -> Vec<lang::Rule> {
-    // holds denested rules to be returned in reverse order
-    let mut ret: Vec<lang::Rule> = Vec::new();
-    // holds rules that could need to be denested
-    let mut remaining: Vec<lang::Rule> = Vec::from(rules);
-    remaining.reverse();
-    let mut i = 0;
-    while let Some(reference_pattern) = remaining.pop() {
-      if nested_pattern(&reference_pattern) {
-        // denested rules for recursive call
-        let mut recurse: Vec<lang::Rule> = Vec::new();
-        // rules that will be returned `remaining` after iteration ends
-        let mut return_to_remaining: Vec<lang::Rule> = Vec::new();
-        let first_layer_reference_pattern = first_layer(&reference_pattern, i);
-        ret.push(first_layer_reference_pattern.clone());
-        recurse.push(denest_with_pattern(&first_layer_reference_pattern, &reference_pattern, i));
-        for pattern in remaining.iter().rev() {
-          let specialized_pattern = specialize_left(&pattern, &first_layer_reference_pattern);
-          if let Some(specialized_pattern) = specialized_pattern {
-            recurse.push(denest_with_pattern(
-              &first_layer_reference_pattern,
-              &specialized_pattern,
-              i,
-            ));
-            if !subpattern(&pattern, &first_layer_reference_pattern) {
-              return_to_remaining.push(pattern.clone());
-            }
-          } else {
-            return_to_remaining.push(pattern.clone());
-          }
-        }
-        ret.append(&mut flatten_aux(&recurse));
-        return_to_remaining.reverse();
-        remaining = return_to_remaining;
-        i += 1;
-      } else {
-        ret.push(reference_pattern);
-      }
-    }
-    ret
-  }
-
   // Groups rules by function name
   let mut groups: HashMap<String, Vec<lang::Rule>> = HashMap::new();
   for rule in rules {
@@ -819,6 +454,376 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   }
 
   new_rules
+}
+// Checks if this rule has nested patterns, and must be splitted
+fn nested_pattern(rule: &lang::Rule) -> bool {
+  if let lang::Term::Ctr { ref args, .. } = *rule.lhs {
+    for arg in args {
+      if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
+        for field in arg_args {
+          if is_tested(field) {
+            return true;
+          }
+        }
+      }
+    }
+  }
+  false
+}
+
+fn is_tested(term: &lang::Term) -> bool {
+  matches!(term, lang::Term::Ctr { .. } | lang::Term::U32 { .. })
+}
+fn show_var(i: usize) -> String {
+  put_suffix("x", i)
+}
+fn put_suffix(prefix: &str, i: usize) -> String {
+  prefix.to_owned() + "." + &i.to_string()
+}
+
+// this function takes a rule that may have nested patterns and returns
+// a rule that only matches one layer of constructors and then calls an
+// auxiliary def.
+// look at "first_layer" tests for examples
+// i bet this could be shorter and clearer, but I'm still getting used to rust
+fn first_layer(rule: &lang::Rule, n: usize) -> lang::Rule {
+  if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
+    let mut i = 0;
+    let mut lhs_args: Vec<Box<lang::Term>> = Vec::new();
+    let mut rhs_args: Vec<Box<lang::Term>> = Vec::new();
+    let mut ok = true;
+    for arg in args {
+      match **arg {
+        lang::Term::Ctr { name: ref arg_name, args: ref arg_args } => {
+          let mut new_arg_args: Vec<Box<lang::Term>> = Vec::new();
+          for _ in arg_args {
+            let var_name = show_var(i);
+            i += 1;
+            let var = Box::new(lang::Term::Var { name: var_name });
+            new_arg_args.push(var.clone());
+            rhs_args.push(var);
+          }
+          let new_arg = Box::new(lang::Term::Ctr { name: arg_name.clone(), args: new_arg_args });
+          lhs_args.push(new_arg);
+        }
+        lang::Term::Var { .. } => {
+          let var_name = show_var(i);
+          i += 1;
+          let new_var = Box::new(lang::Term::Var { name: var_name });
+          rhs_args.push(new_var.clone());
+          lhs_args.push(new_var);
+        }
+        lang::Term::U32 { numb } => {
+          lhs_args.push(Box::new(lang::Term::U32 { numb }));
+        }
+        _ => {
+          ok = false;
+          break;
+        }
+      }
+    }
+    if ok {
+      let lhs = Box::new(lang::Term::Ctr { name: name.to_string(), args: lhs_args });
+      let rhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: rhs_args });
+      lang::Rule { lhs, rhs }
+    } else {
+      panic!("Tried to extract first layer of invalid pattern: {}", rule)
+    }
+  } else {
+    panic!("Tried to extract first layer of invalid pattern: {}", rule)
+  }
+}
+
+// takes a pattern, a subpattern and defines the auxiliary function that's on the right hand side
+// of the output of first_layer(rule, n)
+//
+// preconditions:
+//  P0: subpattern(pattern, subpattern) == true
+//  P1: both lhs' should be Ctr
+fn denest_with_pattern(pattern: &lang::Rule, subpattern: &lang::Rule, n: usize) -> lang::Rule {
+  if let (
+    lang::Term::Ctr { ref name, ref args },
+    lang::Term::Ctr { name: ref _sub_name, args: ref sub_args },
+  ) = (&*pattern.lhs, &*subpattern.lhs)
+  {
+    // P0.0: name == _sub_name
+    // P0.1: args.len() == sub_args.len()
+    // P0.2: for (arg, sub_args) in args.iter().zip(sub_args) {
+    //         subpattern_aux(arg, sub_arg) == true
+    //       }
+    let mut new_args: Vec<Box<lang::Term>> = Vec::new();
+    for (arg, sub_arg) in args.iter().zip(sub_args) {
+      match (&**arg, &**sub_arg) {
+        (lang::Term::Ctr { .. }, lang::Term::Ctr { args, .. }) => {
+          new_args.append(&mut args.clone());
+        }
+        (lang::Term::U32 { .. }, _) => (),
+        _ => {
+          new_args.push(sub_arg.clone());
+        }
+      }
+    }
+    let lhs = Box::new(lang::Term::Ctr { name: put_suffix(name, n), args: new_args });
+    let rhs = subpattern.rhs.clone();
+    lang::Rule { lhs, rhs }
+  } else {
+    // absurd, contradicts P1
+    panic!("Tried to denest invalid patterns:\n{}\n{}", pattern, subpattern);
+  }
+}
+
+// checks that if a matches, then b matches, for a valid pair of rules
+// preconditions:
+// - valid_pattern(a)
+// - valid_pattern(b)
+fn subpattern(a: &lang::Rule, b: &lang::Rule) -> bool {
+  subpattern_aux(&*a.lhs, &*b.lhs)
+}
+// i'm actually proud of this code
+// preconditions:
+// - valid_pattern(a)
+// - valid_pattern(b)
+fn subpattern_aux(a: &lang::Term, b: &lang::Term) -> bool {
+  match (a, b) {
+    (lang::Term::Var { .. }, lang::Term::Var { .. }) => true,
+    (lang::Term::Ctr { .. }, lang::Term::Var { .. }) => true,
+    (lang::Term::U32 { .. }, lang::Term::Var { .. }) => true,
+    (
+      lang::Term::Ctr { name: a_name, args: a_args },
+      lang::Term::Ctr { name: b_name, args: b_args },
+    ) => {
+      let mut compatible = true;
+      for (a_arg, b_arg) in a_args.iter().zip(b_args) {
+        compatible = compatible && subpattern_aux(&a_arg, &b_arg);
+      }
+      (a_name == b_name) && (a_args.len() == b_args.len()) && compatible
+    }
+    (lang::Term::U32 { numb: a_numb }, lang::Term::U32 { numb: b_numb }) => a_numb == b_numb,
+    _ => false,
+  }
+}
+
+// specializes rule_left to a subpattern of rule_right, if that's possible
+// all variables will receive fresh names to avoid name collisions
+fn specialize_left(left: &lang::Rule, right: &lang::Rule) -> Option<lang::Rule> {
+  let (lhs, substitutions, _i) = specialize_left_aux(*left.lhs.clone(), Vec::new(), &right.lhs, 0)?;
+  let rhs = multi_replace(&substitutions, *left.rhs.clone());
+  let (lhs, rhs) = (Box::new(lhs), Box::new(rhs));
+  Some(lang::Rule { lhs, rhs })
+}
+// preconditions:
+// P0: valid_pattern(rule_left_lhs)
+// P1: valid_pattern(rule_right_lhs)
+fn specialize_left_aux(
+  rule_left_lhs: lang::Term,
+  mut substitutions: Vec<(String, Box<lang::Term>)>,
+  rule_right_lhs: &lang::Term,
+  i: usize,
+) -> Option<(lang::Term, Vec<(String, Box<lang::Term>)>, usize)> {
+  match (rule_left_lhs, rule_right_lhs) {
+    // the only thing that happens is that vars are freshened
+    (lang::Term::Var { name }, lang::Term::Var { .. }) => {
+      let fresh_var = lang::Term::Var { name: show_var(i) };
+      substitutions.push((name, Box::new(fresh_var.clone())));
+      Some((fresh_var, substitutions, 1 + i))
+    }
+    (lang::Term::Ctr { name, args }, lang::Term::Var { .. }) => {
+      let mut j = i;
+      let mut new_args = Vec::new();
+      let mut subs: Vec<(String, Box<lang::Term>)> = Vec::new();
+      for arg in args {
+        let (new_arg, temp_subs, i) = freshen_vars(*arg, subs, j);
+        subs = temp_subs;
+        j = i;
+        new_args.push(Box::new(new_arg));
+      }
+      substitutions.append(&mut subs);
+      Some((lang::Term::Ctr { name, args: new_args }, substitutions, j))
+    }
+    (lang::Term::U32 { numb }, lang::Term::Var { .. }) => {
+      Some((lang::Term::U32 { numb }, substitutions, i))
+    }
+
+    // var is replaced
+    (lang::Term::Var { name: ref var_name }, lang::Term::Ctr { .. }) => {
+      let (rule_right_lhs, _subs, i) = freshen_vars(rule_right_lhs.clone(), Vec::new(), i);
+      substitutions.push((var_name.clone(), Box::new(rule_right_lhs.clone())));
+      Some((rule_right_lhs, substitutions, i))
+    }
+    (lang::Term::Var { name: ref var_name }, lang::Term::U32 { .. }) => {
+      // freshen is unecessary because rule_left_rhs doesn't have subterms
+      substitutions.push((var_name.clone(), Box::new(rule_right_lhs.clone())));
+      Some((rule_right_lhs.clone(), substitutions, i))
+    }
+
+    // match same Ctr and recurse
+    (
+      lang::Term::Ctr { name: left_name, args: left_args },
+      lang::Term::Ctr { name: right_name, args: right_args },
+    ) => {
+      if &left_name == right_name && left_args.len() == right_args.len() {
+        let mut new_left_args: Vec<Box<lang::Term>> = Vec::new();
+        let mut j = i;
+        for (left_arg, right_arg) in left_args.into_iter().zip(right_args) {
+          let (new_arg, temp_substitutions, temp_j) =
+            specialize_left_aux(*left_arg, substitutions, right_arg, j)?;
+          substitutions = temp_substitutions;
+          j = temp_j;
+          new_left_args.push(Box::new(new_arg));
+        }
+        Some((lang::Term::Ctr { name: left_name, args: new_left_args }, substitutions, j))
+      } else {
+        None
+      }
+    }
+
+    // match same U32
+    (lang::Term::U32 { numb: left_numb }, lang::Term::U32 { numb: right_numb }) => {
+      if left_numb == *right_numb {
+        Some((lang::Term::U32 { numb: left_numb }, substitutions, i))
+      } else {
+        None
+      }
+    }
+
+    // error
+    _ => None,
+  }
+}
+
+// renames the nth variable in left first depth first order to "x.n"
+// along with a vector of all substitutions made
+// preconditions:
+// - valid_pattern(pattern)
+// example:
+// freshen_vars((Pair (Pair a b) 2 (Succ n)), [], 0)
+//   == (
+//     (Pair (Pair x.0 x.1) 2 (Succ x.2)),
+//     vec![("a", x.0), ("b", x.1), ("n", x.2)],
+//     3
+//   )
+fn freshen_vars(
+  pattern: lang::Term,
+  mut subs: Vec<(String, Box<lang::Term>)>,
+  i: usize,
+) -> (lang::Term, Vec<(String, Box<lang::Term>)>, usize) {
+  match pattern {
+    lang::Term::Var { name } => {
+      subs.push((name.clone(), Box::new(lang::Term::Var { name: show_var(i) })));
+      (lang::Term::Var { name: show_var(i) }, subs, 1 + i)
+    }
+    lang::Term::Ctr { name, args } => {
+      let mut j = i;
+      let mut new_args = Vec::new();
+      for arg in args {
+        let (arg, temp_subs, temp_j) = freshen_vars(*arg, subs, j);
+        subs = temp_subs;
+        j = temp_j;
+        new_args.push(Box::new(arg));
+      }
+      (lang::Term::Ctr { name, args: new_args }, subs, j)
+    }
+    lang::Term::U32 { numb } => (lang::Term::U32 { numb }, subs, i),
+    _ => panic!("Tried to call freshen_vars on invalid_pattern."),
+  }
+}
+
+// for every element (from, to) of from_to, replaces every var named `from` with term `to` inside `here`
+// preconditions:
+// - every String of from_to must be unique
+fn multi_replace(from_to: &Vec<(String, Box<lang::Term>)>, here: lang::Term) -> lang::Term {
+  match here {
+    lang::Term::Var { ref name } => {
+      for (from, to) in from_to {
+        if name == from {
+          return *to.clone();
+        }
+      }
+      return here;
+    }
+    // TODO should shadowing stop replaces?
+    // I think it should but currently it doesn't
+    lang::Term::Dup { nam0, nam1, expr, body } => lang::Term::Dup {
+      nam0: nam0,
+      nam1: nam1,
+      expr: Box::new(multi_replace(from_to, *expr)),
+      body: Box::new(multi_replace(from_to, *body)),
+    },
+    lang::Term::Let { name, expr, body } => lang::Term::Let {
+      name: name,
+      expr: Box::new(multi_replace(from_to, *expr)),
+      body: Box::new(multi_replace(from_to, *body)),
+    },
+    lang::Term::Lam { name, body } => {
+      lang::Term::Lam { name: name, body: Box::new(multi_replace(from_to, *body)) }
+    }
+
+    lang::Term::App { func, argm } => lang::Term::App {
+      func: Box::new(multi_replace(from_to, *func)),
+      argm: Box::new(multi_replace(from_to, *argm)),
+    },
+    lang::Term::Ctr { name, args } => {
+      let mut new_args = Vec::new();
+      for arg in args {
+        let new_arg = Box::new(multi_replace(from_to, *arg));
+        new_args.push(new_arg);
+      }
+      lang::Term::Ctr { name: name, args: new_args }
+    }
+    lang::Term::U32 { numb } => lang::Term::U32 { numb: numb },
+    lang::Term::Op2 { oper, val0, val1 } => lang::Term::Op2 {
+      oper,
+      val0: Box::new(multi_replace(from_to, *val0)),
+      val1: Box::new(multi_replace(from_to, *val1)),
+    },
+  }
+}
+pub fn flatten_aux(rules: &[lang::Rule]) -> Vec<lang::Rule> {
+  //println!("(call: flatten_aux");
+  // holds denested rules to be returned in reverse order
+  let mut ret: Vec<lang::Rule> = Vec::new();
+  // holds rules that could need to be denested
+  let mut remaining: Vec<lang::Rule> = Vec::from(rules);
+  remaining.reverse();
+  let mut i = 0;
+  while let Some(reference_pattern) = remaining.pop() {
+    //println!("reference_pattern: {}", reference_pattern);
+    if nested_pattern(&reference_pattern) {
+      // denested rules for recursive call
+      let mut recurse: Vec<lang::Rule> = Vec::new();
+      // rules that will be returned `remaining` after iteration ends
+      let mut return_to_remaining: Vec<lang::Rule> = Vec::new();
+      let first_layer_reference_pattern = first_layer(&reference_pattern, i);
+      //println!("first_layer_reference_pattern: {}", first_layer_reference_pattern);
+      ret.push(first_layer_reference_pattern.clone());
+      recurse.push(denest_with_pattern(&first_layer_reference_pattern, &reference_pattern, i));
+      for pattern in remaining.iter().rev() {
+        //println!("pattern: {}", pattern);
+        let specialized_pattern = specialize_left(&pattern, &first_layer_reference_pattern);
+        if let Some(specialized_pattern) = specialized_pattern {
+          //println!("specialized_pattern: {}", specialized_pattern);
+          let denested =
+            denest_with_pattern(&first_layer_reference_pattern, &specialized_pattern, i);
+          //println!("denested_pattern: {}", denested);
+          recurse.push(denested);
+          if !subpattern(&pattern, &first_layer_reference_pattern) {
+            return_to_remaining.push(pattern.clone());
+          }
+        } else {
+          return_to_remaining.push(pattern.clone());
+        }
+      }
+      //println!("-----------");
+      ret.append(&mut flatten_aux(&recurse));
+      return_to_remaining.reverse();
+      remaining = return_to_remaining;
+      i += 1;
+    } else {
+      ret.push(reference_pattern);
+    }
+  }
+  //println!("return: flatten_aux)");
+  ret
 }
 
 #[cfg(test)]
@@ -1256,6 +1261,25 @@ mod tests {
       println!("{}", rule);
     }
   }
+  #[test]
+  fn specialize_0() {
+    let first_layer_reference_pattern = lang::read_rule(
+      "(Balance.0 (B) (T x.0 x.1 x.2 x.3) x.4 x.5) = (Balance.0.0 x.0 x.1 x.2 x.3 x.4 x.5)",
+    )
+    .unwrap()
+    .unwrap();
+    let pattern = lang::read_rule("(Balance.0 x.0 x.1 x.2 x.3) = (T x.0 x.1 x.2 x.3)").unwrap().unwrap();
+    println!(
+      "specialized_pattern: {}",
+      super::specialize_left(&pattern, &first_layer_reference_pattern).unwrap()
+    );
+  }
+  //first_layer_reference_pattern: (Balance.0 (B) (T x.0 x.1 x.2 x.3) x.4 x.5) = (Balance.0.0 x.0 x.1 x.2 x.3 x.4 x.5)
+  //pattern: (Balance.0 x.0 x.1 x.2 x.3) = (T x.0 x.1 x.2 x.3)
+  //specialized_pattern: (Balance.0 (B) (T x.0 x.1 x.2 x.3) x.4 x.5) = (T (B) (T x.0 x.1 x.4 x.5) x.4 x.5)
+  //denested_pattern: (Balance.0.0 x.0 x.1 x.2 x.3 x.4 x.5) = (T (B) (T x.0 x.1 x.4 x.5) x.4 x.5)
+  //
+  //pattern: (Balance.0 (B) (T x.0 x.1 x.2 x.3) x.2 x.3) = (T (B) (T x.0 x.1 x.2 x.3)x.1 x.2 x.3)
   //  #[test]
   //  fn freshen_0() {
   //    let unfresh: lang::Term = *lang::read_term("(Pair (Pair a b) 2 (Succ n))").unwrap();
