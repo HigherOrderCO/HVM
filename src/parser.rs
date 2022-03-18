@@ -56,7 +56,9 @@ pub fn find(text: &str, target: &str) -> usize {
 pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> Result<A, String> {
   match parser(State { code, index: 0 }) {
     Ok((_, value)) => Ok(value),
-    Err(msg) => Err(msg),
+    Err(msg) => {
+      Err(msg)
+    }
   }
 }
 
@@ -366,7 +368,7 @@ pub fn name1(state: State) -> Answer<String> {
 // ======
 
 pub fn expected<'a, A>(name: &str, size: usize, state: State<'a>) -> Answer<'a, A> {
-  Err(format!("Expected `{}`:\n{}", name, &highlight(state.index, state.index + size, state.code)))
+  Err(format!("Expected {}:\n{}", name, &highlight(state.index, state.index + size, state.code)))
 }
 
 // WARN: This fails if `from_index` or `to_index` are not `char` boundaries.

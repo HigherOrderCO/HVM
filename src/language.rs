@@ -7,7 +7,7 @@ use std::fmt;
 // Term
 // ----
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum Term {
   Var { name: String }, // TODO: add `global: bool`
   Dup { nam0: String, nam1: String, expr: BTerm, body: BTerm },
@@ -21,7 +21,7 @@ pub enum Term {
 
 pub type BTerm = Box<Term>;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub enum Oper {
   Add,
   Sub,
@@ -44,7 +44,7 @@ pub enum Oper {
 // Rule
 // ----
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Rule {
   pub lhs: BTerm,
   pub rhs: BTerm,
@@ -98,9 +98,7 @@ impl fmt::Display for Term {
       fn go(term: &Term, text: &mut String, fst: bool) -> Option<()> {
         if let Term::Ctr { name, args } = term {
           if name == "Cons" && args.len() == 2 {
-            if !fst {
-              text.push_str(", ");
-            }
+            text.push(if fst {'\0'} else {','});
             text.push_str(&format!("{}", args[0]));
             go(&args[1], text, false)?;
             return Some(());
@@ -153,10 +151,10 @@ impl fmt::Display for Term {
         let sugars = [str_sugar, lst_sugar];
         for sugar in sugars {
           if let Some(term) = sugar(self) {
-            return write!(f, "{}", term);
+            return write!(f, "{}", term)
           }
         }
-
+        
         write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
       Self::U32 { numb } => write!(f, "{}", numb),
@@ -375,9 +373,9 @@ pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
     Box::new(|state| {
       let (state, _) = parser::text("'", state)?;
       if let Some(c) = parser::head(state) {
-        let state = parser::tail(state);
+        let state      = parser::tail(state);
         let (state, _) = parser::text("'", state)?;
-        Ok((state, Box::new(Term::U32 { numb: c as u32 })))
+        Ok((state, Box::new(Term::U32{numb: c as u32})))
       } else {
         parser::expected("character", 1, state)
       }

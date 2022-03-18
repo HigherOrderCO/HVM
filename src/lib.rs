@@ -32,8 +32,7 @@ mod tests {
     (Main) = (Fn 20)
     ";
 
-    let (norm, _cost, _size, _time) =
-      eval_code(&make_call("Main", &[]).unwrap(), code, false).unwrap();
+    let (norm, _cost, _size, _time) = eval_code(&make_call("Main", &[]).unwrap(), code, false).unwrap();
     let norm = norm.to_string();
     assert_eq!(norm, "6765");
   }
