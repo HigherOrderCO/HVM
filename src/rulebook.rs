@@ -234,7 +234,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
               //println!("Allowed unbound variable: {}", name);
               //Box::new(lang::Term::Var { name: name.clone() })
             } else {
-              panic!("Unbound variable: {}", name);
+              return Err(format!("Unbound variable: `{}`.", name));
             }
           }
         }
@@ -433,7 +433,16 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
 
 // Sanitizes all rules in a vector
 pub fn sanitize_rules(rules: &[lang::Rule]) -> Vec<lang::Rule> {
-  rules.iter().map(|rule| sanitize_rule(rule).unwrap()).collect()
+  rules.iter().map(|rule| {
+    match sanitize_rule(rule) {
+      Ok(rule) => rule,
+      Err(err) => {
+        println!("{}", err);
+        println!("On rule: `{}`.", rule);
+        std::process::exit(0); // FIXME: avoid this, propagate this error upwards
+      }
+    }
+  }).collect()
 }
 
 #[cfg(test)]
