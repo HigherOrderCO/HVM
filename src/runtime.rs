@@ -13,6 +13,7 @@ const U64_PER_GB: u64 = 0x8000000;
 
 pub const MAX_ARITY: u64 = 16;
 pub const MEM_SPACE: u64 = U64_PER_GB;
+pub const MAX_DYNFUNS: u64 = 65536;
 
 pub const SEEN_SIZE: usize = 4194304; // uses 32 MB, covers heaps up to 2 GB
 
@@ -87,6 +88,7 @@ pub fn new_worker() -> Worker {
 // -------
 
 static mut SEEN_DATA: [u64; SEEN_SIZE] = [0; SEEN_SIZE];
+static mut CALL_COUNT : &'static mut [u64] = &mut [0; MAX_DYNFUNS as usize];
 
 // Constructors
 // ------------
@@ -641,7 +643,10 @@ pub fn reduce(
           let _ari = get_ari(term);
           if let Some(f) = &funcs[fun as usize] {
             if (f.rewriter)(mem, dups, host, term) {
-              //println!("cal-fun");
+              //TODO: finish implementation
+              //unsafe {
+                //CALL_COUNT[fun as usize] += 1;
+              //}
               init = 1;
               continue;
             }
@@ -740,7 +745,32 @@ pub fn normal(
       break;
     }
   }
+  print_call_counts(opt_id_to_name);
   done
+}
+
+// Debug: prints call counts
+fn print_call_counts(opt_id_to_name: Option<&HashMap<u64, String>>) {
+  unsafe {
+    let mut counts : Vec<(String,u64)> = Vec::new();
+    for fun in 0..MAX_DYNFUNS {
+      if let Some(id_to_name) = opt_id_to_name {
+        match id_to_name.get(&fun) {
+          None => {
+            break;
+          }
+          Some(fun_name) => {
+            counts.push((fun_name.clone(), CALL_COUNT[fun as usize]));
+          }
+        }
+      }
+    }
+    counts.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+    for (name, count) in counts {
+      println!("{} - {}", name, count);
+    }
+    println!("");
+  }
 }
 
 // Debug
