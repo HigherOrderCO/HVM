@@ -124,7 +124,7 @@ pub fn build_dynfun(
   DynFun { redex, rules: dynrules }
 }
 
-fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
+pub fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
   let DynVar { param, field, erase: _ } = var;
   match field {
     Some(i) => rt::ask_arg(mem, rt::ask_arg(mem, term, *param), *i),
@@ -132,7 +132,7 @@ fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
   }
 }
 
-fn hash<T: Hash>(t: &T) -> u64 {
+pub fn hash<T: Hash>(t: &T) -> u64 {
   let mut s = DefaultHasher::new();
   t.hash(&mut s);
   s.finish()
@@ -149,7 +149,7 @@ pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>>
   funcs
 }
 
-fn build_runtime_function(
+pub fn build_runtime_function(
   comp: &rb::RuleBook,
   rules: &[lang::Rule],
 ) -> rt::Function {
@@ -233,7 +233,7 @@ fn build_runtime_function(
 }
 
 /// Converts a language Term to a runtime Term
-fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
+pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
   fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
       lang::Oper::Add => rt::ADD,
@@ -324,7 +324,7 @@ fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> Dy
   convert_term(term, comp, 0, &mut vars)
 }
 
-fn build_body(term: &DynTerm, free_vars: u64) -> Body {
+pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
   fn link(nodes: &mut Vec<Node>, targ: u64, slot: u64, elem: Elem) {
     nodes[targ as usize][slot as usize] = elem;
     if let Elem::Loc { value, targ: var_targ, slot: var_slot } = elem {
@@ -459,7 +459,7 @@ fn build_body(term: &DynTerm, free_vars: u64) -> Body {
 }
 
 static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
-fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, vars: &[DynVar], dups: &mut u64, body: &Body) -> rt::Lnk {
+pub fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, vars: &[DynVar], dups: &mut u64, body: &Body) -> rt::Lnk {
   unsafe {
     let hosts = &mut ALLOC_BODY_WORKSPACE;
     let (elem, nodes) = body;
@@ -506,7 +506,7 @@ fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, vars: &[DynVar], dups: &mut u
   }
 }
 
-fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
+pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   let mut dups = 0;
   let host = rt::alloc(mem, 1);
   let body = build_body(term, 0);
@@ -515,7 +515,7 @@ fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   host
 }
 
-fn alloc_term(
+pub fn alloc_term(
   mem: &mut rt::Worker,
   comp: &rb::RuleBook,
   term: &lang::Term,
