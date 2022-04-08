@@ -35,7 +35,6 @@ pub fn new_rulebook() -> RuleBook {
 
 // Adds a group to a rulebook
 pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
-
   fn register_names(book: &mut RuleBook, term: &lang::Term) {
     match term {
       lang::Term::Dup { expr, body, .. } => {
@@ -83,12 +82,10 @@ pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
       book.ctr_is_cal.insert(name.clone(), true);
     }
   }
-
 }
 
 // Converts a file to a rulebook
 pub fn gen_rulebook(file: &lang::File) -> RuleBook {
-
   // Creates an empty rulebook
   let mut book = new_rulebook();
 
@@ -231,8 +228,8 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
               let name = format!("{}.{}", name, used - 1);
               Box::new(lang::Term::Var { name })
             //} else if is_global_name(&name) {
-              //println!("Allowed unbound variable: {}", name);
-              //Box::new(lang::Term::Var { name: name.clone() })
+            // println!("Allowed unbound variable: {}", name);
+            // Box::new(lang::Term::Var { name: name.clone() })
             } else {
               return Err(format!("Unbound variable: `{}`.", name));
             }
@@ -433,16 +430,19 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
 
 // Sanitizes all rules in a vector
 pub fn sanitize_rules(rules: &[lang::Rule]) -> Vec<lang::Rule> {
-  rules.iter().map(|rule| {
-    match sanitize_rule(rule) {
-      Ok(rule) => rule,
-      Err(err) => {
-        println!("{}", err);
-        println!("On rule: `{}`.", rule);
-        std::process::exit(0); // FIXME: avoid this, propagate this error upwards
+  rules
+    .iter()
+    .map(|rule| {
+      match sanitize_rule(rule) {
+        Ok(rule) => rule,
+        Err(err) => {
+          println!("{}", err);
+          println!("On rule: `{}`.", rule);
+          std::process::exit(0); // FIXME: avoid this, propagate this error upwards
+        }
       }
-    }
-  }).collect()
+    })
+    .collect()
 }
 
 #[cfg(test)]

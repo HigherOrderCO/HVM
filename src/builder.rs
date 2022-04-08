@@ -1,14 +1,14 @@
-/// Moves HVM Terms to runtime, and building dynamic functions.
+//! Moves HVM Terms to runtime, and building dynamic functions.
 
-// TODO: "dups" still needs to be moved out on alloc_body etc.
+// TODO: "dups" still needs to be moved out on `alloc_body` etc.
 
 use crate::language as lang;
 use crate::readback as rd;
 use crate::rulebook as rb;
 use crate::runtime as rt;
+use std::collections::HashMap;
 use std::iter;
 use std::time::Instant;
-use std::collections::{HashMap};
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -65,10 +65,7 @@ pub struct DynFun {
   pub rules: Vec<DynRule>,
 }
 
-pub fn build_dynfun(
-  comp: &rb::RuleBook,
-  rules: &[lang::Rule],
-) -> DynFun {
+pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
   let mut redex = if let lang::Term::Ctr { name: _, ref args } = *rules[0].lhs {
     vec![false; args.len()]
   } else {
@@ -149,10 +146,7 @@ pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>>
   funcs
 }
 
-pub fn build_runtime_function(
-  comp: &rb::RuleBook,
-  rules: &[lang::Rule],
-) -> rt::Function {
+pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
   let dynfun = build_dynfun(comp, rules);
 
   let arity = dynfun.redex.len() as u64;
@@ -238,7 +232,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
     match oper {
       lang::Oper::Add => rt::ADD,
       lang::Oper::Sub => rt::SUB,
-      lang::Oper::Mul => rt::MUL, 
+      lang::Oper::Mul => rt::MUL,
       lang::Oper::Div => rt::DIV,
       lang::Oper::Mod => rt::MOD,
       lang::Oper::And => rt::AND,
@@ -264,12 +258,12 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
   ) -> DynTerm {
     match term {
       lang::Term::Var { name } => {
-        if let Some((idx,_)) = vars.iter().enumerate().rev().find(|(_, var)| var == &name) {
-          DynTerm::Var{ bidx: idx as u64 }
+        if let Some((idx, _)) = vars.iter().enumerate().rev().find(|(_, var)| var == &name) {
+          DynTerm::Var { bidx: idx as u64 }
         } else {
-          DynTerm::Glo{ glob: hash(name) }
+          DynTerm::Glo { glob: hash(name) }
         }
-      },
+      }
       lang::Term::Dup { nam0, nam1, expr, body } => {
         let eras = (nam0 == "*", nam1 == "*");
         let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
@@ -330,11 +324,12 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
     if let Elem::Loc { value, targ: var_targ, slot: var_slot } = elem {
       let tag = rt::get_tag(value);
       if tag <= rt::VAR {
-        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] = Elem::Loc { value: rt::Arg(0), targ, slot };
+        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] =
+          Elem::Loc { value: rt::Arg(0), targ, slot };
       }
     }
   }
-  fn alloc_lam(globs: &mut HashMap<u64,u64>, nodes: &mut Vec<Node>, glob: u64) -> u64 {
+  fn alloc_lam(globs: &mut HashMap<u64, u64>, nodes: &mut Vec<Node>, glob: u64) -> u64 {
     if let Some(targ) = globs.get(&glob) {
       *targ
     } else {
@@ -352,7 +347,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
     vars: &mut Vec<Elem>,
     globs: &mut HashMap<u64, u64>,
     nodes: &mut Vec<Node>,
-    links: &mut Vec<(u64,u64,Elem)>,
+    links: &mut Vec<(u64, u64, Elem)>,
   ) -> Elem {
     match term {
       DynTerm::Var { bidx } => {
@@ -445,13 +440,13 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
     }
   }
 
-  let mut links: Vec<(u64,u64,Elem)> = Vec::new();
+  let mut links: Vec<(u64, u64, Elem)> = Vec::new();
   let mut nodes: Vec<Node> = Vec::new();
-  let mut globs: HashMap<u64,u64> = HashMap::new();
+  let mut globs: HashMap<u64, u64> = HashMap::new();
   let mut vars: Vec<Elem> = (0..free_vars).map(|i| Elem::Ext { index: i }).collect();
 
   let elem = gen_elems(term, &mut vars, &mut globs, &mut nodes, &mut links);
-  for (targ,slot,elem) in links {
+  for (targ, slot, elem) in links {
     link(&mut nodes, targ, slot, elem);
   }
 
@@ -459,20 +454,28 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
 }
 
 static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
-pub fn alloc_body(mem: &mut rt::Worker, term: rt::Lnk, vars: &[DynVar], dups: &mut u64, body: &Body) -> rt::Lnk {
+pub fn alloc_body(
+  mem: &mut rt::Worker,
+  term: rt::Lnk,
+  vars: &[DynVar],
+  dups: &mut u64,
+  body: &Body,
+) -> rt::Lnk {
   unsafe {
     let hosts = &mut ALLOC_BODY_WORKSPACE;
     let (elem, nodes) = body;
-    fn elem_to_lnk(mem: &mut rt::Worker, term: rt::Lnk, vars: &[DynVar], dups: &mut u64, elem: &Elem) -> rt::Lnk {
+    fn elem_to_lnk(
+      mem: &mut rt::Worker,
+      term: rt::Lnk,
+      vars: &[DynVar],
+      dups: &mut u64,
+      elem: &Elem,
+    ) -> rt::Lnk {
       unsafe {
         let hosts = &mut ALLOC_BODY_WORKSPACE;
         match elem {
-          Elem::Fix { value } => {
-            *value
-          }
-          Elem::Ext { index } => {
-            get_var(mem, term, &vars[*index as usize])
-          }
+          Elem::Fix { value } => *value,
+          Elem::Ext { index } => get_var(mem, term, &vars[*index as usize]),
           Elem::Loc { value, targ, slot } => {
             let mut val = value + hosts[*targ as usize] + slot;
             // should be changed if the pointer format changes
@@ -515,16 +518,16 @@ pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   host
 }
 
-pub fn alloc_term(
-  mem: &mut rt::Worker,
-  comp: &rb::RuleBook,
-  term: &lang::Term,
-) -> u64 {
+pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) -> u64 {
   alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
 }
 
 // Evaluates a HVM term to normal form
-pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> Result<(String, u64, u64, u64), String> {
+pub fn eval_code(
+  call: &lang::Term,
+  code: &str,
+  debug: bool,
+) -> Result<(String, u64, u64, u64), String> {
   let mut worker = rt::new_worker();
 
   // Parses and reads the input file
@@ -547,7 +550,7 @@ pub fn eval_code(call: &lang::Term, code: &str, debug: bool) -> Result<(String, 
   // Reads it back to a Lambolt string
   let book = Some(book);
   let code = match rd::as_term(&worker, &book, host) {
-    Ok(x)   => format!("{}", x),
+    Ok(x) => format!("{}", x),
     Err(..) => rd::as_code(&worker, &book, host),
   };
 

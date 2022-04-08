@@ -76,12 +76,7 @@ pub struct Worker {
 }
 
 pub fn new_worker() -> Worker {
-  Worker {
-    node: vec![0; 6 * 0x8000000],
-    size: 0,
-    free: vec![vec![]; 16],
-    cost: 0
-  }
+  Worker { node: vec![0; 6 * 0x8000000], size: 0, free: vec![vec![]; 16], cost: 0 }
 }
 
 // Globals
@@ -215,7 +210,7 @@ pub fn clear(mem: &mut Worker, loc: u64, size: u64) {
 }
 
 pub fn collect(mem: &mut Worker, term: Lnk) {
-  let mut stack : Vec<Lnk> = Vec::new();
+  let mut stack: Vec<Lnk> = Vec::new();
   let mut next = term;
   loop {
     let term = next;
@@ -282,52 +277,52 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
   }
 }
 
-//pub fn collect(mem: &mut Worker, term: Lnk) {
-  //match get_tag(term) {
-    //DP0 => {
-      //link(mem, get_loc(term, 0), Era());
-      ////r_educe(mem, get_loc(ask_arg(mem,term,1),0));
-    //}
-    //DP1 => {
-      //link(mem, get_loc(term, 1), Era());
-      ////r_educe(mem, get_loc(ask_arg(mem,term,0),0));
-    //}
-    //VAR => {
-      //link(mem, get_loc(term, 0), Era());
-    //}
-    //LAM => {
-      //if get_tag(ask_arg(mem, term, 0)) != ERA {
-        //link(mem, get_loc(ask_arg(mem, term, 0), 0), Era());
-      //}
-      //collect(mem, ask_arg(mem, term, 1));
-      //clear(mem, get_loc(term, 0), 2);
-    //}
-    //APP => {
-      //collect(mem, ask_arg(mem, term, 0));
-      //collect(mem, ask_arg(mem, term, 1));
-      //clear(mem, get_loc(term, 0), 2);
-    //}
-    //PAR => {
-      //collect(mem, ask_arg(mem, term, 0));
-      //collect(mem, ask_arg(mem, term, 1));
-      //clear(mem, get_loc(term, 0), 2);
-    //}
-    //OP2 => {
-      //collect(mem, ask_arg(mem, term, 0));
-      //collect(mem, ask_arg(mem, term, 1));
-      //clear(mem, get_loc(term, 0), 2);
-    //}
-    //U32 => {}
-    //CTR | CAL => {
-      //let arity = get_ari(term);
-      //for i in 0..arity {
-        //collect(mem, ask_arg(mem, term, i));
-      //}
-      //clear(mem, get_loc(term, 0), arity);
-    //}
-    //_ => {}
-  //}
-//}
+// pub fn collect(mem: &mut Worker, term: Lnk) {
+//   match get_tag(term) {
+//     DP0 => {
+//       link(mem, get_loc(term, 0), Era());
+//       //r_educe(mem, get_loc(ask_arg(mem,term,1),0));
+//     }
+//     DP1 => {
+//       link(mem, get_loc(term, 1), Era());
+//       //r_educe(mem, get_loc(ask_arg(mem,term,0),0));
+//     }
+//     VAR => {
+//       link(mem, get_loc(term, 0), Era());
+//     }
+//     LAM => {
+//       if get_tag(ask_arg(mem, term, 0)) != ERA {
+//         link(mem, get_loc(ask_arg(mem, term, 0), 0), Era());
+//       }
+//       collect(mem, ask_arg(mem, term, 1));
+//       clear(mem, get_loc(term, 0), 2);
+//     }
+//     APP => {
+//       collect(mem, ask_arg(mem, term, 0));
+//       collect(mem, ask_arg(mem, term, 1));
+//       clear(mem, get_loc(term, 0), 2);
+//     }
+//     PAR => {
+//       collect(mem, ask_arg(mem, term, 0));
+//       collect(mem, ask_arg(mem, term, 1));
+//       clear(mem, get_loc(term, 0), 2);
+//     }
+//     OP2 => {
+//       collect(mem, ask_arg(mem, term, 0));
+//       collect(mem, ask_arg(mem, term, 1));
+//       clear(mem, get_loc(term, 0), 2);
+//     }
+//     U32 => {}
+//     CTR | CAL => {
+//       let arity = get_ari(term);
+//       for i in 0..arity {
+//         collect(mem, ask_arg(mem, term, i));
+//       }
+//       clear(mem, get_loc(term, 0), arity);
+//     }
+//     _ => {}
+//   }
+// }
 
 pub fn inc_cost(mem: &mut Worker) {
   mem.cost += 1;
@@ -503,7 +498,8 @@ pub fn reduce(
               inc_cost(mem);
               subst(mem, ask_arg(mem, term, 0), ask_arg(mem, arg0, 0));
               subst(mem, ask_arg(mem, term, 1), ask_arg(mem, arg0, 1));
-              let _done = link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
+              let _done =
+                link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
               clear(mem, get_loc(term, 0), 3);
               clear(mem, get_loc(arg0, 0), 2);
               init = 1;
@@ -749,7 +745,7 @@ pub fn normal(
 // Debug: prints call counts
 fn print_call_counts(opt_id_to_name: Option<&HashMap<u64, String>>) {
   unsafe {
-    let mut counts : Vec<(String,u64)> = Vec::new();
+    let mut counts: Vec<(String, u64)> = Vec::new();
     for fun in 0..MAX_DYNFUNS {
       if let Some(id_to_name) = opt_id_to_name {
         match id_to_name.get(&fun) {
@@ -801,7 +797,7 @@ pub fn show_lnk(x: Lnk) -> String {
       F32 => "F32",
       OUT => "OUT",
       NIL => "NIL",
-      _   => "?",
+      _ => "?",
     };
     format!("{}{}:{:x}:{:x}", tgs, ari, ext, val)
   }
@@ -934,7 +930,7 @@ pub fn show_term(
           0xD => ">=",
           0xE => ">",
           0xF => "!=",
-          _   => "?e",
+          _ => "?e",
         };
         format!("({} {} {})", symb, val0, val1)
       }
@@ -975,8 +971,10 @@ pub fn show_term(
     let what = String::from("?h");
     //let kind = kinds.get(&key).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
-    let nam0 = if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
-    let nam1 = if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+    let nam0 =
+      if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+    let nam1 =
+      if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
     text.push_str(&format!(
       "\ndup {} {} = {};",
       //kind,
