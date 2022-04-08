@@ -414,6 +414,6 @@ or just send me a personal message on [Twitter](https://twitter.com/victortaelin
 Community
 =========
 
-To follow the project, please join our [Telegram Chat](https://t.me/formality_lang),
+To follow the project, please join our [Telegram Chat](https://t.me/kindelia),
 the [Kindelia community on Discord](https://discord.gg/VV7ppaVWYn) or
 [Matrix](https://matrix.to/#/#kindelia:kde.org)!
