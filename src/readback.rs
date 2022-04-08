@@ -1,4 +1,4 @@
-/// Moves HVM Terms from runtime, and building dynamic functions.
+//! Moves HVM Terms from runtime, and building dynamic functions.
 
 use crate::language as lang;
 use crate::rulebook as rb;
@@ -242,7 +242,11 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
   go(ctx, &mut stacks, term, 0)
 }
 
-pub fn as_term(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> Result<Box<lang::Term>, String> {
+pub fn as_term(
+  mem: &Worker,
+  comp: &Option<rb::RuleBook>,
+  host: u64,
+) -> Result<Box<lang::Term>, String> {
   //println!("readback: {}", as_code(mem, comp, host));
   lang::read_term(&as_code(mem, comp, host))
 }
