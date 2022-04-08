@@ -34,7 +34,7 @@ pub fn new_rulebook() -> RuleBook {
 }
 
 // Adds a group to a rulebook
-pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
+pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
   fn register_names(book: &mut RuleBook, term: &lang::Term) {
     match term {
       lang::Term::Dup { expr, body, .. } => {
@@ -72,7 +72,7 @@ pub fn add_group(book: &mut RuleBook, name: &String, group: &RuleGroup) {
   }
 
   // Inserts the group on the book
-  book.rule_group.insert(name.clone(), group.clone());
+  book.rule_group.insert(name.to_string(), group.clone());
 
   // Builds its metadata (name_to_id, id_to_name, ctr_is_cal)
   for rule in &group.1 {
@@ -125,7 +125,7 @@ pub fn group_rules(rules: &[lang::Rule]) -> HashMap<String, RuleGroup> {
 }
 
 pub fn is_global_name(name: &str) -> bool {
-  name.len() > 0 && name.starts_with(&"$")
+  !name.is_empty() && name.starts_with(&"$")
 }
 
 // Sanitize
@@ -212,27 +212,25 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
           let mut name = tbl.get(name).unwrap_or(name).clone();
           rename_erased(&mut name, ctx.uses);
           Box::new(lang::Term::Var { name })
-        } else {
-          if is_global_name(&name) {
-            if let Some(_) = tbl.get(name) {
-              panic!("Using a global variable more than once isn't supported yet. Use an explicit 'let' to clone it. {} {:?}", name, tbl.get(name));
-            } else {
-              tbl.insert(name.clone(), String::new());
-              Box::new(lang::Term::Var { name: name.clone() })
-            }
+        } else if is_global_name(name) {
+          if tbl.get(name).is_some() {
+            panic!("Using a global variable more than once isn't supported yet. Use an explicit 'let' to clone it. {} {:?}", name, tbl.get(name));
           } else {
-            // create a var with the name generated before
-            // concatenated with '.{{times_used}}'
-            if let Some(name) = tbl.get(name) {
-              let used = { *ctx.uses.entry(name.clone()).and_modify(|x| *x += 1).or_insert(1) };
-              let name = format!("{}.{}", name, used - 1);
-              Box::new(lang::Term::Var { name })
-            //} else if is_global_name(&name) {
-            // println!("Allowed unbound variable: {}", name);
-            // Box::new(lang::Term::Var { name: name.clone() })
-            } else {
-              return Err(format!("Unbound variable: `{}`.", name));
-            }
+            tbl.insert(name.clone(), String::new());
+            Box::new(lang::Term::Var { name: name.clone() })
+          }
+        } else {
+          // create a var with the name generated before
+          // concatenated with '.{{times_used}}'
+          if let Some(name) = tbl.get(name) {
+            let used = { *ctx.uses.entry(name.clone()).and_modify(|x| *x += 1).or_insert(1) };
+            let name = format!("{}.{}", name, used - 1);
+            Box::new(lang::Term::Var { name })
+          //} else if is_global_name(&name) {
+          // println!("Allowed unbound variable: {}", name);
+          // Box::new(lang::Term::Var { name: name.clone() })
+          } else {
+            return Err(format!("Unbound variable: `{}`.", name));
           }
         }
       }
@@ -271,7 +269,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         duplicator(&new_name, expr, body, ctx.uses)
       }
       lang::Term::Lam { name, body } => {
-        let mut new_name = if is_global_name(&name) { name.clone() } else { (ctx.fresh)() };
+        let mut new_name = if is_global_name(name) { name.clone() } else { (ctx.fresh)() };
         let got_name = tbl.remove(name);
         tbl.insert(name.clone(), new_name.clone());
         let body = sanitize_term(body, lhs, tbl, ctx)?;

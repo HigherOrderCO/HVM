@@ -33,8 +33,8 @@ fn compile_name(name: &str) -> String {
   // TODO: this can still cause some name collisions.
   // Note: avoiding the use of `$` because it is not an actually valid
   // identifier character in C.
-  let name = name.replace("_", "__");
-  let name = name.replace(".", "_");
+  let name = name.replace('_', "__");
+  let name = name.replace('.', "_");
   format!("_{}_", name.to_uppercase())
 }
 

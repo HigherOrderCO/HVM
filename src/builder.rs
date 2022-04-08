@@ -275,7 +275,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
         DynTerm::Dup { eras, expr, body }
       }
       lang::Term::Lam { name, body } => {
-        let glob = if rb::is_global_name(&name) { hash(name) } else { 0 };
+        let glob = if rb::is_global_name(name) { hash(name) } else { 0 };
         let eras = name == "*";
         vars.push(name.clone());
         let body = Box::new(convert_term(body, comp, depth + 1, vars));
@@ -319,7 +319,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
 }
 
 pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
-  fn link(nodes: &mut Vec<Node>, targ: u64, slot: u64, elem: Elem) {
+  fn link(nodes: &mut [Node], targ: u64, slot: u64, elem: Elem) {
     nodes[targ as usize][slot as usize] = elem;
     if let Elem::Loc { value, targ: var_targ, slot: var_slot } = elem {
       let tag = rt::get_tag(value);
@@ -352,7 +352,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
     match term {
       DynTerm::Var { bidx } => {
         if *bidx < vars.len() as u64 {
-          vars[*bidx as usize].clone()
+          vars[*bidx as usize]
         } else {
           panic!("Unbound variable.");
         }

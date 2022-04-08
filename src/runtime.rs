@@ -83,7 +83,7 @@ pub fn new_worker() -> Worker {
 // -------
 
 static mut SEEN_DATA: [u64; SEEN_SIZE] = [0; SEEN_SIZE];
-static mut CALL_COUNT: &'static mut [u64] = &mut [0; MAX_DYNFUNS as usize];
+static mut CALL_COUNT: &mut [u64] = &mut [0; MAX_DYNFUNS as usize];
 
 // Constructors
 // ------------
@@ -762,7 +762,7 @@ fn print_call_counts(opt_id_to_name: Option<&HashMap<u64, String>>) {
     for (name, count) in counts {
       println!("{} - {}", name, count);
     }
-    println!("");
+    println!();
   }
 }
 
@@ -953,9 +953,7 @@ pub fn show_term(
         };
         format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
-      ERA => {
-        format!("*")
-      }
+      ERA => "*".to_string(),
       _ => format!("?g({})", get_tag(term)),
     };
     if term == focus {
