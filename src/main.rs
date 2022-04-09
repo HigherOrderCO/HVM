@@ -6,10 +6,42 @@ mod readback;
 mod rulebook;
 mod runtime;
 
+use clap::{Parser, Subcommand};
+
+#[derive(Parser)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+pub struct Cli {
+  #[clap(subcommand)]
+  pub command: Command,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+  #[clap(about = "Run a file interpreted", name = "run", aliases = &["r"])]
+  Run {
+    file: String,
+    params: Vec<String>,
+  },
+
+  #[clap(about = "Compile file to C",  name = "compile", aliases = &["c"])]
+  Compile {
+    file: String,
+    #[clap(long)]
+    single_thread: bool,
+  },
+
+  #[clap(about = "Run in debug mode", name = "debug", aliases = &["d"])]
+  Debug {
+    file: String,
+    params: Vec<String>,
+  },
+}
+
 fn main() {
   //match run_example() {
   match run_cli() {
-    Ok(..) => {},
+    Ok(..) => {}
     Err(err) => {
       eprintln!("{}", err);
     }
@@ -17,7 +49,7 @@ fn main() {
 }
 
 fn run_cli() -> Result<(), String> {
-  let args: Vec<String> = std::env::args().collect();
+  let cli_matches = Cli::parse();
 
   fn hvm(file: &str) -> String {
     if file.ends_with(".hvm") {
@@ -27,67 +59,42 @@ fn run_cli() -> Result<(), String> {
     }
   }
 
-  let cmd = match &args[..] {
-    [] | [_] => {
-      show_help();
-      return Ok(());
+  match cli_matches.command {     
+    Command::Compile{ file, single_thread } => {
+      let file = &hvm(&file);
+      let code = load_file_code(file)?;
+
+      compile_code(&code, file,  !single_thread)?;
+      Ok(())
     }
-    [_, c, ..] => c.as_str(),
-  };
+    Command::Run { file, params } => {
+      let code = load_file_code(&hvm(&file))?;
 
-  if matches!(cmd, "d" | "debug") && args.len() >= 3 {
-    let file = &hvm(&args[2]);
-    return run_code(&load_file_code(file)?, true);
+      run_code(&code, false, params)?;
+      Ok(())
+    }
+
+    Command::Debug { file, params } => {
+      let code = load_file_code(&hvm(&file))?;
+
+      run_code(&code, true, params)?;
+      Ok(())
+    }
   }
-
-  if matches!(cmd, "r" | "run") && args.len() >= 3 {
-    let file = &hvm(&args[2]);
-    return run_code(&load_file_code(file)?, false);
-  }
-
-  if matches!(cmd, "c" | "compile") && args.len() >= 3 {
-    let file = &hvm(&args[2]);
-    let parallel = !(args.len() >= 4 && args[3] == "--single-thread");
-    return compile_code(&load_file_code(file)?, file, parallel);
-  }
-
-  println!("Invalid arguments: {:?}.", args);
-  Ok(())
 }
 
-fn show_help() {
-  println!("High-order Virtual Machine ({})", env!("CARGO_PKG_VERSION"));
-  println!("==========================");
-  println!();
-  println!("To run a file, interpreted:");
-  println!();
-  println!("  hvm r file.hvm");
-  println!();
-  println!("To run a file in debug mode:");
-  println!();
-  println!("  hvm d file.hvm");
-  println!();
-  println!("To compile a file to C:");
-  println!();
-  println!("  hvm c file.hvm [--single-thread]");
-  println!();
-  println!("This is a PROTOTYPE. Report bugs on https://github.com/Kindelia/HVM/issues!");
-  println!();
-}
-
-fn make_call() -> Result<language::Term, String> {
-  let pars = &std::env::args().collect::<Vec<String>>()[3..];
+fn make_call(params: &Vec<String>) -> Result<language::Term, String> {
   let name = "Main".to_string();
   let mut args = Vec::new();
-  for par in pars {
-    let term = language::read_term(par)?;
+  for param in params {
+    let term = language::read_term(param)?;
     args.push(term);
   }
   Ok(language::Term::Ctr { name, args })
 }
 
-fn run_code(code: &str, debug: bool) -> Result<(), String> {
-  let call = make_call()?;
+fn run_code(code: &str, debug: bool, params: Vec<String>) -> Result<(), String> {
+  let call = make_call(&params)?;
   let (norm, cost, size, time) = builder::eval_code(&call, code, debug)?;
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
