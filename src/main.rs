@@ -89,9 +89,9 @@ fn make_call() -> Result<language::Term, String> {
 fn run_code(code: &str, debug: bool) -> Result<(), String> {
   let call = make_call()?;
   let (norm, cost, size, time) = builder::eval_code(&call, code, debug)?;
-  println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
-  println!("Mem.Size: {}", size);
-  println!();
+  eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  eprintln!("Mem.Size: {}", size);
+  eprintln!();
   println!("{}", norm);
   Ok(())
 }
@@ -166,9 +166,9 @@ fn run_example() -> Result<(), String> {
   println!("Reducing with interpreter.");
   let call = language::Term::Ctr { name: "Main".to_string(), args: Vec::new() };
   let (norm, cost, size, time) = builder::eval_code(&call, code, false)?;
-  println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
-  println!("Mem.Size: {}", size);
-  println!();
+  eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  eprintln!("Mem.Size: {}", size);
+  eprintln!();
   println!("{}", norm);
   Ok(())
 }
