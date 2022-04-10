@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import difflib
 import json
 
-# TODO: port cases from /bench/
+
 # TODO: CI
 # TODO: run cases in parallel?
 
@@ -22,7 +22,7 @@ class TestResult:
 
 
 def run_test(
-    folder_path: Path, bin_path: Path, differ: difflib.Differ
+        folder_path: Path, bin_path: Path, differ: difflib.Differ
 ) -> Iterator[TestResult]:
     test_name = folder_path.name
     folder_path = folder_path.absolute()
@@ -41,7 +41,7 @@ def run_test(
         specs = json.load(jf)
     for case_name in specs:
         spec = specs[case_name]
-        print(f"Testing file '{case_name}'... ".ljust(28), end="")
+        print(f"Testing case '{case_name}'... ".ljust(28), end="")
 
         case_args = spec["input"]
         expected_out = spec["output"]
