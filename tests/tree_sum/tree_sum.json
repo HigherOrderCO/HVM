@@ -5,7 +5,7 @@
    },
    "test-2":{
       "input":"2",
-      "output":"5"
+      "output":"4"
    },
    "test-3":{
       "input":"3",
