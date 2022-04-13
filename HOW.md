@@ -811,11 +811,6 @@ can use. You just can't have a clone clone its own clone. Without this
 limitation, which is almost irrelevant in practice, it wouldn't be possible for
 HVM to achieve its current performance, so we believe it is justified.
 
-As a last note, HVM's current implementation is slightly more restrictive than
-it should be, since each occurrence of a global definition counts as a clone of
-itself. This is unnecessary, and will soon be patched. Regardless, even in
-this version, it is very unlikely you'll find this in practice.
-
 HVM's Low-level Implementation
 ==============================
 
