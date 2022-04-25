@@ -34,7 +34,7 @@ mul :: Bits -> Bits -> Bits
 mul xs ys =
   let e = end
       o = \p -> b0 (mul p ys)
-      i = \p -> add ys (b1 (mul p ys))
+      i = \p -> add ys (b0 (mul p ys))
   in get xs e o i
 
 -- Converts a Bits to an U32
