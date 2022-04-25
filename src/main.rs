@@ -19,10 +19,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
   #[clap(about = "Run a file interpreted", name = "run", aliases = &["r"])]
-  Run {
-    file: String,
-    params: Vec<String>,
-  },
+  Run { file: String, params: Vec<String> },
 
   #[clap(about = "Compile file to C",  name = "compile", aliases = &["c"])]
   Compile {
@@ -32,10 +29,7 @@ pub enum Command {
   },
 
   #[clap(about = "Run in debug mode", name = "debug", aliases = &["d"])]
-  Debug {
-    file: String,
-    params: Vec<String>,
-  },
+  Debug { file: String, params: Vec<String> },
 }
 
 fn main() {
@@ -59,12 +53,12 @@ fn run_cli() -> Result<(), String> {
     }
   }
 
-  match cli_matches.command {     
-    Command::Compile{ file, single_thread } => {
+  match cli_matches.command {
+    Command::Compile { file, single_thread } => {
       let file = &hvm(&file);
       let code = load_file_code(file)?;
 
-      compile_code(&code, file,  !single_thread)?;
+      compile_code(&code, file, !single_thread)?;
       Ok(())
     }
     Command::Run { file, params } => {
