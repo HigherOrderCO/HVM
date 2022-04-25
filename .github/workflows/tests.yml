@@ -1,0 +1,21 @@
+name: Tests
+on:
+  workflow_call:
+jobs:
+  hvm-tests:
+    name: 🔎 HVM Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ macos-latest, ubuntu-latest, windows-latest ]
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v3
+        with:
+          python-version: '3.8'
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+      - run: python -X utf8 tests/test_cli.py -c -b
