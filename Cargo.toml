@@ -21,6 +21,7 @@ test = false
 itertools = "0.10"
 num_cpus = "1.13"
 regex = "1.5.4"
+clap = { version = "3.1.8", features = ["derive"] }
 
 [dev-dependencies]
 proptest = "1.0"

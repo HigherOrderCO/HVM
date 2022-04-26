@@ -1,8 +1,8 @@
 #![allow(clippy::identity_op)]
 
 use regex::Regex;
+use std::collections::HashMap;
 use std::io::Write;
-use std::collections::{HashMap};
 
 use crate::builder as bd;
 use crate::language as lang;
@@ -16,7 +16,8 @@ pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> Res
     .write(true)
     .create(true)
     .truncate(true)
-    .open(file_name).map_err(|err| err.to_string())?;
+    .open(file_name)
+    .map_err(|err| err.to_string())?;
   file.write_all(as_clang.as_bytes()).map_err(|err| err.to_string())?;
   Ok(())
 }
@@ -32,8 +33,8 @@ fn compile_name(name: &str) -> String {
   // TODO: this can still cause some name collisions.
   // Note: avoiding the use of `$` because it is not an actually valid
   // identifier character in C.
-  let name = name.replace("_", "__");
-  let name = name.replace(".", "_");
+  let name = name.replace('_', "__");
+  let name = name.replace('.', "_");
   format!("_{}_", name.to_uppercase())
 }
 
@@ -67,11 +68,7 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, parallel)
 }
 
-fn compile_func(
-  comp: &rb::RuleBook,
-  rules: &[lang::Rule],
-  tab: u64,
-) -> (String, String) {
+fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String, String) {
   let dynfun = bd::build_dynfun(comp, rules);
 
   let mut init = String::new();
@@ -192,7 +189,7 @@ fn compile_func_rule_term(
     code: &mut String,
     tab: u64,
     nams: &mut u64,
-    globs: &mut HashMap<u64,String>,
+    globs: &mut HashMap<u64, String>,
     glob: u64,
   ) -> String {
     if let Some(got) = globs.get(&glob) {
@@ -214,7 +211,7 @@ fn compile_func_rule_term(
     tab: u64,
     vars: &mut Vec<String>,
     nams: &mut u64,
-    globs: &mut HashMap<u64,String>,
+    globs: &mut HashMap<u64, String>,
     term: &bd::DynTerm,
   ) -> String {
     const INLINE_NUMBERS: bool = true;
