@@ -661,6 +661,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               inc_cost(mem);
               subst(mem, ask_arg(mem,term,0), arg0);
               subst(mem, ask_arg(mem,term,1), arg0);
+              clear(mem, get_loc(term,0), 3);
               u64 done = arg0;
               link(mem, host, arg0);
               break;
