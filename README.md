@@ -154,7 +154,7 @@ Tree Sum (Parallel)
 (Gen 0) = (Leaf 1)
 (Gen n) = (Node (Gen(- n 1)) (Gen(- n 1)))
 
-// Adds all elemements of a tree
+// Adds all elements of a tree
 (Sum (Leaf x))   = x
 (Sum (Node a b)) = (+ (Sum a) (Sum b))
 
