@@ -187,7 +187,7 @@ main = do
 ![](bench/_results_/TreeSum.png)
 
 TreeSum recursively builds and sums all elements of a perfect binary tree. HVM
-outperforms Haskell by a wide margin because this algorithm is embarassingly
+outperforms Haskell by a wide margin because this algorithm is embarrassingly
 parallel, allowing it to fully use the available cores.
 
 QuickSort (Parallel)
@@ -256,7 +256,7 @@ main = do
 ![](bench/_results_/QuickSort.png)
 
 This test modifies QuickSort to return a concatenation tree instead of a flat
-list. This makes it embarassingly parallel, allowing HVM to outperform GHC by a
+list. This makes it embarrassingly parallel, allowing HVM to outperform GHC by a
 wide margin again. It even beats Haskell's sort from Data.List! Note that
 flattening the tree will make the algorithm sequential. That's why we didn't
 chose MergeSort, as `merge` operates on lists. In general, trees should be
