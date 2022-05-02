@@ -84,7 +84,7 @@ fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String,
     }
   }
 
-  // Computes the initializer, which calls reduce recursivelly
+  // Computes the initializer, which calls reduce recursively
   line(&mut init, tab + 0, &format!("if (get_ari(term) == {}) {{", dynfun.redex.len()));
   if stricts.is_empty() {
     line(&mut init, tab + 1, "init = 0;");
