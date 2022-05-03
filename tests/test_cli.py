@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
 # TODO:
-# - single thread mode flag
+# - single thread mode flag ?
 # - multiple compilers
 #   - gcc
 #   - tcc
 # - pthreads on Windows
 
-import os
 from pathlib import Path
 import argparse
 import subprocess
@@ -37,7 +36,7 @@ class Compiled:
 
 @dataclass
 class Interpreted:
-    hvm_bin_path: Path
+    hvm_cmd: str
     program_path: Path
 
 
@@ -73,10 +72,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run black box tests on HVM.")
 
     parser.add_argument(
-        "-b", "--build", help="Compile a new version of HVM.", action="store_true"
-    )
-    parser.add_argument(
-        "-c", "--clean", help="Remove the target directory.", action="store_true"
+        "--hvm-cmd", type=str, default="hvm"
     )
     parser.add_argument(
         "--run-mode", choices=["compiled", "interpreted"], action="append"
@@ -84,20 +80,14 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    if args.clean:
-        os.system("cargo clean")
-
-    if args.build:
-        os.system("cargo build")
-
     modes = args.run_mode or ["interpreted"]
+    hvm_cmd: str = args.hvm_cmd
 
     exit_code = 0
 
     for mode in modes:
         assert mode in ("compiled", "interpreted")
-        run_tests(mode)
-        results = list(run_tests(mode))
+        results = list(run_tests(mode, hvm_cmd))
         ok = all(map(lambda x: x.ok, results))
         if not ok:
             exit_code = 1
@@ -105,22 +95,19 @@ def main() -> int:
     return exit_code
 
 
-def run_tests(mode_str: TestModeStr) -> Iterator[TestResult]:
+def run_tests(mode_str: TestModeStr, hvm_cmd: str) -> Iterator[TestResult]:
     differ = Differ()
 
     base_test_folder = Path(__file__).parent.resolve()
 
-    bin_ext = ".exe" if is_windows else ""
-    hvm_path = base_test_folder.parent.joinpath("target", "debug", f"hvm{bin_ext}")
-    assert hvm_path.is_file(), "HVM must be already compiled"
 
     test_folders = list(filter(lambda x: x.is_dir(), base_test_folder.iterdir()))
     for entry in test_folders:
-        yield from run_test(differ, mode_str, hvm_path, entry)
+        yield from run_test(differ, mode_str, hvm_cmd, entry)
 
 
 def run_test(
-    differ: Differ, mode_txt: TestModeStr, hvm_path: Path, folder_path: Path
+    differ: Differ, mode_txt: TestModeStr, hvm_cmd: str, folder_path: Path
 ) -> Iterator[TestResult]:
     test_name = folder_path.name
     folder_path = folder_path.absolute()
@@ -143,10 +130,10 @@ def run_test(
 
     match mode_txt:
         case "interpreted":
-            mode = Interpreted(hvm_path, code_path)
+            mode = Interpreted(hvm_cmd, code_path)
             yield from run_cases(differ, mode, test_name, specs)
         case "compiled":
-            exec_path = compile_test(test_name, folder_path, hvm_path, code_path)
+            exec_path = compile_test(test_name, folder_path, hvm_cmd, code_path)
             if exec_path is None:
                 yield TestResult(mode_txt, test_name, "*", False)
             else:
@@ -183,20 +170,26 @@ def run_test_case(
     print(f"Case '{case_name}' ({mode_txt})... ".ljust(45), end="")
 
     match mode:
-        case Interpreted(hvm_bin_path, program_path):
-            bin_path_abs = resolve_path(hvm_bin_path)
+        case Interpreted(hvm_cmd, program_path):
             code_path_abs = resolve_path(program_path)
-            cmd = [bin_path_abs, "run", code_path_abs, case_args]
+            cmd = [hvm_cmd, "run", code_path_abs, case_args]
         case Compiled(program_path):
             program_path_abs = resolve_path(program_path)
             cmd = [program_path_abs, case_args]
 
     p = subprocess.run(cmd, capture_output=True)
+
+    if p.returncode != 0:
+        print("❌ FAILED")
+        # print(p.stdout.decode('utf-8'))
+        print(p.stderr.decode('utf-8'))
+        return False
+
     test_out = p.stdout.decode("utf-8").strip()
 
     diff = differ.compare(
-        test_out.splitlines(keepends=True),
         expected_out.splitlines(keepends=True),
+        test_out.splitlines(keepends=True),
     )
 
     diff_lines = [line for line in diff if not line.startswith("  ")]
@@ -211,9 +204,9 @@ def run_test_case(
 
 
 def compile_test(
-    test_name: str, folder_path: Path, hvm_path: Path, code_path: Path
+    test_name: str, folder_path: Path, hvm_cmd: str, code_path: Path
 ) -> Optional[Path]:
-    hvm_comp_cmd = [str(hvm_path.absolute()), "compile", str(code_path.absolute())]
+    hvm_comp_cmd = [hvm_cmd, "compile", str(code_path.absolute())]
 
     p = subprocess.run(hvm_comp_cmd, capture_output=True)
 

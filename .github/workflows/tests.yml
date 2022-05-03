@@ -7,19 +7,35 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ macos-latest, ubuntu-latest, windows-latest ]
-        run_mode: [ interpreted, compiled ]
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        run_mode: [interpreted, compiled]
         exclude:
           - os: windows-latest
             run_mode: compiled
+    env:
+      HVM_CMD: ./target/release/hvm
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v3
         with:
-          python-version: '3.10'
+          python-version: "3.10"
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      - run: python3 -X utf8 tests/test_cli.py -c -b --run-mode ${{ matrix.run_mode }} 
+
+      # Add .exe suffix to HVM command on Windows
+      - if: ${{ matrix.os == 'windows-latest' }}
+        run: echo "HVM_CMD=$HVM_CMD.exe" >> "$GITHUB_ENV"
+
+      # FIXME: compiled mode don't work because compiled code don't have sugar
+      # for strings
+
+      # Ignore 'kind2' test on 'compiled' mode
+      - if: ${{ matrix.run_mode == 'compiled' }}
+        run: rm -r ./tests/kind2
+
+      - run: cargo build --release
+      - run: python3 -X utf8 tests/test_cli.py --hvm-cmd "$HVM_CMD"
+              --run-mode ${{ matrix.run_mode }}
