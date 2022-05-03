@@ -33,7 +33,7 @@ mod tests {
     ";
 
     let (norm, _cost, _size, _time) =
-      eval_code(&make_call("Main", &[]).unwrap(), code, false).unwrap();
+      eval_code(&make_call("Main", &[]).unwrap(), code, false, 6).unwrap();
     assert_eq!(norm, "6765");
   }
 }

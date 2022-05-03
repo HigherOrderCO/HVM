@@ -75,8 +75,8 @@ pub struct Worker {
   pub cost: u64,
 }
 
-pub fn new_worker() -> Worker {
-  Worker { node: vec![0; 6 * 0x8000000], size: 0, free: vec![vec![]; 16], cost: 0 }
+pub fn new_worker(memory: usize) -> Worker {
+  Worker { node: vec![0; memory * 0x8000000], size: 0, free: vec![vec![]; 16], cost: 0 }
 }
 
 // Globals

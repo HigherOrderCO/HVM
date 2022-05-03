@@ -12,6 +12,9 @@ use clap::{Parser, Subcommand};
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
 pub struct Cli {
+  #[clap(short = 'M', long, help="Set quantity of allocated memory", default_value="6GB")]
+  pub memory: String,
+
   #[clap(subcommand)]
   pub command: Command,
 }
@@ -70,17 +73,24 @@ fn run_cli() -> Result<(), String> {
     Command::Run { file, params } => {
       let code = load_file_code(&hvm(&file))?;
 
-      run_code(&code, false, params)?;
+      run_code(&code, false, params, parse_gb(&cli_matches.memory))?;
       Ok(())
     }
 
     Command::Debug { file, params } => {
       let code = load_file_code(&hvm(&file))?;
 
-      run_code(&code, true, params)?;
+      run_code(&code, true, params, parse_gb(&cli_matches.memory))?;
       Ok(())
     }
   }
+}
+
+fn parse_gb(raw: &str) -> usize {
+  raw.to_ascii_lowercase()
+      .strip_suffix("gb")
+      .and_then(|s| s.parse().ok())
+      .expect("Invalid format!")
 }
 
 fn make_call(params: &Vec<String>) -> Result<language::Term, String> {
@@ -93,9 +103,9 @@ fn make_call(params: &Vec<String>) -> Result<language::Term, String> {
   Ok(language::Term::Ctr { name, args })
 }
 
-fn run_code(code: &str, debug: bool, params: Vec<String>) -> Result<(), String> {
+fn run_code(code: &str, debug: bool, params: Vec<String>, memory: usize) -> Result<(), String> {
   let call = make_call(&params)?;
-  let (norm, cost, size, time) = builder::eval_code(&call, code, debug)?;
+  let (norm, cost, size, time) = builder::eval_code(&call, code, debug, memory)?;
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
   println!();
@@ -172,7 +182,7 @@ fn run_example() -> Result<(), String> {
 
   println!("Reducing with interpreter.");
   let call = language::Term::Ctr { name: "Main".to_string(), args: Vec::new() };
-  let (norm, cost, size, time) = builder::eval_code(&call, code, false)?;
+  let (norm, cost, size, time) = builder::eval_code(&call, code, false, 6)?;
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
   println!();
