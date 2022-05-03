@@ -119,7 +119,7 @@ example, we define and use the `Map` function on `List` as follows:
 By running this file (with `hvm r main`), HVM outputs `(Cons 2 (Cons 3 Nil))`,
 having incremented each number in `list` by 1. Notes:
 
-- Application is distinguised from constructors by case (`(f x)` vs `(F x)`).
+- Application is distinguished from constructors by case (`(f x)` vs `(F x)`).
 
 - The parentheses can be omitted from unary constructors (`Nil` == `(Nil)`)
 

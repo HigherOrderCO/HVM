@@ -339,8 +339,8 @@ void clear(Worker* mem, u64 loc, u64 size) {
 // Garbage Collection
 // ------------------
 
-// This clears the memory used by a term that becames unreachable. It just frees
-// all its nodes recursivelly. This is called as soon as a term goes out of
+// This clears the memory used by a term that became unreachable. It just frees
+// all its nodes recursively. This is called as soon as a term goes out of
 // scope. No global GC pass is necessary to find unreachable terms!
 // HVM can still produce some garbage in very uncommon situations that are
 // mostly irrelevant in practice. Absolute GC-freedom, though, requires
@@ -661,6 +661,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               inc_cost(mem);
               subst(mem, ask_arg(mem,term,0), arg0);
               subst(mem, ask_arg(mem,term,1), arg0);
+              clear(mem, get_loc(term,0), 3);
               u64 done = arg0;
               link(mem, host, arg0);
               break;

@@ -25,7 +25,7 @@ nix profile install
 hvm run main.hvm 10
 # Compile it to C
 hvm compile main.hvm
-# Intialise the Nix development shell
+# Initialise the Nix development shell
 nix develop
 # Compile the resulting C code
 clang -O2 main.c -o main -lpthread
