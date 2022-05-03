@@ -12,10 +12,12 @@
     "itertools",
     "lambolt",
     "oper",
+    "pthread",
     "readback",
     "redex",
     "rulebook"
   ],
   "cSpell.ignoreWords": ["argm", "arit", "ctrs", "dups"],
-  "rust-analyzer.checkOnSave.command": "clippy"
+  "rust-analyzer.checkOnSave.command": "clippy",
+  "python.analysis.typeCheckingMode": "strict",
 }

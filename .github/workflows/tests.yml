@@ -8,14 +8,18 @@ jobs:
     strategy:
       matrix:
         os: [ macos-latest, ubuntu-latest, windows-latest ]
+        run_mode: [ interpreted, compiled ]
+        exclude:
+          - os: windows-latest
+            run_mode: compiled
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v3
         with:
-          python-version: '3.8'
+          python-version: '3.10'
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
           toolchain: stable
           override: true
-      - run: python -X utf8 tests/test_cli.py -c -b
+      - run: python3 -X utf8 tests/test_cli.py -c -b --run-mode ${{ matrix.run_mode }} 
