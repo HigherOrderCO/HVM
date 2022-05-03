@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand};
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
 pub struct Cli {
-  #[clap(short = 'M', long, help="Set quantity of allocated memory", default_value="6GB")]
+  #[clap(short = 'M', long, help = "Set quantity of allocated memory", default_value = "6GB")]
   pub memory: String,
 
   #[clap(subcommand)]
@@ -80,10 +80,7 @@ fn run_cli() -> Result<(), String> {
 }
 
 fn parse_gb(raw: &str) -> usize {
-  raw.to_ascii_lowercase()
-      .strip_suffix("gb")
-      .and_then(|s| s.parse().ok())
-      .expect("Invalid format!")
+  raw.to_ascii_lowercase().strip_suffix("gb").and_then(|s| s.parse().ok()).expect("Invalid format!")
 }
 
 fn make_main_call(params: &Vec<String>) -> Result<language::Term, String> {
