@@ -12,7 +12,7 @@ use clap::{Parser, Subcommand};
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
 pub struct Cli {
-  #[clap(short = 'M', long, help="Set quantity of allocated memory", default_value="6GB")]
+  #[clap(short = 'M', long, help = "Set quantity of allocated memory", default_value = "6GB")]
   pub memory: String,
 
   #[clap(subcommand)]
@@ -22,10 +22,7 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Command {
   #[clap(about = "Run a file interpreted", name = "run", aliases = &["r"])]
-  Run {
-    file: String,
-    params: Vec<String>,
-  },
+  Run { file: String, params: Vec<String> },
 
   #[clap(about = "Compile file to C",  name = "compile", aliases = &["c"])]
   Compile {
@@ -35,10 +32,7 @@ pub enum Command {
   },
 
   #[clap(about = "Run in debug mode", name = "debug", aliases = &["d"])]
-  Debug {
-    file: String,
-    params: Vec<String>,
-  },
+  Debug { file: String, params: Vec<String> },
 }
 
 fn main() {
@@ -62,12 +56,12 @@ fn run_cli() -> Result<(), String> {
     }
   }
 
-  match cli_matches.command {     
-    Command::Compile{ file, single_thread } => {
+  match cli_matches.command {
+    Command::Compile { file, single_thread } => {
       let file = &hvm(&file);
       let code = load_file_code(file)?;
 
-      compile_code(&code, file,  !single_thread)?;
+      compile_code(&code, file, !single_thread)?;
       Ok(())
     }
     Command::Run { file, params } => {
@@ -87,10 +81,7 @@ fn run_cli() -> Result<(), String> {
 }
 
 fn parse_gb(raw: &str) -> usize {
-  raw.to_ascii_lowercase()
-      .strip_suffix("gb")
-      .and_then(|s| s.parse().ok())
-      .expect("Invalid format!")
+  raw.to_ascii_lowercase().strip_suffix("gb").and_then(|s| s.parse().ok()).expect("Invalid format!")
 }
 
 fn make_call(params: &Vec<String>) -> Result<language::Term, String> {
