@@ -77,8 +77,6 @@ pub struct Worker {
 
 pub fn new_worker(memory: usize) -> Worker {
   let memory = memory / std::mem::size_of::<u64>();
-  dbg!(memory);
-  dbg!(6 * 0x8000000);
 
   Worker { node: vec![0; memory], size: 0, free: vec![vec![]; 16], cost: 0 }
 }
