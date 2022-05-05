@@ -142,7 +142,7 @@ fn run_example() -> Result<(), String> {
 
   println!("Reducing with interpreter.");
   let call = language::Term::Ctr { name: "Main".to_string(), args: Vec::new() };
-  let (norm, cost, size, time) = builder::eval_code(&call, code, false, 6)?;
+  let (norm, cost, size, time) = builder::eval_code(&call, code, false, 6 * (1<<30))?;
   println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   println!("Mem.Size: {}", size);
   println!();
