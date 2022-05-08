@@ -1,88 +1,195 @@
 #!/usr/bin/env python3
 
-import os
+# TODO:
+# - single thread mode flag ?
+# - multiple compilers
+#   - gcc
+#   - tcc
+# - pthreads on Windows
+
 from pathlib import Path
 import argparse
 import subprocess
 import platform
-
-from typing import Iterator, Tuple
+from typing import Any, Iterator, List, Literal, Optional, Union
 from dataclasses import dataclass
-import difflib
+from difflib import Differ
 import json
 
-# TODO: run cases in parallel?
+is_windows = platform.system() == "Windows"
+
+C_COMPILER = "clang"
+
+
+def c_compiler_cmd(in_path: str, out_path: str) -> List[str]:
+    cmd = [C_COMPILER]
+    if not is_windows:
+        cmd.append("-lpthread")
+    cmd += [in_path, "-o", out_path]
+    return cmd
+
+
+@dataclass
+class Compiled:
+    program_path: Path
+
+
+@dataclass
+class Interpreted:
+    hvm_cmd: str
+    program_path: Path
+
+
+TestMode = Union[Compiled, Interpreted]
+TestModeStr = Union[Literal["compiled"], Literal["interpreted"]]
 
 
 @dataclass
 class TestResult:
+    mode_str: TestModeStr
     test_name: str
     case_name: str
-    interpreted: bool
-    compiled: bool
     ok: bool
 
 
-is_windows = platform.system() == "Windows"
+def get_mode_str(mode: TestMode) -> TestModeStr:
+    match mode:
+        case Compiled(_):
+            return "compiled"
+        case Interpreted(_, _):
+            return "interpreted"
 
 
-def compile_test(test_name: str, folder_path: Path, bin_path: Path,
-                 code_path: Path) -> Tuple[bool, Path]:
-    hvm_comp_cmd = [str(bin_path.absolute()), "compile", str(
-        code_path.absolute())]
-
-    # FIXME: Now HVM is not able to run using multiple threads on Windows
-    if is_windows:
-        hvm_comp_cmd.append("--single-thread")
-
-    p = subprocess.run(
-        hvm_comp_cmd, capture_output=True)
-
-    successful_comp = p.returncode == 0
-
-    if successful_comp:
-        c_path = folder_path.joinpath(f"{test_name}.c")
-        exec_path = folder_path.joinpath(f"{test_name}.out")
-        c_comp_cmd = ["clang", str(c_path.absolute()), "-o",
-                      str(exec_path.absolute())]
-
-        if not is_windows:
-            c_comp_cmd.append("-pthread")
-
-        p = subprocess.run(
-            c_comp_cmd, capture_output=True)
-        successful_comp = p.returncode == 0
-        if not successful_comp:
-            print(f"🚨 Clang failed to compile {test_name}")
-            print(p.stderr.decode("utf-8").strip())
-            return False, None
-    else:
-        print(f"🚨 HVM failed to compile {test_name}")
-        print(p.stderr.decode("utf-8").strip())
-        return False, None
-    return True, exec_path
+def resolve_path(path: Path) -> str:
+    return str(path.absolute())
 
 
-def run_test_case(mode: str, case_name: str, bin_path: Path,
-                  differ: difflib.Differ, case_args: str,
-                  expected_out: str,  code_path: Path = None) -> bool:
-    assert mode in (
-        "interpreted", "compiled"), 'Mode should be "interpreted" or "compiled"!'
+def assert_file(path: Path, err: str):
+    assert path.is_file(), err
 
-    print(f"Testing case '{case_name}'({mode})... ".ljust(45), end="")
 
-    if mode == "interpreted":
-        cmd = [str(bin_path.absolute()), "run", str(
-            code_path.absolute()), case_args]
-    else:
-        cmd = [str(bin_path.absolute()), case_args]
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Run black box tests on HVM.")
+
+    parser.add_argument(
+        "--hvm-cmd", type=str, default="hvm"
+    )
+    parser.add_argument(
+        "--run-mode", choices=["compiled", "interpreted"], action="append"
+    )
+
+    args = parser.parse_args()
+
+    modes = args.run_mode or ["interpreted"]
+    hvm_cmd: str = args.hvm_cmd
+
+    exit_code = 0
+
+    for mode in modes:
+        assert mode in ("compiled", "interpreted")
+        results = list(run_tests(mode, hvm_cmd))
+        ok = all(map(lambda x: x.ok, results))
+        if not ok:
+            exit_code = 1
+
+    return exit_code
+
+
+def run_tests(mode_str: TestModeStr, hvm_cmd: str) -> Iterator[TestResult]:
+    differ = Differ()
+
+    base_test_folder = Path(__file__).parent.resolve()
+
+
+    test_folders = list(filter(lambda x: x.is_dir(), base_test_folder.iterdir()))
+    for entry in test_folders:
+        yield from run_test(differ, mode_str, hvm_cmd, entry)
+
+
+def run_test(
+    differ: Differ, mode_txt: TestModeStr, hvm_cmd: str, folder_path: Path
+) -> Iterator[TestResult]:
+    test_name = folder_path.name
+    folder_path = folder_path.absolute()
+
+    print()
+    print(f"Testing: {test_name}")
+
+    code_path = folder_path.joinpath(f"{test_name}.hvm")
+    assert_file(
+        code_path, f"'{test_name}' case must have an HVM file at '{code_path}'!"
+    )
+
+    spec_path = folder_path.joinpath(f"{test_name}.json")
+    assert_file(
+        spec_path, f"'{test_name}' case must have a spec file at '{spec_path}'!"
+    )
+
+    with open(spec_path.absolute(), "r") as jf:
+        specs = json.load(jf)
+
+    match mode_txt:
+        case "interpreted":
+            mode = Interpreted(hvm_cmd, code_path)
+            yield from run_cases(differ, mode, test_name, specs)
+        case "compiled":
+            exec_path = compile_test(test_name, folder_path, hvm_cmd, code_path)
+            if exec_path is None:
+                yield TestResult(mode_txt, test_name, "*", False)
+            else:
+                mode = Compiled(exec_path)
+                yield from run_cases(differ, mode, test_name, specs)
+
+                exec_path.unlink(missing_ok=True)
+                folder_path.joinpath(f"{test_name}.c").unlink(missing_ok=True)
+
+
+def run_cases(differ: Differ, mode: TestMode, test_name: str, specs: Any):
+    for case_name, spec in specs.items():
+        case_args = spec["input"]
+        expected_out = spec["output"]
+
+        success = run_test_case(
+            differ,
+            mode,
+            case_name,
+            case_args,
+            expected_out,
+        )
+        yield TestResult(get_mode_str(mode), test_name, case_name, success)
+
+
+def run_test_case(
+    differ: Differ,
+    mode: TestMode,
+    case_name: str,
+    case_args: str,  # TODO: refactor to list
+    expected_out: str,
+) -> bool:
+    mode_txt = get_mode_str(mode)
+    print(f"Case '{case_name}' ({mode_txt})... ".ljust(45), end="")
+
+    match mode:
+        case Interpreted(hvm_cmd, program_path):
+            code_path_abs = resolve_path(program_path)
+            cmd = [hvm_cmd, "run", code_path_abs, case_args]
+        case Compiled(program_path):
+            program_path_abs = resolve_path(program_path)
+            cmd = [program_path_abs, case_args]
 
     p = subprocess.run(cmd, capture_output=True)
+
+    if p.returncode != 0:
+        print("❌ FAILED")
+        # print(p.stdout.decode('utf-8'))
+        print(p.stderr.decode('utf-8'))
+        return False
+
     test_out = p.stdout.decode("utf-8").strip()
 
     diff = differ.compare(
-        test_out.splitlines(keepends=True),
         expected_out.splitlines(keepends=True),
+        test_out.splitlines(keepends=True),
     )
 
     diff_lines = [line for line in diff if not line.startswith("  ")]
@@ -96,88 +203,32 @@ def run_test_case(mode: str, case_name: str, bin_path: Path,
         return False
 
 
-def run_test(
-        folder_path: Path, bin_path: Path, differ: difflib.Differ
-) -> Iterator[TestResult]:
-    test_name = folder_path.name
-    folder_path = folder_path.absolute()
+def compile_test(
+    test_name: str, folder_path: Path, hvm_cmd: str, code_path: Path
+) -> Optional[Path]:
+    hvm_comp_cmd = [hvm_cmd, "compile", str(code_path.absolute())]
 
-    print(f"Testing: {test_name}")
+    p = subprocess.run(hvm_comp_cmd, capture_output=True)
 
-    code_path = folder_path.joinpath(f"{test_name}.hvm")
-    assert (
-        code_path.exists()
-    ), f"{test_name} test case must have a hvm source code file!"
+    successful_comp = p.returncode == 0
 
-    if not is_windows:
-        successful_comp, exec_path = compile_test(
-            test_name, folder_path, bin_path, code_path)
+    if not successful_comp:
+        print(f"🚨 HVM failed to compile ({test_name})")
+        print(p.stderr.decode("utf-8").strip())
+        return None
     else:
-        successful_comp = False
+        c_path = folder_path.joinpath(f"{test_name}.c")
+        bin_path = folder_path.joinpath(f"{test_name}.out")
+        c_comp_cmd = c_compiler_cmd(resolve_path(c_path), resolve_path(bin_path))
 
-    specs_path = folder_path.joinpath(f"{test_name}.json")
-    assert specs_path.exists(), f"{test_name} test case must have an I/O file!"
+        p = subprocess.run(c_comp_cmd, capture_output=True)
+        successful_comp = p.returncode == 0
+        if not successful_comp:
+            print(f"🚨 Failed to compile C code ({test_name})")
+            print(p.stderr.decode("utf-8").strip())
+            return None
 
-    with open(specs_path.absolute(), "r") as jf:
-        specs = json.load(jf)
-    for case_name in specs:
-        spec = specs[case_name]
-        case_args = spec["input"]
-        expected_out = spec["output"]
-
-        int_suc = run_test_case("interpreted", case_name, bin_path,
-                                differ, case_args, expected_out, code_path)
-        if successful_comp:
-            comp_suc = run_test_case("compiled", case_name, exec_path,
-                                     differ, case_args, expected_out)
-        # Skip compiled tests
-        if is_windows:
-            comp_suc = True
-
-        yield TestResult(test_name, case_name, int_suc, comp_suc,
-                         int_suc and comp_suc)
-    
-    if successful_comp:
-        os.remove(exec_path)
-        os.remove(folder_path.joinpath(f"{test_name}.c"))
-
-
-def run_tests() -> Iterator[TestResult]:
-    differ = difflib.Differ()
-
-    tests_folder = Path(__file__).parent.resolve()
-
-    bin_ext = ".exe" if is_windows else ""
-    bin_path = tests_folder.parent.joinpath("target", "debug", f"hvm{bin_ext}")
-    assert bin_path.is_file(), "HVM must be already compiled"
-
-    for entry in tests_folder.iterdir():
-        if entry.is_dir():
-            for r in run_test(entry, bin_path, differ):
-                yield r
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Run black box tests on HVM.")
-
-    parser.add_argument(
-        "-b", "--build", help="Compile a new version of HVM.", action="store_true"
-    )
-    parser.add_argument(
-        "-c", "--clean", help="Remove the target directory.", action="store_true"
-    )
-
-    args = parser.parse_args()
-
-    if args.clean:
-        os.system("cargo clean")
-
-    if args.build:
-        os.system("cargo build")
-
-    results = list(run_tests())
-    ok = all(map(lambda x: x.ok, results))
-    return 0 if ok else 1
+        return bin_path
 
 
 if __name__ == "__main__":
