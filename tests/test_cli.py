@@ -75,19 +75,24 @@ def main() -> int:
         "--hvm-cmd", type=str, default="hvm"
     )
     parser.add_argument(
-        "--run-mode", choices=["compiled", "interpreted"], action="append"
+        "--run-mode", choices=["compiled", "interpreted"], nargs='*', type=str
+    )
+
+    parser.add_argument(
+        "--skip-test", nargs="*", type=str
     )
 
     args = parser.parse_args()
 
     modes = args.run_mode or ["interpreted"]
     hvm_cmd: str = args.hvm_cmd
+    skipped_tests = args.skip_test or []
 
     exit_code = 0
 
     for mode in modes:
         assert mode in ("compiled", "interpreted")
-        results = list(run_tests(mode, hvm_cmd))
+        results = list(run_tests(mode, hvm_cmd, skipped_tests))
         ok = all(map(lambda x: x.ok, results))
         if not ok:
             exit_code = 1
@@ -95,13 +100,13 @@ def main() -> int:
     return exit_code
 
 
-def run_tests(mode_str: TestModeStr, hvm_cmd: str) -> Iterator[TestResult]:
+def run_tests(mode_str: TestModeStr, hvm_cmd: str, skipped_tests: list[str]) -> Iterator[TestResult]:
     differ = Differ()
 
     base_test_folder = Path(__file__).parent.resolve()
 
-
-    test_folders = list(filter(lambda x: x.is_dir(), base_test_folder.iterdir()))
+    test_folders = list(filter(lambda x: x.is_dir() and x.name not in skipped_tests,
+                        base_test_folder.iterdir()))
     for entry in test_folders:
         yield from run_test(differ, mode_str, hvm_cmd, entry)
 
@@ -133,7 +138,8 @@ def run_test(
             mode = Interpreted(hvm_cmd, code_path)
             yield from run_cases(differ, mode, test_name, specs)
         case "compiled":
-            exec_path = compile_test(test_name, folder_path, hvm_cmd, code_path)
+            exec_path = compile_test(
+                test_name, folder_path, hvm_cmd, code_path)
             if exec_path is None:
                 yield TestResult(mode_txt, test_name, "*", False)
             else:
@@ -219,7 +225,8 @@ def compile_test(
     else:
         c_path = folder_path.joinpath(f"{test_name}.c")
         bin_path = folder_path.joinpath(f"{test_name}.out")
-        c_comp_cmd = c_compiler_cmd(resolve_path(c_path), resolve_path(bin_path))
+        c_comp_cmd = c_compiler_cmd(
+            resolve_path(c_path), resolve_path(bin_path))
 
         p = subprocess.run(c_comp_cmd, capture_output=True)
         successful_comp = p.returncode == 0
