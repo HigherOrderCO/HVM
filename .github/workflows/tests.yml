@@ -13,7 +13,8 @@ jobs:
           - os: windows-latest
             run_mode: compiled
     env:
-      HVM_CMD: ./target/release/hvm
+      # Add .exe suffix to HVM command on Windows
+      HVM_CMD: ${{matrix.os != 'windows-latest' && './target/release/hvm' || './target/release/hvm.exe'}}
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v3
@@ -25,17 +26,8 @@ jobs:
           toolchain: stable
           override: true
 
-      # Add .exe suffix to HVM command on Windows
-      - if: ${{ matrix.os == 'windows-latest' }}
-        run: echo "HVM_CMD=$HVM_CMD.exe" >> "$GITHUB_ENV"
-
-      # FIXME: compiled mode don't work because compiled code don't have sugar
-      # for strings
-
-      # Ignore 'kind2' test on 'compiled' mode
-      - if: ${{ matrix.run_mode == 'compiled' }}
-        run: rm -r ./tests/kind2
-
       - run: cargo build --release
-      - run: python3 -X utf8 tests/test_cli.py --hvm-cmd "$HVM_CMD"
-              --run-mode ${{ matrix.run_mode }}
+      # FIXME: compiled mode of kind 2 teste don't work because compiled
+      # code don't have sugar for strings
+      - run: python3 -X utf8 tests/test_cli.py --hvm-cmd ${{env.HVM_CMD}}
+          --run-mode ${{ matrix.run_mode }} --skip-test kind2
