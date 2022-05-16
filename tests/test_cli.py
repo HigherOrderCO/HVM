@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 # TODO:
-# - single thread mode flag ?
 # - multiple compilers
 #   - gcc
 #   - tcc
@@ -17,7 +16,7 @@ from difflib import Differ
 import json
 
 is_windows = platform.system() == "Windows"
-
+run_modes = ("compiled", "single-thread", "interpreted")
 C_COMPILER = "clang"
 
 
@@ -35,13 +34,19 @@ class Compiled:
 
 
 @dataclass
+class SingleThread:
+    program_path: Path
+
+
+@dataclass
 class Interpreted:
     hvm_cmd: str
     program_path: Path
 
 
-TestMode = Union[Compiled, Interpreted]
-TestModeStr = Union[Literal["compiled"], Literal["interpreted"]]
+TestMode = Union[Compiled, SingleThread, Interpreted]
+TestModeStr = Union[Literal["compiled"],
+                    Literal["single-thread"], Literal["interpreted"]]
 
 
 @dataclass
@@ -58,6 +63,8 @@ def get_mode_str(mode: TestMode) -> TestModeStr:
             return "compiled"
         case Interpreted(_, _):
             return "interpreted"
+        case SingleThread(_):
+            return "single-thread"
 
 
 def resolve_path(path: Path) -> str:
@@ -75,7 +82,7 @@ def main() -> int:
         "--hvm-cmd", type=str, default="hvm"
     )
     parser.add_argument(
-        "--run-mode", choices=["compiled", "interpreted"], nargs='*', type=str
+        "--run-mode", choices=run_modes, nargs='*', type=str
     )
 
     parser.add_argument(
@@ -91,7 +98,7 @@ def main() -> int:
     exit_code = 0
 
     for mode in modes:
-        assert mode in ("compiled", "interpreted")
+        assert mode in run_modes
         results = list(run_tests(mode, hvm_cmd, skipped_tests))
         ok = all(map(lambda x: x.ok, results))
         if not ok:
@@ -137,13 +144,15 @@ def run_test(
         case "interpreted":
             mode = Interpreted(hvm_cmd, code_path)
             yield from run_cases(differ, mode, test_name, specs)
-        case "compiled":
+        case "compiled" | "single-thread":
+            single_threaded = mode_txt == "single-thread"
             exec_path = compile_test(
-                test_name, folder_path, hvm_cmd, code_path)
+                test_name, folder_path, hvm_cmd, code_path, single_threaded)
             if exec_path is None:
                 yield TestResult(mode_txt, test_name, "*", False)
             else:
-                mode = Compiled(exec_path)
+                mode = SingleThread(
+                    exec_path) if single_threaded else Compiled(exec_path)
                 yield from run_cases(differ, mode, test_name, specs)
 
                 exec_path.unlink(missing_ok=True)
@@ -179,7 +188,7 @@ def run_test_case(
         case Interpreted(hvm_cmd, program_path):
             code_path_abs = resolve_path(program_path)
             cmd = [hvm_cmd, "run", code_path_abs, case_args]
-        case Compiled(program_path):
+        case Compiled(program_path) | SingleThread(program_path):
             program_path_abs = resolve_path(program_path)
             cmd = [program_path_abs, case_args]
 
@@ -210,9 +219,12 @@ def run_test_case(
 
 
 def compile_test(
-    test_name: str, folder_path: Path, hvm_cmd: str, code_path: Path
+    test_name: str, folder_path: Path, hvm_cmd: str, code_path: Path, single_threaded: bool
 ) -> Optional[Path]:
     hvm_comp_cmd = [hvm_cmd, "compile", str(code_path.absolute())]
+
+    if single_threaded:
+        hvm_comp_cmd.append("--single-thread")
 
     p = subprocess.run(hvm_comp_cmd, capture_output=True)
 
