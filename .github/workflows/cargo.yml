@@ -40,6 +40,7 @@ jobs:
 
   cargo_fmt:
     name: 💅 Cargo Fmt
+    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
