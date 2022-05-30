@@ -1,5 +1,6 @@
 use crate::parser;
 use std::fmt;
+use std::sync::Arc;
 
 // Types
 // =====
@@ -16,6 +17,7 @@ pub enum Term {
   App { func: BTerm, argm: BTerm },
   Ctr { name: String, args: Vec<BTerm> },
   U32 { numb: u32 },
+  Str { stri: Arc<str> },
   Op2 { oper: Oper, val0: BTerm, val1: BTerm },
 }
 
@@ -160,6 +162,7 @@ impl fmt::Display for Term {
         write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
       Self::U32 { numb } => write!(f, "{}", numb),
+      Self::Str { stri } => write!(f, "\"{}\"", stri.escape_default()),
       Self::Op2 { oper, val0, val1 } => write!(f, "({} {} {})", oper, val0, val1),
     }
   }
@@ -395,7 +398,7 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
     }),
     Box::new(|state| {
       let (state, _head) = parser::text("\"", state)?;
-      let mut chars: Vec<char> = Vec::new();
+      let mut chars = String::new();
       let mut state = state;
       loop {
         if let Some(next) = parser::head(state) {
@@ -408,12 +411,7 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
           }
         }
       }
-      let empty = Term::Ctr { name: "StrNil".to_string(), args: Vec::new() };
-      let list = Box::new(chars.iter().rfold(empty, |t, h| Term::Ctr {
-        name: "StrCons".to_string(),
-        args: vec![Box::new(Term::U32 { numb: *h as u32 }), Box::new(t)],
-      }));
-      Ok((state, list))
+      Ok((state, Box::new(Term::Str { stri: Arc::from(chars) })))
     }),
     state,
   )

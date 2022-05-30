@@ -305,6 +305,13 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
         }
       }
       lang::Term::U32 { numb } => DynTerm::U32 { numb: *numb },
+      lang::Term::Str { stri } => {
+        let str_nil_ctr = comp.get_builtin_name("StrNil");
+        let str_cons_ctr = comp.get_builtin_name("StrCons");
+        stri.chars().rev().fold(DynTerm::Ctr { func: str_nil_ctr, args: vec![] }, |acc, char| {
+          DynTerm::Ctr { func: str_cons_ctr, args: vec![DynTerm::U32 { numb: char as u32 }, acc] }
+        })
+      }
       lang::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, comp, depth + 0, vars));

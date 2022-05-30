@@ -20,16 +20,38 @@ pub struct RuleBook {
   pub ctr_is_cal: HashMap<String, bool>,
 }
 
+impl RuleBook {
+  pub fn get_builtin_name(&self, ctr: &str) -> u64 {
+    assert!(BUILTIN_NAMES.contains(&ctr));
+    *self.name_to_id.get(ctr).unwrap_or_else(|| panic!("Missing builtin name: {}", ctr))
+  }
+}
+
 pub type RuleGroup = (usize, Vec<lang::Rule>);
+
+pub const BUILTIN_NAMES: &[&str] = &["StrNil", "StrCons"];
 
 // Creates an empty rulebook
 pub fn new_rulebook() -> RuleBook {
-  RuleBook {
+  let mut rb = RuleBook {
     rule_group: HashMap::new(),
     name_count: 0,
     name_to_id: HashMap::new(),
     id_to_name: HashMap::new(),
     ctr_is_cal: HashMap::new(),
+  };
+  for builtin_ctr in BUILTIN_NAMES {
+    register_name(&mut rb, builtin_ctr);
+  }
+  rb
+}
+
+fn register_name(book: &mut RuleBook, name: &str) {
+  let id = book.name_to_id.get(name);
+  if id.is_none() {
+    book.name_to_id.insert(name.to_string(), book.name_count);
+    book.id_to_name.insert(book.name_count, name.to_string());
+    book.name_count += 1;
   }
 }
 
@@ -57,12 +79,7 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
         register_names(book, val1);
       }
       lang::Term::Ctr { name, args } => {
-        let id = book.name_to_id.get(name);
-        if id.is_none() {
-          book.name_to_id.insert(name.clone(), book.name_count);
-          book.id_to_name.insert(book.name_count, name.clone());
-          book.name_count += 1;
-        }
+        register_name(book, name);
         for arg in args {
           register_names(book, arg);
         }
@@ -308,6 +325,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         let term = lang::Term::U32 { numb: *numb };
         Box::new(term)
       }
+      lang::Term::Str { stri } => Box::new(lang::Term::Str { stri: stri.clone() }),
     };
 
     Ok(term)
