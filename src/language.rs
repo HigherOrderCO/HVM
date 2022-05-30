@@ -1,5 +1,5 @@
 use crate::parser;
-use std::fmt;
+use std::fmt::{self, Write};
 
 // Types
 // =====
@@ -91,55 +91,52 @@ impl fmt::Display for Oper {
 }
 
 impl fmt::Display for Term {
-  // WARN: I think this could overflow, might need to rewrite it to be iterative instead of recursive?
-  // NOTE: Another issue is complexity. This function is O(N^2). Should use ropes to be linear.
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    fn lst_sugar(term: &Term) -> Option<String> {
-      fn go(term: &Term, text: &mut String, fst: bool) -> Option<()> {
-        if let Term::Ctr { name, args } = term {
-          if name == "Cons" && args.len() == 2 {
-            if !fst {
-              text.push_str(", ");
-            }
-            text.push_str(&format!("{}", args[0]));
-            go(&args[1], text, false)?;
-            return Some(());
+    /// returns if the resugaring succeeded
+    fn lst_sugar(f: &mut fmt::Formatter<'_>, term: &Term) -> Result<bool, fmt::Error> {
+      let mut buffer = String::new();
+      let mut fst = true;
+      let mut tm = term;
+      while let Term::Ctr { name, args } = tm {
+        if name == "Cons" && args.len() == 2 {
+          if fst {
+            fst = false;
+            write!(buffer, "{}", args[0])?;
+          } else {
+            write!(buffer, ", {}", args[0])?;
           }
-          if name == "Nil" && args.is_empty() {
-            return Some(());
-          }
+          tm = &args[1];
+        } else if name == "Nil" && args.is_empty() {
+          write!(f, "[{}]", buffer)?;
+          return Ok(true);
+        } else {
+          break;
         }
-        None
       }
-      let mut result = String::new();
-      result.push('[');
-      go(term, &mut result, true)?;
-      result.push(']');
-      Some(result)
+      Ok(false)
     }
 
-    fn str_sugar(term: &Term) -> Option<String> {
-      fn go(term: &Term, text: &mut String) -> Option<()> {
-        if let Term::Ctr { name, args } = term {
-          if name == "StrCons" && args.len() == 2 {
-            if let Term::U32 { numb } = *args[0] {
-              text.push(std::char::from_u32(numb)?);
-              go(&args[1], text)?;
-            }
-            return Some(());
+    fn str_sugar(f: &mut fmt::Formatter<'_>, term: &Term) -> Result<bool, fmt::Error> {
+      let mut buffer = String::new();
+      let mut tm = term;
+      while let Term::Ctr { name, args } = tm {
+        if name == "StrCons" && args.len() == 2 {
+          if let Term::U32 { numb } = &*args[0] {
+            write!(buffer, "{}", char::try_from(*numb).map_err(|_| fmt::Error)?)?;
+            tm = &args[1];
+          } else {
+            return Ok(false);
           }
-          if name == "StrNil" && args.is_empty() {
-            return Some(());
-          }
+        } else if name == "StrNil" && args.is_empty() {
+          write!(f, "\"{}\"", buffer.escape_default())?;
+          return Ok(true);
+        } else {
+          break;
         }
-        None
       }
-      let mut result = String::new();
-      result.push('"');
-      go(term, &mut result)?;
-      result.push('"');
-      Some(result)
+      Ok(false)
     }
+
     match self {
       Self::Var { name } => write!(f, "{}", name),
       Self::Dup { nam0, nam1, expr, body } => {
@@ -152,8 +149,8 @@ impl fmt::Display for Term {
         // Ctr sugars
         let sugars = [str_sugar, lst_sugar];
         for sugar in sugars {
-          if let Some(term) = sugar(self) {
-            return write!(f, "{}", term);
+          if sugar(f, self)? {
+            return Ok(());
           }
         }
 
@@ -386,7 +383,7 @@ pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-// TODO: parse escape sequences
+// TODO: unicode escape/support
 pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   parser::guard(
     Box::new(|state| {
@@ -399,13 +396,35 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
       let mut state = state;
       loop {
         if let Some(next) = parser::head(state) {
-          if next == '"' || next == '\0' {
-            state = parser::tail(state);
-            break;
-          } else {
-            chars.push(next);
-            state = parser::tail(state);
+          match next {
+            '"' | '\0' => {
+              state = parser::tail(state);
+              break;
+            }
+            '\\' => {
+              let st = parser::tail(state);
+              if let Some(next) = parser::head(st) {
+                match next {
+                  't' => chars.push('\t'),
+                  'r' => chars.push('\r'),
+                  'n' => chars.push('\n'),
+                  '\'' => chars.push('\''),
+                  '"' => chars.push('"'),
+                  '\\' => chars.push('\\'),
+                  _ => return parser::expected("escape character", 1, st),
+                }
+                state = parser::tail(st);
+              } else {
+                return parser::expected("escape character", 0, state);
+              }
+            }
+            _ => {
+              chars.push(next);
+              state = parser::tail(state);
+            }
           }
+        } else {
+          return parser::expected("characters", 0, state);
         }
       }
       let empty = Term::Ctr { name: "StrNil".to_string(), args: Vec::new() };
