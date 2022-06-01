@@ -8,5 +8,5 @@
 *.o
 *.tmp
 *.out
-
+tests/**/*.c
 ~*
