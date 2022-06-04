@@ -23,7 +23,7 @@ pub enum DynTerm {
   App { func: Box<DynTerm>, argm: Box<DynTerm> },
   Cal { func: u64, args: Vec<DynTerm> },
   Ctr { func: u64, args: Vec<DynTerm> },
-  U32 { numb: u32 },
+  Const(lang::Const),
   Op2 { oper: u64, val0: Box<DynTerm>, val1: Box<DynTerm> },
 }
 
@@ -95,7 +95,7 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
                 }
               }
             }
-            lang::Term::U32 { numb } => {
+            lang::Term::Const(lang::Const::U32 { numb }) => {
               *redex = true;
               cond.push(rt::U_32(*numb as u64));
             }
@@ -304,14 +304,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
           DynTerm::Ctr { func: term_func, args: term_args }
         }
       }
-      lang::Term::U32 { numb } => DynTerm::U32 { numb: *numb },
-      lang::Term::Str { stri } => {
-        let str_nil_ctr = comp.get_builtin_name("StrNil");
-        let str_cons_ctr = comp.get_builtin_name("StrCons");
-        stri.chars().rev().fold(DynTerm::Ctr { func: str_nil_ctr, args: vec![] }, |acc, char| {
-          DynTerm::Ctr { func: str_cons_ctr, args: vec![DynTerm::U32 { numb: char as u32 }, acc] }
-        })
-      }
+      lang::Term::Const(con) => DynTerm::Const(con.clone()),
       lang::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, comp, depth + 0, vars));
@@ -434,7 +427,20 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
           Elem::Fix { value: rt::Ctr(0, *func, 0) }
         }
       }
-      DynTerm::U32 { numb } => Elem::Fix { value: rt::U_32(*numb as u64) },
+      DynTerm::Const(con) => match con {
+        lang::Const::U32 { numb } => Elem::Fix { value: rt::U_32(*numb as u64) },
+        lang::Const::Str { stri } => {
+          let str_nil_ctr = rb::get_builtin_ctr("StrNil");
+          let str_cons_ctr = rb::get_builtin_ctr("StrCons");
+          let str_nil = Elem::Fix { value: rt::Ctr(0, str_nil_ctr, 0) };
+          stri.chars().rev().fold(str_nil, |tail, char| {
+            let targ = nodes.len() as u64;
+            nodes.push(vec![Elem::Fix { value: rt::U_32(char as u64) }, Elem::Fix { value: 0 }]);
+            links.push((targ, 1, tail));
+            Elem::Loc { value: rt::Ctr(2, str_cons_ctr, 0), targ, slot: 0 }
+          })
+        }
+      },
       DynTerm::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);

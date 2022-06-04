@@ -108,6 +108,10 @@ typedef u64 Lnk;
 #define GTN (0xE)
 #define NEQ (0xF)
 
+// builtin constructors
+#define StrNil (0)
+#define StrCons (1)
+
 //GENERATED_CONSTRUCTOR_IDS_START//
 /*! GENERATED_CONSTRUCTOR_IDS !*/
 //GENERATED_CONSTRUCTOR_IDS_END//
@@ -334,6 +338,23 @@ u64 alloc(Worker* mem, u64 size) {
 // Frees a block of memory by adding its position a freelist
 void clear(Worker* mem, u64 loc, u64 size) {
   stk_push(&mem->free[size], loc);
+}
+
+// Create a linked list of chars from a char array
+Lnk Str(Worker* mem, char* str, u64 len) {
+  Lnk str_nil = Ctr(0, StrNil, 0);
+  if (UNLIKELY(len < 0)) {
+    return str_nil;
+  }
+  Lnk tail = str_nil;
+  for (int i = len - 1; i >= 0; i--) {
+    char c = str[i];
+    u64 loc = alloc(mem, 2);
+    link(mem, loc + 0, U_32(c));
+    link(mem, loc + 1, tail);
+    tail = Ctr(2, StrCons, loc);
+  }
+  return tail;
 }
 
 // Garbage Collection
@@ -1268,6 +1289,24 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char*
     case CTR: case CAL: {
       u64 func = get_ext(term);
       u64 arit = get_ari(term);
+      if (func == StrCons | func == StrNil) {
+        stk_push(chrs, '"');
+        Lnk tail = term;
+        while (func == StrCons)
+        {
+          assert(arit == 2);
+          Lnk head = ask_arg(mem, tail, 0);
+          char c = (char)get_val(head);
+          tail = ask_arg(mem, tail, 1);
+          func = get_ext(tail);
+          arit = get_ari(tail);
+          stk_push(chrs, c);
+          // TODO: escape codes?
+        }
+        stk_push(chrs, '"');
+        break;
+      }
+      else {
       stk_push(chrs, '(');
       if (func < id_to_name_mcap && id_to_name_data[func] != NULL) {
         for (u64 i = 0; id_to_name_data[func][i] != '\0'; ++i) {
@@ -1282,6 +1321,7 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char*
         readback_term(chrs, mem, ask_arg(mem, term, i), vars, dirs, id_to_name_data, id_to_name_mcap);
       }
       stk_push(chrs, ')');
+      }
       break;
     }
     case VAR: {

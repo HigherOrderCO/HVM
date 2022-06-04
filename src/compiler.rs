@@ -179,6 +179,33 @@ fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String,
   (init, code)
 }
 
+struct EscapeC<'a>(&'a str);
+
+impl std::fmt::Display for EscapeC<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn needs_escape(c: char) -> bool {
+      const C_NEEDS_ESCAPE: &[char] = &[
+        '\0', '\u{07}', '\u{08}', '\u{1B}', '\u{0C}', '\n', '\r', '\t', '\u{0B}', '\\', '\'', '"',
+        '?',
+      ];
+      !c.is_ascii() || C_NEEDS_ESCAPE.contains(&c)
+    }
+
+    for char in self.0.chars() {
+      if needs_escape(char) {
+        match char {
+          '\0'..='\u{FF}' => write!(f, "\\x{:02X}", char as u32)?,
+          '\u{0100}'..='\u{FFFF}' => write!(f, "\\u{:04X}", char as u32)?,
+          '\u{010000}'.. => write!(f, "\\u{:08X}", char as u32)?,
+        }
+      } else {
+        write!(f, "{}", char)?
+      }
+    }
+    Ok(())
+  }
+}
+
 fn compile_func_rule_term(
   code: &mut String,
   tab: u64,
@@ -319,9 +346,10 @@ fn compile_func_rule_term(
         }
         format!("Cal({}, {}, {})", cal_args.len(), func, name)
       }
-      bd::DynTerm::U32 { numb } => {
-        format!("U_32({})", numb)
-      }
+      bd::DynTerm::Const(con) => match con {
+        lang::Const::U32 { numb } => format!("U_32({})", numb),
+        lang::Const::Str { stri } => format!("Str(mem, \"{}\", {})", EscapeC(stri), stri.chars().count()),
+      },
       bd::DynTerm::Op2 { oper, val0, val1 } => {
         let retx = fresh(nams, "ret");
         let name = fresh(nams, "op2");

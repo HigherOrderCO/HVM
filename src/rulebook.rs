@@ -20,15 +20,17 @@ pub struct RuleBook {
   pub ctr_is_cal: HashMap<String, bool>,
 }
 
-impl RuleBook {
-  pub fn get_builtin_name(&self, ctr: &str) -> u64 {
-    assert!(BUILTIN_NAMES.contains(&ctr));
-    *self.name_to_id.get(ctr).unwrap_or_else(|| panic!("Missing builtin name: {}", ctr))
-  }
+pub fn get_builtin_ctr(ctr: &str) -> u64 {
+  BUILTIN_NAMES
+    .iter()
+    .enumerate()
+    .find_map(|(id, builtin_ctr)| if *builtin_ctr == ctr { Some(id as u64) } else { None })
+    .unwrap_or_else(|| panic!("{} is not a builtin constructor!", ctr))
 }
 
 pub type RuleGroup = (usize, Vec<lang::Rule>);
 
+// If you change the order of these, also change any occurances in runtime.c
 pub const BUILTIN_NAMES: &[&str] = &["StrNil", "StrCons"];
 
 // Creates an empty rulebook
@@ -40,8 +42,11 @@ pub fn new_rulebook() -> RuleBook {
     id_to_name: HashMap::new(),
     ctr_is_cal: HashMap::new(),
   };
-  for builtin_ctr in BUILTIN_NAMES {
-    register_name(&mut rb, builtin_ctr);
+  for ctr in BUILTIN_NAMES {
+    let id = rb.name_count;
+    rb.name_count += 1;
+    rb.name_to_id.insert(ctr.to_string(), id);
+    rb.id_to_name.insert(id, ctr.to_string());
   }
   rb
 }
@@ -193,7 +198,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
               }
             }
           }
-          lang::Term::U32 { .. } => {}
+          lang::Term::Const(lang::Const::U32 { .. }) => {}
           _ => {
             return Err("Invalid left-hand side".to_owned());
           }
@@ -321,11 +326,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         let term = lang::Term::Op2 { oper: *oper, val0, val1 };
         Box::new(term)
       }
-      lang::Term::U32 { numb } => {
-        let term = lang::Term::U32 { numb: *numb };
-        Box::new(term)
-      }
-      lang::Term::Str { stri } => Box::new(lang::Term::Str { stri: stri.clone() }),
+      lang::Term::Const(con) => Box::new(lang::Term::Const(con.clone())),
     };
 
     Ok(term)
@@ -605,7 +606,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   }
 
   fn is_tested(term: &lang::Term) -> bool {
-    matches!(term, lang::Term::Ctr { .. } | lang::Term::U32 { .. })
+    matches!(term, lang::Term::Ctr { .. } | lang::Term::Const(lang::Const::U32 { .. }))
   }
 
   // Checks true if every time that `a` matches, `b` will match too
@@ -623,7 +624,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                 return false;
               }
             }
-            lang::Term::U32 { .. } => {
+            lang::Term::Const(_) => {
               return false;
             }
             lang::Term::Var { .. } => {
@@ -641,9 +642,9 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
             }
             _ => {}
           },
-          lang::Term::U32 { numb: a_arg_numb } => match **b_arg {
-            lang::Term::U32 { numb: b_arg_numb } => {
-              if a_arg_numb != b_arg_numb {
+          lang::Term::Const(ref c0) => match **b_arg {
+            lang::Term::Const(ref c1) => {
+              if c0 != c1 {
                 return false;
               }
             }
@@ -685,7 +686,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                         new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                       }
-                      lang::Term::U32 { .. } => {
+                      lang::Term::Const(lang::Const::U32 { .. }) => {
                         let var_name = format!(".{}", fresh(name_count));
                         new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
@@ -730,7 +731,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                           other_new_lhs_args.push(other_field.clone());
                         }
                       }
-                      lang::Term::U32 { .. } => {}
+                      lang::Term::Const(lang::Const::U32 { .. }) => {}
                       lang::Term::Var { .. } => {
                         other_new_lhs_args.push(other_arg.clone());
                       }
