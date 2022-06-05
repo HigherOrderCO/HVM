@@ -467,7 +467,7 @@ mod tests {
   use core::panic;
 
   use super::{gen_rulebook, sanitize_rule};
-  use crate::language::{read_file, read_rule};
+  use crate::{language::{read_file, read_rule}, rulebook::BUILTIN_NAMES};
 
   #[test]
   fn test_sanitize_expected_code() {
@@ -553,11 +553,11 @@ mod tests {
 
     // id_to_name e name_to_id testing
     // check expected length
-    assert_eq!(rulebook.id_to_name.len(), 3);
+    assert_eq!(rulebook.id_to_name.len(), BUILTIN_NAMES.len() + 3);
     // check determinism and existence
-    assert_eq!(rulebook.id_to_name.get(&0).unwrap(), "Double");
-    assert_eq!(rulebook.id_to_name.get(&1).unwrap(), "Zero");
-    assert_eq!(rulebook.id_to_name.get(&2).unwrap(), "Succ");
+    assert_eq!(rulebook.id_to_name.get(&(BUILTIN_NAMES.len() as u64 + 0)).unwrap(), "Double");
+    assert_eq!(rulebook.id_to_name.get(&(BUILTIN_NAMES.len() as u64 + 1)).unwrap(), "Zero");
+    assert_eq!(rulebook.id_to_name.get(&(BUILTIN_NAMES.len() as u64 + 2)).unwrap(), "Succ");
     // check cohesion
     let _size = rulebook.id_to_name.len();
     for (id, name) in rulebook.id_to_name {
