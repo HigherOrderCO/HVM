@@ -1,0 +1,25 @@
+name: Nix
+on:
+  workflow_call:
+jobs:
+  nix_build:
+    name: 🔨 Nix Build
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2.4.0
+    - uses: cachix/install-nix-action@v15
+      with:
+        extra_nix_config: |
+          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+    - run: nix build
+
+  nix_flake_check:
+    name: ❄️ Nix Flake Check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2.4.0
+    - uses: cachix/install-nix-action@v15
+      with:
+        extra_nix_config: |
+          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+    - run: nix build -f . checks.x86_64-linux

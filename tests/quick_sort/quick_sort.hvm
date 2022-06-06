@@ -1,0 +1,47 @@
+// Note: this algorithm exists for demonstration purposes. It picks hardcoded
+// pivots that work great for lists of random Uint32 values, but will perform
+// poorly on common data. A proper pivot selector is necessary to make this
+// algorithm practical. QuickSort is really interesting for HVM, because it,
+// unlike MergeSort, can be auto-parallelized. That's because QuickSort does
+// most of its work when it is recursing down, allowing threads to be allocated
+// to each half of the recursion. The concatenation can be delayed by returning
+// a tree instead. MergeSort, on the other hands, does most of its work on the
+// `merge` function, which operates on lists, sequentially.
+
+// Generates a random list
+(Randoms s 0) = (Nil)
+(Randoms s l) = (Cons s (Randoms (+ (* s 1664525) 1013904223) (- l 1)))
+
+// Sums all elements in a concatenation tree
+(Sum Empty)        = 0
+(Sum (Single a))   = a
+(Sum (Concat a b)) = (+ (Sum a) (Sum b))
+
+// The initial pivot
+Pivot = 2147483648
+
+// QuickSort
+(QSort p s Nil)          = Empty
+(QSort p s (Cons x Nil)) = (Single x)
+(QSort p s (Cons x xs))  =
+  (Split p s (Cons x xs) Nil Nil)
+
+// Splits list in two partitions
+(Split p s Nil min max) =
+  let s   = (>> s 1)
+  let min = (QSort (- p s) s min)
+  let max = (QSort (+ p s) s max)
+  (Concat min max)
+(Split p s (Cons x xs) min max) =
+  (Place p s (< p x) x xs min max)
+
+// Moves element to its partition
+(Place p s 0 x xs min max) =
+  (Split p s xs (Cons x min) max)
+(Place p s 1 x xs min max) =
+  (Split p s xs min (Cons x max))
+
+// Sorts and sums n random numbers
+(Main n) =
+  let list = (Randoms 1 (* 100 n))
+  (Sum (QSort Pivot Pivot list))
