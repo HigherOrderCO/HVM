@@ -391,15 +391,16 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
-      Ok((state, head == '"'))
+      Ok((state, head == '"' || head == '`'))
     }),
     Box::new(|state| {
-      let (state, _head) = parser::text("\"", state)?;
+      let delim = parser::head(state).unwrap_or('\0');
+      let state = parser::tail(state);
       let mut chars: Vec<char> = Vec::new();
       let mut state = state;
       loop {
         if let Some(next) = parser::head(state) {
-          if next == '"' || next == '\0' {
+          if next == delim || next == '\0' {
             state = parser::tail(state);
             break;
           } else {
