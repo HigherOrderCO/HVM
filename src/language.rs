@@ -388,45 +388,43 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
-      Ok((state, head == '"'))
+      Ok((state, head == '"' || head == '`'))
     }),
     Box::new(|state| {
-      let (state, _head) = parser::text("\"", state)?;
+      let delim = parser::head(state).unwrap_or('\0');
+      let state = parser::tail(state);
       let mut chars: Vec<char> = Vec::new();
       let mut state = state;
       loop {
         if let Some(next) = parser::head(state) {
-          match next {
-            '"' | '\0' => {
-              state = parser::tail(state);
-              break;
-            }
-            '\\' => {
-              let st = parser::tail(state);
-              if let Some(next) = parser::head(st) {
-                match next {
-                  't' => chars.push('\t'),
-                  'r' => chars.push('\r'),
-                  'n' => chars.push('\n'),
-                  '\'' => chars.push('\''),
-                  '"' => chars.push('"'),
-                  '\\' => chars.push('\\'),
-                  _ => return parser::expected("escape character", 1, st),
-                }
-                state = parser::tail(st);
-              } else {
-                return parser::expected("escape character", 0, state);
+          if next == delim || next == '\0' {
+            state = parser::tail(state);
+            break;
+          } else if next == '\\' {
+            let st = parser::tail(state);
+            if let Some(next) = parser::head(st) {
+              match next {
+                't' => chars.push('\t'),
+                'r' => chars.push('\r'),
+                'n' => chars.push('\n'),
+                '\'' => chars.push('\''),
+                '"' => chars.push('"'),
+                '\\' => chars.push('\\'),
+                _ => return parser::expected("escape character", 1, st),
               }
+              state = parser::tail(st);
+            } else {
+              return parser::expected("escape character", 0, state);
             }
-            _ => {
-              chars.push(next);
-              state = parser::tail(state);
-            }
+          } else {
+            chars.push(next);
+            state = parser::tail(state);
           }
         } else {
           return parser::expected("characters", 0, state);
         }
       }
+
       let empty = Term::Ctr { name: "StrNil".to_string(), args: Vec::new() };
       let list = Box::new(chars.iter().rfold(empty, |t, h| Term::Ctr {
         name: "StrCons".to_string(),
