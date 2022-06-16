@@ -30,7 +30,7 @@
 //   CTR |   8 | a constructor
 //   FUN |   9 | a function
 //   OP2 |  10 | a numeric operation
-//   NUM |  11 | a 120-bit number
+//   NUM |  11 | a 60-bit number
 //
 // The semantics of the 1st and 2nd values depend on the pointer tag. 
 //
