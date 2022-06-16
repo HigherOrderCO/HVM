@@ -135,15 +135,59 @@ pub fn hash<T: Hash>(t: &T) -> u64 {
   s.finish()
 }
 
+pub fn build_runtime_arities(rb: &rb::RuleBook) -> Vec<rt::Arity> {
+  // TODO: checking arity consistency would be nice, but where?
+  fn find_arities(rb: &rb::RuleBook, aris: &mut Vec<rt::Arity>, term: &lang::Term) {
+    match term {
+      lang::Term::Var { .. } => {}
+      lang::Term::Dup { expr, body, .. } => {
+        find_arities(rb, aris, expr);
+        find_arities(rb, aris, body);
+      }
+      lang::Term::Lam { body, .. } => {
+        find_arities(rb, aris, body);
+      }
+      lang::Term::Let { expr, body, .. } => {
+        find_arities(rb, aris, expr);
+        find_arities(rb, aris, body);
+      }
+      lang::Term::App { func, argm } => {
+        find_arities(rb, aris, func);
+        find_arities(rb, aris, argm);
+      }
+      lang::Term::Ctr { name, args } => {
+        if let Some(id) = rb.name_to_id.get(name) {
+          aris[*id as usize] = rt::Arity(args.len() as u64);
+          for arg in args {
+            find_arities(rb, aris, arg);
+          }
+        }
+      }
+      lang::Term::U32 { .. } => {}
+      lang::Term::Op2 { val0, val1, .. } => {
+        find_arities(rb, aris, val0);
+        find_arities(rb, aris, val1);
+      }
+    }
+  }
+  let mut aris: Vec<rt::Arity> = iter::repeat_with(|| rt::Arity(0)).take(65535).collect(); // FIXME: hardcoded limit
+  for rules_info in rb.rule_group.values() {
+    for rule in &rules_info.1 {
+      find_arities(rb, &mut aris, &rule.lhs);
+      find_arities(rb, &mut aris, &rule.rhs);
+    }
+  }
+  return aris;
+}
+
 pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
-  //let mut dups_count = DupsCount::new();
-  let mut funcs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect();
+  let mut funs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect(); // FIXME: hardcoded limit
   for (name, rules_info) in &comp.rule_group {
     let fnid = comp.name_to_id.get(name).unwrap_or(&0);
     let func = build_runtime_function(comp, &rules_info.1);
-    funcs[*fnid as usize] = Some(func);
+    funs[*fnid as usize] = Some(func);
   }
-  funcs
+  funs
 }
 
 pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
@@ -236,7 +280,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
       lang::Oper::Div => rt::DIV,
       lang::Oper::Mod => rt::MOD,
       lang::Oper::And => rt::AND,
-      lang::Oper::Or => rt::OR,
+      lang::Oper::Or  => rt::OR,
       lang::Oper::Xor => rt::XOR,
       lang::Oper::Shl => rt::SHL,
       lang::Oper::Shr => rt::SHR,
@@ -536,15 +580,18 @@ pub fn eval_code(
   // Converts the HVM "file" to a Rulebook
   let book = rb::gen_rulebook(&file);
 
-  // Builds dynamic functions
-  let functions = build_runtime_functions(&book);
+  // Builds functions
+  worker.funs = build_runtime_functions(&book);
+
+  // Builds arities
+  worker.aris = build_runtime_arities(&book);
 
   // Allocates the main term
   let host = alloc_term(&mut worker, &book, call);
 
   // Normalizes it
   let init = Instant::now();
-  rt::normal(&mut worker, host, &functions, Some(&book.id_to_name), debug);
+  rt::normal(&mut worker, host, Some(&book.id_to_name), debug);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string

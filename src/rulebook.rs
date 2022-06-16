@@ -4,6 +4,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 // RuleBook
 // ========
 
+
 // A RuleBook is a file ready for compilation. It includes:
 // - rule_group: sanitized rules grouped by function
 // - id_to_name: maps ctr ids to names
@@ -17,6 +18,7 @@ pub struct RuleBook {
   pub name_count: u64,
   pub id_to_name: HashMap<u64, String>,
   pub name_to_id: HashMap<String, u64>,
+  pub id_to_arit: HashMap<u64, u64>,
   pub ctr_is_cal: HashMap<String, bool>,
 }
 
@@ -29,42 +31,59 @@ pub fn new_rulebook() -> RuleBook {
     name_count: 0,
     name_to_id: HashMap::new(),
     id_to_name: HashMap::new(),
+    id_to_arit: HashMap::new(),
     ctr_is_cal: HashMap::new(),
   }
 }
 
 // Adds a group to a rulebook
 pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
-  fn register_names(book: &mut RuleBook, term: &lang::Term) {
+  fn register_names_and_arities(book: &mut RuleBook, term: &lang::Term) {
     match term {
       lang::Term::Dup { expr, body, .. } => {
-        register_names(book, expr);
-        register_names(book, body);
+        register_names_and_arities(book, expr);
+        register_names_and_arities(book, body);
       }
       lang::Term::Let { expr, body, .. } => {
-        register_names(book, expr);
-        register_names(book, body);
+        register_names_and_arities(book, expr);
+        register_names_and_arities(book, body);
       }
       lang::Term::Lam { body, .. } => {
-        register_names(book, body);
+        register_names_and_arities(book, body);
       }
       lang::Term::App { func, argm, .. } => {
-        register_names(book, func);
-        register_names(book, argm);
+        register_names_and_arities(book, func);
+        register_names_and_arities(book, argm);
       }
       lang::Term::Op2 { val0, val1, .. } => {
-        register_names(book, val0);
-        register_names(book, val1);
+        register_names_and_arities(book, val0);
+        register_names_and_arities(book, val1);
       }
-      lang::Term::Ctr { name, args } => {
-        let id = book.name_to_id.get(name);
-        if id.is_none() {
-          book.name_to_id.insert(name.clone(), book.name_count);
-          book.id_to_name.insert(book.name_count, name.clone());
-          book.name_count += 1;
+      term@lang::Term::Ctr { name, args } => {
+        // Registers id
+        let id = match book.name_to_id.get(name) {
+          None => {
+            let id = book.name_count;
+            book.name_to_id.insert(name.clone(), id);
+            book.id_to_name.insert(id, name.clone());
+            book.name_count += 1;
+            id
+          }
+          Some(id) => {
+            *id
+          }
+        };
+        // Registers arity
+        if let Some(arit) = book.id_to_arit.get(&id) {
+          if *arit != args.len() as u64 {
+            panic!("Incorrect arity on {}.", term);
+          }
+        } else {
+          book.id_to_arit.insert(id, args.len() as u64);
         }
+        // Recurses
         for arg in args {
-          register_names(book, arg);
+          register_names_and_arities(book, arg);
         }
       }
       _ => (),
@@ -76,8 +95,8 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
 
   // Builds its metadata (name_to_id, id_to_name, ctr_is_cal)
   for rule in &group.1 {
-    register_names(book, &rule.lhs);
-    register_names(book, &rule.rhs);
+    register_names_and_arities(book, &rule.lhs);
+    register_names_and_arities(book, &rule.rhs);
     if let lang::Term::Ctr { ref name, .. } = *rule.lhs {
       book.ctr_is_cal.insert(name.clone(), true);
     }
