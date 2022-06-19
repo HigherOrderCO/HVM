@@ -147,7 +147,16 @@ impl fmt::Display for Term {
       }
       Self::Let { name, expr, body } => write!(f, "let {} = {}; {}", name, expr, body),
       Self::Lam { name, body } => write!(f, "λ{} {}", name, body),
-      Self::App { func, argm } => write!(f, "({} {})", func, argm),
+      Self::App { func, argm } => {
+        let mut args = vec![argm];
+        let mut expr = func;
+        while let Self::App { func, argm } = &**expr {
+          args.push(argm);
+          expr = func;
+        }
+        args.reverse();
+        write!(f, "({} {})", expr, args.iter().map(|x| format!("{}",x)).collect::<Vec<String>>().join(" "))
+      },
       Self::Ctr { name, args } => {
         // Ctr sugars
         let sugars = [str_sugar, lst_sugar];
