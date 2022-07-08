@@ -43,9 +43,16 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   let mut inits = String::new();
   let mut codes = String::new();
   let mut id2nm = String::new();
+  let mut id2ar = String::new();
+
   for (id, name) in &comp.id_to_name {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
   }
+
+  for (id, arity) in &comp.id_to_arit {
+    line(&mut id2ar, 1, &format!(r#"id_to_arity_data[{}] = {};"#, id, arity));
+  }
+
   for (name, (_arity, rules)) in &comp.rule_group {
     let (init, code) = compile_func(comp, rules, 7);
 
@@ -65,7 +72,7 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
     line(&mut codes, 6, "};");
   }
 
-  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, parallel)
+  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, &id2ar, comp.id_to_arit.len() as u64, parallel)
 }
 
 fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String, String) {
@@ -448,7 +455,9 @@ fn c_runtime_template(
   inits: &str,
   codes: &str,
   id2nm: &str,
-  names_count: u64,
+  nmlen: u64,
+  id2ar: &str,
+  arlen: u64,
   parallel: bool,
 ) -> String {
   const C_RUNTIME_TEMPLATE: &str = include_str!("runtime.c");
@@ -461,6 +470,8 @@ fn c_runtime_template(
   const C_REWRITE_RULES_STEP_1_TAG: &str = "GENERATED_REWRITE_RULES_STEP_1";
   const C_NAME_COUNT_TAG: &str = "GENERATED_NAME_COUNT";
   const C_ID_TO_NAME_DATA_TAG: &str = "GENERATED_ID_TO_NAME_DATA";
+  const C_ARITY_COUNT_TAG: &str = "GENERATED_ARITY_COUNT";
+  const C_ID_TO_ARITY_DATA_TAG: &str = "GENERATED_ID_TO_ARITY_DATA";
 
   // TODO: Sanity checks: all tokens we're looking for must be present in the
   // `runtime.c` file.
@@ -485,15 +496,18 @@ fn c_runtime_template(
 
     let parallel_flag = if parallel { "#define PARALLEL" } else { "" };
     let num_threads = &num_cpus::get().to_string();
-    let names_count = &names_count.to_string();
+    let nmlen = &nmlen.to_string();
+    let arlen = &arlen.to_string();
     match tag {
       C_PARALLEL_FLAG_TAG => parallel_flag,
       C_NUM_THREADS_TAG => num_threads,
       C_CONSTRUCTOR_IDS_TAG => c_ids,
       C_REWRITE_RULES_STEP_0_TAG => inits,
       C_REWRITE_RULES_STEP_1_TAG => codes,
-      C_NAME_COUNT_TAG => names_count,
+      C_NAME_COUNT_TAG => nmlen,
       C_ID_TO_NAME_DATA_TAG => id2nm,
+      C_ARITY_COUNT_TAG => arlen,
+      C_ID_TO_ARITY_DATA_TAG => id2ar,
       _ => panic!("Unknown replacement tag."),
     }
     .to_string()

@@ -137,6 +137,8 @@ typedef struct {
   Stk  free[MAX_ARITY];
   u64  cost;
   u64  dups;
+  u64* aris;
+  u64  funs;
 
   #ifdef PARALLEL
   u64             has_work;
@@ -292,6 +294,17 @@ u64 get_loc(Lnk lnk, u64 arg) {
   return get_val(lnk) + arg;
 }
 
+u64 ask_ari(Worker* mem, Lnk lnk) {
+  u64 fid = get_ext(lnk);
+  u64 got = fid < mem->funs ? mem->aris[fid] : 0;
+  // TODO: remove this in a future update where ari will be removed from the lnk
+  if (get_ari(lnk) != got) {
+    printf("[ERROR] arity inconsistency\n");
+    exit(1);
+  }
+  return got;
+}
+
 // Dereferences a Lnk, getting what is stored on its target position
 Lnk ask_lnk(Worker* mem, u64 loc) {
   return mem->node[loc];
@@ -392,7 +405,7 @@ void collect(Worker* mem, Lnk term) {
       break;
     }
     case CTR: case CAL: {
-      u64 arity = get_ari(term);
+      u64 arity = ask_ari(mem, term);
       for (u64 i = 0; i < arity; ++i) {
         collect(mem, ask_arg(mem,term,i));
       }
@@ -432,7 +445,7 @@ void subst(Worker* mem, Lnk lnk, Lnk val) {
 // {(F a0 b0 c0 ...) (F a1 b1 c1 ...)}
 Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {
   inc_cost(mem);
-  u64 arit = get_ari(term);
+  u64 arit = ask_ari(mem, term);
   u64 func = get_ext(term);
   u64 fun0 = get_loc(term, 0);
   u64 fun1 = alloc(mem, arit);
@@ -510,7 +523,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
         }
         case CAL: {
           u64 fun = get_ext(term);
-          u64 ari = get_ari(term);
+          u64 ari = ask_ari(mem, term);
 
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
@@ -679,7 +692,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               //printf("dup-ctr\n");
               inc_cost(mem);
               u64 func = get_ext(arg0);
-              u64 arit = get_ari(arg0);
+              u64 arit = ask_ari(mem, arg0);
               if (arit == 0) {
                 subst(mem, ask_arg(mem,term,0), Ctr(0, func, 0));
                 subst(mem, ask_arg(mem,term,1), Ctr(0, func, 0));
@@ -813,7 +826,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
         }
         case CAL: {
           u64 fun = get_ext(term);
-          u64 ari = get_ari(term);
+          u64 ari = ask_ari(mem, term);
 
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_1_START//
@@ -905,7 +918,7 @@ Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
         }
       }
       case CTR: case CAL: {
-        u64 arity = (u64)get_ari(term);
+        u64 arity = (u64)ask_ari(mem, term);
         for (u64 i = 0; i < arity; ++i) {
           rec_locs[rec_size++] = get_loc(term,i);
         }
@@ -1157,7 +1170,7 @@ void readback_vars(Stk* vars, Worker* mem, Lnk term, Stk* seen) {
         break;
       }
       case CTR: case CAL: {
-        u64 arity = get_ari(term);
+        u64 arity = ask_ari(mem, term);
         for (u64 i = 0; i < arity; ++i) {
           readback_vars(vars, mem, ask_arg(mem, term, i), seen);
         }
@@ -1267,7 +1280,7 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char*
     }
     case CTR: case CAL: {
       u64 func = get_ext(term);
-      u64 arit = get_ari(term);
+      u64 arit = ask_ari(mem, term);
       stk_push(chrs, '(');
       if (func < id_to_name_mcap && id_to_name_data[func] != NULL) {
         for (u64 i = 0; id_to_name_data[func][i] != '\0'; ++i) {
@@ -1381,11 +1394,18 @@ int main(int argc, char* argv[]) {
   // Id-to-Name map
   const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
   char* id_to_name_data[id_to_name_size];
-/*! GENERATED_ID_TO_NAME_DATA !*/;
+/*! GENERATED_ID_TO_NAME_DATA !*/
+
+  // Id-to-Arity map
+  const u64 id_to_arity_size = /*! GENERATED_ARITY_COUNT */ 1 /* GENERATED_ARITY_COUNT !*/;
+  u64 id_to_arity_data[id_to_arity_size];
+/*! GENERATED_ID_TO_ARITY_DATA !*/
 
   // Builds main term
   mem.size = 0;
   mem.node = (u64*)malloc(HEAP_SIZE);
+  mem.aris = id_to_arity_data;
+  mem.funs = id_to_arity_size;
   assert(mem.node);
   if (argc <= 1) {
     mem.node[mem.size++] = Cal(0, _MAIN_, 0);
@@ -1394,6 +1414,11 @@ int main(int argc, char* argv[]) {
     for (u64 i = 1; i < argc; ++i) {
       mem.node[mem.size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
     }
+  }
+
+  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {
+    workers[tid].aris = id_to_arity_data;
+    workers[tid].funs = id_to_arity_size;
   }
 
   // Reduces and benchmarks

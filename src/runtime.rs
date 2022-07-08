@@ -358,6 +358,7 @@ pub fn ask_ari(mem: &Worker, lnk: Lnk) -> u64 {
     Some(Arity(arit)) => *arit,
     None              => 0,
   };
+  // TODO: remove this in a future update where ari will be removed from the lnk
   if get_ari(lnk) != got {
     println!("[WARNING] arity inconsistency");
   }
@@ -411,11 +412,9 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
     match get_tag(term) {
       DP0 => {
         link(mem, get_loc(term, 0), Era());
-        //r_educe(mem, get_loc(ask_arg(mem,term,1),0));
       }
       DP1 => {
         link(mem, get_loc(term, 1), Era());
-        //r_educe(mem, get_loc(ask_arg(mem,term,0),0));
       }
       VAR => {
         link(mem, get_loc(term, 0), Era());
