@@ -191,6 +191,8 @@ pub const EXT: u64 = 0x100000000;
 pub const ARI: u64 = 0x100000000000000;
 pub const TAG: u64 = 0x1000000000000000;
 
+pub const NUM_MASK: u64 = 0xFFF_FFFF_FFFF_FFFF;
+
 pub const DP0: u64 = 0x0;
 pub const DP1: u64 = 0x1;
 pub const VAR: u64 = 0x2;
@@ -202,8 +204,7 @@ pub const PAR: u64 = 0x7;
 pub const CTR: u64 = 0x8;
 pub const CAL: u64 = 0x9;
 pub const OP2: u64 = 0xA;
-pub const U32: u64 = 0xB;
-pub const F32: u64 = 0xC;
+pub const NUM: u64 = 0xB;
 pub const OUT: u64 = 0xE;
 pub const NIL: u64 = 0xF;
 
@@ -307,8 +308,8 @@ pub fn Op2(ope: u64, pos: u64) -> Lnk {
   (OP2 * TAG) | (ope * EXT) | pos
 }
 
-pub fn U_32(val: u64) -> Lnk {
-  (U32 * TAG) | val
+pub fn Num(val: u64) -> Lnk {
+  (NUM * TAG) | (val & NUM_MASK)
 }
 
 pub fn Nil() -> Lnk {
@@ -335,11 +336,15 @@ pub fn get_tag(lnk: Lnk) -> u64 {
 }
 
 pub fn get_ext(lnk: Lnk) -> u64 {
-  (lnk / EXT) & 0xFFFFFF
+  (lnk / EXT) & 0xFF_FFFF
 }
 
 pub fn get_val(lnk: Lnk) -> u64 {
-  lnk & 0xFFFFFFFF
+  lnk & 0xFFFF_FFFF
+}
+
+pub fn get_num(lnk: Lnk) -> u64 {
+  lnk & 0xFFF_FFFF_FFFF_FFFF
 }
 
 pub fn get_ari(lnk: Lnk) -> u64 {
@@ -407,17 +412,17 @@ pub fn clear(mem: &mut Worker, loc: u64, size: u64) {
 pub fn collect(mem: &mut Worker, term: Lnk) {
   let mut stack: Vec<Lnk> = Vec::new();
   let mut next = term;
-  let mut dups : Vec<u64> = Vec::new();
+  //let mut dups : Vec<u64> = Vec::new();
   loop {
     let term = next;
     match get_tag(term) {
       DP0 => {
         link(mem, get_loc(term, 0), Era());
-        dups.push(term);
+        //dups.push(term);
       }
       DP1 => {
         link(mem, get_loc(term, 1), Era());
-        dups.push(term);
+        //dups.push(term);
       }
       VAR => {
         link(mem, get_loc(term, 0), Era());
@@ -448,7 +453,7 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
         clear(mem, get_loc(term, 0), 2);
         continue;
       }
-      U32 => {}
+      NUM => {}
       CTR | CAL => {
         let arity = ask_ari(mem, term);
         for i in 0..arity {
@@ -472,14 +477,14 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
     }
   }
   // TODO: add this to the C version
-  for dup in dups {
-    let fst = ask_arg(mem, dup, 0);
-    let snd = ask_arg(mem, dup, 1);
-    if get_tag(fst) == ERA && get_tag(snd) == ERA {
-      collect(mem, ask_arg(mem, dup, 2));
-      clear(mem, get_loc(dup, 0), 3);
-    }
-  }
+  //for dup in dups {
+    //let fst = ask_arg(mem, dup, 0);
+    //let snd = ask_arg(mem, dup, 1);
+    //if get_tag(fst) == ERA && get_tag(snd) == ERA {
+      //collect(mem, ask_arg(mem, dup, 2));
+      //clear(mem, get_loc(dup, 0), 3);
+    //}
+  //}
 }
 
 pub fn inc_cost(mem: &mut Worker) {
@@ -679,7 +684,7 @@ pub fn reduce(
               let done = Par(get_ext(arg0), if get_tag(term) == DP0 { par0 } else { par1 });
               link(mem, host, done);
             }
-          } else if get_tag(arg0) == U32 {
+          } else if get_tag(arg0) == NUM {
             //println!("dup-u32");
             inc_cost(mem);
             subst(mem, ask_arg(mem, term, 0), arg0);
@@ -730,31 +735,31 @@ pub fn reduce(
         OP2 => {
           let arg0 = ask_arg(mem, term, 0);
           let arg1 = ask_arg(mem, term, 1);
-          if get_tag(arg0) == U32 && get_tag(arg1) == U32 {
+          if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
             //println!("op2-u32");
             inc_cost(mem);
-            let a = get_val(arg0);
-            let b = get_val(arg1);
+            let a = get_num(arg0);
+            let b = get_num(arg1);
             let c = match get_ext(term) {
-              ADD => (a + b) & 0xFFFFFFFF,
-              SUB => (a - b) & 0xFFFFFFFF,
-              MUL => (a * b) & 0xFFFFFFFF,
-              DIV => (a / b) & 0xFFFFFFFF,
-              MOD => (a % b) & 0xFFFFFFFF,
-              AND => (a & b) & 0xFFFFFFFF,
-              OR => (a | b) & 0xFFFFFFFF,
-              XOR => (a ^ b) & 0xFFFFFFFF,
-              SHL => (a << b) & 0xFFFFFFFF,
-              SHR => (a >> b) & 0xFFFFFFFF,
-              LTN => u64::from(a < b),
+              ADD => a.wrapping_add(b) & NUM_MASK,
+              SUB => a.wrapping_sub(b) & NUM_MASK,
+              MUL => a.wrapping_mul(b) & NUM_MASK,
+              DIV => a.wrapping_div(b) & NUM_MASK,
+              MOD => a.wrapping_rem(b) & NUM_MASK,
+              AND => (a &  b) & NUM_MASK,
+              OR  => (a |  b) & NUM_MASK,
+              XOR => (a ^  b) & NUM_MASK,
+              SHL => a.wrapping_shl(b as u32) & NUM_MASK,
+              SHR => a.wrapping_shr(b as u32) & NUM_MASK,
+              LTN => u64::from(a <  b),
               LTE => u64::from(a <= b),
               EQL => u64::from(a == b),
               GTE => u64::from(a >= b),
-              GTN => u64::from(a > b),
+              GTN => u64::from(a >  b),
               NEQ => u64::from(a != b),
-              _ => 0,
+              _   => panic!("Invalid operation!"),
             };
-            let done = U_32(c);
+            let done = Num(c);
             clear(mem, get_loc(term, 0), 2);
             link(mem, host, done);
           } else if get_tag(arg0) == PAR {
@@ -943,8 +948,7 @@ pub fn show_lnk(x: Lnk) -> String {
       CTR => "CTR",
       CAL => "CAL",
       OP2 => "OP2",
-      U32 => "U32",
-      F32 => "F32",
+      NUM => "NUM",
       OUT => "OUT",
       NIL => "NIL",
       _ => "?",
@@ -1084,7 +1088,7 @@ pub fn show_term(
         };
         format!("({} {} {})", symb, val0, val1)
       }
-      U32 => {
+      NUM => {
         format!("{}", get_val(term))
       }
       CTR | CAL => {

@@ -133,9 +133,9 @@ fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String,
     // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
     for (i, cond) in dynrule.cond.iter().enumerate() {
       let i = i as u64;
-      if rt::get_tag(*cond) == rt::U32 {
-        let same_tag = format!("get_tag(ask_arg(mem, term, {})) == U32", i);
-        let same_val = format!("get_val(ask_arg(mem, term, {})) == {}u", i, rt::get_val(*cond));
+      if rt::get_tag(*cond) == rt::NUM {
+        let same_tag = format!("get_tag(ask_arg(mem, term, {})) == NUM", i);
+        let same_val = format!("get_num(ask_arg(mem, term, {})) == {}u", i, rt::get_num(*cond));
         matched.push(format!("({} && {})", same_tag, same_val));
       }
       if rt::get_tag(*cond) == rt::CTR {
@@ -237,7 +237,7 @@ fn compile_func_rule_term(
       }
       bd::DynTerm::Dup { eras, expr, body } => {
         //if INLINE_NUMBERS {
-        //line(code, tab + 0, &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1));
+        //line(code, tab + 0, &format!("if (get_tag({}) == NUM && get_tag({}) == NUM) {{", val0, val1));
         //}
 
         let copy = fresh(nams, "cpy");
@@ -248,7 +248,7 @@ fn compile_func_rule_term(
         line(code, tab, &format!("u64 {};", dup0));
         line(code, tab, &format!("u64 {};", dup1));
         if INLINE_NUMBERS {
-          line(code, tab + 0, &format!("if (get_tag({}) == U32) {{", copy));
+          line(code, tab + 0, &format!("if (get_tag({}) == NUM) {{", copy));
           line(code, tab + 1, "inc_cost(mem);");
           line(code, tab + 1, &format!("{} = {};", dup0, copy));
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
@@ -326,8 +326,8 @@ fn compile_func_rule_term(
         }
         format!("Cal({}, {}, {})", cal_args.len(), func, name)
       }
-      bd::DynTerm::U32 { numb } => {
-        format!("U_32({})", numb)
+      bd::DynTerm::Num { numb } => {
+        format!("Num({}ull)", numb)
       }
       bd::DynTerm::Op2 { oper, val0, val1 } => {
         let retx = fresh(nams, "ret");
@@ -340,27 +340,27 @@ fn compile_func_rule_term(
           line(
             code,
             tab + 0,
-            &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1),
+            &format!("if (get_tag({}) == NUM && get_tag({}) == NUM) {{", val0, val1),
           );
-          let a = format!("get_val({})", val0);
-          let b = format!("get_val({})", val1);
+          let a = format!("get_num({})", val0);
+          let b = format!("get_num({})", val1);
           match *oper {
-            rt::ADD => line(code, tab + 1, &format!("{} = U_32({} + {});", retx, a, b)),
-            rt::SUB => line(code, tab + 1, &format!("{} = U_32({} - {});", retx, a, b)),
-            rt::MUL => line(code, tab + 1, &format!("{} = U_32({} * {});", retx, a, b)),
-            rt::DIV => line(code, tab + 1, &format!("{} = U_32({} / {});", retx, a, b)),
-            rt::MOD => line(code, tab + 1, &format!("{} = U_32({} % {});", retx, a, b)),
-            rt::AND => line(code, tab + 1, &format!("{} = U_32({} & {});", retx, a, b)),
-            rt::OR => line(code, tab + 1, &format!("{} = U_32({} | {});", retx, a, b)),
-            rt::XOR => line(code, tab + 1, &format!("{} = U_32({} ^ {});", retx, a, b)),
-            rt::SHL => line(code, tab + 1, &format!("{} = U_32({} << {});", retx, a, b)),
-            rt::SHR => line(code, tab + 1, &format!("{} = U_32({} >> {});", retx, a, b)),
-            rt::LTN => line(code, tab + 1, &format!("{} = U_32({} <  {} ? 1 : 0);", retx, a, b)),
-            rt::LTE => line(code, tab + 1, &format!("{} = U_32({} <= {} ? 1 : 0);", retx, a, b)),
-            rt::EQL => line(code, tab + 1, &format!("{} = U_32({} == {} ? 1 : 0);", retx, a, b)),
-            rt::GTE => line(code, tab + 1, &format!("{} = U_32({} >= {} ? 1 : 0);", retx, a, b)),
-            rt::GTN => line(code, tab + 1, &format!("{} = U_32({} >  {} ? 1 : 0);", retx, a, b)),
-            rt::NEQ => line(code, tab + 1, &format!("{} = U_32({} != {} ? 1 : 0);", retx, a, b)),
+            rt::ADD => line(code, tab + 1, &format!("{} = Num({} + {});", retx, a, b)),
+            rt::SUB => line(code, tab + 1, &format!("{} = Num({} - {});", retx, a, b)),
+            rt::MUL => line(code, tab + 1, &format!("{} = Num({} * {});", retx, a, b)),
+            rt::DIV => line(code, tab + 1, &format!("{} = Num({} / {});", retx, a, b)),
+            rt::MOD => line(code, tab + 1, &format!("{} = Num({} % {});", retx, a, b)),
+            rt::AND => line(code, tab + 1, &format!("{} = Num({} & {});", retx, a, b)),
+            rt::OR  => line(code, tab + 1, &format!("{} = Num({} | {});", retx, a, b)),
+            rt::XOR => line(code, tab + 1, &format!("{} = Num({} ^ {});", retx, a, b)),
+            rt::SHL => line(code, tab + 1, &format!("{} = Num({} << {});", retx, a, b)),
+            rt::SHR => line(code, tab + 1, &format!("{} = Num({} >> {});", retx, a, b)),
+            rt::LTN => line(code, tab + 1, &format!("{} = Num({} <  {} ? 1 : 0);", retx, a, b)),
+            rt::LTE => line(code, tab + 1, &format!("{} = Num({} <= {} ? 1 : 0);", retx, a, b)),
+            rt::EQL => line(code, tab + 1, &format!("{} = Num({} == {} ? 1 : 0);", retx, a, b)),
+            rt::GTE => line(code, tab + 1, &format!("{} = Num({} >= {} ? 1 : 0);", retx, a, b)),
+            rt::GTN => line(code, tab + 1, &format!("{} = Num({} >  {} ? 1 : 0);", retx, a, b)),
+            rt::NEQ => line(code, tab + 1, &format!("{} = Num({} != {} ? 1 : 0);", retx, a, b)),
             _ => line(code, tab + 1, &format!("{} = ?;", retx)),
           }
           line(code, tab + 1, "inc_cost(mem);");

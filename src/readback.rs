@@ -60,7 +60,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         name(mem, ctx, arg0, depth + 1);
         name(mem, ctx, arg1, depth + 1);
       }
-      rt::U32 => {}
+      rt::NUM => {}
       rt::CTR | rt::CAL => {
         let arity = rt::ask_ari(mem, term);
         for i in 0..arity {
@@ -193,8 +193,8 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
         let val1_txt = go(mem, ctx, stacks, val1, depth + 1);
         format!("({} {} {})", op_txt, val0_txt, val1_txt)
       }
-      rt::U32 => {
-        format!("{}", rt::get_val(term))
+      rt::NUM => {
+        format!("{}", rt::get_num(term))
       }
       rt::CTR | rt::CAL => {
         let func = rt::get_ext(term);

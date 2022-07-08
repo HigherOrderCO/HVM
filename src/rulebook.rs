@@ -195,7 +195,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
               }
             }
           }
-          lang::Term::U32 { .. } => {}
+          lang::Term::Num { .. } => {}
           _ => {
             return Err("Invalid left-hand side".to_owned());
           }
@@ -323,8 +323,8 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         let term = lang::Term::Op2 { oper: *oper, val0, val1 };
         Box::new(term)
       }
-      lang::Term::U32 { numb } => {
-        let term = lang::Term::U32 { numb: *numb };
+      lang::Term::Num { numb } => {
+        let term = lang::Term::Num { numb: *numb };
         Box::new(term)
       }
     };
@@ -606,7 +606,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   }
 
   fn is_tested(term: &lang::Term) -> bool {
-    matches!(term, lang::Term::Ctr { .. } | lang::Term::U32 { .. })
+    matches!(term, lang::Term::Ctr { .. } | lang::Term::Num { .. })
   }
 
   // Checks true if every time that `a` matches, `b` will match too
@@ -624,7 +624,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                 return false;
               }
             }
-            lang::Term::U32 { .. } => {
+            lang::Term::Num { .. } => {
               return false;
             }
             lang::Term::Var { .. } => {
@@ -642,8 +642,8 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
             }
             _ => {}
           },
-          lang::Term::U32 { numb: a_arg_numb } => match **b_arg {
-            lang::Term::U32 { numb: b_arg_numb } => {
+          lang::Term::Num { numb: a_arg_numb } => match **b_arg {
+            lang::Term::Num { numb: b_arg_numb } => {
               if a_arg_numb != b_arg_numb {
                 return false;
               }
@@ -686,7 +686,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                         new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                       }
-                      lang::Term::U32 { .. } => {
+                      lang::Term::Num { .. } => {
                         let var_name = format!(".{}", fresh(name_count));
                         new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
@@ -731,7 +731,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                           other_new_lhs_args.push(other_field.clone());
                         }
                       }
-                      lang::Term::U32 { .. } => {}
+                      lang::Term::Num { .. } => {}
                       lang::Term::Var { .. } => {
                         other_new_lhs_args.push(other_arg.clone());
                       }

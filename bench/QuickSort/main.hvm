@@ -10,7 +10,7 @@
 
 // Generates a random list
 (Randoms s 0) = (Nil)
-(Randoms s l) = (Cons s (Randoms (+ (* s 1664525) 1013904223) (- l 1)))
+(Randoms s l) = (Cons s (Randoms (% (+ (* s 1664525) 1013904223) 4294967296) (- l 1)))
 
 // Sums all elements in a concatenation tree
 (Sum Empty)        = 0

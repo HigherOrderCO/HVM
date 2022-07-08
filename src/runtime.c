@@ -67,7 +67,7 @@ typedef pthread_t Thd;
 // variant, and possibly a position on the memory. So, for example, `Lnk ptr =
 // APP * TAG | 137` creates a pointer to an app node stored on position 137.
 // Some links deal with variables: DP0, DP1, VAR, ARG and ERA.  The OP2 link
-// represents a numeric operation, and U32 and F32 links represent unboxed nums.
+// represents a numeric operation, and NUM and FLO links represent unboxed nums.
 
 typedef u64 Lnk;
 
@@ -75,6 +75,8 @@ typedef u64 Lnk;
 #define EXT ((u64) 0x100000000)
 #define ARI ((u64) 0x100000000000000)
 #define TAG ((u64) 0x1000000000000000)
+
+#define NUM_MASK ((u64) 0xFFFFFFFFFFFFFFF)
 
 #define DP0 (0x0) // points to the dup node that binds this variable (left side)
 #define DP1 (0x1) // points to the dup node that binds this variable (right side)
@@ -87,8 +89,8 @@ typedef u64 Lnk;
 #define CTR (0x8) // arity = user defined
 #define CAL (0x9) // arity = user defined
 #define OP2 (0xA) // arity = 2
-#define U32 (0xB) // arity = 0 (unboxed)
-#define F32 (0xC) // arity = 0 (unboxed)
+#define NUM (0xB) // arity = 0 (unboxed)
+#define FLO (0xC) // arity = 0 (unboxed)
 #define NIL (0xF) // not used
 
 #define ADD (0x0)
@@ -258,8 +260,8 @@ Lnk Op2(u64 ope, u64 pos) {
   return (OP2 * TAG) | (ope * EXT) | pos;
 }
 
-Lnk U_32(u64 val) {
-  return (U32 * TAG) | val;
+Lnk Num(u64 val) {
+  return (NUM * TAG) | (val & NUM_MASK);
 }
 
 Lnk Nil(void) {
@@ -284,6 +286,10 @@ u64 get_ext(Lnk lnk) {
 
 u64 get_val(Lnk lnk) {
   return lnk & 0xFFFFFFFF;
+}
+
+u64 get_num(Lnk lnk) {
+  return lnk & 0xFFFFFFFFFFFFFFF;
 }
 
 u64 get_ari(Lnk lnk) {
@@ -401,7 +407,7 @@ void collect(Worker* mem, Lnk term) {
       clear(mem, get_loc(term,0), 2);
       break;
     }
-    case U32: {
+    case NUM: {
       break;
     }
     case CTR: case CAL: {
@@ -665,11 +671,11 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
             }
 
             // dup x y = N
-            // ----------- DUP-U32
+            // ----------- DUP-NUM
             // x <- N
             // y <- N
             // ~
-            case U32: {
+            case NUM: {
               //printf("dup-u32\n");
               inc_cost(mem);
               subst(mem, ask_arg(mem,term,0), arg0);
@@ -747,33 +753,33 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           u64 arg1 = ask_arg(mem, term, 1);
 
           // (+ a b)
-          // --------- OP2-U32
+          // --------- OP2-NUM
           // add(a, b)
-          if (get_tag(arg0) == U32 && get_tag(arg1) == U32) {
+          if (get_tag(arg0) == NUM && get_tag(arg1) == NUM) {
             //printf("op2-u32\n");
             inc_cost(mem);
-            u64 a = get_val(arg0);
-            u64 b = get_val(arg1);
+            u64 a = get_num(arg0);
+            u64 b = get_num(arg1);
             u64 c = 0;
             switch (get_ext(term)) {
-              case ADD: c = (a +  b) & 0xFFFFFFFF; break;
-              case SUB: c = (a -  b) & 0xFFFFFFFF; break;
-              case MUL: c = (a *  b) & 0xFFFFFFFF; break;
-              case DIV: c = (a /  b) & 0xFFFFFFFF; break;
-              case MOD: c = (a %  b) & 0xFFFFFFFF; break;
-              case AND: c = (a &  b) & 0xFFFFFFFF; break;
-              case OR : c = (a |  b) & 0xFFFFFFFF; break;
-              case XOR: c = (a ^  b) & 0xFFFFFFFF; break;
-              case SHL: c = (a << b) & 0xFFFFFFFF; break;
-              case SHR: c = (a >> b) & 0xFFFFFFFF; break;
-              case LTN: c = (a <  b) ? 1 : 0;      break;
-              case LTE: c = (a <= b) ? 1 : 0;      break;
-              case EQL: c = (a == b) ? 1 : 0;      break;
-              case GTE: c = (a >= b) ? 1 : 0;      break;
-              case GTN: c = (a >  b) ? 1 : 0;      break;
-              case NEQ: c = (a != b) ? 1 : 0;      break;
+              case ADD: c = (a +  b) & NUM_MASK; break;
+              case SUB: c = (a -  b) & NUM_MASK; break;
+              case MUL: c = (a *  b) & NUM_MASK; break;
+              case DIV: c = (a /  b) & NUM_MASK; break;
+              case MOD: c = (a %  b) & NUM_MASK; break;
+              case AND: c = (a &  b) & NUM_MASK; break;
+              case OR : c = (a |  b) & NUM_MASK; break;
+              case XOR: c = (a ^  b) & NUM_MASK; break;
+              case SHL: c = (a << b) & NUM_MASK; break;
+              case SHR: c = (a >> b) & NUM_MASK; break;
+              case LTN: c = (a <  b) ? 1 : 0;    break;
+              case LTE: c = (a <= b) ? 1 : 0;    break;
+              case EQL: c = (a == b) ? 1 : 0;    break;
+              case GTE: c = (a >= b) ? 1 : 0;    break;
+              case GTN: c = (a >  b) ? 1 : 0;    break;
+              case NEQ: c = (a != b) ? 1 : 0;    break;
             }
-            u64 done = U_32(c);
+            u64 done = Num(c);
             clear(mem, get_loc(term,0), 2);
             link(mem, host, done);
           }
@@ -1272,9 +1278,9 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char*
       stk_push(chrs, ')');
       break;
     }
-    case U32: {
+    case NUM: {
       //printf("- u32\n");
-      readback_decimal(chrs, get_val(term));
+      readback_decimal(chrs, get_num(term));
       //printf("- u32 done\n");
       break;
     }
@@ -1366,8 +1372,8 @@ void debug_print_lnk(Lnk x) {
     case CTR: printf("CTR"); break;
     case CAL: printf("CAL"); break;
     case OP2: printf("OP2"); break;
-    case U32: printf("U32"); break;
-    case F32: printf("F32"); break;
+    case NUM: printf("NUM"); break;
+    case FLO: printf("FLO"); break;
     case NIL: printf("NIL"); break;
     default : printf("???"); break;
   }
@@ -1379,9 +1385,9 @@ void debug_print_lnk(Lnk x) {
 
 Lnk parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   if (code[0] >= '0' && code[0] <= '9') {
-    return U_32(strtol(code, 0, 10));
+    return Num(strtol(code, 0, 10));
   } else {
-    return U_32(0);
+    return Num(0);
   }
 }
 
