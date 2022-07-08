@@ -916,7 +916,7 @@ Not   = λb λt λf (b f t)
 ```
 
 This will make the normal form of `λx (Not (Not x))` small: i.e., it becomes
-`λx λt λf (b t f)`. This makes `Not^(2^N)` linear time in `N`!
+`λx λt λf (x t f)`. This makes `Not^(2^N)` linear time in `N`!
 
 The same technique also applies for `Inc`. We start with the usual definition:
 
