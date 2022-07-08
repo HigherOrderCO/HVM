@@ -407,14 +407,17 @@ pub fn clear(mem: &mut Worker, loc: u64, size: u64) {
 pub fn collect(mem: &mut Worker, term: Lnk) {
   let mut stack: Vec<Lnk> = Vec::new();
   let mut next = term;
+  let mut dups : Vec<u64> = Vec::new();
   loop {
     let term = next;
     match get_tag(term) {
       DP0 => {
         link(mem, get_loc(term, 0), Era());
+        dups.push(term);
       }
       DP1 => {
         link(mem, get_loc(term, 1), Era());
+        dups.push(term);
       }
       VAR => {
         link(mem, get_loc(term, 0), Era());
@@ -466,6 +469,15 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
       next = got;
     } else {
       break;
+    }
+  }
+  // TODO: add this to the C version
+  for dup in dups {
+    let fst = ask_arg(mem, dup, 0);
+    let snd = ask_arg(mem, dup, 1);
+    if get_tag(fst) == ERA && get_tag(snd) == ERA {
+      collect(mem, ask_arg(mem, dup, 2));
+      clear(mem, get_loc(dup, 0), 3);
     }
   }
 }
