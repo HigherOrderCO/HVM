@@ -23,7 +23,7 @@ pub enum DynTerm {
   App { func: Box<DynTerm>, argm: Box<DynTerm> },
   Cal { func: u64, args: Vec<DynTerm> },
   Ctr { func: u64, args: Vec<DynTerm> },
-  U32 { numb: u32 },
+  Num { numb: u64 },
   Op2 { oper: u64, val0: Box<DynTerm>, val1: Box<DynTerm> },
 }
 
@@ -95,9 +95,9 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
                 }
               }
             }
-            lang::Term::U32 { numb } => {
+            lang::Term::Num { numb } => {
               *redex = true;
-              cond.push(rt::U_32(*numb as u64));
+              cond.push(rt::Num(*numb as u64));
             }
             lang::Term::Var { name } => {
               cond.push(0);
@@ -135,15 +135,59 @@ pub fn hash<T: Hash>(t: &T) -> u64 {
   s.finish()
 }
 
+pub fn build_runtime_arities(rb: &rb::RuleBook) -> Vec<rt::Arity> {
+  // TODO: checking arity consistency would be nice, but where?
+  fn find_arities(rb: &rb::RuleBook, aris: &mut Vec<rt::Arity>, term: &lang::Term) {
+    match term {
+      lang::Term::Var { .. } => {}
+      lang::Term::Dup { expr, body, .. } => {
+        find_arities(rb, aris, expr);
+        find_arities(rb, aris, body);
+      }
+      lang::Term::Lam { body, .. } => {
+        find_arities(rb, aris, body);
+      }
+      lang::Term::Let { expr, body, .. } => {
+        find_arities(rb, aris, expr);
+        find_arities(rb, aris, body);
+      }
+      lang::Term::App { func, argm } => {
+        find_arities(rb, aris, func);
+        find_arities(rb, aris, argm);
+      }
+      lang::Term::Ctr { name, args } => {
+        if let Some(id) = rb.name_to_id.get(name) {
+          aris[*id as usize] = rt::Arity(args.len() as u64);
+          for arg in args {
+            find_arities(rb, aris, arg);
+          }
+        }
+      }
+      lang::Term::Num { .. } => {}
+      lang::Term::Op2 { val0, val1, .. } => {
+        find_arities(rb, aris, val0);
+        find_arities(rb, aris, val1);
+      }
+    }
+  }
+  let mut aris: Vec<rt::Arity> = iter::repeat_with(|| rt::Arity(0)).take(65535).collect(); // FIXME: hardcoded limit
+  for rules_info in rb.rule_group.values() {
+    for rule in &rules_info.1 {
+      find_arities(rb, &mut aris, &rule.lhs);
+      find_arities(rb, &mut aris, &rule.rhs);
+    }
+  }
+  return aris;
+}
+
 pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
-  //let mut dups_count = DupsCount::new();
-  let mut funcs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect();
+  let mut funs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect(); // FIXME: hardcoded limit
   for (name, rules_info) in &comp.rule_group {
     let fnid = comp.name_to_id.get(name).unwrap_or(&0);
     let func = build_runtime_function(comp, &rules_info.1);
-    funcs[*fnid as usize] = Some(func);
+    funs[*fnid as usize] = Some(func);
   }
-  funcs
+  funs
 }
 
 pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
@@ -176,14 +220,14 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
       for (i, cond) in dynrule.cond.iter().enumerate() {
         let i = i as u64;
         match rt::get_tag(*cond) {
-          rt::U32 => {
-            //println!("Didn't match because of U32. i={} {} {}", i, rt::get_val(rt::ask_arg(mem, term, i)), rt::get_val(*cond));
-            let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::U32;
-            let same_val = rt::get_val(rt::ask_arg(mem, term, i)) == rt::get_val(*cond);
+          rt::NUM => {
+            //println!("Didn't match because of NUM. i={} {} {}", i, rt::get_num(rt::ask_arg(mem, term, i)), rt::get_num(*cond));
+            let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::NUM;
+            let same_val = rt::get_num(rt::ask_arg(mem, term, i)) == rt::get_num(*cond);
             matched = matched && same_tag && same_val;
           }
           rt::CTR => {
-            //println!("Didn't match because of CTR. i={} {} {}", i, rt::get_tag(rt::ask_arg(mem, term, i)), rt::get_val(*cond));
+            //println!("Didn't match because of CTR. i={} {} {}", i, rt::get_tag(rt::ask_arg(mem, term, i)), rt::get_ext(*cond));
             let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR;
             let same_ext = rt::get_ext(rt::ask_arg(mem, term, i)) == rt::get_ext(*cond);
             matched = matched && same_tag && same_ext;
@@ -236,7 +280,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
       lang::Oper::Div => rt::DIV,
       lang::Oper::Mod => rt::MOD,
       lang::Oper::And => rt::AND,
-      lang::Oper::Or => rt::OR,
+      lang::Oper::Or  => rt::OR,
       lang::Oper::Xor => rt::XOR,
       lang::Oper::Shl => rt::SHL,
       lang::Oper::Shr => rt::SHR,
@@ -304,7 +348,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
           DynTerm::Ctr { func: term_func, args: term_args }
         }
       }
-      lang::Term::U32 { numb } => DynTerm::U32 { numb: *numb },
+      lang::Term::Num { numb } => DynTerm::Num { numb: *numb },
       lang::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, comp, depth + 0, vars));
@@ -427,7 +471,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
           Elem::Fix { value: rt::Ctr(0, *func, 0) }
         }
       }
-      DynTerm::U32 { numb } => Elem::Fix { value: rt::U_32(*numb as u64) },
+      DynTerm::Num { numb } => Elem::Fix { value: rt::Num(*numb as u64) },
       DynTerm::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
@@ -536,15 +580,18 @@ pub fn eval_code(
   // Converts the HVM "file" to a Rulebook
   let book = rb::gen_rulebook(&file);
 
-  // Builds dynamic functions
-  let functions = build_runtime_functions(&book);
+  // Builds functions
+  worker.funs = build_runtime_functions(&book);
+
+  // Builds arities
+  worker.aris = build_runtime_arities(&book);
 
   // Allocates the main term
   let host = alloc_term(&mut worker, &book, call);
 
   // Normalizes it
   let init = Instant::now();
-  rt::normal(&mut worker, host, &functions, Some(&book.id_to_name), debug);
+  rt::normal(&mut worker, host, Some(&book.id_to_name), debug);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string

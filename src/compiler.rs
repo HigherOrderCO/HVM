@@ -43,9 +43,16 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   let mut inits = String::new();
   let mut codes = String::new();
   let mut id2nm = String::new();
+  let mut id2ar = String::new();
+
   for (id, name) in &comp.id_to_name {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
   }
+
+  for (id, arity) in &comp.id_to_arit {
+    line(&mut id2ar, 1, &format!(r#"id_to_arity_data[{}] = {};"#, id, arity));
+  }
+
   for (name, (_arity, rules)) in &comp.rule_group {
     let (init, code) = compile_func(comp, rules, 7);
 
@@ -65,7 +72,7 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
     line(&mut codes, 6, "};");
   }
 
-  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, parallel)
+  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, &id2ar, comp.id_to_arit.len() as u64, parallel)
 }
 
 fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String, String) {
@@ -126,9 +133,9 @@ fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String,
     // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
     for (i, cond) in dynrule.cond.iter().enumerate() {
       let i = i as u64;
-      if rt::get_tag(*cond) == rt::U32 {
-        let same_tag = format!("get_tag(ask_arg(mem, term, {})) == U32", i);
-        let same_val = format!("get_val(ask_arg(mem, term, {})) == {}u", i, rt::get_val(*cond));
+      if rt::get_tag(*cond) == rt::NUM {
+        let same_tag = format!("get_tag(ask_arg(mem, term, {})) == NUM", i);
+        let same_val = format!("get_num(ask_arg(mem, term, {})) == {}u", i, rt::get_num(*cond));
         matched.push(format!("({} && {})", same_tag, same_val));
       }
       if rt::get_tag(*cond) == rt::CTR {
@@ -230,7 +237,7 @@ fn compile_func_rule_term(
       }
       bd::DynTerm::Dup { eras, expr, body } => {
         //if INLINE_NUMBERS {
-        //line(code, tab + 0, &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1));
+        //line(code, tab + 0, &format!("if (get_tag({}) == NUM && get_tag({}) == NUM) {{", val0, val1));
         //}
 
         let copy = fresh(nams, "cpy");
@@ -241,7 +248,7 @@ fn compile_func_rule_term(
         line(code, tab, &format!("u64 {};", dup0));
         line(code, tab, &format!("u64 {};", dup1));
         if INLINE_NUMBERS {
-          line(code, tab + 0, &format!("if (get_tag({}) == U32) {{", copy));
+          line(code, tab + 0, &format!("if (get_tag({}) == NUM) {{", copy));
           line(code, tab + 1, "inc_cost(mem);");
           line(code, tab + 1, &format!("{} = {};", dup0, copy));
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
@@ -319,8 +326,8 @@ fn compile_func_rule_term(
         }
         format!("Cal({}, {}, {})", cal_args.len(), func, name)
       }
-      bd::DynTerm::U32 { numb } => {
-        format!("U_32({})", numb)
+      bd::DynTerm::Num { numb } => {
+        format!("Num({}ull)", numb)
       }
       bd::DynTerm::Op2 { oper, val0, val1 } => {
         let retx = fresh(nams, "ret");
@@ -333,27 +340,27 @@ fn compile_func_rule_term(
           line(
             code,
             tab + 0,
-            &format!("if (get_tag({}) == U32 && get_tag({}) == U32) {{", val0, val1),
+            &format!("if (get_tag({}) == NUM && get_tag({}) == NUM) {{", val0, val1),
           );
-          let a = format!("get_val({})", val0);
-          let b = format!("get_val({})", val1);
+          let a = format!("get_num({})", val0);
+          let b = format!("get_num({})", val1);
           match *oper {
-            rt::ADD => line(code, tab + 1, &format!("{} = U_32({} + {});", retx, a, b)),
-            rt::SUB => line(code, tab + 1, &format!("{} = U_32({} - {});", retx, a, b)),
-            rt::MUL => line(code, tab + 1, &format!("{} = U_32({} * {});", retx, a, b)),
-            rt::DIV => line(code, tab + 1, &format!("{} = U_32({} / {});", retx, a, b)),
-            rt::MOD => line(code, tab + 1, &format!("{} = U_32({} % {});", retx, a, b)),
-            rt::AND => line(code, tab + 1, &format!("{} = U_32({} & {});", retx, a, b)),
-            rt::OR => line(code, tab + 1, &format!("{} = U_32({} | {});", retx, a, b)),
-            rt::XOR => line(code, tab + 1, &format!("{} = U_32({} ^ {});", retx, a, b)),
-            rt::SHL => line(code, tab + 1, &format!("{} = U_32({} << {});", retx, a, b)),
-            rt::SHR => line(code, tab + 1, &format!("{} = U_32({} >> {});", retx, a, b)),
-            rt::LTN => line(code, tab + 1, &format!("{} = U_32({} <  {} ? 1 : 0);", retx, a, b)),
-            rt::LTE => line(code, tab + 1, &format!("{} = U_32({} <= {} ? 1 : 0);", retx, a, b)),
-            rt::EQL => line(code, tab + 1, &format!("{} = U_32({} == {} ? 1 : 0);", retx, a, b)),
-            rt::GTE => line(code, tab + 1, &format!("{} = U_32({} >= {} ? 1 : 0);", retx, a, b)),
-            rt::GTN => line(code, tab + 1, &format!("{} = U_32({} >  {} ? 1 : 0);", retx, a, b)),
-            rt::NEQ => line(code, tab + 1, &format!("{} = U_32({} != {} ? 1 : 0);", retx, a, b)),
+            rt::ADD => line(code, tab + 1, &format!("{} = Num({} + {});", retx, a, b)),
+            rt::SUB => line(code, tab + 1, &format!("{} = Num({} - {});", retx, a, b)),
+            rt::MUL => line(code, tab + 1, &format!("{} = Num({} * {});", retx, a, b)),
+            rt::DIV => line(code, tab + 1, &format!("{} = Num({} / {});", retx, a, b)),
+            rt::MOD => line(code, tab + 1, &format!("{} = Num({} % {});", retx, a, b)),
+            rt::AND => line(code, tab + 1, &format!("{} = Num({} & {});", retx, a, b)),
+            rt::OR  => line(code, tab + 1, &format!("{} = Num({} | {});", retx, a, b)),
+            rt::XOR => line(code, tab + 1, &format!("{} = Num({} ^ {});", retx, a, b)),
+            rt::SHL => line(code, tab + 1, &format!("{} = Num({} << {});", retx, a, b)),
+            rt::SHR => line(code, tab + 1, &format!("{} = Num({} >> {});", retx, a, b)),
+            rt::LTN => line(code, tab + 1, &format!("{} = Num({} <  {} ? 1 : 0);", retx, a, b)),
+            rt::LTE => line(code, tab + 1, &format!("{} = Num({} <= {} ? 1 : 0);", retx, a, b)),
+            rt::EQL => line(code, tab + 1, &format!("{} = Num({} == {} ? 1 : 0);", retx, a, b)),
+            rt::GTE => line(code, tab + 1, &format!("{} = Num({} >= {} ? 1 : 0);", retx, a, b)),
+            rt::GTN => line(code, tab + 1, &format!("{} = Num({} >  {} ? 1 : 0);", retx, a, b)),
+            rt::NEQ => line(code, tab + 1, &format!("{} = Num({} != {} ? 1 : 0);", retx, a, b)),
             _ => line(code, tab + 1, &format!("{} = ?;", retx)),
           }
           line(code, tab + 1, "inc_cost(mem);");
@@ -448,7 +455,9 @@ fn c_runtime_template(
   inits: &str,
   codes: &str,
   id2nm: &str,
-  names_count: u64,
+  nmlen: u64,
+  id2ar: &str,
+  arlen: u64,
   parallel: bool,
 ) -> String {
   const C_RUNTIME_TEMPLATE: &str = include_str!("runtime.c");
@@ -461,6 +470,8 @@ fn c_runtime_template(
   const C_REWRITE_RULES_STEP_1_TAG: &str = "GENERATED_REWRITE_RULES_STEP_1";
   const C_NAME_COUNT_TAG: &str = "GENERATED_NAME_COUNT";
   const C_ID_TO_NAME_DATA_TAG: &str = "GENERATED_ID_TO_NAME_DATA";
+  const C_ARITY_COUNT_TAG: &str = "GENERATED_ARITY_COUNT";
+  const C_ID_TO_ARITY_DATA_TAG: &str = "GENERATED_ID_TO_ARITY_DATA";
 
   // TODO: Sanity checks: all tokens we're looking for must be present in the
   // `runtime.c` file.
@@ -485,15 +496,18 @@ fn c_runtime_template(
 
     let parallel_flag = if parallel { "#define PARALLEL" } else { "" };
     let num_threads = &num_cpus::get().to_string();
-    let names_count = &names_count.to_string();
+    let nmlen = &nmlen.to_string();
+    let arlen = &arlen.to_string();
     match tag {
       C_PARALLEL_FLAG_TAG => parallel_flag,
       C_NUM_THREADS_TAG => num_threads,
       C_CONSTRUCTOR_IDS_TAG => c_ids,
       C_REWRITE_RULES_STEP_0_TAG => inits,
       C_REWRITE_RULES_STEP_1_TAG => codes,
-      C_NAME_COUNT_TAG => names_count,
+      C_NAME_COUNT_TAG => nmlen,
       C_ID_TO_NAME_DATA_TAG => id2nm,
+      C_ARITY_COUNT_TAG => arlen,
+      C_ID_TO_ARITY_DATA_TAG => id2ar,
       _ => panic!("Unknown replacement tag."),
     }
     .to_string()

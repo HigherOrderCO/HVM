@@ -67,7 +67,7 @@ typedef pthread_t Thd;
 // variant, and possibly a position on the memory. So, for example, `Lnk ptr =
 // APP * TAG | 137` creates a pointer to an app node stored on position 137.
 // Some links deal with variables: DP0, DP1, VAR, ARG and ERA.  The OP2 link
-// represents a numeric operation, and U32 and F32 links represent unboxed nums.
+// represents a numeric operation, and NUM and FLO links represent unboxed nums.
 
 typedef u64 Lnk;
 
@@ -75,6 +75,8 @@ typedef u64 Lnk;
 #define EXT ((u64) 0x100000000)
 #define ARI ((u64) 0x100000000000000)
 #define TAG ((u64) 0x1000000000000000)
+
+#define NUM_MASK ((u64) 0xFFFFFFFFFFFFFFF)
 
 #define DP0 (0x0) // points to the dup node that binds this variable (left side)
 #define DP1 (0x1) // points to the dup node that binds this variable (right side)
@@ -87,8 +89,8 @@ typedef u64 Lnk;
 #define CTR (0x8) // arity = user defined
 #define CAL (0x9) // arity = user defined
 #define OP2 (0xA) // arity = 2
-#define U32 (0xB) // arity = 0 (unboxed)
-#define F32 (0xC) // arity = 0 (unboxed)
+#define NUM (0xB) // arity = 0 (unboxed)
+#define FLO (0xC) // arity = 0 (unboxed)
 #define NIL (0xF) // not used
 
 #define ADD (0x0)
@@ -137,6 +139,8 @@ typedef struct {
   Stk  free[MAX_ARITY];
   u64  cost;
   u64  dups;
+  u64* aris;
+  u64  funs;
 
   #ifdef PARALLEL
   u64             has_work;
@@ -256,8 +260,8 @@ Lnk Op2(u64 ope, u64 pos) {
   return (OP2 * TAG) | (ope * EXT) | pos;
 }
 
-Lnk U_32(u64 val) {
-  return (U32 * TAG) | val;
+Lnk Num(u64 val) {
+  return (NUM * TAG) | (val & NUM_MASK);
 }
 
 Lnk Nil(void) {
@@ -284,12 +288,27 @@ u64 get_val(Lnk lnk) {
   return lnk & 0xFFFFFFFF;
 }
 
+u64 get_num(Lnk lnk) {
+  return lnk & 0xFFFFFFFFFFFFFFF;
+}
+
 u64 get_ari(Lnk lnk) {
   return (lnk / ARI) & 0xF;
 }
 
 u64 get_loc(Lnk lnk, u64 arg) {
   return get_val(lnk) + arg;
+}
+
+u64 ask_ari(Worker* mem, Lnk lnk) {
+  u64 fid = get_ext(lnk);
+  u64 got = fid < mem->funs ? mem->aris[fid] : 0;
+  // TODO: remove this in a future update where ari will be removed from the lnk
+  if (get_ari(lnk) != got) {
+    printf("[ERROR] arity inconsistency\n");
+    exit(1);
+  }
+  return got;
 }
 
 // Dereferences a Lnk, getting what is stored on its target position
@@ -388,11 +407,11 @@ void collect(Worker* mem, Lnk term) {
       clear(mem, get_loc(term,0), 2);
       break;
     }
-    case U32: {
+    case NUM: {
       break;
     }
     case CTR: case CAL: {
-      u64 arity = get_ari(term);
+      u64 arity = ask_ari(mem, term);
       for (u64 i = 0; i < arity; ++i) {
         collect(mem, ask_arg(mem,term,i));
       }
@@ -432,7 +451,7 @@ void subst(Worker* mem, Lnk lnk, Lnk val) {
 // {(F a0 b0 c0 ...) (F a1 b1 c1 ...)}
 Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {
   inc_cost(mem);
-  u64 arit = get_ari(term);
+  u64 arit = ask_ari(mem, term);
   u64 func = get_ext(term);
   u64 fun0 = get_loc(term, 0);
   u64 fun1 = alloc(mem, arit);
@@ -510,7 +529,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
         }
         case CAL: {
           u64 fun = get_ext(term);
-          u64 ari = get_ari(term);
+          u64 ari = ask_ari(mem, term);
 
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
@@ -652,11 +671,11 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
             }
 
             // dup x y = N
-            // ----------- DUP-U32
+            // ----------- DUP-NUM
             // x <- N
             // y <- N
             // ~
-            case U32: {
+            case NUM: {
               //printf("dup-u32\n");
               inc_cost(mem);
               subst(mem, ask_arg(mem,term,0), arg0);
@@ -679,7 +698,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
               //printf("dup-ctr\n");
               inc_cost(mem);
               u64 func = get_ext(arg0);
-              u64 arit = get_ari(arg0);
+              u64 arit = ask_ari(mem, arg0);
               if (arit == 0) {
                 subst(mem, ask_arg(mem,term,0), Ctr(0, func, 0));
                 subst(mem, ask_arg(mem,term,1), Ctr(0, func, 0));
@@ -734,33 +753,33 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
           u64 arg1 = ask_arg(mem, term, 1);
 
           // (+ a b)
-          // --------- OP2-U32
+          // --------- OP2-NUM
           // add(a, b)
-          if (get_tag(arg0) == U32 && get_tag(arg1) == U32) {
+          if (get_tag(arg0) == NUM && get_tag(arg1) == NUM) {
             //printf("op2-u32\n");
             inc_cost(mem);
-            u64 a = get_val(arg0);
-            u64 b = get_val(arg1);
+            u64 a = get_num(arg0);
+            u64 b = get_num(arg1);
             u64 c = 0;
             switch (get_ext(term)) {
-              case ADD: c = (a +  b) & 0xFFFFFFFF; break;
-              case SUB: c = (a -  b) & 0xFFFFFFFF; break;
-              case MUL: c = (a *  b) & 0xFFFFFFFF; break;
-              case DIV: c = (a /  b) & 0xFFFFFFFF; break;
-              case MOD: c = (a %  b) & 0xFFFFFFFF; break;
-              case AND: c = (a &  b) & 0xFFFFFFFF; break;
-              case OR : c = (a |  b) & 0xFFFFFFFF; break;
-              case XOR: c = (a ^  b) & 0xFFFFFFFF; break;
-              case SHL: c = (a << b) & 0xFFFFFFFF; break;
-              case SHR: c = (a >> b) & 0xFFFFFFFF; break;
-              case LTN: c = (a <  b) ? 1 : 0;      break;
-              case LTE: c = (a <= b) ? 1 : 0;      break;
-              case EQL: c = (a == b) ? 1 : 0;      break;
-              case GTE: c = (a >= b) ? 1 : 0;      break;
-              case GTN: c = (a >  b) ? 1 : 0;      break;
-              case NEQ: c = (a != b) ? 1 : 0;      break;
+              case ADD: c = (a +  b) & NUM_MASK; break;
+              case SUB: c = (a -  b) & NUM_MASK; break;
+              case MUL: c = (a *  b) & NUM_MASK; break;
+              case DIV: c = (a /  b) & NUM_MASK; break;
+              case MOD: c = (a %  b) & NUM_MASK; break;
+              case AND: c = (a &  b) & NUM_MASK; break;
+              case OR : c = (a |  b) & NUM_MASK; break;
+              case XOR: c = (a ^  b) & NUM_MASK; break;
+              case SHL: c = (a << b) & NUM_MASK; break;
+              case SHR: c = (a >> b) & NUM_MASK; break;
+              case LTN: c = (a <  b) ? 1 : 0;    break;
+              case LTE: c = (a <= b) ? 1 : 0;    break;
+              case EQL: c = (a == b) ? 1 : 0;    break;
+              case GTE: c = (a >= b) ? 1 : 0;    break;
+              case GTN: c = (a >  b) ? 1 : 0;    break;
+              case NEQ: c = (a != b) ? 1 : 0;    break;
             }
-            u64 done = U_32(c);
+            u64 done = Num(c);
             clear(mem, get_loc(term,0), 2);
             link(mem, host, done);
           }
@@ -813,7 +832,7 @@ Lnk reduce(Worker* mem, u64 root, u64 slen) {
         }
         case CAL: {
           u64 fun = get_ext(term);
-          u64 ari = get_ari(term);
+          u64 ari = ask_ari(mem, term);
 
           switch (fun)
           //GENERATED_REWRITE_RULES_STEP_1_START//
@@ -905,7 +924,7 @@ Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
         }
       }
       case CTR: case CAL: {
-        u64 arity = (u64)get_ari(term);
+        u64 arity = (u64)ask_ari(mem, term);
         for (u64 i = 0; i < arity; ++i) {
           rec_locs[rec_size++] = get_loc(term,i);
         }
@@ -1157,7 +1176,7 @@ void readback_vars(Stk* vars, Worker* mem, Lnk term, Stk* seen) {
         break;
       }
       case CTR: case CAL: {
-        u64 arity = get_ari(term);
+        u64 arity = ask_ari(mem, term);
         for (u64 i = 0; i < arity; ++i) {
           readback_vars(vars, mem, ask_arg(mem, term, i), seen);
         }
@@ -1259,15 +1278,15 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char*
       stk_push(chrs, ')');
       break;
     }
-    case U32: {
+    case NUM: {
       //printf("- u32\n");
-      readback_decimal(chrs, get_val(term));
+      readback_decimal(chrs, get_num(term));
       //printf("- u32 done\n");
       break;
     }
     case CTR: case CAL: {
       u64 func = get_ext(term);
-      u64 arit = get_ari(term);
+      u64 arit = ask_ari(mem, term);
       stk_push(chrs, '(');
       if (func < id_to_name_mcap && id_to_name_data[func] != NULL) {
         for (u64 i = 0; id_to_name_data[func][i] != '\0'; ++i) {
@@ -1353,8 +1372,8 @@ void debug_print_lnk(Lnk x) {
     case CTR: printf("CTR"); break;
     case CAL: printf("CAL"); break;
     case OP2: printf("OP2"); break;
-    case U32: printf("U32"); break;
-    case F32: printf("F32"); break;
+    case NUM: printf("NUM"); break;
+    case FLO: printf("FLO"); break;
     case NIL: printf("NIL"); break;
     default : printf("???"); break;
   }
@@ -1366,9 +1385,9 @@ void debug_print_lnk(Lnk x) {
 
 Lnk parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   if (code[0] >= '0' && code[0] <= '9') {
-    return U_32(strtol(code, 0, 10));
+    return Num(strtol(code, 0, 10));
   } else {
-    return U_32(0);
+    return Num(0);
   }
 }
 
@@ -1381,11 +1400,18 @@ int main(int argc, char* argv[]) {
   // Id-to-Name map
   const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
   char* id_to_name_data[id_to_name_size];
-/*! GENERATED_ID_TO_NAME_DATA !*/;
+/*! GENERATED_ID_TO_NAME_DATA !*/
+
+  // Id-to-Arity map
+  const u64 id_to_arity_size = /*! GENERATED_ARITY_COUNT */ 1 /* GENERATED_ARITY_COUNT !*/;
+  u64 id_to_arity_data[id_to_arity_size];
+/*! GENERATED_ID_TO_ARITY_DATA !*/
 
   // Builds main term
   mem.size = 0;
   mem.node = (u64*)malloc(HEAP_SIZE);
+  mem.aris = id_to_arity_data;
+  mem.funs = id_to_arity_size;
   assert(mem.node);
   if (argc <= 1) {
     mem.node[mem.size++] = Cal(0, _MAIN_, 0);
@@ -1394,6 +1420,11 @@ int main(int argc, char* argv[]) {
     for (u64 i = 1; i < argc; ++i) {
       mem.node[mem.size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
     }
+  }
+
+  for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {
+    workers[tid].aris = id_to_arity_data;
+    workers[tid].funs = id_to_arity_size;
   }
 
   // Reduces and benchmarks

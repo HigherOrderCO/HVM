@@ -1,3 +1,172 @@
+// HVM's memory model
+// ------------------
+// 
+// The runtime memory consists of just a vector of u64 pointers. That is:
+//
+//   Mem ::= Vec<Ptr>
+// 
+// A pointer has 3 parts:
+//
+//   Ptr ::= TT AAAAAAAAAAAAAAA BBBBBBBBBBBBBBB
+//
+// Where:
+//
+//   T : u8  is the pointer tag 
+//   A : u30 is the 1st value
+//   B : u30 is the 2nd value
+//
+// There are 12 possible tags:
+//
+//   Tag | Val | Meaning  
+//   ----| --- | -------------------------------
+//   DP0 |   0 | a variable, bound to the 1st argument of a duplication
+//   DP1 |   1 | a variable, bound to the 2nd argument of a duplication
+//   VAR |   2 | a variable, bound to the one argument of a lambda
+//   ARG |   3 | an used argument of a lambda or duplication
+//   ERA |   4 | an erased argument of a lambda or duplication
+//   LAM |   5 | a lambda
+//   APP |   6 | an application
+//   SUP |   7 | a superposition
+//   CTR |   8 | a constructor
+//   FUN |   9 | a function
+//   OP2 |  10 | a numeric operation
+//   NUM |  11 | a 60-bit number
+//
+// The semantics of the 1st and 2nd values depend on the pointer tag. 
+//
+//   Tag | 1st ptr value                | 2nd ptr value
+//   --- | ---------------------------- | ---------------------------------
+//   DP0 | the duplication label        | points to the duplication node
+//   DP1 | the duplication label        | points to the duplication node
+//   VAR | not used                     | points to the lambda node
+//   ARG | not used                     | points to the variable occurrence
+//   ERA | not used                     | not used
+//   LAM | not used                     | points to the lambda node
+//   APP | not used                     | points to the application node
+//   SUP | the duplication label        | points to the superposition node
+//   CTR | the constructor name         | points to the constructor node
+//   FUN | the function name            | points to the function node
+//   OP2 | the operation name           | points to the operation node
+//   NUM | the most significant 30 bits | the least significant 30 bits
+//
+// Notes:
+//
+//   1. The duplication label is an internal value used on the DUP-SUP rule.
+//   2. The operation name only uses 4 of the 30 bits, as there are only 16 ops.
+//   3. NUM pointers don't point anywhere, they just store the number directly.
+//
+// A node is a tuple of N pointers stored on sequential memory indices.
+// The meaning of each index depends on the node. There are 7 types:
+//
+//   Duplication Node:
+//   - [0] => either an ERA or an ARG pointing to the 1st variable location
+//   - [1] => either an ERA or an ARG pointing to the 2nd variable location
+//   - [2] => pointer to the duplicated expression
+//
+//   Lambda Node:
+//   - [0] => either and ERA or an ERA pointing to the variable location
+//   - [1] => pointer to the lambda's body
+//   
+//   Application Node:
+//   - [0] => pointer to the lambda
+//   - [1] => pointer to the argument
+//
+//   Superposition Node:
+//   - [0] => pointer to the 1st superposed value
+//   - [1] => pointer to the 2sd superposed value
+//
+//   Constructor Node:
+//   - [0] => pointer to the 1st field
+//   - [1] => pointer to the 2nd field
+//   - ... => ...
+//   - [N] => pointer to the Nth field
+//
+//   Function Node:
+//   - [0] => pointer to the 1st argument
+//   - [1] => pointer to the 2nd argument
+//   - ... => ...
+//   - [N] => pointer to the Nth argument
+//
+//   Operation Node:
+//   - [0] => pointer to the 1st operand
+//   - [1] => pointer to the 2nd operand
+//
+// Notes:
+//
+//   1. Duplication nodes DON'T have a body. They "float" on the global scope.
+//   2. Lambdas and Duplications point to their variables, and vice-versa.
+//   3. ARG pointers can only show up inside Lambdas and Duplications.
+//   4. Nums and vars don't require a node type, because they're unboxed.
+//   5. Function and Constructor arities depends on the user-provided definition.
+//
+// Example 0:
+// 
+//   Term:
+//
+//    {Tuple2 #7 #8}
+//
+//   Memory:
+//
+//     Root : Ptr(CTR, 0x00000001, 0x00000000)
+//     0x00 | Ptr(NUM, 0x00000000, 0x00000007) // the tuple's 1st field
+//     0x01 | Ptr(NUM, 0x00000000, 0x00000008) // the tuple's 2nd field
+//
+//   Notes:
+//     
+//     1. This is just a pair with two numbers.
+//     2. The root pointer is not stored on memory.
+//     3. The 'Tuple2' name was encoded as the ID 1.
+//     4. Since nums are unboxed, a 2-tuple uses 2 memory slots, or 32 bytes.
+//
+// Example 1:
+//
+//   Term:
+//
+//     λ~ λb b
+//
+//   Memory:
+//
+//     Root : Ptr(LAM, 0x00000000, 0x00000000)
+//     0x00 | Ptr(ERA, 0x00000000, 0x00000000) // 1st lambda's argument
+//     0x01 | Ptr(LAM, 0x00000000, 0x00000002) // 1st lambda's body
+//     0x02 | Ptr(ARG, 0x00000000, 0x00000003) // 2nd lambda's argument
+//     0x03 | Ptr(VAR, 0x00000000, 0x00000002) // 2nd lambda's body
+//
+//   Notes:
+//
+//     1. This is a λ-term that discards the 1st argument and returns the 2nd.
+//     2. The 1st lambda's argument not used, thus, an ERA pointer.
+//     3. The 2nd lambda's argument points to its variable, and vice-versa.
+//     4. Each lambda uses 2 memory slots. This term uses 64 bytes in total.
+//     
+// Example 2:
+//
+//   Term:
+//     
+//     λx dup x0 x1 = x; (* x0 x1)
+//
+//   Memory:
+//
+//     Root : Ptr(LAM, 0x00000000, 0x00000000)
+//     0x00 | Ptr(ARG, 0x00000000, 0x00000004) // the lambda's argument
+//     0x01 | Ptr(OP2, 0x00000002, 0x00000005) // the lambda's body
+//     0x02 | Ptr(ARG, 0x00000000, 0x00000005) // the duplication's 1st argument
+//     0x03 | Ptr(ARG, 0x00000000, 0x00000006) // the duplication's 2nd argument
+//     0x04 | Ptr(VAR, 0x00000000, 0x00000000) // the duplicated expression
+//     0x05 | Ptr(DP0, 0xba31fb21, 0x00000002) // the operator's 1st operand
+//     0x06 | Ptr(DP1, 0xba31fb21, 0x00000002) // the operator's 2st operand
+//
+//   Notes:
+//     
+//     1. This is a lambda function that squares a number.
+//     2. Notice how every ARGs point to a VAR/DP0/DP1, that points back its source node.
+//     3. DP1 does not point to its ARG. It points to the duplication node, which is at 0x02.
+//     4. The lambda's body does not point to the dup node, but to the operator. Dup nodes float.
+//     5. 0xba31fb21 is a globally unique random label assigned to the duplication node.
+//     6. That duplication label is stored on the DP0/DP1 that point to the node, not on the node.
+//     7. A lambda uses 2 memory slots, a duplication uses 3, an operator uses 2. Total: 112 bytes.
+//     8. In-memory size is different to, and larger than, serialization size.
+
 #![allow(clippy::identity_op)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
@@ -22,6 +191,8 @@ pub const EXT: u64 = 0x100000000;
 pub const ARI: u64 = 0x100000000000000;
 pub const TAG: u64 = 0x1000000000000000;
 
+pub const NUM_MASK: u64 = 0xFFF_FFFF_FFFF_FFFF;
+
 pub const DP0: u64 = 0x0;
 pub const DP1: u64 = 0x1;
 pub const VAR: u64 = 0x2;
@@ -33,8 +204,7 @@ pub const PAR: u64 = 0x7;
 pub const CTR: u64 = 0x8;
 pub const CAL: u64 = 0x9;
 pub const OP2: u64 = 0xA;
-pub const U32: u64 = 0xB;
-pub const F32: u64 = 0xC;
+pub const NUM: u64 = 0xB;
 pub const OUT: u64 = 0xE;
 pub const NIL: u64 = 0xF;
 
@@ -68,15 +238,29 @@ pub struct Function {
   pub rewriter: Rewriter,
 }
 
+pub struct Arity(pub u64);
+
+type Funs = Vec<Option<Function>>;
+type Aris = Vec<Arity>;
+
 pub struct Worker {
   pub node: Vec<Lnk>,
+  pub funs: Funs,
+  pub aris: Aris,
   pub size: u64,
   pub free: Vec<Vec<u64>>,
   pub cost: u64,
 }
 
 pub fn new_worker() -> Worker {
-  Worker { node: vec![0; 6 * 0x8000000], size: 0, free: vec![vec![]; 16], cost: 0 }
+  Worker {
+    node: vec![0; 6 * 0x8000000],
+    aris: vec![],
+    funs: vec![],
+    size: 0,
+    free: vec![vec![]; 16],
+    cost: 0,
+  }
 }
 
 // Globals
@@ -124,8 +308,8 @@ pub fn Op2(ope: u64, pos: u64) -> Lnk {
   (OP2 * TAG) | (ope * EXT) | pos
 }
 
-pub fn U_32(val: u64) -> Lnk {
-  (U32 * TAG) | val
+pub fn Num(val: u64) -> Lnk {
+  (NUM * TAG) | (val & NUM_MASK)
 }
 
 pub fn Nil() -> Lnk {
@@ -152,11 +336,15 @@ pub fn get_tag(lnk: Lnk) -> u64 {
 }
 
 pub fn get_ext(lnk: Lnk) -> u64 {
-  (lnk / EXT) & 0xFFFFFF
+  (lnk / EXT) & 0xFF_FFFF
 }
 
 pub fn get_val(lnk: Lnk) -> u64 {
-  lnk & 0xFFFFFFFF
+  lnk & 0xFFFF_FFFF
+}
+
+pub fn get_num(lnk: Lnk) -> u64 {
+  lnk & 0xFFF_FFFF_FFFF_FFFF
 }
 
 pub fn get_ari(lnk: Lnk) -> u64 {
@@ -169,6 +357,18 @@ pub fn get_loc(lnk: Lnk, arg: u64) -> u64 {
 
 // Memory
 // ------
+
+pub fn ask_ari(mem: &Worker, lnk: Lnk) -> u64 {
+  let got = match mem.aris.get(get_ext(lnk) as usize) {
+    Some(Arity(arit)) => *arit,
+    None              => 0,
+  };
+  // TODO: remove this in a future update where ari will be removed from the lnk
+  if get_ari(lnk) != got {
+    println!("[WARNING] arity inconsistency");
+  }
+  return got;
+}
 
 pub fn ask_lnk(mem: &Worker, loc: u64) -> Lnk {
   unsafe { *mem.node.get_unchecked(loc as usize) }
@@ -212,16 +412,17 @@ pub fn clear(mem: &mut Worker, loc: u64, size: u64) {
 pub fn collect(mem: &mut Worker, term: Lnk) {
   let mut stack: Vec<Lnk> = Vec::new();
   let mut next = term;
+  //let mut dups : Vec<u64> = Vec::new();
   loop {
     let term = next;
     match get_tag(term) {
       DP0 => {
         link(mem, get_loc(term, 0), Era());
-        //r_educe(mem, get_loc(ask_arg(mem,term,1),0));
+        //dups.push(term);
       }
       DP1 => {
         link(mem, get_loc(term, 1), Era());
-        //r_educe(mem, get_loc(ask_arg(mem,term,0),0));
+        //dups.push(term);
       }
       VAR => {
         link(mem, get_loc(term, 0), Era());
@@ -252,9 +453,9 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
         clear(mem, get_loc(term, 0), 2);
         continue;
       }
-      U32 => {}
+      NUM => {}
       CTR | CAL => {
-        let arity = get_ari(term);
+        let arity = ask_ari(mem, term);
         for i in 0..arity {
           if i < arity - 1 {
             stack.push(ask_arg(mem, term, i));
@@ -275,54 +476,16 @@ pub fn collect(mem: &mut Worker, term: Lnk) {
       break;
     }
   }
+  // TODO: add this to the C version
+  //for dup in dups {
+    //let fst = ask_arg(mem, dup, 0);
+    //let snd = ask_arg(mem, dup, 1);
+    //if get_tag(fst) == ERA && get_tag(snd) == ERA {
+      //collect(mem, ask_arg(mem, dup, 2));
+      //clear(mem, get_loc(dup, 0), 3);
+    //}
+  //}
 }
-
-// pub fn collect(mem: &mut Worker, term: Lnk) {
-//   match get_tag(term) {
-//     DP0 => {
-//       link(mem, get_loc(term, 0), Era());
-//       //r_educe(mem, get_loc(ask_arg(mem,term,1),0));
-//     }
-//     DP1 => {
-//       link(mem, get_loc(term, 1), Era());
-//       //r_educe(mem, get_loc(ask_arg(mem,term,0),0));
-//     }
-//     VAR => {
-//       link(mem, get_loc(term, 0), Era());
-//     }
-//     LAM => {
-//       if get_tag(ask_arg(mem, term, 0)) != ERA {
-//         link(mem, get_loc(ask_arg(mem, term, 0), 0), Era());
-//       }
-//       collect(mem, ask_arg(mem, term, 1));
-//       clear(mem, get_loc(term, 0), 2);
-//     }
-//     APP => {
-//       collect(mem, ask_arg(mem, term, 0));
-//       collect(mem, ask_arg(mem, term, 1));
-//       clear(mem, get_loc(term, 0), 2);
-//     }
-//     PAR => {
-//       collect(mem, ask_arg(mem, term, 0));
-//       collect(mem, ask_arg(mem, term, 1));
-//       clear(mem, get_loc(term, 0), 2);
-//     }
-//     OP2 => {
-//       collect(mem, ask_arg(mem, term, 0));
-//       collect(mem, ask_arg(mem, term, 1));
-//       clear(mem, get_loc(term, 0), 2);
-//     }
-//     U32 => {}
-//     CTR | CAL => {
-//       let arity = get_ari(term);
-//       for i in 0..arity {
-//         collect(mem, ask_arg(mem, term, i));
-//       }
-//       clear(mem, get_loc(term, 0), arity);
-//     }
-//     _ => {}
-//   }
-// }
 
 pub fn inc_cost(mem: &mut Worker) {
   mem.cost += 1;
@@ -341,7 +504,7 @@ pub fn subst(mem: &mut Worker, lnk: Lnk, val: Lnk) {
 
 pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk {
   inc_cost(mem);
-  let arit = get_ari(term);
+  let arit = ask_ari(mem, term);
   let func = get_ext(term);
   let fun0 = get_loc(term, 0);
   let fun1 = alloc(mem, arit);
@@ -368,22 +531,22 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk
 pub fn reduce(
   mem: &mut Worker,
   dups: &mut u64,
-  funcs: &[Option<Function>],
   root: u64,
-  _opt_id_to_name: Option<&HashMap<u64, String>>,
+  _i2n: Option<&HashMap<u64, String>>,
   debug: bool,
 ) -> Lnk {
   let mut stack: Vec<u64> = Vec::new();
 
   let mut init = 1;
   let mut host = root;
+  let funs = std::mem::take(&mut mem.funs); // necessary to satisfy the burrow checker
 
   loop {
     let term = ask_lnk(mem, host);
 
     if debug {
       println!("------------------------");
-      println!("{}", show_term(mem, ask_lnk(mem, 0), _opt_id_to_name, term));
+      println!("{}", show_term(mem, ask_lnk(mem, 0), _i2n, term));
     }
 
     if init == 1 {
@@ -406,25 +569,23 @@ pub fn reduce(
           continue;
         }
         CAL => {
-          let fun = get_ext(term);
-          let ari = get_ari(term);
-          if let Some(f) = &funcs[fun as usize] {
+          let fid = get_ext(term);
+          //let ari = ask_ari(mem, term);
+          if let Some(Some(f)) = &funs.get(fid as usize) {
             let len = f.stricts.len() as u64;
-            if ari == f.arity {
-              if len == 0 {
-                init = 0;
-              } else {
-                stack.push(host);
-                for (i, strict) in f.stricts.iter().enumerate() {
-                  if i < f.stricts.len() - 1 {
-                    stack.push(get_loc(term, *strict) | 0x80000000);
-                  } else {
-                    host = get_loc(term, *strict);
-                  }
+            if len == 0 {
+              init = 0;
+            } else {
+              stack.push(host);
+              for (i, strict) in f.stricts.iter().enumerate() {
+                if i < f.stricts.len() - 1 {
+                  stack.push(get_loc(term, *strict) | 0x80000000);
+                } else {
+                  host = get_loc(term, *strict);
                 }
               }
-              continue;
             }
+            continue;
           }
         }
         _ => {}
@@ -523,7 +684,7 @@ pub fn reduce(
               let done = Par(get_ext(arg0), if get_tag(term) == DP0 { par0 } else { par1 });
               link(mem, host, done);
             }
-          } else if get_tag(arg0) == U32 {
+          } else if get_tag(arg0) == NUM {
             //println!("dup-u32");
             inc_cost(mem);
             subst(mem, ask_arg(mem, term, 0), arg0);
@@ -534,13 +695,13 @@ pub fn reduce(
           } else if get_tag(arg0) == CTR {
             //println!("dup-ctr");
             inc_cost(mem);
-            let func = get_ext(arg0);
-            let arit = get_ari(arg0);
+            let fnid = get_ext(arg0);
+            let arit = ask_ari(mem, arg0);
             if arit == 0 {
-              subst(mem, ask_arg(mem, term, 0), Ctr(0, func, 0));
-              subst(mem, ask_arg(mem, term, 1), Ctr(0, func, 0));
+              subst(mem, ask_arg(mem, term, 0), Ctr(0, fnid, 0));
+              subst(mem, ask_arg(mem, term, 1), Ctr(0, fnid, 0));
               clear(mem, get_loc(term, 0), 3);
-              let _done = link(mem, host, Ctr(0, func, 0));
+              let _done = link(mem, host, Ctr(0, fnid, 0));
             } else {
               let ctr0 = get_loc(arg0, 0);
               let ctr1 = alloc(mem, arit);
@@ -554,11 +715,11 @@ pub fn reduce(
               link(mem, leti + 2, ask_arg(mem, arg0, arit - 1));
               let term_arg_0 = ask_arg(mem, term, 0);
               link(mem, ctr0 + arit - 1, Dp0(get_ext(term), leti));
-              subst(mem, term_arg_0, Ctr(arit, func, ctr0));
+              subst(mem, term_arg_0, Ctr(arit, fnid, ctr0));
               let term_arg_1 = ask_arg(mem, term, 1);
               link(mem, ctr1 + arit - 1, Dp1(get_ext(term), leti));
-              subst(mem, term_arg_1, Ctr(arit, func, ctr1));
-              let done = Ctr(arit, func, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
+              subst(mem, term_arg_1, Ctr(arit, fnid, ctr1));
+              let done = Ctr(arit, fnid, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
               link(mem, host, done);
             }
           } else if get_tag(arg0) == ERA {
@@ -574,31 +735,31 @@ pub fn reduce(
         OP2 => {
           let arg0 = ask_arg(mem, term, 0);
           let arg1 = ask_arg(mem, term, 1);
-          if get_tag(arg0) == U32 && get_tag(arg1) == U32 {
+          if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
             //println!("op2-u32");
             inc_cost(mem);
-            let a = get_val(arg0);
-            let b = get_val(arg1);
+            let a = get_num(arg0);
+            let b = get_num(arg1);
             let c = match get_ext(term) {
-              ADD => (a + b) & 0xFFFFFFFF,
-              SUB => (a - b) & 0xFFFFFFFF,
-              MUL => (a * b) & 0xFFFFFFFF,
-              DIV => (a / b) & 0xFFFFFFFF,
-              MOD => (a % b) & 0xFFFFFFFF,
-              AND => (a & b) & 0xFFFFFFFF,
-              OR => (a | b) & 0xFFFFFFFF,
-              XOR => (a ^ b) & 0xFFFFFFFF,
-              SHL => (a << b) & 0xFFFFFFFF,
-              SHR => (a >> b) & 0xFFFFFFFF,
-              LTN => u64::from(a < b),
+              ADD => a.wrapping_add(b) & NUM_MASK,
+              SUB => a.wrapping_sub(b) & NUM_MASK,
+              MUL => a.wrapping_mul(b) & NUM_MASK,
+              DIV => a.wrapping_div(b) & NUM_MASK,
+              MOD => a.wrapping_rem(b) & NUM_MASK,
+              AND => (a &  b) & NUM_MASK,
+              OR  => (a |  b) & NUM_MASK,
+              XOR => (a ^  b) & NUM_MASK,
+              SHL => a.wrapping_shl(b as u32) & NUM_MASK,
+              SHR => a.wrapping_shr(b as u32) & NUM_MASK,
+              LTN => u64::from(a <  b),
               LTE => u64::from(a <= b),
               EQL => u64::from(a == b),
               GTE => u64::from(a >= b),
-              GTN => u64::from(a > b),
+              GTN => u64::from(a >  b),
               NEQ => u64::from(a != b),
-              _ => 0,
+              _   => panic!("Invalid operation!"),
             };
-            let done = U_32(c);
+            let done = Num(c);
             clear(mem, get_loc(term, 0), 2);
             link(mem, host, done);
           } else if get_tag(arg0) == PAR {
@@ -636,9 +797,9 @@ pub fn reduce(
           }
         }
         CAL => {
-          let fun = get_ext(term);
-          let _ari = get_ari(term);
-          if let Some(f) = &funcs[fun as usize] {
+          let fid = get_ext(term);
+          let _ari = ask_ari(mem, term);
+          if let Some(Some(f)) = &funs.get(fid as usize) {
             if (f.rewriter)(mem, dups, host, term) {
               //unsafe { CALL_COUNT[fun as usize] += 1; } //TODO: uncomment
               init = 1;
@@ -658,7 +819,7 @@ pub fn reduce(
 
     break;
   }
-
+  mem.funs = funs;
   ask_lnk(mem, root)
 }
 
@@ -673,17 +834,16 @@ pub fn get_bit(bits: &[u64], bit: u64) -> bool {
 pub fn normal_go(
   mem: &mut Worker,
   dups: &mut u64,
-  funcs: &[Option<Function>],
   host: u64,
   seen: &mut [u64],
-  opt_id_to_name: Option<&HashMap<u64, String>>,
+  i2n: Option<&HashMap<u64, String>>,
   debug: bool,
 ) -> Lnk {
   let term = ask_lnk(mem, host);
   if get_bit(seen, host) {
     term
   } else {
-    let term = reduce(mem, dups, funcs, host, opt_id_to_name, debug);
+    let term = reduce(mem, dups, host, i2n, debug);
     set_bit(seen, host);
     let mut rec_locs = Vec::with_capacity(16);
     match get_tag(term) {
@@ -705,7 +865,7 @@ pub fn normal_go(
         rec_locs.push(get_loc(term, 2));
       }
       CTR | CAL => {
-        let arity = get_ari(term);
+        let arity = ask_ari(mem, term);
         for i in 0..arity {
           rec_locs.push(get_loc(term, i));
         }
@@ -713,7 +873,7 @@ pub fn normal_go(
       _ => {}
     }
     for loc in rec_locs {
-      let lnk: Lnk = normal_go(mem, dups, funcs, loc, seen, opt_id_to_name, debug);
+      let lnk: Lnk = normal_go(mem, dups, loc, seen, i2n, debug);
       link(mem, loc, lnk);
     }
     term
@@ -723,8 +883,7 @@ pub fn normal_go(
 pub fn normal(
   mem: &mut Worker,
   host: u64,
-  funcs: &[Option<Function>],
-  opt_id_to_name: Option<&HashMap<u64, String>>,
+  i2n: Option<&HashMap<u64, String>>,
   debug: bool,
 ) -> Lnk {
   let mut done;
@@ -732,23 +891,23 @@ pub fn normal(
   let mut cost = mem.cost;
   loop {
     let mut seen = vec![0; 4194304];
-    done = normal_go(mem, &mut dups, funcs, host, &mut seen, opt_id_to_name, debug);
+    done = normal_go(mem, &mut dups, host, &mut seen, i2n, debug);
     if mem.cost != cost {
       cost = mem.cost;
     } else {
       break;
     }
   }
-  //print_call_counts(opt_id_to_name); // TODO: uncomment
+  //print_call_counts(i2n); // TODO: uncomment
   done
 }
 
 // Debug: prints call counts
-fn print_call_counts(opt_id_to_name: Option<&HashMap<u64, String>>) {
+fn print_call_counts(i2n: Option<&HashMap<u64, String>>) {
   unsafe {
     let mut counts: Vec<(String, u64)> = Vec::new();
     for fun in 0..MAX_DYNFUNS {
-      if let Some(id_to_name) = opt_id_to_name {
+      if let Some(id_to_name) = i2n {
         match id_to_name.get(&fun) {
           None => {
             break;
@@ -777,11 +936,6 @@ pub fn show_lnk(x: Lnk) -> String {
     let tag = get_tag(x);
     let ext = get_ext(x);
     let val = get_val(x);
-    let ari = match tag {
-      CTR => format!("{}", get_ari(x)),
-      CAL => format!("{}", get_ari(x)),
-      _ => String::new(),
-    };
     let tgs = match tag {
       DP0 => "DP0",
       DP1 => "DP1",
@@ -794,13 +948,12 @@ pub fn show_lnk(x: Lnk) -> String {
       CTR => "CTR",
       CAL => "CAL",
       OP2 => "OP2",
-      U32 => "U32",
-      F32 => "F32",
+      NUM => "NUM",
       OUT => "OUT",
       NIL => "NIL",
       _ => "?",
     };
-    format!("{}{}:{:x}:{:x}", tgs, ari, ext, val)
+    format!("{}:{:x}:{:x}", tgs, ext, val)
   }
 }
 
@@ -818,7 +971,7 @@ pub fn show_mem(worker: &Worker) -> String {
 pub fn show_term(
   mem: &Worker,
   term: Lnk,
-  opt_id_to_name: Option<&HashMap<u64, String>>,
+  i2n: Option<&HashMap<u64, String>>,
   focus: u64,
 ) -> String {
   let mut lets: HashMap<u64, u64> = HashMap::new();
@@ -870,7 +1023,7 @@ pub fn show_term(
         find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
       }
       CTR | CAL => {
-        let arity = get_ari(term);
+        let arity = ask_ari(mem, term);
         for i in 0..arity {
           find_lets(mem, ask_arg(mem, term, i), lets, kinds, names, count);
         }
@@ -882,7 +1035,7 @@ pub fn show_term(
     mem: &Worker,
     term: Lnk,
     names: &HashMap<u64, String>,
-    opt_id_to_name: Option<&HashMap<u64, String>>,
+    i2n: Option<&HashMap<u64, String>>,
     focus: u64,
   ) -> String {
     let done = match get_tag(term) {
@@ -897,23 +1050,23 @@ pub fn show_term(
       }
       LAM => {
         let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?d")));
-        format!("λ{} {}", name, go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus))
+        format!("λ{} {}", name, go(mem, ask_arg(mem, term, 1), names, i2n, focus))
       }
       APP => {
-        let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name, focus);
-        let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus);
+        let func = go(mem, ask_arg(mem, term, 0), names, i2n, focus);
+        let argm = go(mem, ask_arg(mem, term, 1), names, i2n, focus);
         format!("({} {})", func, argm)
       }
       PAR => {
         //let kind = get_ext(term);
-        let func = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name, focus);
-        let argm = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus);
+        let func = go(mem, ask_arg(mem, term, 0), names, i2n, focus);
+        let argm = go(mem, ask_arg(mem, term, 1), names, i2n, focus);
         format!("{{{} {}}}", func, argm)
       }
       OP2 => {
         let oper = get_ext(term);
-        let val0 = go(mem, ask_arg(mem, term, 0), names, opt_id_to_name, focus);
-        let val1 = go(mem, ask_arg(mem, term, 1), names, opt_id_to_name, focus);
+        let val0 = go(mem, ask_arg(mem, term, 0), names, i2n, focus);
+        let val1 = go(mem, ask_arg(mem, term, 1), names, i2n, focus);
         let symb = match oper {
           0x0 => "+",
           0x1 => "-",
@@ -935,15 +1088,15 @@ pub fn show_term(
         };
         format!("({} {} {})", symb, val0, val1)
       }
-      U32 => {
+      NUM => {
         format!("{}", get_val(term))
       }
       CTR | CAL => {
         let func = get_ext(term);
-        let arit = get_ari(term);
+        let arit = ask_ari(mem, term);
         let args: Vec<String> =
-          (0..arit).map(|i| go(mem, ask_arg(mem, term, i), names, opt_id_to_name, focus)).collect();
-        let name = if let Some(id_to_name) = opt_id_to_name {
+          (0..arit).map(|i| go(mem, ask_arg(mem, term, i), names, i2n, focus)).collect();
+        let name = if let Some(id_to_name) = i2n {
           id_to_name.get(&func).unwrap_or(&String::from("?f")).clone()
         } else {
           format!(
@@ -964,7 +1117,7 @@ pub fn show_term(
     }
   }
   find_lets(mem, term, &mut lets, &mut kinds, &mut names, &mut count);
-  let mut text = go(mem, term, &names, opt_id_to_name, focus);
+  let mut text = go(mem, term, &names, i2n, focus);
   for (_key, pos) in lets {
     // todo: reverse
     let what = String::from("?h");
@@ -979,7 +1132,7 @@ pub fn show_term(
       //kind,
       nam0,
       nam1,
-      go(mem, ask_lnk(mem, pos + 2), &names, opt_id_to_name, focus)
+      go(mem, ask_lnk(mem, pos + 2), &names, i2n, focus)
     ));
   }
   text
