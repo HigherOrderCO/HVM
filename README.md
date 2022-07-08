@@ -51,7 +51,7 @@ them up. Since it is recursive, HVM will parallelize it automatically.
 ```sh
 hvm r main 10                      # runs it with n=10
 hvm c main                         # compiles HVM to C
-clang -O2 main.c -o main -lpthread # compiles C to BIN
+clang -O2 main.c -o main -pthread  # compiles C to BIN
 ./main 30                          # runs it with n=30
 ```
 
