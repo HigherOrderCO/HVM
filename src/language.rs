@@ -203,11 +203,11 @@ pub fn parse_let(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
     parser::text_parser("let "),
     Box::new(|state| {
-      let (state, _) = parser::consume("let ", state)?;
+      let (state, _)    = parser::consume("let ", state)?;
       let (state, name) = parser::name1(state)?;
-      let (state, _) = parser::consume("=", state)?;
+      let (state, _)    = parser::consume("=", state)?;
       let (state, expr) = parse_term(state)?;
-      let (state, _) = parser::text(";", state)?;
+      let (state, _)    = parser::text(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Let { name, expr, body })))
     }),
@@ -219,12 +219,12 @@ pub fn parse_dup(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
     parser::text_parser("dup "),
     Box::new(|state| {
-      let (state, _) = parser::consume("dup ", state)?;
+      let (state, _)    = parser::consume("dup ", state)?;
       let (state, nam0) = parser::name1(state)?;
       let (state, nam1) = parser::name1(state)?;
-      let (state, _) = parser::consume("=", state)?;
+      let (state, _)    = parser::consume("=", state)?;
       let (state, expr) = parse_term(state)?;
-      let (state, _) = parser::text(";", state)?;
+      let (state, _)    = parser::text(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Dup { nam0, nam1, expr, body })))
     }),
@@ -238,7 +238,7 @@ pub fn parse_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
   parser::guard(
     Box::new(parse_symbol),
     Box::new(move |state| {
-      let (state, _) = parse_symbol(state)?;
+      let (state, _)    = parse_symbol(state)?;
       let (state, name) = parser::name(state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Lam { name, body })))
