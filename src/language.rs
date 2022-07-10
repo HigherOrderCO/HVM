@@ -121,14 +121,14 @@ impl fmt::Display for Term {
     fn str_sugar(term: &Term) -> Option<String> {
       fn go(term: &Term, text: &mut String) -> Option<()> {
         if let Term::Ctr { name, args } = term {
-          if name == "StrCons" && args.len() == 2 {
+          if name == "String.cons" && args.len() == 2 {
             if let Term::Num { numb } = *args[0] {
               text.push(std::char::from_u32(numb as u32)?);
               go(&args[1], text)?;
             }
             return Some(());
           }
-          if name == "StrNil" && args.is_empty() {
+          if name == "String.nil" && args.is_empty() {
             return Some(());
           }
         }
@@ -418,9 +418,9 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
           }
         }
       }
-      let empty = Term::Ctr { name: "StrNil".to_string(), args: Vec::new() };
+      let empty = Term::Ctr { name: "String.nil".to_string(), args: Vec::new() };
       let list = Box::new(chars.iter().rfold(empty, |t, h| Term::Ctr {
-        name: "StrCons".to_string(),
+        name: "String.cons".to_string(),
         args: vec![Box::new(Term::Num { numb: *h as u64 }), Box::new(t)],
       }));
       Ok((state, list))

@@ -27,27 +27,27 @@
 // ======
 
 // (StrIsEmpty String) : Bool
-(StrIsEmpty StrNil)         = 1
-(StrIsEmpty (StrCons x xs)) = 0
+(StrIsEmpty String.nil)         = 1
+(StrIsEmpty (String.cons x xs)) = 0
 
 // (StrConcat a:String b:String) : String
-(StrConcat StrNil         ys) = ys
-(StrConcat (StrCons x xs) ys) = (StrCons x (StrConcat xs ys))
+(StrConcat String.nil         ys) = ys
+(StrConcat (String.cons x xs) ys) = (String.cons x (StrConcat xs ys))
 
 // (StrFlatten a:(List String)) : String
-(StrFlatten Nil)         = StrNil
+(StrFlatten Nil)         = String.nil
 (StrFlatten (Cons x xs)) = (StrConcat x (StrFlatten xs))
 
 // (StrEqual (List String) (List String)) : U32
-(StrEqual StrNil         StrNil)         = 1
-(StrEqual (StrCons x xs) (StrCons y ys)) = (& (== x y) (StrEqual xs ys))
-(StrEqual xs             ys)             = 0
+(StrEqual String.nil         String.nil)         = 1
+(StrEqual (String.cons x xs) (String.cons y ys)) = (& (== x y) (StrEqual xs ys))
+(StrEqual xs                 ys)                 = 0
 
 // Todo: improve this
 // (StrHash String) : String
 (StrHash str) = (StrHashGo str 0)
-  (StrHashGo StrNil         hash) = hash
-  (StrHashGo (StrCons x xs) hash) = (StrHashGo xs (+ (- (<< hash 5) hash) x))
+  (StrHashGo String.nil         hash) = hash
+  (StrHashGo (String.cons x xs) hash) = (StrHashGo xs (+ (- (<< hash 5) hash) x))
 
 // Parser
 // ======
@@ -81,28 +81,28 @@
 
 // (GetName String) : (Pair code:String name:String)
 (GetName)                             = λcode (GetNameGo code)
-  (GetNameGo StrNil)                  = (Pair StrNil StrNil)
-  (GetNameGo (StrCons head tail))     = (GetName_1 (IsNameChar head) head tail)
-    (GetName_1 0 head tail)           = (Pair (StrCons head tail) StrNil)
+  (GetNameGo String.nil)              = (Pair String.nil String.nil)
+  (GetNameGo (String.cons head tail)) = (GetName_1 (IsNameChar head) head tail)
+    (GetName_1 0 head tail)           = (Pair (String.cons head tail) String.nil)
     (GetName_1 1 head tail)           = (GetName_2 head (GetNameGo tail))
-    (GetName_2 head (Pair code name)) = (Pair code (StrCons head name))
+    (GetName_2 head (Pair code name)) = (Pair code (String.cons head name))
 
 // (PeekHere text:String) : (Parser Bool)
-(PeekHere text)                               = λcode (Peek_0 text code λx(x))
-  (Peek_0 StrNil         ys             init) = (Parsed (init ys)  True)
-  (Peek_0 (StrCons x xs) StrNil         init) = (Parsed (init Nil) False)
-  (Peek_0 (StrCons x xs) (StrCons y ys) init) = (Peek_1 (== x y) xs y ys init)
-  (Peek_1 0 xs y ys init)                     = (Parsed (init (StrCons y ys)) False)
-  (Peek_1 1 xs y ys init)                     = (Peek_0 xs ys λk (init (StrCons y k)))
+(PeekHere text) = λcode (Peek_0 text code λx(x))
+  (Peek_0 String.nil         ys                 init) = (Parsed (init ys)  True)
+  (Peek_0 (String.cons x xs) String.nil         init) = (Parsed (init Nil) False)
+  (Peek_0 (String.cons x xs) (String.cons y ys) init) = (Peek_1 (== x y) xs y ys init)
+  (Peek_1 0 xs y ys init) = (Parsed (init (String.cons y ys)) False)
+  (Peek_1 1 xs y ys init) = (Peek_0 xs ys λk (init (String.cons y k)))
 
 // TODO: simplify by calling Peek here
 // (MatchHere text:String) : (Parser Bool)
-(MatchHere text)                               = λcode (Match_0 text code λx(x))
-  (Match_0 StrNil         ys             init) = (Parsed ys True)
-  (Match_0 (StrCons x xs) StrNil         init) = (Parsed (init Nil) False)
-  (Match_0 (StrCons x xs) (StrCons y ys) init) = (Match_1 (== x y) xs y ys init)
-  (Match_1 0 xs y ys init)                     = (Parsed (init (StrCons y ys)) False)
-  (Match_1 1 xs y ys init)                     = (Match_0 xs ys λk (init (StrCons y k)))
+(MatchHere text) = λcode (Match_0 text code λx(x))
+  (Match_0 String.nil         ys                 init) = (Parsed ys True)
+  (Match_0 (String.cons x xs) String.nil         init) = (Parsed (init Nil) False)
+  (Match_0 (String.cons x xs) (String.cons y ys) init) = (Match_1 (== x y) xs y ys init)
+  (Match_1 0 xs y ys init) = (Parsed (init (String.cons y ys)) False)
+  (Match_1 1 xs y ys init) = (Match_0 xs ys λk (init (String.cons y k)))
 
 // (Match text:String) : (Parser Bool)
 (Match text) = λcode ((MatchHere text) (SkipSpaces code))
@@ -116,8 +116,8 @@
 (ParseText text) = λcode ((ParseTextHere text) (SkipSpaces code))
 
 // (SkipSpaces String) : String
-(SkipSpaces (StrCons x xs)) = (SkipSpaces_0 (IsSpace x) x xs)
-  (SkipSpaces_0 0 x xs)     = (StrCons x xs)
+(SkipSpaces (String.cons x xs)) = (SkipSpaces_0 (IsSpace x) x xs)
+  (SkipSpaces_0 0 x xs)     = (String.cons x xs)
   (SkipSpaces_0 1 x xs)     = (SkipSpaces xs)
 
 // (ParseNameHere) : (Parser String)
@@ -186,8 +186,8 @@ ParseName = λcode ((ParseNameHere) (SkipSpaces code))
 
 // (ParseVar) : (Parser (Maybe Term))
 (ParseVar) = (Bind ParseName λname (ParseVar_0 name))
-  (ParseVar_0 StrNil        ) = (Done None)
-  (ParseVar_0 (StrCons x xs)) = (Done (Some (Var (StrCons x xs))))
+  (ParseVar_0 String.nil        ) = (Done None)
+  (ParseVar_0 (String.cons x xs)) = (Done (Some (Var (String.cons x xs))))
 
 // (ParseTerm) : (Parser Term)
 (ParseTerm) = (Grammar [
@@ -298,7 +298,7 @@ ParseName = λcode ((ParseNameHere) (SkipSpaces code))
 (Low term) = (LowGo term 0)
   (LowGo (HVar name) depth) = (Var name)
   (LowGo (HLam body) depth) =
-    let name = (StrCons (+ 97 depth) StrNil)
+    let name = (String.cons (+ 97 depth) String.nil)
     let body = (LowGo (body (HVar name)) (+ depth 1))
     (Lam name body)
   (LowGo (HApp func argm) depth) =
