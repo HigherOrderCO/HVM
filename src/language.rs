@@ -1,5 +1,7 @@
 use crate::parser;
 use std::fmt;
+use std::hash::Hasher;
+
 
 // Types
 // =====
@@ -375,6 +377,23 @@ pub fn parse_var(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
+pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+  parser::guard(
+    parser::text_parser("%"),
+    Box::new(|state| {
+      let (state, _)    = parser::text("%", state)?;
+      let (state, name) = parser::name(state)?;
+      let hash = {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        hasher.write(name.as_bytes());
+        hasher.finish()
+      };
+      Ok((state, Box::new(Term::Num { numb: hash })))
+    }),
+    state,
+  )
+}
+
 pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   parser::guard(
     Box::new(|state| {
@@ -470,6 +489,7 @@ pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
       Box::new(parse_op2),
       Box::new(parse_app),
       Box::new(parse_u60),
+      Box::new(parse_sym_sugar),
       Box::new(parse_chr_sugar),
       Box::new(parse_str_sugar),
       Box::new(parse_lst_sugar),
