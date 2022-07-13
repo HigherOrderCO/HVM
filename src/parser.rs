@@ -90,6 +90,17 @@ pub fn get_char(state: State) -> Answer<char> {
   }
 }
 
+/// Skips comments and whitespace, then returns the next `char`, or the null
+/// character if this doesn't exist.
+pub fn peek_char(state: State) -> Answer<char> {
+  let (state, _) = skip(state)?;
+  if let Some(got) = head(state) {
+    return Ok((state, got));
+  } else {
+    return Ok((state, '\0'));
+  }
+}
+
 pub fn get_char_parser<'a>() -> Parser<'a, char> {
   Box::new(get_char)
 }
