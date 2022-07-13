@@ -397,9 +397,14 @@ pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
 // ask x = fn; body
 // ----------------
 // (fn λx body)
-pub fn parse_ask_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_ask_sugar_named(state: parser::State) -> parser::Answer<Option<BTerm>> {
   return parser::guard(
-    parser::text_parser("ask "),
+    Box::new(|state| {
+      let (state, asks) = parser::text("ask ", state)?;
+      let (state, name) = parser::name(state)?;
+      let (state, eqls) = parser::text("=", state)?;
+      Ok((state, asks && name.len() > 0 && eqls))
+    }),
     Box::new(|state| {
       let (state, _)    = parser::consume("ask ", state)?;
       let (state, name) = parser::name1(state)?;
@@ -408,6 +413,20 @@ pub fn parse_ask_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
       let (state, _)    = parser::text(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::App { func, argm: Box::new(Term::Lam { name, body }) })))
+    }),
+    state,
+  );
+}
+
+pub fn parse_ask_sugar_anon(state: parser::State) -> parser::Answer<Option<BTerm>> {
+  return parser::guard(
+    parser::text_parser("ask "),
+    Box::new(|state| {
+      let (state, _)    = parser::consume("ask ", state)?;
+      let (state, func) = parse_term(state)?;
+      let (state, _)    = parser::text(";", state)?;
+      let (state, body) = parse_term(state)?;
+      Ok((state, Box::new(Term::App { func, argm: Box::new(Term::Lam { name: "*".to_string(), body }) })))
     }),
     state,
   );
@@ -509,10 +528,11 @@ pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
       Box::new(parse_app),
       Box::new(parse_u60),
       Box::new(parse_sym_sugar),
-      Box::new(parse_ask_sugar),
       Box::new(parse_chr_sugar),
       Box::new(parse_str_sugar),
       Box::new(parse_lst_sugar),
+      Box::new(parse_ask_sugar_named),
+      Box::new(parse_ask_sugar_anon),
       Box::new(parse_var),
       Box::new(|state| Ok((state, None))),
     ],
