@@ -3,20 +3,20 @@
 use crate::language as lang;
 use crate::rulebook as rb;
 use crate::runtime as rt;
-use crate::runtime::{Lnk, Worker};
+use crate::runtime::{Ptr, Worker};
 use std::collections::{HashMap, HashSet};
 
 /// Reads back a term from Runtime's memory
 // TODO: we should readback as a language::Term, not as a string
-pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
+pub fn as_code(mem: &Worker, comp: Option<&rb::RuleBook>, host: u64) -> String {
   struct CtxName<'a> {
     mem: &'a Worker,
-    names: &'a mut HashMap<Lnk, String>,
-    seen: &'a mut HashSet<Lnk>,
+    names: &'a mut HashMap<Ptr, String>,
+    seen: &'a mut HashSet<Ptr>,
     count: &'a mut u32,
   }
 
-  fn name(mem: &Worker, ctx: &mut CtxName, term: Lnk, depth: u32) {
+  fn name(mem: &Worker, ctx: &mut CtxName, term: Ptr, depth: u32) {
     if ctx.seen.contains(&term) {
       return;
     };
@@ -75,34 +75,34 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
   #[allow(dead_code)]
   struct CtxGo<'a> {
     mem: &'a Worker,
-    comp: &'a Option<rb::RuleBook>,
-    names: &'a HashMap<Lnk, String>,
-    seen: &'a HashSet<Lnk>,
+    comp: Option<&'a rb::RuleBook>,
+    names: &'a HashMap<Ptr, String>,
+    seen: &'a HashSet<Ptr>,
     // count: &'a mut u32,
   }
 
   struct Stacks {
-    stacks: HashMap<Lnk, Vec<bool>>,
+    stacks: HashMap<Ptr, Vec<bool>>,
   }
 
   impl Stacks {
     fn new() -> Stacks {
       Stacks { stacks: HashMap::new() }
     }
-    fn get(&self, col: Lnk) -> Option<&Vec<bool>> {
+    fn get(&self, col: Ptr) -> Option<&Vec<bool>> {
       self.stacks.get(&col)
     }
-    fn pop(&mut self, col: Lnk) -> bool {
+    fn pop(&mut self, col: Ptr) -> bool {
       let stack = self.stacks.entry(col).or_insert_with(Vec::new);
       stack.pop().unwrap_or(false)
     }
-    fn push(&mut self, col: Lnk, val: bool) {
+    fn push(&mut self, col: Ptr, val: bool) {
       let stack = self.stacks.entry(col).or_insert_with(Vec::new);
       stack.push(val);
     }
   }
 
-  fn go(mem: &Worker, ctx: &mut CtxGo, stacks: &mut Stacks, term: Lnk, depth: u32) -> String {
+  fn go(mem: &Worker, ctx: &mut CtxGo, stacks: &mut Stacks, term: Ptr, depth: u32) -> String {
     //println!("readback term {}", rt::show_lnk(term));
 
     // TODO: seems like the "seen" map isn't used anymore here?
@@ -229,8 +229,8 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
 
   let term = rt::ask_lnk(mem, host);
 
-  let mut names = HashMap::<Lnk, String>::new();
-  let mut seen = HashSet::<Lnk>::new();
+  let mut names = HashMap::<Ptr, String>::new();
+  let mut seen = HashSet::<Ptr>::new();
   let mut count: u32 = 0;
 
   let ctx = &mut CtxName { mem, names: &mut names, seen: &mut seen, count: &mut count };
@@ -244,7 +244,7 @@ pub fn as_code(mem: &Worker, comp: &Option<rb::RuleBook>, host: u64) -> String {
 
 pub fn as_term(
   mem: &Worker,
-  comp: &Option<rb::RuleBook>,
+  comp: Option<&rb::RuleBook>,
   host: u64,
 ) -> Result<Box<lang::Term>, String> {
   //println!("readback: {}", as_code(mem, comp, host));

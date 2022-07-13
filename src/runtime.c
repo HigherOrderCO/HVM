@@ -64,12 +64,12 @@ typedef pthread_t Thd;
 // -----
 // HVM's runtime stores terms in a 64-bit memory. Each element is a Link, which
 // usually points to a constructor. It stores a Tag representing the ctor's
-// variant, and possibly a position on the memory. So, for example, `Lnk ptr =
+// variant, and possibly a position on the memory. So, for example, `Ptr ptr =
 // APP * TAG | 137` creates a pointer to an app node stored on position 137.
 // Some links deal with variables: DP0, DP1, VAR, ARG and ERA.  The OP2 link
 // represents a numeric operation, and NUM and FLO links represent unboxed nums.
 
-typedef u64 Lnk;
+typedef u64 Ptr;
 
 #define VAL ((u64) 1)
 #define EXT ((u64) 0x100000000)
@@ -134,7 +134,7 @@ typedef struct {
 
 typedef struct {
   u64  tid;
-  Lnk* node;
+  Ptr* node;
   u64  size;
   Stk  free[MAX_ARITY];
   u64  cost;
@@ -222,85 +222,85 @@ u64 stk_find(Stk* stk, u64 val) {
 
 // Memory
 // ------
-// Creating, storing and reading Lnks, allocating and freeing memory.
+// Creating, storing and reading Ptrs, allocating and freeing memory.
 
-Lnk Var(u64 pos) {
+Ptr Var(u64 pos) {
   return (VAR * TAG) | pos;
 }
 
-Lnk Dp0(u64 col, u64 pos) {
+Ptr Dp0(u64 col, u64 pos) {
   return (DP0 * TAG) | (col * EXT) | pos;
 }
 
-Lnk Dp1(u64 col, u64 pos) {
+Ptr Dp1(u64 col, u64 pos) {
   return (DP1 * TAG) | (col * EXT) | pos;
 }
 
-Lnk Arg(u64 pos) {
+Ptr Arg(u64 pos) {
   return (ARG * TAG) | pos;
 }
 
-Lnk Era(void) {
+Ptr Era(void) {
   return (ERA * TAG);
 }
 
-Lnk Lam(u64 pos) {
+Ptr Lam(u64 pos) {
   return (LAM * TAG) | pos;
 }
 
-Lnk App(u64 pos) {
+Ptr App(u64 pos) {
   return (APP * TAG) | pos;
 }
 
-Lnk Par(u64 col, u64 pos) {
+Ptr Par(u64 col, u64 pos) {
   return (PAR * TAG) | (col * EXT) | pos;
 }
 
-Lnk Op2(u64 ope, u64 pos) {
+Ptr Op2(u64 ope, u64 pos) {
   return (OP2 * TAG) | (ope * EXT) | pos;
 }
 
-Lnk Num(u64 val) {
+Ptr Num(u64 val) {
   return (NUM * TAG) | (val & NUM_MASK);
 }
 
-Lnk Nil(void) {
+Ptr Nil(void) {
   return NIL * TAG;
 }
 
-Lnk Ctr(u64 ari, u64 fun, u64 pos) {
+Ptr Ctr(u64 ari, u64 fun, u64 pos) {
   return (CTR * TAG) | (ari * ARI) | (fun * EXT) | pos;
 }
 
-Lnk Cal(u64 ari, u64 fun, u64 pos) {
+Ptr Cal(u64 ari, u64 fun, u64 pos) {
   return (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos;
 }
 
-u64 get_tag(Lnk lnk) {
+u64 get_tag(Ptr lnk) {
   return lnk / TAG;
 }
 
-u64 get_ext(Lnk lnk) {
+u64 get_ext(Ptr lnk) {
   return (lnk / EXT) & 0xFFFFFF;
 }
 
-u64 get_val(Lnk lnk) {
+u64 get_val(Ptr lnk) {
   return lnk & 0xFFFFFFFF;
 }
 
-u64 get_num(Lnk lnk) {
+u64 get_num(Ptr lnk) {
   return lnk & 0xFFFFFFFFFFFFFFF;
 }
 
-u64 get_ari(Lnk lnk) {
+u64 get_ari(Ptr lnk) {
   return (lnk / ARI) & 0xF;
 }
 
-u64 get_loc(Lnk lnk, u64 arg) {
+u64 get_loc(Ptr lnk, u64 arg) {
   return get_val(lnk) + arg;
 }
 
-u64 ask_ari(Worker* mem, Lnk lnk) {
+u64 ask_ari(Worker* mem, Ptr lnk) {
   u64 fid = get_ext(lnk);
   u64 got = fid < mem->funs ? mem->aris[fid] : 0;
   // TODO: remove this in a future update where ari will be removed from the lnk
@@ -311,20 +311,20 @@ u64 ask_ari(Worker* mem, Lnk lnk) {
   return got;
 }
 
-// Dereferences a Lnk, getting what is stored on its target position
-Lnk ask_lnk(Worker* mem, u64 loc) {
+// Dereferences a Ptr, getting what is stored on its target position
+Ptr ask_lnk(Worker* mem, u64 loc) {
   return mem->node[loc];
 }
 
-// Dereferences the nth argument of the Term represented by this Lnk
-Lnk ask_arg(Worker* mem, Lnk term, u64 arg) {
+// Dereferences the nth argument of the Term represented by this Ptr
+Ptr ask_arg(Worker* mem, Ptr term, u64 arg) {
   return ask_lnk(mem, get_loc(term, arg));
 }
 
 // This inserts a value in another. It just writes a position in memory if
 // `value` is a constructor. If it is VAR, DP0 or DP1, it also updates the
 // corresponding λ or dup binder.
-u64 link(Worker* mem, u64 loc, Lnk lnk) {
+u64 link(Worker* mem, u64 loc, Ptr lnk) {
   mem->node[loc] = lnk;
   //array_write(mem->nodes, loc, lnk);
   if (get_tag(lnk) <= VAR) {
@@ -365,7 +365,7 @@ void clear(Worker* mem, u64 loc, u64 size) {
 // mostly irrelevant in practice. Absolute GC-freedom, though, requires
 // uncommenting the `reduce` lines below, but this would make HVM not 100% lazy
 // in some cases, so it should be called in a separate thread.
-void collect(Worker* mem, Lnk term) {
+void collect(Worker* mem, Ptr term) {
   switch (get_tag(term)) {
     case DP0: {
       link(mem, get_loc(term,0), Era());
@@ -435,7 +435,7 @@ u64 gen_dupk(Worker* mem) {
 // Performs a `x <- value` substitution. It just calls link if the substituted
 // value is a term. If it is an ERA node, that means `value` is now unreachable,
 // so we just call the collector.
-void subst(Worker* mem, Lnk lnk, Lnk val) {
+void subst(Worker* mem, Ptr lnk, Ptr val) {
   if (get_tag(lnk) != ERA) {
     link(mem, get_loc(lnk,0), val);
   } else {
@@ -449,7 +449,7 @@ void subst(Worker* mem, Lnk lnk, Lnk val) {
 // dup c0 c1 = c
 // ...
 // {(F a0 b0 c0 ...) (F a1 b1 c1 ...)}
-Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {
+Ptr cal_par(Worker* mem, u64 host, Ptr term, Ptr argn, u64 n) {
   inc_cost(mem);
   u64 arit = ask_ari(mem, term);
   u64 func = get_ext(term);
@@ -476,7 +476,7 @@ Lnk cal_par(Worker* mem, u64 host, Lnk term, Lnk argn, u64 n) {
 }
 
 // Reduces a term to weak head normal form.
-Lnk reduce(Worker* mem, u64 root, u64 slen) {
+Ptr reduce(Worker* mem, u64 root, u64 slen) {
   Stk stack;
   stk_init(&stack);
 
@@ -883,8 +883,8 @@ void normal_init(void) {
   }
 }
 
-Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
-  Lnk term = ask_lnk(mem, host);
+Ptr normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
+  Ptr term = ask_lnk(mem, host);
   //printf("normal %llu %llu | ", sidx, slen); debug_print_lnk(term); printf("\n");
   if (get_bit(normal_seen_data, host)) {
     return term;
@@ -969,7 +969,7 @@ Lnk normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
   }
 }
 
-Lnk normal(Worker* mem, u64 host, u64 sidx, u64 slen) {
+Ptr normal(Worker* mem, u64 host, u64 sidx, u64 slen) {
   // In order to allow parallelization of numeric operations, reduce() will treat OP2 as a CTR if
   // there is enough thread space. So, for example, normalizing a recursive "sum" function with 4
   // threads might return something like `(+ (+ 64 64) (+ 64 64))`. reduce() will treat the first
@@ -1128,7 +1128,7 @@ void ffi_normal(u8* mem_data, u32 mem_size, u32 host) {
 // Readback
 // --------
 
-void readback_vars(Stk* vars, Worker* mem, Lnk term, Stk* seen) {
+void readback_vars(Stk* vars, Worker* mem, Ptr term, Stk* seen) {
   //printf("- readback_vars %llu ", get_loc(term,0)); debug_print_lnk(term); printf("\n");
   if (stk_find(seen, term) != -1) { // FIXME: probably very slow, change to a proper hashmap
     return;
@@ -1202,7 +1202,7 @@ void readback_decimal(Stk* chrs, u64 n) {
   }
 }
 
-void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char** id_to_name_data, u64 id_to_name_mcap) {
+void readback_term(Stk* chrs, Worker* mem, Ptr term, Stk* vars, Stk* dirs, char** id_to_name_data, u64 id_to_name_mcap) {
   //printf("- readback_term: "); debug_print_lnk(term); printf("\n");
   switch (get_tag(term)) {
     case LAM: {
@@ -1315,7 +1315,7 @@ void readback_term(Stk* chrs, Worker* mem, Lnk term, Stk* vars, Stk* dirs, char*
   }
 }
 
-void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_to_name_data, u64 id_to_name_mcap) {
+void readback(char* code_data, u64 code_mcap, Worker* mem, Ptr term, char** id_to_name_data, u64 id_to_name_mcap) {
   //printf("reading back\n");
 
   // Used vars
@@ -1356,7 +1356,7 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Lnk term, char** id_t
 // Debug
 // -----
 
-void debug_print_lnk(Lnk x) {
+void debug_print_lnk(Ptr x) {
   u64 tag = get_tag(x);
   u64 ext = get_ext(x);
   u64 val = get_val(x);
@@ -1383,7 +1383,7 @@ void debug_print_lnk(Lnk x) {
 // Main
 // ----
 
-Lnk parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
+Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   if (code[0] >= '0' && code[0] <= '9') {
     return Num(strtol(code, 0, 10));
   } else {

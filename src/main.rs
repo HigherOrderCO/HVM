@@ -1,3 +1,4 @@
+mod api;
 mod builder;
 mod compiler;
 mod language;
@@ -33,7 +34,6 @@ pub enum Command {
 }
 
 fn main() {
-  //match run_example() {
   match run_cli() {
     Ok(..) => {}
     Err(err) => {

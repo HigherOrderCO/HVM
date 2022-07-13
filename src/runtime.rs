@@ -228,9 +228,9 @@ pub const NEQ: u64 = 0xF;
 // Types
 // -----
 
-pub type Lnk = u64;
+pub type Ptr = u64;
 
-pub type Rewriter = Box<dyn Fn(&mut Worker, &mut u64, u64, Lnk) -> bool>;
+pub type Rewriter = Box<dyn Fn(&mut Worker, &mut u64, u64, Ptr) -> bool>;
 
 pub struct Function {
   pub arity: u64,
@@ -244,11 +244,12 @@ type Funs = Vec<Option<Function>>;
 type Aris = Vec<Arity>;
 
 pub struct Worker {
-  pub node: Vec<Lnk>,
+  pub node: Vec<Ptr>,
   pub funs: Funs,
   pub aris: Aris,
   pub size: u64,
   pub free: Vec<Vec<u64>>,
+  pub dups: u64,
   pub cost: u64,
 }
 
@@ -259,6 +260,7 @@ pub fn new_worker() -> Worker {
     funs: vec![],
     size: 0,
     free: vec![vec![]; 16],
+    dups: 0,
     cost: 0,
   }
 }
@@ -272,93 +274,93 @@ static mut CALL_COUNT: &mut [u64] = &mut [0; MAX_DYNFUNS as usize];
 // Constructors
 // ------------
 
-pub fn Var(pos: u64) -> Lnk {
+pub fn Var(pos: u64) -> Ptr {
   (VAR * TAG) | pos
 }
 
-pub fn Dp0(col: u64, pos: u64) -> Lnk {
+pub fn Dp0(col: u64, pos: u64) -> Ptr {
   (DP0 * TAG) | (col * EXT) | pos
 }
 
-pub fn Dp1(col: u64, pos: u64) -> Lnk {
+pub fn Dp1(col: u64, pos: u64) -> Ptr {
   (DP1 * TAG) | (col * EXT) | pos
 }
 
-pub fn Arg(pos: u64) -> Lnk {
+pub fn Arg(pos: u64) -> Ptr {
   (ARG * TAG) | pos
 }
 
-pub fn Era() -> Lnk {
+pub fn Era() -> Ptr {
   ERA * TAG
 }
 
-pub fn Lam(pos: u64) -> Lnk {
+pub fn Lam(pos: u64) -> Ptr {
   (LAM * TAG) | pos
 }
 
-pub fn App(pos: u64) -> Lnk {
+pub fn App(pos: u64) -> Ptr {
   (APP * TAG) | pos
 }
 
-pub fn Par(col: u64, pos: u64) -> Lnk {
+pub fn Par(col: u64, pos: u64) -> Ptr {
   (PAR * TAG) | (col * EXT) | pos
 }
 
-pub fn Op2(ope: u64, pos: u64) -> Lnk {
+pub fn Op2(ope: u64, pos: u64) -> Ptr {
   (OP2 * TAG) | (ope * EXT) | pos
 }
 
-pub fn Num(val: u64) -> Lnk {
+pub fn Num(val: u64) -> Ptr {
   (NUM * TAG) | (val & NUM_MASK)
 }
 
-pub fn Nil() -> Lnk {
+pub fn Nil() -> Ptr {
   NIL * TAG
 }
 
-pub fn Ctr(ari: u64, fun: u64, pos: u64) -> Lnk {
+pub fn Ctr(ari: u64, fun: u64, pos: u64) -> Ptr {
   (CTR * TAG) | (ari * ARI) | (fun * EXT) | pos
 }
 
-pub fn Cal(ari: u64, fun: u64, pos: u64) -> Lnk {
+pub fn Cal(ari: u64, fun: u64, pos: u64) -> Ptr {
   (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos
 }
 
-pub fn Out(arg: u64, fld: u64) -> Lnk {
+pub fn Out(arg: u64, fld: u64) -> Ptr {
   (OUT * TAG) | (arg << 8) | fld
 }
 
 // Getters
 // -------
 
-pub fn get_tag(lnk: Lnk) -> u64 {
+pub fn get_tag(lnk: Ptr) -> u64 {
   lnk / TAG
 }
 
-pub fn get_ext(lnk: Lnk) -> u64 {
+pub fn get_ext(lnk: Ptr) -> u64 {
   (lnk / EXT) & 0xFF_FFFF
 }
 
-pub fn get_val(lnk: Lnk) -> u64 {
+pub fn get_val(lnk: Ptr) -> u64 {
   lnk & 0xFFFF_FFFF
 }
 
-pub fn get_num(lnk: Lnk) -> u64 {
+pub fn get_num(lnk: Ptr) -> u64 {
   lnk & 0xFFF_FFFF_FFFF_FFFF
 }
 
-pub fn get_ari(lnk: Lnk) -> u64 {
+pub fn get_ari(lnk: Ptr) -> u64 {
   (lnk / ARI) & 0xF
 }
 
-pub fn get_loc(lnk: Lnk, arg: u64) -> u64 {
+pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
   get_val(lnk) + arg
 }
 
 // Memory
 // ------
 
-pub fn ask_ari(mem: &Worker, lnk: Lnk) -> u64 {
+pub fn ask_ari(mem: &Worker, lnk: Ptr) -> u64 {
   let got = match mem.aris.get(get_ext(lnk) as usize) {
     Some(Arity(arit)) => *arit,
     None              => 0,
@@ -370,16 +372,16 @@ pub fn ask_ari(mem: &Worker, lnk: Lnk) -> u64 {
   return got;
 }
 
-pub fn ask_lnk(mem: &Worker, loc: u64) -> Lnk {
+pub fn ask_lnk(mem: &Worker, loc: u64) -> Ptr {
   unsafe { *mem.node.get_unchecked(loc as usize) }
   // mem.node[loc as usize]
 }
 
-pub fn ask_arg(mem: &Worker, term: Lnk, arg: u64) -> Lnk {
+pub fn ask_arg(mem: &Worker, term: Ptr, arg: u64) -> Ptr {
   ask_lnk(mem, get_loc(term, arg))
 }
 
-pub fn link(mem: &mut Worker, loc: u64, lnk: Lnk) -> Lnk {
+pub fn link(mem: &mut Worker, loc: u64, lnk: Ptr) -> Ptr {
   unsafe {
     // mem.node[loc as usize] = lnk;
     *mem.node.get_unchecked_mut(loc as usize) = lnk;
@@ -409,8 +411,8 @@ pub fn clear(mem: &mut Worker, loc: u64, size: u64) {
   mem.free[size as usize].push(loc);
 }
 
-pub fn collect(mem: &mut Worker, term: Lnk) {
-  let mut stack: Vec<Lnk> = Vec::new();
+pub fn collect(mem: &mut Worker, term: Ptr) {
+  let mut stack: Vec<Ptr> = Vec::new();
   let mut next = term;
   //let mut dups : Vec<u64> = Vec::new();
   loop {
@@ -494,7 +496,7 @@ pub fn inc_cost(mem: &mut Worker) {
 // Reduction
 // ---------
 
-pub fn subst(mem: &mut Worker, lnk: Lnk, val: Lnk) {
+pub fn subst(mem: &mut Worker, lnk: Ptr, val: Ptr) {
   if get_tag(lnk) != ERA {
     link(mem, get_loc(lnk, 0), val);
   } else {
@@ -502,7 +504,7 @@ pub fn subst(mem: &mut Worker, lnk: Lnk, val: Lnk) {
   }
 }
 
-pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk {
+pub fn cal_par(mem: &mut Worker, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr {
   inc_cost(mem);
   let arit = ask_ari(mem, term);
   let func = get_ext(term);
@@ -530,11 +532,10 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Lnk, argn: Lnk, n: u64) -> Lnk
 
 pub fn reduce(
   mem: &mut Worker,
-  dups: &mut u64,
   root: u64,
   _i2n: Option<&HashMap<u64, String>>,
   debug: bool,
-) -> Lnk {
+) -> Ptr {
   let mut stack: Vec<u64> = Vec::new();
 
   let mut init = 1;
@@ -800,10 +801,15 @@ pub fn reduce(
           let fid = get_ext(term);
           let _ari = ask_ari(mem, term);
           if let Some(Some(f)) = &funs.get(fid as usize) {
-            if (f.rewriter)(mem, dups, host, term) {
+            // FIXME: is this logic correct? remove this comment if yes
+            let mut dups = mem.dups;
+            if (f.rewriter)(mem, &mut dups, host, term) {
               //unsafe { CALL_COUNT[fun as usize] += 1; } //TODO: uncomment
               init = 1;
+              mem.dups = dups;
               continue;
+            } else {
+              mem.dups = dups;
             }
           }
         }
@@ -833,17 +839,16 @@ pub fn get_bit(bits: &[u64], bit: u64) -> bool {
 
 pub fn normal_go(
   mem: &mut Worker,
-  dups: &mut u64,
   host: u64,
   seen: &mut [u64],
   i2n: Option<&HashMap<u64, String>>,
   debug: bool,
-) -> Lnk {
+) -> Ptr {
   let term = ask_lnk(mem, host);
   if get_bit(seen, host) {
     term
   } else {
-    let term = reduce(mem, dups, host, i2n, debug);
+    let term = reduce(mem, host, i2n, debug);
     set_bit(seen, host);
     let mut rec_locs = Vec::with_capacity(16);
     match get_tag(term) {
@@ -873,7 +878,7 @@ pub fn normal_go(
       _ => {}
     }
     for loc in rec_locs {
-      let lnk: Lnk = normal_go(mem, dups, loc, seen, i2n, debug);
+      let lnk: Ptr = normal_go(mem, loc, seen, i2n, debug);
       link(mem, loc, lnk);
     }
     term
@@ -885,13 +890,12 @@ pub fn normal(
   host: u64,
   i2n: Option<&HashMap<u64, String>>,
   debug: bool,
-) -> Lnk {
+) -> Ptr {
   let mut done;
-  let mut dups = 0;
   let mut cost = mem.cost;
   loop {
     let mut seen = vec![0; 4194304];
-    done = normal_go(mem, &mut dups, host, &mut seen, i2n, debug);
+    done = normal_go(mem, host, &mut seen, i2n, debug);
     if mem.cost != cost {
       cost = mem.cost;
     } else {
@@ -929,7 +933,7 @@ fn print_call_counts(i2n: Option<&HashMap<u64, String>>) {
 // Debug
 // -----
 
-pub fn show_lnk(x: Lnk) -> String {
+pub fn show_lnk(x: Ptr) -> String {
   if x == 0 {
     String::from("~")
   } else {
@@ -970,7 +974,7 @@ pub fn show_mem(worker: &Worker) -> String {
 
 pub fn show_term(
   mem: &Worker,
-  term: Lnk,
+  term: Ptr,
   i2n: Option<&HashMap<u64, String>>,
   focus: u64,
 ) -> String {
@@ -980,7 +984,7 @@ pub fn show_term(
   let mut count: u64 = 0;
   fn find_lets(
     mem: &Worker,
-    term: Lnk,
+    term: Ptr,
     lets: &mut HashMap<u64, u64>,
     kinds: &mut HashMap<u64, u64>,
     names: &mut HashMap<u64, String>,
@@ -1033,7 +1037,7 @@ pub fn show_term(
   }
   fn go(
     mem: &Worker,
-    term: Lnk,
+    term: Ptr,
     names: &HashMap<u64, String>,
     i2n: Option<&HashMap<u64, String>>,
     focus: u64,

@@ -2,6 +2,8 @@
 //!
 //! Note: this API is **unstable**.
 
+// FIXME: what is the right way to export the definitions on api.rs as a lib?
+
 pub mod builder;
 pub mod compiler;
 pub mod language;

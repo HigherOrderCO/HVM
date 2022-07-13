@@ -52,7 +52,7 @@ pub struct DynVar {
 
 #[derive(Debug)]
 pub struct DynRule {
-  pub cond: Vec<rt::Lnk>,
+  pub cond: Vec<rt::Ptr>,
   pub vars: Vec<DynVar>,
   pub term: DynTerm,
   pub body: Body,
@@ -121,7 +121,7 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
   DynFun { redex, rules: dynrules }
 }
 
-pub fn get_var(mem: &rt::Worker, term: rt::Lnk, var: &DynVar) -> rt::Lnk {
+pub fn get_var(mem: &rt::Worker, term: rt::Ptr, var: &DynVar) -> rt::Ptr {
   let DynVar { param, field, erase: _ } = var;
   match field {
     Some(i) => rt::ask_arg(mem, rt::ask_arg(mem, term, *param), *i),
@@ -500,21 +500,21 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
 static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
 pub fn alloc_body(
   mem: &mut rt::Worker,
-  term: rt::Lnk,
+  term: rt::Ptr,
   vars: &[DynVar],
   dups: &mut u64,
   body: &Body,
-) -> rt::Lnk {
+) -> rt::Ptr {
   unsafe {
     let hosts = &mut ALLOC_BODY_WORKSPACE;
     let (elem, nodes) = body;
     fn elem_to_lnk(
       mem: &mut rt::Worker,
-      term: rt::Lnk,
+      term: rt::Ptr,
       vars: &[DynVar],
       dups: &mut u64,
       elem: &Elem,
-    ) -> rt::Lnk {
+    ) -> rt::Ptr {
       unsafe {
         let hosts = &mut ALLOC_BODY_WORKSPACE;
         match elem {
@@ -595,10 +595,9 @@ pub fn eval_code(
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a Lambolt string
-  let book = Some(book);
-  let code = match rd::as_term(&worker, &book, host) {
+  let code = match rd::as_term(&worker, Some(&book), host) {
     Ok(x) => format!("{}", x),
-    Err(..) => rd::as_code(&worker, &book, host),
+    Err(..) => rd::as_code(&worker, Some(&book), host),
   };
 
   // Returns the normal form and the gas cost
