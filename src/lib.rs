@@ -11,8 +11,11 @@ pub mod parser;
 pub mod readback;
 pub mod rulebook;
 pub mod runtime;
+pub mod api;
 
 pub use builder::eval_code;
+
+pub use api::{*};
 
 pub fn make_call(func: &str, args: &[&str]) -> Result<language::Term, String> {
   let args = args.iter().map(|par| language::read_term(par).unwrap()).collect();
