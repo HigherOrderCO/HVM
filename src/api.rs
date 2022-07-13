@@ -103,11 +103,10 @@ impl Runtime {
   }
 
   /// Evaluates a code, returns the result location
-  pub fn normalize_code(&mut self, code: &str) -> Result<String, String> {
+  pub fn normalize_code(&mut self, code: &str) -> Result<Box<Term>, String> {
     let host = self.alloc_code(code)?;
     self.normalize(host);
-    let text = self.show(host);
-    return Ok(text);
+    return Ok(self.readback(host));
   }
 
   /// Given a location, returns the pointer stored on it
