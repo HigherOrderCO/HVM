@@ -146,7 +146,7 @@ dependencies = [
 
 [[package]]
 name = "hvm"
-version = "0.1.36"
+version = "0.1.37"
 dependencies = [
  "clap",
  "itertools",

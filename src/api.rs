@@ -110,7 +110,7 @@ impl Runtime {
   }
 
   /// Given a location, returns the pointer stored on it
-  pub fn ptr(&mut self, host: u64) -> Ptr {
+  pub fn ptr(&self, host: u64) -> Ptr {
     runtime::ask_lnk(&self.heap, host)
   }
 
