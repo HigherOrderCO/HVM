@@ -145,10 +145,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "highlight_error"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "809e18805660d7b6b2e2b9f316a5099521b5998d5cba4dda11b5157a21aaef03"
+
+[[package]]
 name = "hvm"
-version = "0.1.37"
+version = "0.1.38"
 dependencies = [
  "clap",
+ "highlight_error",
  "itertools",
  "num_cpus",
  "proptest",

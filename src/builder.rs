@@ -339,8 +339,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
         DynTerm::App { func, argm }
       }
       lang::Term::Ctr { name, args } => {
-        let term_func =
-          *comp.name_to_id.get(name).unwrap_or_else(|| panic!("Unbound symbol: {}", name));
+        let term_func = *comp.name_to_id.get(name).unwrap_or_else(|| panic!("Unbound symbol: {}", name));
         let term_args = args.iter().map(|arg| convert_term(arg, comp, depth + 0, vars)).collect();
         if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
           DynTerm::Cal { func: term_func, args: term_args }

@@ -26,7 +26,6 @@
 // Check the Testree example at the bottom of this file.
 
 #![allow(dead_code)]
-use itertools::Itertools as _;
 
 // Types
 // =====
@@ -377,75 +376,76 @@ pub fn name1(state: State) -> Answer<String> {
 // ======
 
 pub fn expected<'a, A>(name: &str, size: usize, state: State<'a>) -> Answer<'a, A> {
-  Err(format!("Expected `{}`:\n{}", name, &highlight(state.index, state.index + size, state.code)))
+  println!("highlight {} {} '{}'", state.index, state.index + size, state.code);
+  Err(format!("Expected `{}`:\n{}", name, &highlight_error::highlight_error(state.index, state.index + size, state.code)))
 }
 
 // WARN: This fails if `from_index` or `to_index` are not `char` boundaries.
 // Should probably not use slice indexing directly, maybe use `get` method and
 // handle possible error instead?
-pub fn highlight(from_index: usize, to_index: usize, code: &str) -> String {
-  debug_assert!(to_index >= from_index);
-  debug_assert!(code.get(from_index..to_index).is_some());
-  //let open = "<<<<####";
-  //let close = "####>>>>";
-  let open = "««««";
-  let close = "»»»»";
-  let open_color = "\x1b[4m\x1b[31m";
-  let close_color = "\x1b[0m";
-  let mut from_line = 0;
-  let mut to_line = 0;
-  for (i, c) in code.char_indices().filter(|(_, c)| c == &'\n').take_while(|(i, _)| i < &to_index) {
-    if i < from_index {
-      from_line += c.len_utf8();
-    }
-    to_line += c.len_utf8();
-  }
-  let code =
-    [&code[0..from_index], open, &code[from_index..to_index], close, &code[to_index..code.len()]]
-      .concat();
-  let block_from_line = std::cmp::max(from_line as i64 - 3, 0) as usize;
-  let block_to_line = std::cmp::min(to_line + 3, code.lines().count());
-  code
-    .lines()
-    .enumerate()
-    .skip_while(|(i, _)| i < &block_from_line)
-    .take_while(|(i, _)| i < &block_to_line)
-    .map(|(_, line)| line)
-    .enumerate()
-    .format_with("", |(i, line), f| {
-      let numb = block_from_line + i;
-      // TODO: An allocation of an intermediate string still occurs here
-      // which is inefficient. Should figure out how to improve this.
-      let rest = if numb == from_line && numb == to_line {
-        [
-          &line[0..find(line, open)],
-          open_color,
-          &line[find(line, open) + open.len()..find(line, close)],
-          close_color,
-          &line[find(line, close) + close.len()..line.len()],
-          "\n",
-        ]
-        .concat()
-      } else if numb == from_line {
-        [&line[0..find(line, open)], open_color, &line[find(line, open)..line.len()], "\n"].concat()
-      } else if numb > from_line && numb < to_line {
-        [open_color, line, close_color, "\n"].concat()
-      } else if numb == to_line {
-        [
-          &line[0..find(line, open)],
-          open_color,
-          &line[find(line, open)..find(line, close) + close.len()],
-          close_color,
-          "\n",
-        ]
-        .concat()
-      } else {
-        [line, "\n"].concat()
-      };
-      f(&format_args!("    {} | {}", numb, rest))
-    })
-    .to_string()
-}
+//pub fn highlight(from_index: usize, to_index: usize, code: &str) -> String {
+  //debug_assert!(to_index >= from_index);
+  //debug_assert!(code.get(from_index..to_index).is_some());
+  ////let open = "<<<<####";
+  ////let close = "####>>>>";
+  //let open = "««««";
+  //let close = "»»»»";
+  //let open_color = "\x1b[4m\x1b[31m";
+  //let close_color = "\x1b[0m";
+  //let mut from_line = 0;
+  //let mut to_line = 0;
+  //for (i, c) in code.char_indices().filter(|(_, c)| c == &'\n').take_while(|(i, _)| i < &to_index) {
+    //if i < from_index {
+      //from_line += c.len_utf8();
+    //}
+    //to_line += c.len_utf8();
+  //}
+  //let code =
+    //[&code[0..from_index], open, &code[from_index..to_index], close, &code[to_index..code.len()]]
+      //.concat();
+  //let block_from_line = std::cmp::max(from_line as i64 - 3, 0) as usize;
+  //let block_to_line = std::cmp::min(to_line + 3, code.lines().count());
+  //code
+    //.lines()
+    //.enumerate()
+    //.skip_while(|(i, _)| i < &block_from_line)
+    //.take_while(|(i, _)| i < &block_to_line)
+    //.map(|(_, line)| line)
+    //.enumerate()
+    //.format_with("", |(i, line), f| {
+      //let numb = block_from_line + i;
+      //// TODO: An allocation of an intermediate string still occurs here
+      //// which is inefficient. Should figure out how to improve this.
+      //let rest = if numb == from_line && numb == to_line {
+        //[
+          //&line[0..find(line, open)],
+          //open_color,
+          //&line[find(line, open) + open.len()..find(line, close)],
+          //close_color,
+          //&line[find(line, close) + close.len()..line.len()],
+          //"\n",
+        //]
+        //.concat()
+      //} else if numb == from_line {
+        //[&line[0..find(line, open)], open_color, &line[find(line, open)..line.len()], "\n"].concat()
+      //} else if numb > from_line && numb < to_line {
+        //[open_color, line, close_color, "\n"].concat()
+      //} else if numb == to_line {
+        //[
+          //&line[0..find(line, open)],
+          //open_color,
+          //&line[find(line, open)..find(line, close) + close.len()],
+          //close_color,
+          //"\n",
+        //]
+        //.concat()
+      //} else {
+        //[line, "\n"].concat()
+      //};
+      //f(&format_args!("    {} | {}", numb, rest))
+    //})
+    //.to_string()
+//}
 
 // Tests
 // =====
@@ -502,86 +502,6 @@ pub fn testree_parser<'a>() -> Parser<'a, Box<Testree>> {
 mod tests {
   use super::*;
   use proptest::prelude::*;
-
-  mod old_parser {
-    use super::super::*;
-
-    pub fn flatten(texts: &[&str]) -> String {
-      texts.concat()
-    }
-
-    pub fn lines(text: &str) -> Vec<String> {
-      text.lines().map(String::from).collect()
-    }
-
-    pub fn highlight(from_index: usize, to_index: usize, code: &str) -> String {
-      //let open = "<<<<####";
-      //let close = "####>>>>";
-      let open = "««««";
-      let close = "»»»»";
-      let open_color = "\x1b[4m\x1b[31m";
-      let close_color = "\x1b[0m";
-      let mut from_line = 0;
-      let mut to_line = 0;
-      for (i, c) in code.chars().enumerate() {
-        if c == '\n' {
-          if i < from_index {
-            from_line += 1;
-          }
-          if i < to_index {
-            to_line += 1;
-          }
-        }
-      }
-      let code: String = flatten(&[
-        &code[0..from_index],
-        open,
-        &code[from_index..to_index],
-        close,
-        &code[to_index..code.len()],
-      ]);
-      let lines: Vec<String> = lines(&code);
-      let block_from_line = std::cmp::max(from_line as i64 - 3, 0) as usize;
-      let block_to_line = std::cmp::min(to_line + 3, lines.len());
-      let mut text = String::new();
-      for (i, line) in lines[block_from_line..block_to_line].iter().enumerate() {
-        let numb = block_from_line + i;
-        let rest;
-        if numb == from_line && numb == to_line {
-          rest = flatten(&[
-            &line[0..find(line, open)],
-            open_color,
-            &line[find(line, open) + open.len()..find(line, close)],
-            close_color,
-            &line[find(line, close) + close.len()..line.len()],
-            "\n",
-          ]);
-        } else if numb == from_line {
-          rest = flatten(&[
-            &line[0..find(line, open)],
-            open_color,
-            &line[find(line, open)..line.len()],
-            "\n",
-          ]);
-        } else if numb > from_line && numb < to_line {
-          rest = flatten(&[open_color, line, close_color, "\n"]);
-        } else if numb == to_line {
-          rest = flatten(&[
-            &line[0..find(line, open)],
-            open_color,
-            &line[find(line, open)..find(line, close) + close.len()],
-            close_color,
-            "\n",
-          ]);
-        } else {
-          rest = flatten(&[line, "\n"]);
-        }
-        let line = format!("    {} | {}", numb, rest);
-        text.push_str(&line);
-      }
-      text
-    }
-  }
 
   // Matches anything.
   const RE_ANY: &str = "(?s).*";
