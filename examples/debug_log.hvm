@@ -1,0 +1,12 @@
+// Converts an U60 to a Church Nat
+(ToChurch 0 n) = (HVM.log (Done n) n)
+(ToChurch i n) = (HVM.log (Pair i n) (ToChurch (- i 1) λsλz(s (n s z))))
+Main           = (ToChurch 5 λsλz(z))
+
+// OUTPUT:
+// (Pair 5 λ* λx0 x0)
+// (Pair 4 λx0 λx1 (x0 x1))
+// (Pair 3 λx0 λx1 (x0 (x0 x1)))
+// (Pair 2 λx0 λx1 (x0 (x0 (x0 x1))))
+// (Pair 1 λx0 λx1 (x0 (x0 (x0 (x0 x1)))))
+// (Done λx0 λx1 (x0 (x0 (x0 (x0 (x0 x1))))))

@@ -65,7 +65,7 @@ pub struct DynFun {
   pub rules: Vec<DynRule>,
 }
 
-pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
+pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
   let mut redex = if let lang::Term::Ctr { name: _, ref args } = *rules[0].lhs {
     vec![false; args.len()]
   } else {
@@ -85,7 +85,7 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
           match &**arg {
             lang::Term::Ctr { name, args } => {
               *redex = true;
-              cond.push(rt::Ctr(args.len() as u64, *comp.name_to_id.get(&*name).unwrap_or(&0), 0));
+              cond.push(rt::Ctr(args.len() as u64, *book.name_to_id.get(&*name).unwrap_or(&0), 0));
               free.push((i as u64, args.len() as u64));
               for (j, arg) in args.iter().enumerate() {
                 if let lang::Term::Var { ref name } = **arg {
@@ -109,7 +109,7 @@ pub fn build_dynfun(comp: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
           }
         }
 
-        let term = term_to_dynterm(comp, &rule.rhs, vars.len() as u64);
+        let term = term_to_dynterm(book, &rule.rhs, vars.len() as u64);
         let body = build_body(&term, vars.len() as u64);
 
         Some(DynRule { cond, vars, term, body, free })
@@ -180,18 +180,34 @@ pub fn build_runtime_arities(rb: &rb::RuleBook) -> Vec<rt::Arity> {
   return aris;
 }
 
-pub fn build_runtime_functions(comp: &rb::RuleBook) -> Vec<Option<rt::Function>> {
+pub fn build_runtime_functions(book: &rb::RuleBook) -> Vec<Option<rt::Function>> {
   let mut funs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect(); // FIXME: hardcoded limit
-  for (name, rules_info) in &comp.rule_group {
-    let fnid = comp.name_to_id.get(name).unwrap_or(&0);
-    let func = build_runtime_function(comp, &rules_info.1);
+  let i2n = book.id_to_name.clone();
+  // The logger function. It allows logging ANY term, not just strings :)
+  funs[0] = Some(rt::Function {
+    arity: 2,
+    stricts: vec![],
+    rewriter: Box::new(move |rt, _dups, host, term| {
+      let msge = rt::get_loc(term,0);
+      rt::normal(rt, msge, Some(&i2n), false);
+      println!("{}", rd::as_code(rt, Some(&i2n), msge));
+      rt::link(rt, host, rt::ask_arg(rt, term, 1));
+      rt::clear(rt, rt::get_loc(term, 0), 2);
+      rt::collect(rt, rt::ask_lnk(rt, msge));
+      return true;
+    }),
+  });
+  // Creates all the other functions
+  for (name, rules_info) in &book.rule_group {
+    let fnid = book.name_to_id.get(name).unwrap_or(&0);
+    let func = build_runtime_function(book, &rules_info.1);
     funs[*fnid as usize] = Some(func);
   }
   funs
 }
 
-pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
-  let dynfun = build_dynfun(comp, rules);
+pub fn build_runtime_function(book: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
+  let dynfun = build_dynfun(book, rules);
 
   let arity = dynfun.redex.len() as u64;
   let mut stricts = Vec::new();
@@ -271,7 +287,7 @@ pub fn build_runtime_function(comp: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
 }
 
 /// Converts a language Term to a runtime Term
-pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
+pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
   fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
       lang::Oper::Add => rt::ADD,
@@ -296,7 +312,7 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
   #[allow(clippy::identity_op)]
   fn convert_term(
     term: &lang::Term,
-    comp: &rb::RuleBook,
+    book: &rb::RuleBook,
     depth: u64,
     vars: &mut Vec<String>,
   ) -> DynTerm {
@@ -310,10 +326,10 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
       }
       lang::Term::Dup { nam0, nam1, expr, body } => {
         let eras = (nam0 == "*", nam1 == "*");
-        let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
+        let expr = Box::new(convert_term(expr, book, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
-        let body = Box::new(convert_term(body, comp, depth + 2, vars));
+        let body = Box::new(convert_term(body, book, depth + 2, vars));
         vars.pop();
         vars.pop();
         DynTerm::Dup { eras, expr, body }
@@ -322,26 +338,26 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
         let glob = if rb::is_global_name(name) { hash(name) } else { 0 };
         let eras = name == "*";
         vars.push(name.clone());
-        let body = Box::new(convert_term(body, comp, depth + 1, vars));
+        let body = Box::new(convert_term(body, book, depth + 1, vars));
         vars.pop();
         DynTerm::Lam { eras, glob, body }
       }
       lang::Term::Let { name, expr, body } => {
-        let expr = Box::new(convert_term(expr, comp, depth + 0, vars));
+        let expr = Box::new(convert_term(expr, book, depth + 0, vars));
         vars.push(name.clone());
-        let body = Box::new(convert_term(body, comp, depth + 1, vars));
+        let body = Box::new(convert_term(body, book, depth + 1, vars));
         vars.pop();
         DynTerm::Let { expr, body }
       }
       lang::Term::App { func, argm } => {
-        let func = Box::new(convert_term(func, comp, depth + 0, vars));
-        let argm = Box::new(convert_term(argm, comp, depth + 0, vars));
+        let func = Box::new(convert_term(func, book, depth + 0, vars));
+        let argm = Box::new(convert_term(argm, book, depth + 0, vars));
         DynTerm::App { func, argm }
       }
       lang::Term::Ctr { name, args } => {
-        let term_func = *comp.name_to_id.get(name).unwrap_or_else(|| panic!("Unbound symbol: {}", name));
-        let term_args = args.iter().map(|arg| convert_term(arg, comp, depth + 0, vars)).collect();
-        if *comp.ctr_is_cal.get(name).unwrap_or(&false) {
+        let term_func = *book.name_to_id.get(name).unwrap_or_else(|| panic!("Unbound symbol: {}", name));
+        let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
+        if *book.ctr_is_cal.get(name).unwrap_or(&false) {
           DynTerm::Cal { func: term_func, args: term_args }
         } else {
           DynTerm::Ctr { func: term_func, args: term_args }
@@ -350,15 +366,15 @@ pub fn term_to_dynterm(comp: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
       lang::Term::Num { numb } => DynTerm::Num { numb: *numb },
       lang::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
-        let val0 = Box::new(convert_term(val0, comp, depth + 0, vars));
-        let val1 = Box::new(convert_term(val1, comp, depth + 1, vars));
+        let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
+        let val1 = Box::new(convert_term(val1, book, depth + 1, vars));
         DynTerm::Op2 { oper, val0, val1 }
       }
     }
   }
 
   let mut vars = (0..free_vars).map(|i| format!("x{}", i)).collect();
-  convert_term(term, comp, 0, &mut vars)
+  convert_term(term, book, 0, &mut vars)
 }
 
 pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
@@ -561,8 +577,8 @@ pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
   host
 }
 
-pub fn alloc_term(mem: &mut rt::Worker, comp: &rb::RuleBook, term: &lang::Term) -> u64 {
-  alloc_closed_dynterm(mem, &term_to_dynterm(comp, term, 0))
+pub fn alloc_term(mem: &mut rt::Worker, book: &rb::RuleBook, term: &lang::Term) -> u64 {
+  alloc_closed_dynterm(mem, &term_to_dynterm(book, term, 0))
 }
 
 // Evaluates a HVM term to normal form
@@ -593,11 +609,8 @@ pub fn eval_code(
   rt::normal(&mut worker, host, Some(&book.id_to_name), debug);
   let time = init.elapsed().as_millis() as u64;
 
-  // Reads it back to a Lambolt string
-  let code = match rd::as_term(&worker, Some(&book), host) {
-    Ok(x) => format!("{}", x),
-    Err(..) => rd::as_code(&worker, Some(&book), host),
-  };
+  // Reads it back to a string
+  let code = format!("{}", rd::as_term(&worker, Some(&book.id_to_name), host));
 
   // Returns the normal form and the gas cost
   Ok((code, worker.cost, worker.size, time))

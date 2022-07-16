@@ -1,9 +1,9 @@
 use crate::language as lang;
+use crate::runtime as rt;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 // RuleBook
 // ========
-
 
 // A RuleBook is a file ready for compilation. It includes:
 // - rule_group: sanitized rules grouped by function
@@ -26,14 +26,38 @@ pub type RuleGroup = (usize, Vec<lang::Rule>);
 
 // Creates an empty rulebook
 pub fn new_rulebook() -> RuleBook {
-  RuleBook {
+  // Creates an empty book
+  let mut book = RuleBook {
     rule_group: HashMap::new(),
     name_count: 0,
     name_to_id: HashMap::new(),
     id_to_name: HashMap::new(),
     id_to_arit: HashMap::new(),
     ctr_is_cal: HashMap::new(),
-  }
+  };
+  // Adds the logger
+  let name = "HVM.log".to_string();
+  book.name_count = book.name_count + 1;
+  book.name_to_id.insert(name.clone(), rt::HVM_LOG);
+  book.id_to_name.insert(rt::HVM_LOG, name.clone());
+  book.id_to_arit.insert(rt::HVM_LOG, 2);
+  book.ctr_is_cal.insert(name.clone(), true);
+  // Adds String.nil
+  let name = "String.nil".to_string();
+  book.name_count = book.name_count + 1;
+  book.name_to_id.insert(name.clone(), rt::STRING_NIL);
+  book.id_to_name.insert(rt::STRING_NIL, name.clone());
+  book.id_to_arit.insert(rt::STRING_NIL, 0);
+  book.ctr_is_cal.insert(name.clone(), false);
+  // Adds String.cons
+  let name = "String.cons".to_string();
+  book.name_count = book.name_count + 1;
+  book.name_to_id.insert(name.clone(), rt::STRING_CONS);
+  book.id_to_name.insert(rt::STRING_CONS, name.clone());
+  book.id_to_arit.insert(rt::STRING_CONS, 2);
+  book.ctr_is_cal.insert(name.clone(), false);
+  // Return
+  return book;
 }
 
 // Adds a group to a rulebook

@@ -126,12 +126,17 @@ impl Runtime {
 
   /// Given a location, recovers the Term stored on it
   pub fn readback(&self, host: u64) -> Box<Term> {
-    readback::as_term(&self.heap, Some(&self.book), host).unwrap()
+    readback::as_term(&self.heap, Some(&self.book.id_to_name), host)
+  }
+
+  /// Given a location, recovers the Term stored on it
+  pub fn linear_readback(&self, host: u64) -> Box<Term> {
+    readback::as_linear_term(&self.heap, Some(&self.book.id_to_name), host)
   }
 
   /// Given a location, recovers the Term stored on it, as code
   pub fn show(&self, host: u64) -> String {
-    readback::as_code(&self.heap, Some(&self.book), host)
+    readback::as_code(&self.heap, Some(&self.book.id_to_name), host)
   }
 
   /// Return the total number of graph rewrites computed

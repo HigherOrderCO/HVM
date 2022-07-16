@@ -1,6 +1,6 @@
 [package]
 name = "hvm"
-version = "0.1.44"
+version = "0.1.45"
 edition = "2021"
 description = "A lazy, beta-optimal, massively-parallel, non-garbage-collected and strongly-confluent functional compilation target."
 repository = "https://github.com/Kindelia/HVM"

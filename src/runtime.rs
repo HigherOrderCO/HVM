@@ -225,6 +225,11 @@ pub const GTE: u64 = 0xD;
 pub const GTN: u64 = 0xE;
 pub const NEQ: u64 = 0xF;
 
+// Reserved ids
+pub const HVM_LOG     : u64 = 0;
+pub const STRING_NIL  : u64 = 1;
+pub const STRING_CONS : u64 = 2;
+
 // Types
 // -----
 
@@ -905,6 +910,40 @@ pub fn normal(
   //print_call_counts(i2n); // TODO: uncomment
   done
 }
+
+// TODO: finish this
+//pub fn read_string(mem: &mut Worker, host: u64) -> Option<String> {
+  //let mut term = reduce(mem, host, None, false);
+  //let mut text = String::new();
+  //loop {
+    //match get_tag(term) {
+      //CTR => {
+        //match get_ext(term) {
+          //STRING_NIL => {
+            //break;
+          //}
+          //STRING_CONS => {
+            //let head = reduce(mem, ask_arg(mem, term, 0), None, false);
+            //if get_tag(head) == NUM {
+              //text.push(std::char::from_u32(get_num(head) as u32).unwrap_or('?'));
+              //head = ask_arg(mem, head, 1);
+              //continue;
+            //} else {
+              //return None;
+            //}
+          //}
+          //_ => {
+            //return None;
+          //}
+        //}
+      //}
+      //_ => {
+        //return None;
+      //}
+    //}
+  //}
+  //return Some(text);
+//}
 
 // Debug: prints call counts
 fn print_call_counts(i2n: Option<&HashMap<u64, String>>) {
