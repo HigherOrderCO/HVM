@@ -596,7 +596,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
 /*  */for arg in args {
 /*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
 /*   A  */for field in arg_args {
-/*    D   */if is_tested(field) {
+/*    D   */if is_matchable(field) {
 /* ─=≡ΣO)   */return true;
 /*    U   */}
 /*   K  */}
@@ -605,17 +605,37 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
 /**/} false
   }
 
-  fn is_tested(term: &lang::Term) -> bool {
+  // Returns true if a rule is a global default case (all args are vars)
+  fn is_default(lhs: &lang::Term) -> bool {
+/**/if let lang::Term::Ctr { ref args, .. } = *lhs {
+/*  */for arg in args {
+/*  H */if let lang::Term::Ctr { args: ref arg_args, .. } = **arg {
+/*   A  */for field in arg_args {
+/*    D   */if !is_variable(field) {
+/* ─=≡ΣO)   */return false;
+/*    U   */}
+/*   K  */}
+/*  E */}
+/* N*/}
+/**/} true
+  }
+
+  fn is_matchable(term: &lang::Term) -> bool {
     matches!(term, lang::Term::Ctr { .. } | lang::Term::Num { .. })
+  }
+
+  fn is_variable(term: &lang::Term) -> bool {
+    matches!(term, lang::Term::Var { .. })
   }
 
   // Checks true if every time that `a` matches, `b` will match too
   fn matches_together(a: &lang::Rule, b: &lang::Rule) -> bool {
-    if let (
+    if is_default(&b.lhs) {
+      return true;
+    } else if let (
       lang::Term::Ctr { name: ref _a_name, args: ref a_args },
       lang::Term::Ctr { name: ref _b_name, args: ref b_args },
-    ) = (&*a.lhs, &*b.lhs)
-    {
+    ) = (&*a.lhs, &*b.lhs) {
       for (a_arg, b_arg) in a_args.iter().zip(b_args) {
         match **a_arg {
           lang::Term::Ctr { name: ref a_arg_name, args: ref a_arg_args } => match **b_arg {
@@ -661,17 +681,23 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   }
 
   fn split_group(rules: &[lang::Rule], name_count: &mut u64) -> Vec<lang::Rule> {
+    //println!("\n[split_group]");
+    //for rule in rules {
+      //println!("{}", rule);
+    //}
     let mut skip: HashSet<usize> = HashSet::new();
     let mut new_rules: Vec<lang::Rule> = Vec::new();
+    let mut has_split = false;
     for i in 0..rules.len() {
       if !skip.contains(&i) {
         let rule = &rules[i];
-        //println!("- {}", rule);
         if must_split(&rule.lhs) {
+          has_split = true;
           if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
             let mut new_group: Vec<lang::Rule> = Vec::new();
             let new_lhs_name: String = name.clone();
             let new_rhs_name: String = format!("{}.{}", name, fresh(name_count));
+            let mut def_lhs_args: Vec<Box<lang::Term>> = Vec::new();
             let mut new_lhs_args: Vec<Box<lang::Term>> = Vec::new();
             let mut new_rhs_args: Vec<Box<lang::Term>> = Vec::new();
             for arg in args {
@@ -683,15 +709,18 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                     match &**field {
                       lang::Term::Ctr { .. } => {
                         let var_name = format!(".{}", fresh(name_count));
+                        def_lhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                       }
                       lang::Term::Num { .. } => {
                         let var_name = format!(".{}", fresh(name_count));
+                        def_lhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                       }
                       lang::Term::Var { .. } => {
+                        def_lhs_args.push(field.clone());
                         new_arg_args.push(field.clone());
                         new_rhs_args.push(field.clone());
                       }
@@ -700,51 +729,54 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                       }
                     }
                   }
-                  new_lhs_args
-                    .push(Box::new(lang::Term::Ctr { name: new_arg_name, args: new_arg_args }));
+                  new_lhs_args.push(Box::new(lang::Term::Ctr { name: new_arg_name, args: new_arg_args }));
                 }
                 lang::Term::Var { .. } => {
+                  def_lhs_args.push(Box::new(*arg.clone()));
                   new_lhs_args.push(Box::new(*arg.clone()));
                   new_rhs_args.push(Box::new(*arg.clone()));
                 }
                 _ => {}
               }
             }
-            let new_lhs = Box::new(lang::Term::Ctr { name: new_lhs_name, args: new_lhs_args });
-            let new_rhs =
-              Box::new(lang::Term::Ctr { name: new_rhs_name.clone(), args: new_rhs_args });
+            let new_lhs = Box::new(lang::Term::Ctr { name: new_lhs_name, args: new_lhs_args.clone() });
+            let new_rhs = Box::new(lang::Term::Ctr { name: new_rhs_name.clone(), args: new_rhs_args });
             new_group.push(lang::Rule { lhs: new_lhs, rhs: new_rhs });
-
-            let _new_rule_name = format!(".{}", fresh(name_count));
-
+            let def_rhs = Box::new(lang::Term::Ctr { name: format!("{}.", name), args: new_lhs_args });
             for (j, other) in rules.iter().enumerate().skip(i) {
               if matches_together(rule, other) {
-                skip.insert(j);
-                if let lang::Term::Ctr { name: ref _other_name, args: ref other_args } = &*other.lhs
-                {
-                  let other_new_lhs_name = new_rhs_name.clone();
-                  let mut other_new_lhs_args = Vec::new();
-                  for other_arg in other_args {
-                    match &**other_arg {
-                      lang::Term::Ctr { name: ref _other_arg_name, args: ref other_arg_args } => {
-                        for other_field in other_arg_args {
-                          other_new_lhs_args.push(other_field.clone());
+                if let lang::Term::Ctr { name: ref _other_name, args: ref other_args } = &*other.lhs {
+                  if is_default(&other.lhs) {
+                    let new_rule = lang::Rule {
+                      lhs: Box::new(lang::Term::Ctr { name: new_rhs_name.clone(), args: def_lhs_args.clone() }),
+                      rhs: def_rhs.clone(),
+                    };
+                    new_group.push(new_rule);
+                  } else {
+                    skip.insert(j);
+                    let other_new_lhs_name = new_rhs_name.clone();
+                    let mut other_new_lhs_args = Vec::new();
+                    for other_arg in other_args {
+                      match &**other_arg {
+                        lang::Term::Ctr { name: ref _other_arg_name, args: ref other_arg_args } => {
+                          for other_field in other_arg_args {
+                            other_new_lhs_args.push(other_field.clone());
+                          }
                         }
+                        lang::Term::Num { .. } => {}
+                        lang::Term::Var { .. } => {
+                          other_new_lhs_args.push(other_arg.clone());
+                        }
+                        _ => {}
                       }
-                      lang::Term::Num { .. } => {}
-                      lang::Term::Var { .. } => {
-                        other_new_lhs_args.push(other_arg.clone());
-                      }
-                      _ => {}
                     }
+                    let other_new_lhs = Box::new(lang::Term::Ctr {
+                      name: other_new_lhs_name,
+                      args: other_new_lhs_args,
+                    });
+                    let other_new_rhs = other.rhs.clone();
+                    new_group.push(lang::Rule { lhs: other_new_lhs, rhs: other_new_rhs });
                   }
-                  let other_new_lhs = Box::new(lang::Term::Ctr {
-                    name: other_new_lhs_name,
-                    args: other_new_lhs_args,
-                  });
-                  let other_new_rhs = other.rhs.clone();
-                  //println!("~~ {} = {}", other_new_lhs, other_new_rhs);
-                  new_group.push(lang::Rule { lhs: other_new_lhs, rhs: other_new_rhs });
                 }
               }
             }
@@ -756,6 +788,19 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
           }
         } else {
           new_rules.push(rules[i].clone());
+        }
+      }
+    }
+    if has_split {
+      if let Some(last_rule) = rules.last() {
+        if let lang::Term::Ctr { name: ref last_rule_name, args: ref last_rule_args } = &*last_rule.lhs {
+          if is_default(&last_rule.lhs) {
+            let new_rule_1 = lang::Rule {
+              lhs: Box::new(lang::Term::Ctr { name: format!("{}.", last_rule_name), args: last_rule_args.clone() }),
+              rhs: last_rule.rhs.clone(),
+            };
+            new_rules.push(new_rule_1);
+          }
         }
       }
     }
@@ -776,11 +821,16 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
 
   // For each group, split its internal rules
   let mut new_rules = Vec::new();
-  for (_name, rules) in groups {
-    for rule in split_group(&rules, &mut name_count) {
+  for (_name, rules) in &groups {
+    for rule in split_group(rules, &mut name_count) {
       new_rules.push(rule);
     }
   }
+
+  //println!("\nresult:");
+  //for rule in &new_rules {
+    //println!("{}", rule);
+  //}
 
   new_rules
 }
