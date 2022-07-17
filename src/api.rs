@@ -38,6 +38,7 @@ pub use language::{
 
 pub struct Runtime {
   heap: runtime::Worker,
+  funs: runtime::Funs,
   book: rulebook::RuleBook,
 }
 
@@ -73,6 +74,7 @@ impl Runtime {
   pub fn new() -> Self {
     Runtime {
       heap: runtime::new_worker(),
+      funs: vec![],
       book: rulebook::new_rulebook(),
     }
   }
@@ -81,10 +83,10 @@ impl Runtime {
   pub fn from_code(code: &str) -> Result<Self, String> {
     let file = language::read_file(code)?;
     let book = rulebook::gen_rulebook(&file);
+    let funs = builder::build_runtime_functions(&book);
     let mut heap = runtime::new_worker();
-    heap.funs = builder::build_runtime_functions(&book);
     heap.aris = builder::build_runtime_arities(&book);
-    return Ok(Runtime { heap, book });
+    return Ok(Runtime { heap, funs, book });
   }
 
   /// Extends a runtime with new definitions
@@ -116,12 +118,12 @@ impl Runtime {
 
   /// Given a location, evaluates a term to head normal form
   pub fn reduce(&mut self, host: u64) -> Ptr {
-    runtime::reduce(&mut self.heap, host, Some(&self.book.id_to_name), false)
+    runtime::reduce(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false)
   }
 
   /// Given a location, evaluates a term to full normal form
   pub fn normalize(&mut self, host: u64) -> Ptr {
-    runtime::normal(&mut self.heap, host, Some(&self.book.id_to_name), false)
+    runtime::normal(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false)
   }
 
   /// Given a location, recovers the Term stored on it

@@ -235,7 +235,7 @@ pub const STRING_CONS : u64 = 2;
 
 pub type Ptr = u64;
 
-pub type Rewriter = Box<dyn Fn(&mut Worker, &mut u64, u64, Ptr) -> bool>;
+pub type Rewriter = Box<dyn Fn(&mut Worker, &Funs, &mut u64, u64, Ptr) -> bool>;
 
 pub struct Function {
   pub arity: u64,
@@ -245,12 +245,11 @@ pub struct Function {
 
 pub struct Arity(pub u64);
 
-type Funs = Vec<Option<Function>>;
-type Aris = Vec<Arity>;
+pub type Funs = Vec<Option<Function>>;
+pub type Aris = Vec<Arity>;
 
 pub struct Worker {
   pub node: Vec<Ptr>,
-  pub funs: Funs,
   pub aris: Aris,
   pub size: u64,
   pub free: Vec<Vec<u64>>,
@@ -262,7 +261,6 @@ pub fn new_worker() -> Worker {
   Worker {
     node: vec![0; 6 * 0x8000000],
     aris: vec![],
-    funs: vec![],
     size: 0,
     free: vec![vec![]; 16],
     dups: 0,
@@ -537,6 +535,7 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr
 
 pub fn reduce(
   mem: &mut Worker,
+  funs: &Funs,
   root: u64,
   _i2n: Option<&HashMap<u64, String>>,
   debug: bool,
@@ -545,7 +544,6 @@ pub fn reduce(
 
   let mut init = 1;
   let mut host = root;
-  let funs = std::mem::take(&mut mem.funs); // necessary to satisfy the burrow checker
 
   loop {
     let term = ask_lnk(mem, host);
@@ -808,7 +806,7 @@ pub fn reduce(
           if let Some(Some(f)) = &funs.get(fid as usize) {
             // FIXME: is this logic correct? remove this comment if yes
             let mut dups = mem.dups;
-            if (f.rewriter)(mem, &mut dups, host, term) {
+            if (f.rewriter)(mem, funs, &mut dups, host, term) {
               //unsafe { CALL_COUNT[fun as usize] += 1; } //TODO: uncomment
               init = 1;
               mem.dups = dups;
@@ -830,7 +828,6 @@ pub fn reduce(
 
     break;
   }
-  mem.funs = funs;
   ask_lnk(mem, root)
 }
 
@@ -844,6 +841,7 @@ pub fn get_bit(bits: &[u64], bit: u64) -> bool {
 
 pub fn normal_go(
   mem: &mut Worker,
+  funs: &Funs,
   host: u64,
   seen: &mut [u64],
   i2n: Option<&HashMap<u64, String>>,
@@ -853,7 +851,7 @@ pub fn normal_go(
   if get_bit(seen, host) {
     term
   } else {
-    let term = reduce(mem, host, i2n, debug);
+    let term = reduce(mem, funs, host, i2n, debug);
     set_bit(seen, host);
     let mut rec_locs = Vec::with_capacity(16);
     match get_tag(term) {
@@ -883,7 +881,7 @@ pub fn normal_go(
       _ => {}
     }
     for loc in rec_locs {
-      let lnk: Ptr = normal_go(mem, loc, seen, i2n, debug);
+      let lnk: Ptr = normal_go(mem, funs, loc, seen, i2n, debug);
       link(mem, loc, lnk);
     }
     term
@@ -892,6 +890,7 @@ pub fn normal_go(
 
 pub fn normal(
   mem: &mut Worker,
+  funs: &Funs,
   host: u64,
   i2n: Option<&HashMap<u64, String>>,
   debug: bool,
@@ -900,7 +899,7 @@ pub fn normal(
   let mut cost = mem.cost;
   loop {
     let mut seen = vec![0; 4194304];
-    done = normal_go(mem, host, &mut seen, i2n, debug);
+    done = normal_go(mem, funs, host, &mut seen, i2n, debug);
     if mem.cost != cost {
       cost = mem.cost;
     } else {

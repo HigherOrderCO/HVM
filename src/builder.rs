@@ -187,9 +187,9 @@ pub fn build_runtime_functions(book: &rb::RuleBook) -> Vec<Option<rt::Function>>
   funs[0] = Some(rt::Function {
     arity: 2,
     stricts: vec![],
-    rewriter: Box::new(move |rt, _dups, host, term| {
+    rewriter: Box::new(move |rt, funs, _dups, host, term| {
       let msge = rt::get_loc(term,0);
-      rt::normal(rt, msge, Some(&i2n), false);
+      rt::normal(rt, funs, msge, Some(&i2n), false);
       println!("{}", rd::as_code(rt, Some(&i2n), msge));
       rt::link(rt, host, rt::ask_arg(rt, term, 1));
       rt::clear(rt, rt::get_loc(term, 0), 2);
@@ -217,7 +217,7 @@ pub fn build_runtime_function(book: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
     }
   }
 
-  let rewriter: rt::Rewriter = Box::new(move |mem, dups, host, term| {
+  let rewriter: rt::Rewriter = Box::new(move |mem, _funs, dups, host, term| {
     // For each argument, if it is a redex and a PAR, apply the cal_par rule
     for (i, redex) in dynfun.redex.iter().enumerate() {
       let i = i as u64;
@@ -596,7 +596,7 @@ pub fn eval_code(
   let book = rb::gen_rulebook(&file);
 
   // Builds functions
-  worker.funs = build_runtime_functions(&book);
+  let funs = build_runtime_functions(&book);
 
   // Builds arities
   worker.aris = build_runtime_arities(&book);
@@ -606,7 +606,7 @@ pub fn eval_code(
 
   // Normalizes it
   let init = Instant::now();
-  rt::normal(&mut worker, host, Some(&book.id_to_name), debug);
+  rt::normal(&mut worker, &funs, host, Some(&book.id_to_name), debug);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a string
