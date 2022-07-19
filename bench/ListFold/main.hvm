@@ -11,6 +11,6 @@
 
 // Sums a big list with fold
 (Main n) =
-  let size = (* n 1000000)
+  let size = (* 1000000 n)
   let list = (Range size Nil)
   (Fold list λaλb(+ a b) 0)
