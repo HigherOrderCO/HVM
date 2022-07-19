@@ -152,7 +152,7 @@ checksum = "809e18805660d7b6b2e2b9f316a5099521b5998d5cba4dda11b5157a21aaef03"
 
 [[package]]
 name = "hvm"
-version = "0.1.45"
+version = "0.1.46"
 dependencies = [
  "clap",
  "highlight_error",
