@@ -99,7 +99,7 @@ impl fmt::Display for Term {
     fn lst_sugar(term: &Term) -> Option<String> {
       fn go(term: &Term, text: &mut String, fst: bool) -> Option<()> {
         if let Term::Ctr { name, args } = term {
-          if name == "Cons" && args.len() == 2 {
+          if name == "List.cons" && args.len() == 2 {
             if !fst {
               text.push_str(", ");
             }
@@ -107,7 +107,7 @@ impl fmt::Display for Term {
             go(&args[1], text, false)?;
             return Some(());
           }
-          if name == "Nil" && args.is_empty() {
+          if name == "List.nil" && args.is_empty() {
             return Some(());
           }
         }
@@ -505,9 +505,9 @@ pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
         }),
         state,
       )?;
-      let empty = Term::Ctr { name: "Nil".to_string(), args: Vec::new() };
+      let empty = Term::Ctr { name: "List.nil".to_string(), args: Vec::new() };
       let list = Box::new(elems.iter().rfold(empty, |t, h| Term::Ctr {
-        name: "Cons".to_string(),
+        name: "List.cons".to_string(),
         args: vec![h.clone(), Box::new(t)],
       }));
       Ok((state, list))
