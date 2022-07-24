@@ -1,0 +1,44 @@
+// This is an example of how to run IO programs on HVM.
+// Any program that returns constructors of the IO type
+// will be interpreted as IO effects when ran. For now,
+// this only works on Rust mode, not C.
+
+// Main : (IO U60)
+Main =
+  // Asks the user's name
+  ask (IO.output "Type your name: ")
+  ask name = IO.input
+
+  // Prints a greeting message
+  ask (IO.output (Text [
+    "Hello, " name "!" NewLine
+    "Have a great day."
+  ]))
+
+  // Returns 0
+  (IO.done 0)
+
+
+
+// Some utils
+// ----------
+
+// NewLine : String
+NewLine = (String.cons 10 String.nil) // "\n"
+
+// Text (List String) : String
+(Text List.nil)         = String.nil
+(Text (List.cons x xs)) = (String.concat x (Text xs))
+
+// String.concat String String : String
+(String.concat String.nil         ys) = ys
+(String.concat (String.cons x xs) ys) = (String.cons x (String.concat xs ys))
+
+// IO.done a : (IO a)
+(IO.done val) = (IO.DONE val)
+
+// IO.input : (String -> (IO a)) -> (IO a)
+(IO.input) = @cont (IO.INPUT cont)
+
+// IO.output String : (U60 -> IO a) -> (IO a)
+(IO.output text) = @cont (IO.OUTPUT text cont)

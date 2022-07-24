@@ -35,28 +35,20 @@ pub fn new_rulebook() -> RuleBook {
     id_to_arit: HashMap::new(),
     ctr_is_cal: HashMap::new(),
   };
-  // Adds the logger
-  let name = "HVM.log".to_string();
-  book.name_count = book.name_count + 1;
-  book.name_to_id.insert(name.clone(), rt::HVM_LOG);
-  book.id_to_name.insert(rt::HVM_LOG, name.clone());
-  book.id_to_arit.insert(rt::HVM_LOG, 2);
-  book.ctr_is_cal.insert(name.clone(), true);
-  // Adds String.nil
-  let name = "String.nil".to_string();
-  book.name_count = book.name_count + 1;
-  book.name_to_id.insert(name.clone(), rt::STRING_NIL);
-  book.id_to_name.insert(rt::STRING_NIL, name.clone());
-  book.id_to_arit.insert(rt::STRING_NIL, 0);
-  book.ctr_is_cal.insert(name.clone(), false);
-  // Adds String.cons
-  let name = "String.cons".to_string();
-  book.name_count = book.name_count + 1;
-  book.name_to_id.insert(name.clone(), rt::STRING_CONS);
-  book.id_to_name.insert(rt::STRING_CONS, name.clone());
-  book.id_to_arit.insert(rt::STRING_CONS, 2);
-  book.ctr_is_cal.insert(name.clone(), false);
-  // Return
+  fn register(book: &mut RuleBook, name: &str, ctid: u64, arity: u64, is_fun: bool) {
+    let name = name.to_string();
+    book.name_count = book.name_count + 1;
+    book.name_to_id.insert(name.clone(), ctid);
+    book.id_to_name.insert(ctid, name.clone());
+    book.id_to_arit.insert(ctid, arity);
+    book.ctr_is_cal.insert(name.clone(), is_fun);
+  }
+  register(&mut book, "HVM.log"    , rt::HVM_LOG    , 2, true);  // HVM.log a b : b
+  register(&mut book, "String.nil" , rt::STRING_NIL , 0, false); // String.nil : String
+  register(&mut book, "String.cons", rt::STRING_CONS, 2, false); // String.cons (head: U60) (tail: String) : String
+  register(&mut book, "IO.DONE"    , rt::IO_DONE    , 1, false); // IO.DONE a : (IO a)
+  register(&mut book, "IO.INPUT"   , rt::IO_INPUT   , 1, false); // IO.INPUT (String -> IO a) : (IO a)
+  register(&mut book, "IO.OUTPUT"  , rt::IO_OUTPUT  , 2, false); // IO.OUTPUT String (Num -> IO a) : (IO a)
   return book;
 }
 

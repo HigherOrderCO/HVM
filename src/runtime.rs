@@ -229,6 +229,11 @@ pub const NEQ: u64 = 0xF;
 pub const HVM_LOG     : u64 = 0;
 pub const STRING_NIL  : u64 = 1;
 pub const STRING_CONS : u64 = 2;
+pub const IO_DONE     : u64 = 3;
+pub const IO_INPUT    : u64 = 4;
+pub const IO_OUTPUT   : u64 = 5;
+pub const IO_LOAD     : u64 = 6;
+pub const IO_SAVE     : u64 = 7;
 
 // Types
 // -----
@@ -910,39 +915,122 @@ pub fn normal(
   done
 }
 
+pub fn run_io(
+  mem: &mut Worker,
+  funs: &Funs,
+  host: u64,
+  i2n: Option<&HashMap<u64, String>>,
+  debug: bool,
+) {
+  fn read_input() -> String {
+    let mut input = String::new();
+    stdin().read_line(&mut input).expect("string");
+    if let Some('\n') = input.chars().next_back() { input.pop(); }
+    if let Some('\r') = input.chars().next_back() { input.pop(); }
+    return input;
+  }
+  use std::io::{stdin,stdout,Write};
+  loop {
+    let term = reduce(mem, funs, host, i2n, debug);
+    match get_tag(term) {
+      CTR => {
+        match get_ext(term) {
+          // IO.DONE a : (IO a)
+          IO_DONE => {
+            let done = ask_arg(mem, term, 0);
+            clear(mem, get_loc(term, 0), 1);
+            link(mem, host, done);
+            println!("");
+            println!("");
+            break;
+          }
+          // IO.INPUT (String -> IO a) : (IO a)
+          IO_INPUT => {
+            let cont = ask_arg(mem, term, 0);
+            let text = make_string(mem, &read_input());
+            let app0 = alloc(mem, 2);
+            link(mem, app0 + 0, cont);
+            link(mem, app0 + 1, text);
+            clear(mem, get_loc(term, 0), 1);
+            let done = App(app0);
+            link(mem, host, done);
+          }
+          // IO.OUTPUT String (Num -> IO a) : (IO a)
+          IO_OUTPUT => {
+            if let Some(show) = readback_string(mem, funs, get_loc(term, 0)) {
+              print!("{}", show);
+              stdout().flush().ok();
+              let cont = ask_arg(mem, term, 1);
+              let app0 = alloc(mem, 2);
+              link(mem, app0 + 0, cont);
+              link(mem, app0 + 1, Num(0));
+              clear(mem, get_loc(term, 0), 2);
+              let text = ask_arg(mem, term, 0);
+              collect(mem, text);
+              let done = App(app0);
+              link(mem, host, done);
+            } else {
+              println!("Runtime type error: attempted to print a non-string.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          _ => { break; }
+        }
+      }
+      _ => { break; }
+    }
+  }
+  //println!("NORMALIZING {}", show_term(mem, host, i2n, 0));
+  //return normal(mem, funs, host, i2n, debug); 
+}
+
+pub fn make_string(mem: &mut Worker, text: &str) -> Ptr {
+  let mut term = Ctr(0, STRING_NIL, 0);
+  for chr in text.chars().rev() { // TODO: reverse
+    let ctr0 = alloc(mem, 2);
+    link(mem, ctr0 + 0, Num(chr as u64));
+    link(mem, ctr0 + 1, term);
+    term = Ctr(2, STRING_CONS, ctr0);
+  }
+  return term;
+}
+
 // TODO: finish this
-//pub fn read_string(mem: &mut Worker, host: u64) -> Option<String> {
-  //let mut term = reduce(mem, host, None, false);
-  //let mut text = String::new();
-  //loop {
-    //match get_tag(term) {
-      //CTR => {
-        //match get_ext(term) {
-          //STRING_NIL => {
-            //break;
-          //}
-          //STRING_CONS => {
-            //let head = reduce(mem, ask_arg(mem, term, 0), None, false);
-            //if get_tag(head) == NUM {
-              //text.push(std::char::from_u32(get_num(head) as u32).unwrap_or('?'));
-              //head = ask_arg(mem, head, 1);
-              //continue;
-            //} else {
-              //return None;
-            //}
-          //}
-          //_ => {
-            //return None;
-          //}
-        //}
-      //}
-      //_ => {
-        //return None;
-      //}
-    //}
-  //}
-  //return Some(text);
-//}
+pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<String> {
+  let mut host = host;
+  let mut text = String::new();
+  loop {
+    let term = reduce(mem, funs, host, None, false);
+    match get_tag(term) {
+      CTR => {
+        match get_ext(term) {
+          STRING_NIL => {
+            break;
+          }
+          STRING_CONS => {
+            let chr = reduce(mem, funs, get_loc(term, 0), None, false);
+            if get_tag(chr) == NUM {
+              text.push(std::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
+              host = get_loc(term, 1);
+              continue;
+            } else {
+              return None;
+            }
+          }
+          _ => {
+            return None;
+          }
+        }
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+  return Some(text);
+}
+
 
 // Debug: prints call counts
 fn print_call_counts(i2n: Option<&HashMap<u64, String>>) {
