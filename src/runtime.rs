@@ -1163,7 +1163,7 @@ pub fn show_term(
   for (_key, pos) in lets {
     // todo: reverse
     let what = String::from("?h");
-    //let kind = kinds.get(&key).unwrap_or(&0);
+    //let kind = kinds.get(&pos).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
     let nam0 =
       if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };

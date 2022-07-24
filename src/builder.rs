@@ -32,7 +32,7 @@ pub enum DynTerm {
 // adjusted taking in account the index where each node is actually allocated, and external
 // variables must be linked. This structure helps moving as much computation from the interpreter
 // to the static time (i.e., when generating the dynfun closure) as possible.
-pub type Body = (Elem, Vec<Node>); // The pre-filled body (TODO: can the Node Vec be unboxed?)
+pub type Body = (Elem, Vec<Node>, u64); // The pre-filled body (TODO: can the Node Vec be unboxed?)
 pub type Node = Vec<Elem>; // A node on the pre-filled body
 
 #[derive(Copy, Clone, Debug)]
@@ -403,6 +403,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
   }
   fn gen_elems(
     term: &DynTerm,
+    dupk: &mut u64,
     vars: &mut Vec<Elem>,
     globs: &mut HashMap<u64, u64>,
     nodes: &mut Vec<Node>,
@@ -426,19 +427,20 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
         //let dupk = dups_count.next();
         links.push((targ, 0, Elem::Fix { value: rt::Era() }));
         links.push((targ, 1, Elem::Fix { value: rt::Era() }));
-        let expr = gen_elems(expr, vars, globs, nodes, links);
+        let expr = gen_elems(expr, dupk, vars, globs, nodes, links);
         links.push((targ, 2, expr));
-        vars.push(Elem::Loc { value: rt::Dp0(0, 0), targ, slot: 0 });
-        vars.push(Elem::Loc { value: rt::Dp1(0, 0), targ, slot: 0 });
-        let body = gen_elems(body, vars, globs, nodes, links);
+        vars.push(Elem::Loc { value: rt::Dp0(*dupk, 0), targ, slot: 0 });
+        vars.push(Elem::Loc { value: rt::Dp1(*dupk, 0), targ, slot: 0 });
+        *dupk = *dupk + 1;
+        let body = gen_elems(body, dupk, vars, globs, nodes, links);
         vars.pop();
         vars.pop();
         body
       }
       DynTerm::Let { expr, body } => {
-        let expr = gen_elems(expr, vars, globs, nodes, links);
+        let expr = gen_elems(expr, dupk, vars, globs, nodes, links);
         vars.push(expr);
-        let body = gen_elems(body, vars, globs, nodes, links);
+        let body = gen_elems(body, dupk, vars, globs, nodes, links);
         vars.pop();
         body
       }
@@ -446,7 +448,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
         let targ = alloc_lam(globs, nodes, *glob);
         let var = Elem::Loc { value: rt::Var(0), targ, slot: 0 };
         vars.push(var);
-        let body = gen_elems(body, vars, globs, nodes, links);
+        let body = gen_elems(body, dupk, vars, globs, nodes, links);
         links.push((targ, 1, body));
         vars.pop();
         Elem::Loc { value: rt::Lam(0), targ, slot: 0 }
@@ -454,9 +456,9 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
       DynTerm::App { func, argm } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
-        let func = gen_elems(func, vars, globs, nodes, links);
+        let func = gen_elems(func, dupk, vars, globs, nodes, links);
         links.push((targ, 0, func));
-        let argm = gen_elems(argm, vars, globs, nodes, links);
+        let argm = gen_elems(argm, dupk, vars, globs, nodes, links);
         links.push((targ, 1, argm));
         Elem::Loc { value: rt::App(0), targ, slot: 0 }
       }
@@ -465,7 +467,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
           let targ = nodes.len() as u64;
           nodes.push(vec![Elem::Fix { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
-            let arg = gen_elems(arg, vars, globs, nodes, links);
+            let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
             links.push((targ, i as u64, arg));
           }
           Elem::Loc { value: rt::Cal(args.len() as u64, *func, 0), targ, slot: 0 }
@@ -478,7 +480,7 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
           let targ = nodes.len() as u64;
           nodes.push(vec![Elem::Fix { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
-            let arg = gen_elems(arg, vars, globs, nodes, links);
+            let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
             links.push((targ, i as u64, arg));
           }
           Elem::Loc { value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0 }
@@ -490,9 +492,9 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
       DynTerm::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![Elem::Fix { value: 0 }; 2]);
-        let val0 = gen_elems(val0, vars, globs, nodes, links);
+        let val0 = gen_elems(val0, dupk, vars, globs, nodes, links);
         links.push((targ, 0, val0));
-        let val1 = gen_elems(val1, vars, globs, nodes, links);
+        let val1 = gen_elems(val1, dupk, vars, globs, nodes, links);
         links.push((targ, 1, val1));
         Elem::Loc { value: rt::Op2(*oper, 0), targ, slot: 0 }
       }
@@ -503,13 +505,14 @@ pub fn build_body(term: &DynTerm, free_vars: u64) -> Body {
   let mut nodes: Vec<Node> = Vec::new();
   let mut globs: HashMap<u64, u64> = HashMap::new();
   let mut vars: Vec<Elem> = (0..free_vars).map(|i| Elem::Ext { index: i }).collect();
+  let mut dupk: u64 = 0;
 
-  let elem = gen_elems(term, &mut vars, &mut globs, &mut nodes, &mut links);
+  let elem = gen_elems(term, &mut dupk, &mut vars, &mut globs, &mut nodes, &mut links);
   for (targ, slot, elem) in links {
     link(&mut nodes, targ, slot, elem);
   }
 
-  (elem, nodes)
+  (elem, nodes, dupk)
 }
 
 static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
@@ -522,7 +525,7 @@ pub fn alloc_body(
 ) -> rt::Ptr {
   unsafe {
     let hosts = &mut ALLOC_BODY_WORKSPACE;
-    let (elem, nodes) = body;
+    let (elem, nodes, dupk) = body;
     fn elem_to_lnk(
       mem: &mut rt::Worker,
       term: rt::Ptr,
@@ -543,7 +546,6 @@ pub fn alloc_body(
             }
             if rt::get_tag(*value) == rt::DP1 {
               val += (*dups & 0xFFFFFF) * rt::EXT;
-              *dups += 1;
             }
             val
           }
@@ -564,7 +566,9 @@ pub fn alloc_body(
         }
       });
     });
-    elem_to_lnk(mem, term, vars, dups, elem)
+    let done = elem_to_lnk(mem, term, vars, dups, elem);
+    *dups += dupk;
+    return done;
   }
 }
 
