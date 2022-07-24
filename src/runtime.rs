@@ -226,12 +226,12 @@ pub const GTN: u64 = 0xE;
 pub const NEQ: u64 = 0xF;
 
 // Reserved ids
-pub const HVM_LOG       : u64 = 0;
-pub const STRING_NIL    : u64 = 1;
-pub const STRING_CONS   : u64 = 2;
-pub const IO_DONE_CTR   : u64 = 3;
-pub const IO_INPUT_CTR  : u64 = 4;
-pub const IO_OUTPUT_CTR : u64 = 5;
+pub const HVM_LOG      : u64 = 0;
+pub const STRING_NIL   : u64 = 1;
+pub const STRING_CONS  : u64 = 2;
+pub const IO_DONE      : u64 = 3;
+pub const IO_DO_INPUT  : u64 = 4;
+pub const IO_DO_OUTPUT : u64 = 5;
 
 // Types
 // -----
@@ -933,8 +933,8 @@ pub fn run_io(
     match get_tag(term) {
       CTR => {
         match get_ext(term) {
-          // IO.DONE a : (IO a)
-          IO_DONE_CTR => {
+          // IO.done a : (IO a)
+          IO_DONE => {
             let done = ask_arg(mem, term, 0);
             clear(mem, get_loc(term, 0), 1);
             link(mem, host, done);
@@ -942,8 +942,8 @@ pub fn run_io(
             println!("");
             break;
           }
-          // IO.input_ctr (String -> IO a) : (IO a)
-          IO_INPUT_CTR => {
+          // IO.do_input (String -> IO a) : (IO a)
+          IO_DO_INPUT => {
             let cont = ask_arg(mem, term, 0);
             let text = make_string(mem, &read_input());
             let app0 = alloc(mem, 2);
@@ -953,8 +953,8 @@ pub fn run_io(
             let done = App(app0);
             link(mem, host, done);
           }
-          // IO.output_ctr String (Num -> IO a) : (IO a)
-          IO_OUTPUT_CTR => {
+          // IO.do_output String (Num -> IO a) : (IO a)
+          IO_DO_OUTPUT => {
             if let Some(show) = readback_string(mem, funs, get_loc(term, 0)) {
               print!("{}", show);
               stdout().flush().ok();

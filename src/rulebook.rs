@@ -43,12 +43,12 @@ pub fn new_rulebook() -> RuleBook {
     book.id_to_arit.insert(ctid, arity);
     book.ctr_is_cal.insert(name.clone(), is_fun);
   }
-  register(&mut book, "HVM.log"      , rt::HVM_LOG      , 2, true);  // HVM.log a b : b
-  register(&mut book, "String.nil"   , rt::STRING_NIL   , 0, false); // String.nil : String
-  register(&mut book, "String.cons"  , rt::STRING_CONS  , 2, false); // String.cons (head: U60) (tail: String) : String
-  register(&mut book, "IO.done_ctr"  , rt::IO_DONE_CTR  , 1, false); // IO.done_ctr a : (IO a)
-  register(&mut book, "IO.input_ctr" , rt::IO_INPUT_CTR , 1, false); // IO.input_ctr (String -> IO a) : (IO a)
-  register(&mut book, "IO.output_ctr", rt::IO_OUTPUT_CTR, 2, false); // IO.output_ctr String (Num -> IO a) : (IO a)
+  register(&mut book, "HVM.log"     , rt::HVM_LOG     , 2, true);  // HVM.log a b : b
+  register(&mut book, "String.nil"  , rt::STRING_NIL  , 0, false); // String.nil : String
+  register(&mut book, "String.cons" , rt::STRING_CONS , 2, false); // String.cons (head: U60) (tail: String) : String
+  register(&mut book, "IO.done"     , rt::IO_DONE  , 1, false); // IO.done a : (IO a)
+  register(&mut book, "IO.do_input" , rt::IO_DO_INPUT , 1, false); // IO.do_input (String -> IO a) : (IO a)
+  register(&mut book, "IO.do_output", rt::IO_DO_OUTPUT, 2, false); // IO.do_output String (Num -> IO a) : (IO a)
   return book;
 }
 

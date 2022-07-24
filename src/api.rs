@@ -126,6 +126,11 @@ impl Runtime {
     runtime::normal(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false)
   }
 
+  /// Given a location, runs side-efefctive actions
+  pub fn run_io(&mut self, host: u64) {
+    runtime::run_io(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false)
+  }
+
   /// Given a location, recovers the Term stored on it
   pub fn readback(&self, host: u64) -> Box<Term> {
     readback::as_term(&self.heap, Some(&self.book.id_to_name), host)

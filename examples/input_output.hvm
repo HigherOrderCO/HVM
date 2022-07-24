@@ -34,11 +34,8 @@ NewLine = (String.cons 10 String.nil) // "\n"
 (String.concat String.nil         ys) = ys
 (String.concat (String.cons x xs) ys) = (String.cons x (String.concat xs ys))
 
-// IO.done a : (IO a)
-(IO.done val) = (IO.done_ctr val)
-
 // IO.input : (String -> (IO a)) -> (IO a)
-(IO.input) = @cont (IO.input_ctr cont)
+(IO.input) = @cont (IO.do_input cont)
 
 // IO.output String : (U60 -> IO a) -> (IO a)
-(IO.output text) = @cont (IO.output_ctr text cont)
+(IO.output text) = @cont (IO.do_output text cont)
