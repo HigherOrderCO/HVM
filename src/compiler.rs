@@ -143,6 +143,10 @@ fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String,
         let some_ext = format!("get_ext(ask_arg(mem, term, {})) == {}u", i, rt::get_ext(*cond));
         matched.push(format!("({} && {})", some_tag, some_ext));
       }
+      if rt::get_tag(*cond) == rt::VAR && dynfun.redex[i as usize] {
+        let not_var = format!("get_tag(ask_arg(mem, term, {})) > VAR", i);
+        matched.push(format!("({})", not_var));
+      }
     }
 
     let conds = if matched.is_empty() { String::from("1") } else { matched.join(" && ") };

@@ -205,8 +205,6 @@ pub const CTR: u64 = 0x8;
 pub const CAL: u64 = 0x9;
 pub const OP2: u64 = 0xA;
 pub const NUM: u64 = 0xB;
-pub const OUT: u64 = 0xE;
-pub const NIL: u64 = 0xF;
 
 pub const ADD: u64 = 0x0;
 pub const SUB: u64 = 0x1;
@@ -320,20 +318,12 @@ pub fn Num(val: u64) -> Ptr {
   (NUM * TAG) | (val & NUM_MASK)
 }
 
-pub fn Nil() -> Ptr {
-  NIL * TAG
-}
-
 pub fn Ctr(ari: u64, fun: u64, pos: u64) -> Ptr {
   (CTR * TAG) | (ari * ARI) | (fun * EXT) | pos
 }
 
 pub fn Cal(ari: u64, fun: u64, pos: u64) -> Ptr {
   (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos
-}
-
-pub fn Out(arg: u64, fld: u64) -> Ptr {
-  (OUT * TAG) | (arg << 8) | fld
 }
 
 // Getters
@@ -1077,8 +1067,6 @@ pub fn show_lnk(x: Ptr) -> String {
       CAL => "CAL",
       OP2 => "OP2",
       NUM => "NUM",
-      OUT => "OUT",
-      NIL => "NIL",
       _ => "?",
     };
     format!("{}:{:x}:{:x}", tgs, ext, val)

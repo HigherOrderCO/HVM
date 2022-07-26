@@ -100,7 +100,7 @@ pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
               cond.push(rt::Num(*numb as u64));
             }
             lang::Term::Var { name } => {
-              cond.push(0);
+              cond.push(rt::Var(0));
               vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
             }
             _ => {
@@ -247,6 +247,12 @@ pub fn build_runtime_function(book: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
             let same_tag = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR;
             let same_ext = rt::get_ext(rt::ask_arg(mem, term, i)) == rt::get_ext(*cond);
             matched = matched && same_tag && same_ext;
+          }
+          rt::VAR => {
+            if dynfun.redex[i as usize] {
+              let not_var = rt::get_tag(rt::ask_arg(mem, term, i)) > rt::VAR;
+              matched = matched && not_var;
+            }
           }
           _ => {}
         }
