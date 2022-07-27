@@ -127,7 +127,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
   }
 
   // For each rule condition vector
-  for dynrule in &dynfun.rules {
+  for (r, dynrule) in dynfun.rules.iter().enumerate() {
     let mut matched: Vec<String> = Vec::new();
 
     // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
@@ -146,7 +146,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
       if rt::get_tag(*cond) == rt::VAR && dynfun.redex[i as usize] {
         let not_var = format!("get_tag(ask_arg(mem, term, {})) > VAR", i);
         // See "HOAS_VAR_OPT"
-        let not_hoas_var = if dynrule.hoas {
+        let not_hoas_var = if dynrule.hoas && r != dynfun.rules.len() - 1 {
           format!("get_ext(ask_arg(mem, term, {})) != {}u", i, rt::get_val(*cond))
         } else {
           format!("1")

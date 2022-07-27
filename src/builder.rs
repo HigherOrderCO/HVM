@@ -106,7 +106,9 @@ pub fn build_dynfun(book: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule]) ->
             // when generating Kind2's HOAS type checker. It will cause functions with a name
             // starting with "F$" to treat constructors named "Var" like variables. For example,
             // the pattern `(F$0 x) = ...` will match on anything, *except* a constructor named
-            // `Var`. This is a non-standard, internal feature, and shouldn't be used by end-users.
+            // `Var`. If the rule is the last clause on the function, though, it is assumed to be a
+            // default case, and its variables will match against a `Var` constructor. This is a
+            // non-standard, internal feature, and shouldn't be used by end-users.
             if hoas {
               cond.push(rt::Var(*book.name_to_id.get("Var").unwrap_or(&0)));
             } else {
@@ -239,7 +241,7 @@ pub fn build_runtime_function(book: &rb::RuleBook, fn_name: &str, rules: &[lang:
     }
 
     // For each rule condition vector
-    for dynrule in &dynfun.rules {
+    for (r, dynrule) in dynfun.rules.iter().enumerate() {
       // Check if the rule matches
       let mut matched = true;
 
@@ -262,7 +264,7 @@ pub fn build_runtime_function(book: &rb::RuleBook, fn_name: &str, rules: &[lang:
           rt::VAR => {
             if dynfun.redex[i as usize] {
               let not_var = rt::get_tag(rt::ask_arg(mem, term, i)) > rt::VAR;
-              let not_hoas_var = !dynrule.hoas || rt::get_ext(rt::ask_arg(mem, term, i)) != rt::get_val(*cond); // See "HOAS_VAR_OPT"
+              let not_hoas_var = !dynrule.hoas || r == dynfun.rules.len() - 1 || rt::get_ext(rt::ask_arg(mem, term, i)) != rt::get_val(*cond); // See "HOAS_VAR_OPT"
               matched = matched && not_var && not_hoas_var;
             }
           }
