@@ -252,16 +252,16 @@ pub fn build_runtime_function(book: &rb::RuleBook, fn_name: &str, rules: &[lang:
           }
           rt::VAR => {
             if dynfun.redex[i as usize] {
-              let not_var = rt::get_tag(rt::ask_arg(mem, term, i)) > rt::VAR;
-              // See "HOAS_VAR_OPT"
-              let not_hoas = if dynrule.hoas && r != dynfun.rules.len() - 1 {
-                let not_hoas_var = rt::get_ext(rt::ask_arg(mem, term, i)) != rt::HOAS_VAR;
-                let not_hoas_hol = rt::get_ext(rt::ask_arg(mem, term, i)) != rt::HOAS_HOL;
-                not_hoas_var && not_hoas_hol
+              let is_prod = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR || rt::get_tag(rt::ask_arg(mem, term, i)) == rt::NUM;
+              // See "HOAS_OPT"
+              let is_prod_hoas = if dynrule.hoas && r != dynfun.rules.len() - 1 {
+                let is_gte_ct0 = rt::get_ext(rt::ask_arg(mem, term, i)) >= rt::HOAS_CT0;
+                let is_lte_num = rt::get_ext(rt::ask_arg(mem, term, i)) <= rt::HOAS_NUM;
+                is_gte_ct0 && is_lte_num
               } else {
                 true
               };
-              matched = matched && not_var && not_hoas;
+              matched = matched && is_prod && is_prod_hoas;
             }
           }
           _ => {}
@@ -640,10 +640,7 @@ pub fn eval_code(
 // Notes
 // -----
 
-// HOAS_VAR_OPT: this is an internal optimization that allows us to create less cases
-// when generating Kind2's HOAS type checker. It will cause functions with a name
-// starting with "F$" to treat constructors named "Var" like variables. For example,
-// the pattern `(F$0 x) = ...` will match on anything, *except* a constructor named
-// `Var`. If the rule is the last clause on the function, though, it is assumed to be a
-// default case, and its variables will match against a `Var` constructor. This is a
-// non-standard, internal feature, and shouldn't be used by end-users.
+// HOAS_OPT: this is an internal optimization that allows us to create less cases when generating
+// Kind2's HOAS type checker. It will cause the default cases of functions with a name starting
+// with "F$" to only match productive HOAS constructors (Ct0, Ct1, ..., CtG, Num), unless it is the
+// last (default) clause. This must be considered a non-standard, internal feature.

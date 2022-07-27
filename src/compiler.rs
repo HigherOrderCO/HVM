@@ -144,16 +144,16 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
         matched.push(format!("({} && {})", some_tag, some_ext));
       }
       if rt::get_tag(*cond) == rt::VAR && dynfun.redex[i as usize] {
-        let not_var = format!("get_tag(ask_arg(mem, term, {})) > VAR", i);
-        // See "HOAS_VAR_OPT"
-        let not_hoas = if dynrule.hoas && r != dynfun.rules.len() - 1 {
-          let not_hoas_var = format!("get_ext(ask_arg(mem, term, {})) != {}u", i, rt::HOAS_VAR);
-          let not_hoas_hol = format!("get_ext(ask_arg(mem, term, {})) != {}u", i, rt::HOAS_HOL);
-          format!("({} && {})", not_hoas_var, not_hoas_hol)
+        let is_prod = format!("(get_tag(ask_arg(mem, term, {})) == CTR || get_tag(ask_arg(mem, term, {})) == NUM)", i, i);
+        // See "HOAS_OPT"
+        let is_prod_hoas = if dynrule.hoas && r != dynfun.rules.len() - 1 {
+          let is_gte_ct0 = format!("get_ext(ask_arg(mem, term, {})) >= {}u", i, rt::HOAS_CT0);
+          let is_lte_num = format!("get_ext(ask_arg(mem, term, {})) <= {}u", i, rt::HOAS_NUM);
+          format!("({} && {})", is_gte_ct0, is_lte_num)
         } else {
           format!("1")
         };
-        matched.push(format!("({} && {})", not_var, not_hoas));
+        matched.push(format!("({} && {})", is_prod, is_prod_hoas));
       }
     }
 
