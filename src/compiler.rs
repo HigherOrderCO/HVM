@@ -72,7 +72,7 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
     line(&mut codes, 6, "};");
   }
 
-  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, &id2ar, comp.id_to_arit.len() as u64, parallel)
+  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, &id2ar, comp.id_to_name.len() as u64, parallel)
 }
 
 fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u64) -> (String, String) {
