@@ -90,7 +90,7 @@ pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
               free.push((i as u64, args.len() as u64));
               for (j, arg) in args.iter().enumerate() {
                 if let lang::Term::Var { ref name } = **arg {
-                  vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
+                  vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*" || name == "*$" });
                   inps.push(name.clone());
                 } else {
                   panic!("Sorry, left-hand sides can't have nested constructors yet.");
@@ -111,11 +111,12 @@ pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
               // implement guard patterns on HVM, but, until this isn't done, this optimization
               // will allow Kind2's HOAS to be faster.
               if name.ends_with('$') {
+                *redex = true;
                 cond.push(rt::Var(*book.name_to_id.get("Var").unwrap_or(&0)));
               } else {
                 cond.push(rt::Var(0));
               }
-              vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
+              vars.push(DynVar { param: i as u64, field: None, erase: name == "*" || name == "*$" });
               inps.push(name.clone());
             }
             _ => {
@@ -347,7 +348,7 @@ pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, inps: &[String]) 
         }
       }
       lang::Term::Dup { nam0, nam1, expr, body } => {
-        let eras = (nam0 == "*", nam1 == "*");
+        let eras = (nam0 == "*" || nam0 == "*$", nam1 == "*" || nam1 == "*$");
         let expr = Box::new(convert_term(expr, book, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
@@ -358,7 +359,7 @@ pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, inps: &[String]) 
       }
       lang::Term::Lam { name, body } => {
         let glob = if rb::is_global_name(name) { hash(name) } else { 0 };
-        let eras = name == "*";
+        let eras = name == "*" || name == "*$";
         vars.push(name.clone());
         let body = Box::new(convert_term(body, book, depth + 1, vars));
         vars.pop();

@@ -185,7 +185,7 @@ pub struct SanitizedRule {
 // - All variables are linearized.
 //   - If they're used more than once, dups are inserted.
 //   - If they're used once, nothing changes.
-//   - If they're never used, their name is changed to "*".
+//   - If they're never used, their name is changed to "*" or "*$" (see "HOAS_VAR_OPT").
 // Example:
 //   - sanitizing: `(Foo a b) = (+ a a)`
 //   - results in: `(Foo x0 *) = dup x0.0 x0.1 = x0; (+ x0.0 x0.1)`
@@ -244,7 +244,11 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
   ) -> Result<Box<lang::Term>, String> {
     fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
       if !is_global_name(name) && uses.get(name).copied() <= Some(0) {
-        *name = "*".to_string();
+        if is_hoas_var_name(name) {
+          *name = "*$".to_string();
+        } else {
+          *name = "*".to_string();
+        }
       }
     }
     let term = match term {
