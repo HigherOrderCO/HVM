@@ -163,6 +163,11 @@ pub fn is_global_name(name: &str) -> bool {
   !name.is_empty() && name.starts_with(&"$")
 }
 
+// See "HOAS_VAR_OPT"
+pub fn is_hoas_var_name(name: &str) -> bool {
+  !name.is_empty() && name.ends_with(&"$")
+}
+
 // Sanitize
 // ========
 
@@ -202,7 +207,8 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
       for arg in args {
         match &**arg {
           lang::Term::Var { name, .. } => {
-            table.insert(name.clone(), fresh());
+            let new_name = format!("{}{}", fresh(), if is_hoas_var_name(&name) { "$" } else { "" });
+            table.insert(name.clone(), new_name); // See "HOAS_VAR_OPT"
           }
           lang::Term::Ctr { args, .. } => {
             for arg in args {

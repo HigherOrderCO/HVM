@@ -145,7 +145,13 @@ fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String,
       }
       if rt::get_tag(*cond) == rt::VAR && dynfun.redex[i as usize] {
         let not_var = format!("get_tag(ask_arg(mem, term, {})) > VAR", i);
-        matched.push(format!("({})", not_var));
+        // See "HOAS_VAR_OPT"
+        let not_hoas_var = if rt::get_val(*cond) != 0 {
+          format!("get_ext(ask_arg(mem, term, {})) != {}u", i, rt::get_val(*cond))
+        } else {
+          format!("1")
+        };
+        matched.push(format!("({} && {})", not_var, not_hoas_var));
       }
     }
 

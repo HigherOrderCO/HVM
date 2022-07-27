@@ -90,10 +90,10 @@ fn make_call(params: &Vec<String>) -> Result<language::Term, String> {
 fn run_code(code: &str, debug: bool, params: Vec<String>) -> Result<(), String> {
   let call = make_call(&params)?;
   let (norm, cost, size, time) = builder::eval_code(&call, code, debug)?;
+  println!("{}", norm);
+  eprintln!();
   eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   eprintln!("Mem.Size: {}", size);
-  eprintln!();
-  println!("{}", norm);
   Ok(())
 }
 

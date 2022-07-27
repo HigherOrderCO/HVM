@@ -77,6 +77,7 @@ pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
       if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
         let mut cond = Vec::new();
         let mut vars = Vec::new();
+        let mut inps = Vec::new();
         let mut free = Vec::new();
         if args.len() != redex.len() {
           panic!("Inconsistent length of left-hand side on equation for '{}'.", name);
@@ -90,6 +91,7 @@ pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
               for (j, arg) in args.iter().enumerate() {
                 if let lang::Term::Var { ref name } = **arg {
                   vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
+                  inps.push(name.clone());
                 } else {
                   panic!("Sorry, left-hand sides can't have nested constructors yet.");
                 }
@@ -100,8 +102,21 @@ pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
               cond.push(rt::Num(*numb as u64));
             }
             lang::Term::Var { name } => {
-              cond.push(rt::Var(0));
+              // HOAS_VAR_OPT: this is an internal optimization that allows us to create less cases
+              // when generating Kind2's HOAS type checker. It will cause a left-hand side variable
+              // name ending with "$" NOT to match when the argument is a "(Var ...)" constructor.
+              // For example, the pattern `(Foo x$) = ...` will match on anything, *except* a
+              // constructor named `Var` specifically. This is a non-standard, internal feature,
+              // and shouldn't be used by end-users. A more general way to achieve this would be to
+              // implement guard patterns on HVM, but, until this isn't done, this optimization
+              // will allow Kind2's HOAS to be faster.
+              if name.ends_with('$') {
+                cond.push(rt::Var(*book.name_to_id.get("Var").unwrap_or(&0)));
+              } else {
+                cond.push(rt::Var(0));
+              }
               vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
+              inps.push(name.clone());
             }
             _ => {
               panic!("Invalid left-hand side.");
@@ -109,7 +124,7 @@ pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
           }
         }
 
-        let term = term_to_dynterm(book, &rule.rhs, vars.len() as u64);
+        let term = term_to_dynterm(book, &rule.rhs, &inps);
         let body = build_body(&term, vars.len() as u64);
 
         Some(DynRule { cond, vars, term, body, free })
@@ -251,7 +266,8 @@ pub fn build_runtime_function(book: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
           rt::VAR => {
             if dynfun.redex[i as usize] {
               let not_var = rt::get_tag(rt::ask_arg(mem, term, i)) > rt::VAR;
-              matched = matched && not_var;
+              let not_hoas_var = rt::get_val(*cond) == 0 || rt::get_ext(rt::ask_arg(mem, term, i)) != rt::get_val(*cond); // See "HOAS_VAR_OPT"
+              matched = matched && not_var && not_hoas_var;
             }
           }
           _ => {}
@@ -293,7 +309,7 @@ pub fn build_runtime_function(book: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
 }
 
 /// Converts a language Term to a runtime Term
-pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, free_vars: u64) -> DynTerm {
+pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, inps: &[String]) -> DynTerm {
   fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
       lang::Oper::Add => rt::ADD,
@@ -379,7 +395,7 @@ pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, free_vars: u64) -
     }
   }
 
-  let mut vars = (0..free_vars).map(|i| format!("x{}", i)).collect();
+  let mut vars = inps.to_vec();
   convert_term(term, book, 0, &mut vars)
 }
 
@@ -588,7 +604,7 @@ pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &DynTerm) -> u64 {
 }
 
 pub fn alloc_term(mem: &mut rt::Worker, book: &rb::RuleBook, term: &lang::Term) -> u64 {
-  alloc_closed_dynterm(mem, &term_to_dynterm(book, term, 0))
+  alloc_closed_dynterm(mem, &term_to_dynterm(book, term, &vec![]))
 }
 
 // Evaluates a HVM term to normal form
