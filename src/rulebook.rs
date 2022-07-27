@@ -35,20 +35,26 @@ pub fn new_rulebook() -> RuleBook {
     id_to_arit: HashMap::new(),
     ctr_is_cal: HashMap::new(),
   };
-  fn register(book: &mut RuleBook, name: &str, ctid: u64, arity: u64, is_fun: bool) {
+  fn register_name(book: &mut RuleBook, name: &str, ctid: u64) {
     let name = name.to_string();
     book.name_count = book.name_count + 1;
     book.name_to_id.insert(name.clone(), ctid);
     book.id_to_name.insert(ctid, name.clone());
+  }
+  fn register(book: &mut RuleBook, name: &str, ctid: u64, arity: u64, is_fun: bool) {
+    register_name(book, name, ctid);
+    let name = name.to_string();
     book.id_to_arit.insert(ctid, arity);
     book.ctr_is_cal.insert(name.clone(), is_fun);
   }
   register(&mut book, "HVM.log"     , rt::HVM_LOG     , 2, true);  // HVM.log a b : b
   register(&mut book, "String.nil"  , rt::STRING_NIL  , 0, false); // String.nil : String
   register(&mut book, "String.cons" , rt::STRING_CONS , 2, false); // String.cons (head: U60) (tail: String) : String
-  register(&mut book, "IO.done"     , rt::IO_DONE  , 1, false); // IO.done a : (IO a)
+  register(&mut book, "IO.done"     , rt::IO_DONE     , 1, false); // IO.done a : (IO a)
   register(&mut book, "IO.do_input" , rt::IO_DO_INPUT , 1, false); // IO.do_input (String -> IO a) : (IO a)
   register(&mut book, "IO.do_output", rt::IO_DO_OUTPUT, 2, false); // IO.do_output String (Num -> IO a) : (IO a)
+  register_name(&mut book, "Var", rt::HOAS_VAR);
+  register_name(&mut book, "Hol", rt::HOAS_HOL);
   return book;
 }
 

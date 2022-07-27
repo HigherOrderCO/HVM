@@ -102,18 +102,7 @@ pub fn build_dynfun(book: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule]) ->
             cond.push(rt::Num(*numb as u64));
           }
           lang::Term::Var { name } => {
-            // HOAS_VAR_OPT: this is an internal optimization that allows us to create less cases
-            // when generating Kind2's HOAS type checker. It will cause functions with a name
-            // starting with "F$" to treat constructors named "Var" like variables. For example,
-            // the pattern `(F$0 x) = ...` will match on anything, *except* a constructor named
-            // `Var`. If the rule is the last clause on the function, though, it is assumed to be a
-            // default case, and its variables will match against a `Var` constructor. This is a
-            // non-standard, internal feature, and shouldn't be used by end-users.
-            if hoas {
-              cond.push(rt::Var(*book.name_to_id.get("Var").unwrap_or(&0)));
-            } else {
-              cond.push(rt::Var(0));
-            }
+            cond.push(rt::Var(0));
             vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
             inps.push(name.clone());
           }
@@ -264,8 +253,15 @@ pub fn build_runtime_function(book: &rb::RuleBook, fn_name: &str, rules: &[lang:
           rt::VAR => {
             if dynfun.redex[i as usize] {
               let not_var = rt::get_tag(rt::ask_arg(mem, term, i)) > rt::VAR;
-              let not_hoas_var = !dynrule.hoas || r == dynfun.rules.len() - 1 || rt::get_ext(rt::ask_arg(mem, term, i)) != rt::get_val(*cond); // See "HOAS_VAR_OPT"
-              matched = matched && not_var && not_hoas_var;
+              // See "HOAS_VAR_OPT"
+              let not_hoas = if dynrule.hoas && r != dynfun.rules.len() - 1 {
+                let not_hoas_var = rt::get_ext(rt::ask_arg(mem, term, i)) != rt::HOAS_VAR;
+                let not_hoas_hol = rt::get_ext(rt::ask_arg(mem, term, i)) != rt::HOAS_HOL;
+                not_hoas_var && not_hoas_hol
+              } else {
+                true
+              };
+              matched = matched && not_var && not_hoas;
             }
           }
           _ => {}
@@ -640,3 +636,14 @@ pub fn eval_code(
   // Returns the normal form and the gas cost
   Ok((code, worker.cost, worker.size, time))
 }
+
+// Notes
+// -----
+
+// HOAS_VAR_OPT: this is an internal optimization that allows us to create less cases
+// when generating Kind2's HOAS type checker. It will cause functions with a name
+// starting with "F$" to treat constructors named "Var" like variables. For example,
+// the pattern `(F$0 x) = ...` will match on anything, *except* a constructor named
+// `Var`. If the rule is the last clause on the function, though, it is assumed to be a
+// default case, and its variables will match against a `Var` constructor. This is a
+// non-standard, internal feature, and shouldn't be used by end-users.

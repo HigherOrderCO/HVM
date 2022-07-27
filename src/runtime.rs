@@ -230,6 +230,8 @@ pub const STRING_CONS  : u64 = 2;
 pub const IO_DONE      : u64 = 3;
 pub const IO_DO_INPUT  : u64 = 4;
 pub const IO_DO_OUTPUT : u64 = 5;
+pub const HOAS_VAR     : u64 = 6;
+pub const HOAS_HOL     : u64 = 7;
 
 // Types
 // -----
