@@ -54,7 +54,7 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   }
 
   for (name, (_arity, rules)) in &comp.rule_group {
-    let (init, code) = compile_func(comp, rules, 7);
+    let (init, code) = compile_func(comp, &name, rules, 7);
 
     line(
       &mut c_ids,
@@ -75,8 +75,8 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
   c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, &id2ar, comp.id_to_arit.len() as u64, parallel)
 }
 
-fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String, String) {
-  let dynfun = bd::build_dynfun(comp, rules);
+fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u64) -> (String, String) {
+  let dynfun = bd::build_dynfun(comp, fn_name, rules);
 
   let mut init = String::new();
   let mut code = String::new();
@@ -146,7 +146,7 @@ fn compile_func(comp: &rb::RuleBook, rules: &[lang::Rule], tab: u64) -> (String,
       if rt::get_tag(*cond) == rt::VAR && dynfun.redex[i as usize] {
         let not_var = format!("get_tag(ask_arg(mem, term, {})) > VAR", i);
         // See "HOAS_VAR_OPT"
-        let not_hoas_var = if rt::get_val(*cond) != 0 {
+        let not_hoas_var = if dynrule.hoas {
           format!("get_ext(ask_arg(mem, term, {})) != {}u", i, rt::get_val(*cond))
         } else {
           format!("1")

@@ -52,6 +52,7 @@ pub struct DynVar {
 
 #[derive(Debug)]
 pub struct DynRule {
+  pub hoas: bool,
   pub cond: Vec<rt::Ptr>,
   pub vars: Vec<DynVar>,
   pub term: DynTerm,
@@ -65,74 +66,69 @@ pub struct DynFun {
   pub rules: Vec<DynRule>,
 }
 
-pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
+pub fn build_dynfun(book: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule]) -> DynFun {
   let mut redex = if let lang::Term::Ctr { name: _, ref args } = *rules[0].lhs {
     vec![false; args.len()]
   } else {
     panic!("Invalid left-hand side: {}", rules[0].lhs);
   };
-  let dynrules = rules
-    .iter()
-    .filter_map(|rule| {
-      if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
-        let mut cond = Vec::new();
-        let mut vars = Vec::new();
-        let mut inps = Vec::new();
-        let mut free = Vec::new();
-        if args.len() != redex.len() {
-          panic!("Inconsistent length of left-hand side on equation for '{}'.", name);
-        }
-        for ((i, arg), redex) in args.iter().enumerate().zip(redex.iter_mut()) {
-          match &**arg {
-            lang::Term::Ctr { name, args } => {
-              *redex = true;
-              cond.push(rt::Ctr(args.len() as u64, *book.name_to_id.get(&*name).unwrap_or(&0), 0));
-              free.push((i as u64, args.len() as u64));
-              for (j, arg) in args.iter().enumerate() {
-                if let lang::Term::Var { ref name } = **arg {
-                  vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*" || name == "*$" });
-                  inps.push(name.clone());
-                } else {
-                  panic!("Sorry, left-hand sides can't have nested constructors yet.");
-                }
-              }
-            }
-            lang::Term::Num { numb } => {
-              *redex = true;
-              cond.push(rt::Num(*numb as u64));
-            }
-            lang::Term::Var { name } => {
-              // HOAS_VAR_OPT: this is an internal optimization that allows us to create less cases
-              // when generating Kind2's HOAS type checker. It will cause a left-hand side variable
-              // name ending with "$" NOT to match when the argument is a "(Var ...)" constructor.
-              // For example, the pattern `(Foo x$) = ...` will match on anything, *except* a
-              // constructor named `Var` specifically. This is a non-standard, internal feature,
-              // and shouldn't be used by end-users. A more general way to achieve this would be to
-              // implement guard patterns on HVM, but, until this isn't done, this optimization
-              // will allow Kind2's HOAS to be faster.
-              if name.ends_with('$') {
-                cond.push(rt::Var(*book.name_to_id.get("Var").unwrap_or(&0)));
+  let hoas = fn_name.starts_with("F$");
+  let dynrules = rules.iter().filter_map(|rule| {
+    if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
+      let mut cond = Vec::new();
+      let mut vars = Vec::new();
+      let mut inps = Vec::new();
+      let mut free = Vec::new();
+      if args.len() != redex.len() {
+        panic!("Inconsistent length of left-hand side on equation for '{}'.", name);
+      }
+      for ((i, arg), redex) in args.iter().enumerate().zip(redex.iter_mut()) {
+        match &**arg {
+          lang::Term::Ctr { name, args } => {
+            *redex = true;
+            cond.push(rt::Ctr(args.len() as u64, *book.name_to_id.get(&*name).unwrap_or(&0), 0));
+            free.push((i as u64, args.len() as u64));
+            for (j, arg) in args.iter().enumerate() {
+              if let lang::Term::Var { ref name } = **arg {
+                vars.push(DynVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
+                inps.push(name.clone());
               } else {
-                cond.push(rt::Var(0));
+                panic!("Sorry, left-hand sides can't have nested constructors yet.");
               }
-              vars.push(DynVar { param: i as u64, field: None, erase: name == "*" || name == "*$" });
-              inps.push(name.clone());
-            }
-            _ => {
-              panic!("Invalid left-hand side.");
             }
           }
+          lang::Term::Num { numb } => {
+            *redex = true;
+            cond.push(rt::Num(*numb as u64));
+          }
+          lang::Term::Var { name } => {
+            // HOAS_VAR_OPT: this is an internal optimization that allows us to create less cases
+            // when generating Kind2's HOAS type checker. It will cause functions with a name
+            // starting with "F$" to treat constructors named "Var" like variables. For example,
+            // the pattern `(F$0 x) = ...` will match on anything, *except* a constructor named
+            // `Var`. This is a non-standard, internal feature, and shouldn't be used by end-users.
+            if hoas {
+              cond.push(rt::Var(*book.name_to_id.get("Var").unwrap_or(&0)));
+            } else {
+              cond.push(rt::Var(0));
+            }
+            vars.push(DynVar { param: i as u64, field: None, erase: name == "*" });
+            inps.push(name.clone());
+          }
+          _ => {
+            panic!("Invalid left-hand side.");
+          }
         }
-
-        let term = term_to_dynterm(book, &rule.rhs, &inps);
-        let body = build_body(&term, vars.len() as u64);
-
-        Some(DynRule { cond, vars, term, body, free })
-      } else {
-        None
       }
-    })
-    .collect();
+
+      let term = term_to_dynterm(book, &rule.rhs, &inps);
+      let body = build_body(&term, vars.len() as u64);
+
+      Some(DynRule { hoas, cond, vars, term, body, free })
+    } else {
+      None
+    }
+  }).collect();
   DynFun { redex, rules: dynrules }
 }
 
@@ -215,14 +211,14 @@ pub fn build_runtime_functions(book: &rb::RuleBook) -> Vec<Option<rt::Function>>
   // Creates all the other functions
   for (name, rules_info) in &book.rule_group {
     let fnid = book.name_to_id.get(name).unwrap_or(&0);
-    let func = build_runtime_function(book, &rules_info.1);
+    let func = build_runtime_function(book, &name, &rules_info.1);
     funs[*fnid as usize] = Some(func);
   }
   funs
 }
 
-pub fn build_runtime_function(book: &rb::RuleBook, rules: &[lang::Rule]) -> rt::Function {
-  let dynfun = build_dynfun(book, rules);
+pub fn build_runtime_function(book: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule]) -> rt::Function {
+  let dynfun = build_dynfun(book, fn_name, rules);
 
   let arity = dynfun.redex.len() as u64;
   let mut stricts = Vec::new();
@@ -266,7 +262,7 @@ pub fn build_runtime_function(book: &rb::RuleBook, rules: &[lang::Rule]) -> rt::
           rt::VAR => {
             if dynfun.redex[i as usize] {
               let not_var = rt::get_tag(rt::ask_arg(mem, term, i)) > rt::VAR;
-              let not_hoas_var = rt::get_val(*cond) == 0 || rt::get_ext(rt::ask_arg(mem, term, i)) != rt::get_val(*cond); // See "HOAS_VAR_OPT"
+              let not_hoas_var = !dynrule.hoas || rt::get_ext(rt::ask_arg(mem, term, i)) != rt::get_val(*cond); // See "HOAS_VAR_OPT"
               matched = matched && not_var && not_hoas_var;
             }
           }
@@ -347,7 +343,7 @@ pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, inps: &[String]) 
         }
       }
       lang::Term::Dup { nam0, nam1, expr, body } => {
-        let eras = (nam0 == "*" || nam0 == "*$", nam1 == "*" || nam1 == "*$");
+        let eras = (nam0 == "*", nam1 == "*");
         let expr = Box::new(convert_term(expr, book, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
@@ -358,7 +354,7 @@ pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, inps: &[String]) 
       }
       lang::Term::Lam { name, body } => {
         let glob = if rb::is_global_name(name) { hash(name) } else { 0 };
-        let eras = name == "*" || name == "*$";
+        let eras = name == "*";
         vars.push(name.clone());
         let body = Box::new(convert_term(body, book, depth + 1, vars));
         vars.pop();

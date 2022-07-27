@@ -163,11 +163,6 @@ pub fn is_global_name(name: &str) -> bool {
   !name.is_empty() && name.starts_with(&"$")
 }
 
-// See "HOAS_VAR_OPT"
-pub fn is_hoas_var_name(name: &str) -> bool {
-  !name.is_empty() && name.ends_with(&"$")
-}
-
 // Sanitize
 // ========
 
@@ -185,7 +180,7 @@ pub struct SanitizedRule {
 // - All variables are linearized.
 //   - If they're used more than once, dups are inserted.
 //   - If they're used once, nothing changes.
-//   - If they're never used, their name is changed to "*" or "*$" (see "HOAS_VAR_OPT").
+//   - If they're never used, their name is changed to "*"
 // Example:
 //   - sanitizing: `(Foo a b) = (+ a a)`
 //   - results in: `(Foo x0 *) = dup x0.0 x0.1 = x0; (+ x0.0 x0.1)`
@@ -207,8 +202,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
       for arg in args {
         match &**arg {
           lang::Term::Var { name, .. } => {
-            let new_name = format!("{}{}", fresh(), if is_hoas_var_name(&name) { "$" } else { "" });
-            table.insert(name.clone(), new_name); // See "HOAS_VAR_OPT"
+            table.insert(name.clone(), fresh());
           }
           lang::Term::Ctr { args, .. } => {
             for arg in args {
@@ -244,11 +238,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
   ) -> Result<Box<lang::Term>, String> {
     fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
       if !is_global_name(name) && uses.get(name).copied() <= Some(0) {
-        if is_hoas_var_name(name) {
-          *name = "*$".to_string();
-        } else {
-          *name = "*".to_string();
-        }
+        *name = "*".to_string();
       }
     }
     let term = match term {
