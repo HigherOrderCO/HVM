@@ -111,7 +111,6 @@ pub fn build_dynfun(book: &rb::RuleBook, rules: &[lang::Rule]) -> DynFun {
               // implement guard patterns on HVM, but, until this isn't done, this optimization
               // will allow Kind2's HOAS to be faster.
               if name.ends_with('$') {
-                *redex = true;
                 cond.push(rt::Var(*book.name_to_id.get("Var").unwrap_or(&0)));
               } else {
                 cond.push(rt::Var(0));
