@@ -143,17 +143,36 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
         let some_ext = format!("get_ext(ask_arg(mem, term, {})) == {}u", i, rt::get_ext(*cond));
         matched.push(format!("({} && {})", some_tag, some_ext));
       }
+        // If this is a strict argument, then we're in a default variable
       if rt::get_tag(*cond) == rt::VAR && dynfun.redex[i as usize] {
-        let is_prod = format!("(get_tag(ask_arg(mem, term, {})) == CTR || get_tag(ask_arg(mem, term, {})) == NUM)", i, i);
-        // See "HOAS_OPT"
-        let is_prod_hoas = if dynrule.hoas && r != dynfun.rules.len() - 1 {
-          let is_gte_ct0 = format!("get_ext(ask_arg(mem, term, {})) >= {}u", i, rt::HOAS_CT0);
-          let is_lte_num = format!("get_ext(ask_arg(mem, term, {})) <= {}u", i, rt::HOAS_NUM);
-          format!("({} && {})", is_gte_ct0, is_lte_num)
+
+        // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
+        if dynrule.hoas && r != dynfun.rules.len() - 1 {
+
+          // Matches number literals
+          let is_num
+            = format!("get_tag(ask_arg(mem, term, {})) == NUM", i);
+
+          // Matches constructor labels
+          let is_ctr = format!("({} && {})",
+            format!("get_tag(ask_arg(mem, term, {})) == CTR", i),
+            format!("ask_ari(mem, ask_arg(mem, term, {})) == 0u", i));
+
+          // Matches HOAS numbers and constructors
+          let is_hoas_ctr_num = format!("({} && {} && {})",
+            format!("get_tag(ask_arg(mem, term, {})) == CTR", i),
+            format!("get_ext(ask_arg(mem, term, {})) >= HOAS_CT0", i),
+            format!("get_ext(ask_arg(mem, term, {})) <= HOAS_NUM", i));
+
+          matched.push(format!("({} || {} || {})", is_num, is_ctr, is_hoas_ctr_num));
+
+        // Only match default variables on CTRs and NUMs
         } else {
-          format!("1")
-        };
-        matched.push(format!("({} && {})", is_prod, is_prod_hoas));
+          let is_ctr = format!("get_tag(ask_arg(mem, term, {})) == CTR", i);
+          let is_num = format!("get_tag(ask_arg(mem, term, {})) == NUM", i);
+          matched.push(format!("({} && {})", is_ctr, is_num));
+        }
+
       }
     }
 

@@ -251,17 +251,35 @@ pub fn build_runtime_function(book: &rb::RuleBook, fn_name: &str, rules: &[lang:
             matched = matched && same_tag && same_ext;
           }
           rt::VAR => {
+            // If this is a strict argument, then we're in a default variable
             if dynfun.redex[i as usize] {
-              let is_prod = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR || rt::get_tag(rt::ask_arg(mem, term, i)) == rt::NUM;
-              // See "HOAS_OPT"
-              let is_prod_hoas = if dynrule.hoas && r != dynfun.rules.len() - 1 {
-                let is_gte_ct0 = rt::get_ext(rt::ask_arg(mem, term, i)) >= rt::HOAS_CT0;
-                let is_lte_num = rt::get_ext(rt::ask_arg(mem, term, i)) <= rt::HOAS_NUM;
-                is_gte_ct0 && is_lte_num
+
+              // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
+              if dynrule.hoas && r != dynfun.rules.len() - 1 {
+
+                // Matches number literals
+                let is_num
+                  = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::NUM;
+
+                // Matches constructor labels
+                let is_ctr
+                  =  rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR
+                  && rt::ask_ari(mem, rt::ask_arg(mem, term, i)) == 0;
+
+                // Matches HOAS numbers and constructors
+                let is_hoas_ctr_num
+                  =  rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR
+                  && rt::get_ext(rt::ask_arg(mem, term, i)) >= rt::HOAS_CT0
+                  && rt::get_ext(rt::ask_arg(mem, term, i)) <= rt::HOAS_NUM;
+
+                matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
+
+              // Only match default variables on CTRs and NUMs
               } else {
-                true
-              };
-              matched = matched && is_prod && is_prod_hoas;
+                let is_ctr = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::CTR;
+                let is_num = rt::get_tag(rt::ask_arg(mem, term, i)) == rt::NUM;
+                matched = matched && (is_ctr || is_num);
+              }
             }
           }
           _ => {}
@@ -640,7 +658,10 @@ pub fn eval_code(
 // Notes
 // -----
 
-// HOAS_OPT: this is an internal optimization that allows us to create less cases when generating
-// Kind2's HOAS type checker. It will cause the default cases of functions with a name starting
-// with "F$" to only match productive HOAS constructors (Ct0, Ct1, ..., CtG, Num), unless it is the
-// last (default) clause. This must be considered a non-standard, internal feature.
+// HOAS_OPT: this is an internal optimization that allows us to simplify Kind2's HOAS generator.
+// It will cause the default patterns of functions with a name starting with "F$" to only match
+// productive HOAS constructors (Ct0, Ct1, ..., CtG, Num), as well as native numbers and
+// constructors with 0-arity, which are used by Kind2's HOAS functions, unless it is the last
+// (default) clause, which Kind2 uses to quote a call back to low-order. This is an internal
+// feature that won't affect programs other than Kind2. We can remove this in a future, but that
+// would require Kind2 to replicate HVM's flattener algorithm, so we just use it instead.
