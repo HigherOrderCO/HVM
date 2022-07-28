@@ -170,7 +170,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
         } else {
           let is_ctr = format!("get_tag(ask_arg(mem, term, {})) == CTR", i);
           let is_num = format!("get_tag(ask_arg(mem, term, {})) == NUM", i);
-          matched.push(format!("({} && {})", is_ctr, is_num));
+          matched.push(format!("({} || {})", is_ctr, is_num));
         }
 
       }
