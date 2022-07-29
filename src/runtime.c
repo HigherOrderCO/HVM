@@ -511,7 +511,14 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
           if (atomic_flag_test_and_set(flag) != 0) {
             continue;
           }
+
+          // Term changed before we locked
+          if (term != ask_lnk(mem, host)) {
+            atomic_flag_clear(((atomic_flag*)(mem->node + get_loc(term,0))) + 6);
+            continue;
+          }
           #endif
+
           stk_push(&stack, host);
           host = get_loc(term, 2);
           continue;
