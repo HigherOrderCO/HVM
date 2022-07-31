@@ -1,13 +1,13 @@
 #![allow(clippy::identity_op)]
 
+use alloc::{format, vec::Vec, string::String, string::ToString};
+
 use hashbrown::HashMap;
 
 use crate::builder as bd;
 use crate::language as lang;
 use crate::rulebook as rb;
 use crate::runtime as rt;
-
-use alloc::{format, vec::Vec, string::ToString, string::String};
 
 pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> Result<(), String> {
   use std::io::Write;

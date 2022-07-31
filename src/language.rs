@@ -1,6 +1,7 @@
-use crate::{parser, builder::hash};
 use core::fmt;
-use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box};
+use alloc::{boxed::Box, format, vec, vec::Vec, string::String, string::ToString};
+
+use crate::{parser, builder::hash};
 
 
 // Types

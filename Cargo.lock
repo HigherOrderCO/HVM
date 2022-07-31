@@ -171,7 +171,7 @@ source = "git+https://github.com/FranchuFranchu/rust_highlight_error.git?branch=
 
 [[package]]
 name = "hvm"
-version = "0.1.64"
+version = "0.1.65"
 dependencies = [
  "clap",
  "hashbrown 0.12.3",

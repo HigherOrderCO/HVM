@@ -27,7 +27,7 @@
 
 #![allow(dead_code)]
 
-use alloc::{format, vec::Vec, string::ToString, string::String, boxed::Box};
+use alloc::{boxed::Box, format, vec::Vec, string::ToString, string::String, };
 
 // Types
 // =====

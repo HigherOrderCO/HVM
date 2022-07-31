@@ -171,8 +171,9 @@
 #![allow(dead_code)]
 #![allow(non_snake_case)]
 
-use hashbrown::{hash_map, HashMap};
 use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box};
+
+use hashbrown::{hash_map, HashMap};
 
 // Constants
 // ---------

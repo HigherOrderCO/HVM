@@ -3,11 +3,14 @@
 // FIXME: `as_code` and `as_term` should just call `readback`, but before doing so, we must test
 // the new readback properly to ensure it is correct
 
+
+use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box};
+
+use hashbrown::{hash_map, HashMap, HashSet};
+
 use crate::language as lang;
 use crate::runtime as rt;
 use crate::runtime::{Ptr, Worker};
-use hashbrown::{hash_map, HashMap, HashSet};
-use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box};
 
 /// Reads back a term from Runtime's memory
 pub fn as_code(mem: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64) -> String {

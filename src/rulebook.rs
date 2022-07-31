@@ -1,8 +1,9 @@
+use alloc::{boxed::Box, collections::BTreeMap, format, vec, vec::Vec, string::String, string::ToString, borrow::ToOwned};
+
+use hashbrown::{HashMap, HashSet};
+
 use crate::language as lang;
 use crate::runtime as rt;
-use alloc::collections::BTreeMap;
-use hashbrown::{HashMap, HashSet};
-use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box, borrow::ToOwned};
 
 // RuleBook
 // ========
