@@ -6,7 +6,8 @@
 use crate::language as lang;
 use crate::runtime as rt;
 use crate::runtime::{Ptr, Worker};
-use std::collections::{hash_map, HashMap, HashSet};
+use hashbrown::{hash_map, HashMap, HashSet};
+use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box};
 
 /// Reads back a term from Runtime's memory
 pub fn as_code(mem: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64) -> String {

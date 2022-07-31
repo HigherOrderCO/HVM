@@ -1,6 +1,6 @@
-use crate::parser;
-use std::fmt;
-use std::hash::Hasher;
+use crate::{parser, builder::hash};
+use core::fmt;
+use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box};
 
 
 // Types
@@ -125,7 +125,7 @@ impl fmt::Display for Term {
         if let Term::Ctr { name, args } = term {
           if name == "String.cons" && args.len() == 2 {
             if let Term::Num { numb } = *args[0] {
-              text.push(std::char::from_u32(numb as u32)?);
+              text.push(core::char::from_u32(numb as u32)?);
               go(&args[1], text)?;
             }
             return Some(());
@@ -383,11 +383,7 @@ pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
     Box::new(|state| {
       let (state, _)    = parser::text("%", state)?;
       let (state, name) = parser::name(state)?;
-      let hash = {
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        hasher.write(name.as_bytes());
-        hasher.finish()
-      };
+      let hash = hash(&name.as_bytes());
       Ok((state, Box::new(Term::Num { numb: hash })))
     }),
     state,

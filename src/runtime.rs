@@ -171,7 +171,8 @@
 #![allow(dead_code)]
 #![allow(non_snake_case)]
 
-use std::collections::{hash_map, HashMap};
+use hashbrown::{hash_map, HashMap};
+use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box};
 
 // Constants
 // ---------
@@ -383,7 +384,7 @@ pub fn ask_ari(mem: &Worker, lnk: Ptr) -> u64 {
   };
   // TODO: remove this in a future update where ari will be removed from the lnk
   if get_ari(lnk) != got {
-    println!("[WARNING] arity inconsistency");
+    #[cfg(feature = "std")] println!("[WARNING] arity inconsistency");
   }
   return got;
 }
@@ -560,7 +561,8 @@ pub fn reduce(
 
   loop {
     let term = ask_lnk(mem, host);
-
+    
+    #[cfg(feature = "std")] 
     if debug {
       println!("------------------------");
       println!("{}", show_term(mem, ask_lnk(mem, 0), _i2n, term));
@@ -923,6 +925,7 @@ pub fn normal(
   done
 }
 
+#[cfg(feature = "std")]
 pub fn run_io(
   mem: &mut Worker,
   funs: &Funs,
@@ -930,6 +933,7 @@ pub fn run_io(
   i2n: Option<&HashMap<u64, String>>,
   debug: bool,
 ) {
+  use std::io::{stdin, stdout, Write};
   fn read_input() -> String {
     let mut input = String::new();
     stdin().read_line(&mut input).expect("string");
@@ -937,7 +941,6 @@ pub fn run_io(
     if let Some('\r') = input.chars().next_back() { input.pop(); }
     return input;
   }
-  use std::io::{stdin,stdout,Write};
   loop {
     let term = reduce(mem, funs, host, i2n, debug);
     match get_tag(term) {
@@ -1019,7 +1022,7 @@ pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<Strin
           STRING_CONS => {
             let chr = reduce(mem, funs, get_loc(term, 0), None, false);
             if get_tag(chr) == NUM {
-              text.push(std::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
+              text.push(core::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
               host = get_loc(term, 1);
               continue;
             } else {
@@ -1041,6 +1044,7 @@ pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<Strin
 
 
 // Debug: prints call counts
+#[cfg(feature = "std")] 
 fn print_call_counts(i2n: Option<&HashMap<u64, String>>) {
   unsafe {
     let mut counts: Vec<(String, u64)> = Vec::new();

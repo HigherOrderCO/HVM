@@ -1,15 +1,17 @@
 #![allow(clippy::identity_op)]
 
-use regex::Regex;
-use std::collections::HashMap;
-use std::io::Write;
+use hashbrown::HashMap;
 
 use crate::builder as bd;
 use crate::language as lang;
 use crate::rulebook as rb;
 use crate::runtime as rt;
 
+use alloc::{format, vec::Vec, string::ToString, string::String};
+
 pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> Result<(), String> {
+  use std::io::Write;
+  
   let as_clang = compile_code(code, parallel)?;
   let mut file = std::fs::OpenOptions::new()
     .read(true)
@@ -491,7 +493,8 @@ fn c_runtime_template(
   arlen: u64,
   parallel: bool,
 ) -> String {
-  const C_RUNTIME_TEMPLATE: &str = include_str!("runtime.c");
+  use regex::Regex;
+  const C_RUNTIME_TEMPLATE: &str = core::include_str!("runtime.c");
   // Instantiate the template with the given sections' content
 
   const C_PARALLEL_FLAG_TAG: &str = "GENERATED_PARALLEL_FLAG";
@@ -510,7 +513,7 @@ fn c_runtime_template(
   let re = Regex::new(REPLACEMENT_TOKEN_PATTERN).unwrap();
 
   // Instantiate the template with the given sections' content
-
+  
   let result = re.replace_all(C_RUNTIME_TEMPLATE, |caps: &regex::Captures| {
     let tag = if let Some(cap1) = caps.get(1) {
       cap1.as_str()
@@ -526,7 +529,12 @@ fn c_runtime_template(
     };
 
     let parallel_flag = if parallel { "#define PARALLEL" } else { "" };
-    let num_threads = &num_cpus::get().to_string();
+    #[cfg(feature = "std")] let num_threads = {
+      &num_cpus::get().to_string()
+    };
+    #[cfg(not(feature = "std"))] let num_threads = {
+      "1"
+    };
     let nmlen = &nmlen.to_string();
     let arlen = &arlen.to_string();
     match tag {

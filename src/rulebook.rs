@@ -1,6 +1,8 @@
 use crate::language as lang;
 use crate::runtime as rt;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use alloc::collections::BTreeMap;
+use hashbrown::{HashMap, HashSet};
+use alloc::{vec, format, vec::Vec, string::ToString, string::String, boxed::Box, borrow::ToOwned};
 
 // RuleBook
 // ========
@@ -387,14 +389,14 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
       Some(x) => {
         match x.cmp(&1) {
           // if not used nothing is done
-          std::cmp::Ordering::Less => body,
+          core::cmp::Ordering::Less => body,
           // if used once just make a let then
-          std::cmp::Ordering::Equal => {
+          core::cmp::Ordering::Equal => {
             let term = lang::Term::Let { name: format!("{}.0", name), expr, body };
             Box::new(term)
           }
           // if used more then once duplicate
-          std::cmp::Ordering::Greater => {
+          core::cmp::Ordering::Greater => {
             let amount = amount.unwrap(); // certainly is not None
             let duplicated_times = amount - 1; // times that name is duplicated
             let aux_qtt = amount - 2; // quantity of aux variables
@@ -491,9 +493,14 @@ pub fn sanitize_rules(rules: &[lang::Rule]) -> Vec<lang::Rule> {
       match sanitize_rule(rule) {
         Ok(rule) => rule,
         Err(err) => {
-          println!("{}", err);
-          println!("On rule: `{}`.", rule);
-          std::process::exit(0); // FIXME: avoid this, propagate this error upwards
+          #[cfg(feature = "std")] {
+            println!("{}", err);
+            println!("On rule: `{}`.", rule);
+            std::process::exit(0); // FIXME: avoid this, propagate this error upwards
+          }
+          #[cfg(not(feature = "std"))] {
+            panic!("Error: {} \non rule: {}", err, rule)
+          }
         }
       }
     })

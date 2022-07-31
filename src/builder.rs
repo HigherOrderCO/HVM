@@ -2,16 +2,16 @@
 
 // TODO: "dups" still needs to be moved out on `alloc_body` etc.
 
+use alloc::{vec, format, vec::Vec, string::String, boxed::Box};
+use core::{iter, hash::{Hash, Hasher, BuildHasher}};
+
+use hashbrown::HashMap;
+use hashbrown::hash_map::DefaultHashBuilder;
+
 use crate::language as lang;
 use crate::readback as rd;
 use crate::rulebook as rb;
 use crate::runtime as rt;
-use std::collections::HashMap;
-use std::iter;
-use std::time::Instant;
-
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 #[derive(Debug)]
 pub enum DynTerm {
@@ -132,7 +132,7 @@ pub fn get_var(mem: &rt::Worker, term: rt::Ptr, var: &DynVar) -> rt::Ptr {
 }
 
 pub fn hash<T: Hash>(t: &T) -> u64 {
-  let mut s = DefaultHasher::new();
+  let mut s = DefaultHashBuilder::new().build_hasher();
   t.hash(&mut s);
   s.finish()
 }
@@ -192,7 +192,7 @@ pub fn build_runtime_functions(book: &rb::RuleBook) -> Vec<Option<rt::Function>>
     rewriter: Box::new(move |rt, funs, _dups, host, term| {
       let msge = rt::get_loc(term,0);
       rt::normal(rt, funs, msge, Some(&i2n), false);
-      println!("{}", rd::as_code(rt, Some(&i2n), msge));
+      #[cfg(feature = "std")] println!("{}", rd::as_code(rt, Some(&i2n), msge));
       rt::link(rt, host, rt::ask_arg(rt, term, 1));
       rt::clear(rt, rt::get_loc(term, 0), 2);
       rt::collect(rt, rt::ask_lnk(rt, msge));
@@ -643,11 +643,20 @@ pub fn eval_code(
   let host = alloc_term(&mut worker, &book, call);
 
   // Normalizes it
-  let init = Instant::now();
-  rt::run_io(&mut worker, &funs, host, Some(&book.id_to_name), debug);
+  #[cfg(feature = "std")] let init = {
+    use std::time::Instant;
+    Instant::now()
+  };
+  
+  #[cfg(feature = "std")] {
+    rt::run_io(&mut worker, &funs, host, Some(&book.id_to_name), debug);
+  }
   rt::normal(&mut worker, &funs, host, Some(&book.id_to_name), debug);
-  let time = init.elapsed().as_millis() as u64;
-
+  #[cfg(feature = "std")] let time = init.elapsed().as_millis() as u64;
+  
+  #[cfg(not(feature = "std"))] let time = 0u64; // TODO allow user-provided timing.
+  
+  
   // Reads it back to a string
   let code = format!("{}", rd::as_term(&worker, Some(&book.id_to_name), host));
 

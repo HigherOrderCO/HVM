@@ -27,6 +27,8 @@
 
 #![allow(dead_code)]
 
+use alloc::{format, vec::Vec, string::ToString, string::String, boxed::Box};
+
 // Types
 // =====
 
@@ -497,6 +499,7 @@ pub fn testree_parser<'a>() -> Parser<'a, Box<Testree>> {
   })
 }
 
+#[cfg(feature = "std")]
 #[cfg(test)]
 mod tests {
   use super::*;

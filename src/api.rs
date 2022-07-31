@@ -1,6 +1,8 @@
 #![allow(unused_variables)]
 #![allow(dead_code)]
 
+use alloc::{vec, string::ToString, string::String, boxed::Box};
+
 use crate::language as language;
 use crate::rulebook as rulebook;
 use crate::runtime as runtime;
@@ -127,6 +129,7 @@ impl Runtime {
   }
 
   /// Given a location, runs side-efefctive actions
+  #[cfg(feature = "std")]
   pub fn run_io(&mut self, host: u64) {
     runtime::run_io(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false)
   }
@@ -163,6 +166,7 @@ impl Runtime {
 
 }
 
+#[cfg(feature = "std")] 
 pub fn example() -> Result<(), String> {
 
   let mut rt = crate::api::Runtime::from_code("

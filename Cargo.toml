@@ -18,11 +18,22 @@ name = "hvm"
 test = false
 
 [dependencies]
-itertools = "0.10"
-num_cpus = "1.13"
-regex = "1.5.4"
-highlight_error = "0.1.1"
-clap = { version = "3.1.8", features = ["derive"] }
+itertools = { version = "0.10", optional = true }
+num_cpus = { version = "1.13", optional = true }
+regex = { version = "1.5.4",optional = true}
+highlight_error = { version = "0.1.2", default-features = false, git = "https://github.com/FranchuFranchu/rust_highlight_error.git", branch = "no-std"}
+clap = { version = "3.1.8", features = ["derive"], optional = true }
+hashbrown = "0.12.3"
+proptest = { version = "1.0", optional = true }
+
+[features]
+std = [
+	"dep:proptest", 
+	"dep:clap", 
+	"dep:regex",
+	"dep:num_cpus",
+	"itertools/use_std",
+]
+default = ["std"]
 
 [dev-dependencies]
-proptest = "1.0"
