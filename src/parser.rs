@@ -124,6 +124,17 @@ pub fn skip_comment_parser<'a>() -> Parser<'a, bool> {
   Box::new(skip_comment)
 }
 
+pub fn skip_while(mut state: State, cond: Box<dyn Fn(&char) -> bool>) -> Answer<bool> {
+  if let Some(rest) = state.rest() {
+    let add: usize = rest.chars().take_while(cond).map(|a| a.len_utf8()).sum();
+    state.index += add;
+    if add > 0 {
+      return Ok((state, true));
+    }
+  }
+  Ok((state, false))
+}
+
 pub fn skip_spaces(mut state: State) -> Answer<bool> {
   if let Some(rest) = state.rest() {
     let add: usize = rest.chars().take_while(|a| a.is_whitespace()).map(|a| a.len_utf8()).sum();
