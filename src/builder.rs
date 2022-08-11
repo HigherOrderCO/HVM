@@ -173,6 +173,9 @@ pub fn build_runtime_arities(rb: &rb::RuleBook) -> Vec<rt::Arity> {
     }
   }
   let mut aris: Vec<rt::Arity> = iter::repeat_with(|| rt::Arity(0)).take(65535).collect(); // FIXME: hardcoded limit
+  for (id, arit) in &rb.id_to_arit {
+    aris[*id as usize] = rt::Arity(*arit);
+  }
   for rules_info in rb.rule_group.values() {
     for rule in &rules_info.1 {
       find_arities(rb, &mut aris, &rule.lhs);
