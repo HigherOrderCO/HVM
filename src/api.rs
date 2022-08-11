@@ -64,7 +64,7 @@ mod tests {
     ";
 
     let (norm, _cost, _size, _time) =
-      eval_code(&make_call("Main", &[]).unwrap(), code, false, 6).unwrap();
+      eval_code(&make_call("Main", &[]).unwrap(), code, false, 4 << 30).unwrap();
     assert_eq!(norm, "6765");
   }
 }
@@ -166,7 +166,7 @@ impl Runtime {
 
 pub fn example() -> Result<(), String> {
 
-  let mut rt = crate::api::Runtime::from_code(6, "
+  let mut rt = crate::api::Runtime::from_code(32 << 20, "
     (Double Zero)     = Zero
     (Double (Succ x)) = (Succ (Succ (Double x)))
   ").unwrap();

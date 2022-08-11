@@ -1,4 +1,5 @@
 mod builder;
+mod cli;
 mod compiler;
 mod language;
 mod parser;
@@ -6,34 +7,7 @@ mod readback;
 mod rulebook;
 mod runtime;
 
-use clap::{Parser, Subcommand};
-
-#[derive(Parser)]
-#[clap(author, version, about, long_about = None)]
-#[clap(propagate_version = true)]
-pub struct Cli {
-  #[clap(short = 'M', long, help = "Set quantity of allocated memory", default_value = "6GB")]
-  pub memory: String,
-
-  #[clap(subcommand)]
-  pub command: Command,
-}
-
-#[derive(Subcommand)]
-pub enum Command {
-  #[clap(about = "Run a file interpreted", name = "run", aliases = &["r"])]
-  Run { file: String, params: Vec<String> },
-
-  #[clap(about = "Compile file to C",  name = "compile", aliases = &["c"])]
-  Compile {
-    file: String,
-    #[clap(long)]
-    single_thread: bool,
-  },
-
-  #[clap(about = "Run in debug mode", name = "debug", aliases = &["d"])]
-  Debug { file: String, params: Vec<String> },
-}
+use cli::{Cli, Command, Parser};
 
 fn main() {
   match run_cli() {
@@ -66,21 +40,17 @@ fn run_cli() -> Result<(), String> {
     Command::Run { file, params } => {
       let code = load_file_code(&hvm(&file))?;
 
-      run_code(&code, false, params, parse_gb(&cli_matches.memory))?;
+      run_code(&code, false, params, cli_matches.memory_size)?;
       Ok(())
     }
 
     Command::Debug { file, params } => {
       let code = load_file_code(&hvm(&file))?;
 
-      run_code(&code, true, params, parse_gb(&cli_matches.memory))?;
+      run_code(&code, true, params, cli_matches.memory_size)?;
       Ok(())
     }
   }
-}
-
-fn parse_gb(raw: &str) -> usize {
-  raw.to_ascii_lowercase().strip_suffix("gb").and_then(|s| s.parse().ok()).expect("Invalid format!")
 }
 
 fn make_main_call(params: &Vec<String>) -> Result<language::Term, String> {
@@ -170,12 +140,12 @@ fn run_example() -> Result<(), String> {
 
   // Evaluates with interpreter
 
-  println!("Reducing with interpreter.");
+  eprintln!("Reducing with interpreter.");
   let call = language::Term::Ctr { name: "Main".to_string(), args: Vec::new() };
-  let (norm, cost, size, time) = builder::eval_code(&call, code, false, 6)?;
-  println!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
-  println!("Mem.Size: {}", size);
-  println!();
+  let (norm, cost, size, time) = builder::eval_code(&call, code, false, 4 << 30)?;
   println!("{}", norm);
+  eprintln!();
+  eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  eprintln!("Mem.Size: {}", size);
   Ok(())
 }
