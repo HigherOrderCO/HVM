@@ -43,6 +43,7 @@ pub struct Runtime {
 }
 
 pub fn make_call(func: &str, args: &[&str]) -> Result<language::Term, String> {
+  // TODO: redundant with `make_main_call`
   let args = args.iter().map(|par| language::read_term(par).unwrap()).collect();
   let name = func.to_string();
   Ok(language::Term::Ctr { name, args })
@@ -63,7 +64,7 @@ mod tests {
     ";
 
     let (norm, _cost, _size, _time) =
-      eval_code(&make_call("Main", &[]).unwrap(), code, false).unwrap();
+      eval_code(&make_call("Main", &[]).unwrap(), code, false, 6).unwrap();
     assert_eq!(norm, "6765");
   }
 }
@@ -71,20 +72,20 @@ mod tests {
 impl Runtime {
 
   /// Creates a new, empty runtime
-  pub fn new() -> Self {
+  pub fn new(memory: usize) -> Self {
     Runtime {
-      heap: runtime::new_worker(),
+      heap: runtime::new_worker(memory),
       funs: vec![],
       book: rulebook::new_rulebook(),
     }
   }
 
   /// Creates a runtime from a source code
-  pub fn from_code(code: &str) -> Result<Self, String> {
+  pub fn from_code(memory: usize, code: &str) -> Result<Self, String> {
     let file = language::read_file(code)?;
     let book = rulebook::gen_rulebook(&file);
     let funs = builder::build_runtime_functions(&book);
-    let mut heap = runtime::new_worker();
+    let mut heap = runtime::new_worker(memory);
     heap.aris = builder::build_runtime_arities(&book);
     return Ok(Runtime { heap, funs, book });
   }
@@ -165,7 +166,7 @@ impl Runtime {
 
 pub fn example() -> Result<(), String> {
 
-  let mut rt = crate::api::Runtime::from_code("
+  let mut rt = crate::api::Runtime::from_code(6, "
     (Double Zero)     = Zero
     (Double (Succ x)) = (Succ (Succ (Double x)))
   ").unwrap();

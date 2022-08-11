@@ -707,13 +707,13 @@ mod tests {
     }
   }
 
-  proptest! {
-    #[test]
-    fn test_highlight((from_index, to_index, code) in args_highlight()) {
-      prop_assert_eq!(
-        old_parser::highlight(from_index, to_index, &code),
-        highlight(from_index, to_index, &code)
-      );
-    }
-  }
+  // proptest! {
+  //   #[test]
+  //   fn test_highlight((from_index, to_index, code) in args_highlight()) {
+  //     prop_assert_eq!(
+  //       old_parser::highlight(from_index, to_index, &code),
+  //       highlight(from_index, to_index, &code)
+  //     );
+  //   }
+  // }
 }
