@@ -81,7 +81,19 @@ impl Runtime {
   }
 
   /// Creates a runtime from a source code
-  pub fn from_code(memory: usize, code: &str) -> Result<Self, String> {
+  // Please, do *not* change the external API as it may break other libraries using HVM. Asking for
+  // a memory amount here isn't future-stable, since HVM will allocate memory dynamically. It is
+  // not responsibility of the API users to decide how much memory to alloc, thus it shouldn't be
+  // an argument of the from_code method. Leave this function with a hardcoded memory amount and
+  // create a separate function to explicitly allocate memory. When the HVM is updated to handle it
+  // automatically, both functions will just do the same (i.e., the first argument of
+  // `from_code_with_memory` will be ignored).
+  pub fn from_code(code: &str) -> Result<Self, String> {
+    Runtime::from_code_with_memory(0x8000000, code)
+  }
+
+  /// Creates a runtime from source code, given a max memory (deprecated)
+  pub fn from_code_with_memory(memory: usize, code: &str) -> Result<Self, String> {
     let file = language::read_file(code)?;
     let book = rulebook::gen_rulebook(&file);
     let funs = builder::build_runtime_functions(&book);
@@ -166,7 +178,7 @@ impl Runtime {
 
 pub fn example() -> Result<(), String> {
 
-  let mut rt = crate::api::Runtime::from_code(32 << 20, "
+  let mut rt = crate::api::Runtime::from_code_with_memory(32 << 20, "
     (Double Zero)     = Zero
     (Double (Succ x)) = (Succ (Succ (Double x)))
   ").unwrap();
