@@ -627,8 +627,9 @@ pub fn eval_code(
   call: &lang::Term,
   code: &str,
   debug: bool,
+  memory: usize,
 ) -> Result<(String, u64, u64, u64), String> {
-  let mut worker = rt::new_worker();
+  let mut worker = rt::new_worker(memory);
 
   // Parses and reads the input file
   let file = lang::read_file(code)?;

@@ -278,9 +278,10 @@ pub struct Worker {
   pub cost: u64,
 }
 
-pub fn new_worker() -> Worker {
+pub fn new_worker(memory: usize) -> Worker {
+  let memory = memory / std::mem::size_of::<u64>();
   Worker {
-    node: vec![0; 6 * 0x8000000],
+    node: vec![0; memory],
     aris: vec![],
     size: 0,
     free: vec![vec![]; 16],

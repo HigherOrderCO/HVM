@@ -15,13 +15,14 @@ pub mod api;
 
 pub use builder::eval_code;
 
-pub use api::{*};
+pub use api::*;
 
-pub fn make_call(func: &str, args: &[&str]) -> Result<language::Term, String> {
-  let args = args.iter().map(|par| language::read_term(par).unwrap()).collect();
-  let name = func.to_string();
-  Ok(language::Term::Ctr { name, args })
-}
+// FIXME: is this needed?? it's redundant with lib.rs:make_call
+// pub fn make_call(func: &str, args: &[&str]) -> Result<language::Term, String> {
+//   let args = args.iter().map(|par| language::read_term(par).unwrap()).collect();
+//   let name = func.to_string();
+//   Ok(language::Term::Ctr { name, args })
+// }
 
 #[cfg(test)]
 mod tests {
@@ -38,7 +39,7 @@ mod tests {
     ";
 
     let (norm, _cost, _size, _time) =
-      eval_code(&make_call("Main", &[]).unwrap(), code, false).unwrap();
+      eval_code(&make_call("Main", &[]).unwrap(), code, false, 32 << 20).unwrap();
     assert_eq!(norm, "6765");
   }
 }

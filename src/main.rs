@@ -1,5 +1,5 @@
-mod api;
 mod builder;
+mod cli;
 mod compiler;
 mod language;
 mod parser;
@@ -7,31 +7,7 @@ mod readback;
 mod rulebook;
 mod runtime;
 
-use clap::{Parser, Subcommand};
-
-#[derive(Parser)]
-#[clap(author, version, about, long_about = None)]
-#[clap(propagate_version = true)]
-pub struct Cli {
-  #[clap(subcommand)]
-  pub command: Command,
-}
-
-#[derive(Subcommand)]
-pub enum Command {
-  #[clap(about = "Run a file interpreted", name = "run", aliases = &["r"])]
-  Run { file: String, params: Vec<String> },
-
-  #[clap(about = "Compile file to C",  name = "compile", aliases = &["c"])]
-  Compile {
-    file: String,
-    #[clap(long)]
-    single_thread: bool,
-  },
-
-  #[clap(about = "Run in debug mode", name = "debug", aliases = &["d"])]
-  Debug { file: String, params: Vec<String> },
-}
+use cli::{Cli, Command, Parser};
 
 fn main() {
   match run_cli() {
@@ -64,20 +40,20 @@ fn run_cli() -> Result<(), String> {
     Command::Run { file, params } => {
       let code = load_file_code(&hvm(&file))?;
 
-      run_code(&code, false, params)?;
+      run_code(&code, false, params, cli_matches.memory_size)?;
       Ok(())
     }
 
     Command::Debug { file, params } => {
       let code = load_file_code(&hvm(&file))?;
 
-      run_code(&code, true, params)?;
+      run_code(&code, true, params, cli_matches.memory_size)?;
       Ok(())
     }
   }
 }
 
-fn make_call(params: &Vec<String>) -> Result<language::Term, String> {
+fn make_main_call(params: &Vec<String>) -> Result<language::Term, String> {
   let name = "Main".to_string();
   let mut args = Vec::new();
   for param in params {
@@ -87,9 +63,9 @@ fn make_call(params: &Vec<String>) -> Result<language::Term, String> {
   Ok(language::Term::Ctr { name, args })
 }
 
-fn run_code(code: &str, debug: bool, params: Vec<String>) -> Result<(), String> {
-  let call = make_call(&params)?;
-  let (norm, cost, size, time) = builder::eval_code(&call, code, debug)?;
+fn run_code(code: &str, debug: bool, params: Vec<String>, memory: usize) -> Result<(), String> {
+  let call = make_main_call(&params)?;
+  let (norm, cost, size, time) = builder::eval_code(&call, code, debug, memory)?;
   println!("{}", norm);
   eprintln!();
   eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
@@ -164,12 +140,12 @@ fn run_example() -> Result<(), String> {
 
   // Evaluates with interpreter
 
-  println!("Reducing with interpreter.");
+  eprintln!("Reducing with interpreter.");
   let call = language::Term::Ctr { name: "Main".to_string(), args: Vec::new() };
-  let (norm, cost, size, time) = builder::eval_code(&call, code, false)?;
+  let (norm, cost, size, time) = builder::eval_code(&call, code, false, 4 << 30)?;
+  println!("{}", norm);
+  eprintln!();
   eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
   eprintln!("Mem.Size: {}", size);
-  eprintln!();
-  println!("{}", norm);
   Ok(())
 }

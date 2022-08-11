@@ -17,6 +17,10 @@ test = true
 name = "hvm"
 test = false
 
+[profile.dev_fast]
+inherits = "dev"
+opt-level = 3
+
 [dependencies]
 itertools = "0.10"
 num_cpus = "1.13"
