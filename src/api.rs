@@ -89,7 +89,7 @@ impl Runtime {
   // automatically, both functions will just do the same (i.e., the first argument of
   // `from_code_with_memory` will be ignored).
   pub fn from_code(code: &str) -> Result<Self, String> {
-    Runtime::from_code_with_memory(0x8000000, code)
+    Runtime::from_code_with_memory(0x80000000, code) // 4 GB
   }
 
   /// Creates a runtime from source code, given a max memory (deprecated)
