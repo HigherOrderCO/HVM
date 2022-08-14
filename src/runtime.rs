@@ -339,12 +339,12 @@ pub fn Num(val: u64) -> Ptr {
   (NUM * TAG) | (val & NUM_MASK)
 }
 
-pub fn Ctr(ari: u64, fun: u64, pos: u64) -> Ptr {
-  (CTR * TAG) | (ari * ARI) | (fun * EXT) | pos
+pub fn Ctr(_ari: u64, fun: u64, pos: u64) -> Ptr {
+  (CTR * TAG) | (fun * EXT) | pos
 }
 
-pub fn Cal(ari: u64, fun: u64, pos: u64) -> Ptr {
-  (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos
+pub fn Cal(_ari: u64, fun: u64, pos: u64) -> Ptr {
+  (CAL * TAG) | (fun * EXT) | pos
 }
 
 // Getters
@@ -366,10 +366,6 @@ pub fn get_num(lnk: Ptr) -> u64 {
   lnk & 0xFFF_FFFF_FFFF_FFFF
 }
 
-pub fn get_ari(lnk: Ptr) -> u64 {
-  (lnk / ARI) & 0xF
-}
-
 pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
   get_val(lnk) + arg
 }
@@ -383,9 +379,9 @@ pub fn ask_ari(mem: &Worker, lnk: Ptr) -> u64 {
     None              => 0,
   };
   // TODO: remove this in a future update where ari will be removed from the lnk
-  if get_ari(lnk) != got {
-    println!("[WARNING] arity inconsistency");
-  }
+  //if get_ari(lnk) != got {
+    //println!("[WARNING] arity inconsistency");
+  //}
   return got;
 }
 

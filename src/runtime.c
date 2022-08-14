@@ -269,11 +269,11 @@ Ptr Nil(void) {
 }
 
 Ptr Ctr(u64 ari, u64 fun, u64 pos) {
-  return (CTR * TAG) | (ari * ARI) | (fun * EXT) | pos;
+  return (CTR * TAG) | (fun * EXT) | pos;
 }
 
 Ptr Cal(u64 ari, u64 fun, u64 pos) {
-  return (CAL * TAG) | (ari * ARI) | (fun * EXT) | pos;
+  return (CAL * TAG) | (fun * EXT) | pos;
 }
 
 u64 get_tag(Ptr lnk) {
@@ -292,9 +292,9 @@ u64 get_num(Ptr lnk) {
   return lnk & 0xFFFFFFFFFFFFFFF;
 }
 
-u64 get_ari(Ptr lnk) {
-  return (lnk / ARI) & 0xF;
-}
+//u64 get_ari(Ptr lnk) {
+  //return (lnk / ARI) & 0xF;
+//}
 
 u64 get_loc(Ptr lnk, u64 arg) {
   return get_val(lnk) + arg;
@@ -304,10 +304,10 @@ u64 ask_ari(Worker* mem, Ptr lnk) {
   u64 fid = get_ext(lnk);
   u64 got = fid < mem->funs ? mem->aris[fid] : 0;
   // TODO: remove this in a future update where ari will be removed from the lnk
-  if (get_ari(lnk) != got) {
-    printf("[ERROR] arity inconsistency\n");
-    exit(1);
-  }
+  //if (get_ari(lnk) != got) {
+    //printf("[ERROR] arity inconsistency\n");
+    //exit(1);
+  //}
   return got;
 }
 
