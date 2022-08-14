@@ -284,7 +284,7 @@ pub fn new_worker(memory: usize) -> Worker {
     node: vec![0; memory],
     aris: vec![],
     size: 0,
-    free: vec![vec![]; 16],
+    free: vec![vec![]; 256],
     dups: 0,
     cost: 0,
   }

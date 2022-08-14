@@ -51,7 +51,7 @@ typedef pthread_t Thd;
 
 #define MAX_DUPS (16777216)
 #define MAX_DYNFUNS (65536)
-#define MAX_ARITY (16)
+#define MAX_ARITY (256)
 
 // Each worker has a fraction of the total.
 #define MEM_SPACE (HEAP_SIZE/sizeof(u64)/MAX_WORKERS)
