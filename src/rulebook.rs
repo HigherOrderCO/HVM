@@ -48,6 +48,7 @@ pub fn new_rulebook() -> RuleBook {
     book.ctr_is_cal.insert(name.clone(), is_fun);
   }
   register(&mut book, "HVM.log"     , rt::HVM_LOG     , 2, true);  // HVM.log a b : b
+  register(&mut book, "HVM.put"     , rt::HVM_PUT     , 2, true);  // HVM.put a b : b
   register(&mut book, "String.nil"  , rt::STRING_NIL  , 0, false); // String.nil : String
   register(&mut book, "String.cons" , rt::STRING_CONS , 2, false); // String.cons (head: U60) (tail: String) : String
   register(&mut book, "IO.done"     , rt::IO_DONE     , 1, false); // IO.done a : (IO a)

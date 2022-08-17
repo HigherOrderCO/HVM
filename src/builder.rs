@@ -186,8 +186,8 @@ pub fn build_runtime_arities(rb: &rb::RuleBook) -> Vec<rt::Arity> {
 
 pub fn build_runtime_functions(book: &rb::RuleBook) -> Vec<Option<rt::Function>> {
   let mut funs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect(); // FIXME: hardcoded limit
-  let i2n = book.id_to_name.clone();
   // The logger function. It allows logging ANY term, not just strings :)
+  let i2n = book.id_to_name.clone();
   funs[0] = Some(rt::Function {
     arity: 2,
     stricts: vec![],
@@ -195,6 +195,27 @@ pub fn build_runtime_functions(book: &rb::RuleBook) -> Vec<Option<rt::Function>>
       let msge = rt::get_loc(term,0);
       rt::normal(rt, funs, msge, Some(&i2n), false);
       println!("{}", rd::as_code(rt, Some(&i2n), msge));
+      rt::link(rt, host, rt::ask_arg(rt, term, 1));
+      rt::clear(rt, rt::get_loc(term, 0), 2);
+      rt::collect(rt, rt::ask_lnk(rt, msge));
+      return true;
+    }),
+  });
+  // The put function. Like HVM.log, but optimized for strings.
+  // FIXME: implement and use a specialized readback_string function
+  let i2n = book.id_to_name.clone();
+  funs[1] = Some(rt::Function {
+    arity: 2,
+    stricts: vec![],
+    rewriter: Box::new(move |rt, funs, _dups, host, term| {
+      let msge = rt::get_loc(term,0);
+      rt::normal(rt, funs, msge, Some(&i2n), false);
+      let code = rd::as_code(rt, Some(&i2n), msge);
+      if code.chars().nth(0) == Some('"') {
+        println!("{}", &code[1 .. code.len() - 1]);
+      } else {
+        println!("{}", code);
+      }
       rt::link(rt, host, rt::ask_arg(rt, term, 1));
       rt::clear(rt, rt::get_loc(term, 0), 2);
       rt::collect(rt, rt::ask_lnk(rt, msge));

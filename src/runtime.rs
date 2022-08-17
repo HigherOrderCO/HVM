@@ -225,11 +225,12 @@ pub const NEQ: u64 = 0xF;
 
 // Reserved ids
 pub const HVM_LOG      : u64 = 0;
-pub const STRING_NIL   : u64 = 1;
-pub const STRING_CONS  : u64 = 2;
-pub const IO_DONE      : u64 = 3;
-pub const IO_DO_INPUT  : u64 = 4;
-pub const IO_DO_OUTPUT : u64 = 5;
+pub const HVM_PUT      : u64 = 1;
+pub const STRING_NIL   : u64 = 2;
+pub const STRING_CONS  : u64 = 3;
+pub const IO_DONE      : u64 = 4;
+pub const IO_DO_INPUT  : u64 = 5;
+pub const IO_DO_OUTPUT : u64 = 6;
 
 // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
 pub const HOAS_CT0 : u64 = 6;
