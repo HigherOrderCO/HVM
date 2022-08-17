@@ -4,7 +4,7 @@ HVM on JavaScript
 HVM is now available as a JavaScript library. To use it, first install with `npm`:
 
 ```
-npm i hvm-js
+npm i --save hvm-js
 ```
 
 Then, import and use it on your JavaScript application:
