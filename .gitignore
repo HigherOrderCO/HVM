@@ -1,5 +1,6 @@
 .DS_Store
 tmp/
+wasm_build.txt
 **/bench/*/main
 **/bench/*/main.c
 **/result

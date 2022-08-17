@@ -176,12 +176,12 @@ use std::collections::{hash_map, HashMap};
 // Constants
 // ---------
 
-const U64_PER_KB: u64 = 0x80;
-const U64_PER_MB: u64 = 0x20000;
-const U64_PER_GB: u64 = 0x8000000;
+pub const CELLS_PER_KB: usize = 0x80;
+pub const CELLS_PER_MB: usize = 0x20000;
+pub const CELLS_PER_GB: usize = 0x8000000;
 
 pub const MAX_ARITY: u64 = 16;
-pub const MEM_SPACE: u64 = U64_PER_GB;
+pub const MEM_SPACE: u64 = CELLS_PER_GB as u64;
 pub const MAX_DYNFUNS: u64 = 65536;
 
 pub const SEEN_SIZE: usize = 4194304; // uses 32 MB, covers heaps up to 2 GB
@@ -200,9 +200,9 @@ pub const ARG: u64 = 0x3;
 pub const ERA: u64 = 0x4;
 pub const LAM: u64 = 0x5;
 pub const APP: u64 = 0x6;
-pub const PAR: u64 = 0x7;
+pub const SUP: u64 = 0x7;
 pub const CTR: u64 = 0x8;
-pub const CAL: u64 = 0x9;
+pub const FUN: u64 = 0x9;
 pub const OP2: u64 = 0xA;
 pub const NUM: u64 = 0xB;
 
@@ -278,10 +278,9 @@ pub struct Worker {
   pub cost: u64,
 }
 
-pub fn new_worker(memory: usize) -> Worker {
-  let memory = memory / std::mem::size_of::<u64>();
+pub fn new_worker(size: usize) -> Worker {
   Worker {
-    node: vec![0; memory],
+    node: vec![0; size],
     aris: vec![],
     size: 0,
     free: vec![vec![]; 256],
@@ -328,7 +327,7 @@ pub fn App(pos: u64) -> Ptr {
 }
 
 pub fn Par(col: u64, pos: u64) -> Ptr {
-  (PAR * TAG) | (col * EXT) | pos
+  (SUP * TAG) | (col * EXT) | pos
 }
 
 pub fn Op2(ope: u64, pos: u64) -> Ptr {
@@ -344,7 +343,7 @@ pub fn Ctr(_ari: u64, fun: u64, pos: u64) -> Ptr {
 }
 
 pub fn Cal(_ari: u64, fun: u64, pos: u64) -> Ptr {
-  (CAL * TAG) | (fun * EXT) | pos
+  (FUN * TAG) | (fun * EXT) | pos
 }
 
 // Getters
@@ -456,7 +455,7 @@ pub fn collect(mem: &mut Worker, term: Ptr) {
         clear(mem, get_loc(term, 0), 2);
         continue;
       }
-      PAR => {
+      SUP => {
         stack.push(ask_arg(mem, term, 0));
         next = ask_arg(mem, term, 1);
         clear(mem, get_loc(term, 0), 2);
@@ -469,7 +468,7 @@ pub fn collect(mem: &mut Worker, term: Ptr) {
         continue;
       }
       NUM => {}
-      CTR | CAL => {
+      CTR | FUN => {
         let arity = ask_ari(mem, term);
         for i in 0..arity {
           if i < arity - 1 {
@@ -582,7 +581,7 @@ pub fn reduce(
           host = get_loc(term, 0);
           continue;
         }
-        CAL => {
+        FUN => {
           let fid = get_ext(term);
           //let ari = ask_ari(mem, term);
           if let Some(Some(f)) = &funs.get(fid as usize) {
@@ -618,7 +617,7 @@ pub fn reduce(
             init = 1;
             continue;
           }
-          if get_tag(arg0) == PAR {
+          if get_tag(arg0) == SUP {
             //println!("app-sup");
             inc_cost(mem);
             let app0 = get_loc(term, 0);
@@ -667,7 +666,7 @@ pub fn reduce(
             link(mem, host, done);
             init = 1;
             continue;
-          } else if get_tag(arg0) == PAR {
+          } else if get_tag(arg0) == SUP {
             //println!("dup-sup");
             if get_ext(term) == get_ext(arg0) {
               inc_cost(mem);
@@ -776,7 +775,7 @@ pub fn reduce(
             let done = Num(c);
             clear(mem, get_loc(term, 0), 2);
             link(mem, host, done);
-          } else if get_tag(arg0) == PAR {
+          } else if get_tag(arg0) == SUP {
             //println!("op2-sup-0");
             inc_cost(mem);
             let op20 = get_loc(term, 0);
@@ -792,7 +791,7 @@ pub fn reduce(
             link(mem, par0 + 1, Op2(get_ext(term), op21));
             let done = Par(get_ext(arg0), par0);
             link(mem, host, done);
-          } else if get_tag(arg1) == PAR {
+          } else if get_tag(arg1) == SUP {
             //println!("op2-sup-1");
             inc_cost(mem);
             let op20 = get_loc(term, 0);
@@ -810,7 +809,7 @@ pub fn reduce(
             link(mem, host, done);
           }
         }
-        CAL => {
+        FUN => {
           let fid = get_ext(term);
           let _ari = ask_ari(mem, term);
           if let Some(Some(f)) = &funs.get(fid as usize) {
@@ -872,7 +871,7 @@ pub fn normal_go(
         rec_locs.push(get_loc(term, 0));
         rec_locs.push(get_loc(term, 1));
       }
-      PAR => {
+      SUP => {
         rec_locs.push(get_loc(term, 0));
         rec_locs.push(get_loc(term, 1));
       }
@@ -882,7 +881,7 @@ pub fn normal_go(
       DP1 => {
         rec_locs.push(get_loc(term, 2));
       }
-      CTR | CAL => {
+      CTR | FUN => {
         let arity = ask_ari(mem, term);
         for i in 0..arity {
           rec_locs.push(get_loc(term, i));
@@ -1079,9 +1078,9 @@ pub fn show_lnk(x: Ptr) -> String {
       ERA => "ERA",
       LAM => "LAM",
       APP => "APP",
-      PAR => "PAR",
+      SUP => "SUP",
       CTR => "CTR",
-      CAL => "CAL",
+      FUN => "FUN",
       OP2 => "OP2",
       NUM => "NUM",
       _ => "?",
@@ -1129,7 +1128,7 @@ pub fn show_term(
         find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
         find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
       }
-      PAR => {
+      SUP => {
         find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
         find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
       }
@@ -1155,7 +1154,7 @@ pub fn show_term(
         find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
         find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
       }
-      CTR | CAL => {
+      CTR | FUN => {
         let arity = ask_ari(mem, term);
         for i in 0..arity {
           find_lets(mem, ask_arg(mem, term, i), lets, kinds, names, count);
@@ -1190,7 +1189,7 @@ pub fn show_term(
         let argm = go(mem, ask_arg(mem, term, 1), names, i2n, focus);
         format!("({} {})", func, argm)
       }
-      PAR => {
+      SUP => {
         //let kind = get_ext(term);
         let func = go(mem, ask_arg(mem, term, 0), names, i2n, focus);
         let argm = go(mem, ask_arg(mem, term, 1), names, i2n, focus);
@@ -1224,7 +1223,7 @@ pub fn show_term(
       NUM => {
         format!("{}", get_val(term))
       }
-      CTR | CAL => {
+      CTR | FUN => {
         let func = get_ext(term);
         let arit = ask_ari(mem, term);
         let args: Vec<String> =
@@ -1234,7 +1233,7 @@ pub fn show_term(
         } else {
           format!(
             "{}{}",
-            if get_tag(term) < CAL { String::from("C") } else { String::from("F") },
+            if get_tag(term) < FUN { String::from("C") } else { String::from("F") },
             func
           )
         };

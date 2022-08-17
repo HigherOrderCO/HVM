@@ -8,7 +8,6 @@ use crate::rulebook as rb;
 use crate::runtime as rt;
 use std::collections::HashMap;
 use std::iter;
-use std::time::Instant;
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -223,10 +222,10 @@ pub fn build_runtime_function(book: &rb::RuleBook, fn_name: &str, rules: &[lang:
   }
 
   let rewriter: rt::Rewriter = Box::new(move |mem, _funs, dups, host, term| {
-    // For each argument, if it is a redex and a PAR, apply the cal_par rule
+    // For each argument, if it is a redex and a SUP, apply the cal_par rule
     for (i, redex) in dynfun.redex.iter().enumerate() {
       let i = i as u64;
-      if *redex && rt::get_tag(rt::ask_arg(mem, term, i)) == rt::PAR {
+      if *redex && rt::get_tag(rt::ask_arg(mem, term, i)) == rt::SUP {
         rt::cal_par(mem, host, term, rt::ask_arg(mem, term, i), i);
         return true;
       }
@@ -325,6 +324,7 @@ pub fn build_runtime_function(book: &rb::RuleBook, fn_name: &str, rules: &[lang:
 
 /// Converts a language Term to a runtime Term
 pub fn term_to_dynterm(book: &rb::RuleBook, term: &lang::Term, inps: &[String]) -> DynTerm {
+
   fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
       lang::Oper::Add => rt::ADD,
@@ -627,9 +627,9 @@ pub fn eval_code(
   call: &lang::Term,
   code: &str,
   debug: bool,
-  memory: usize,
+  size: usize,
 ) -> Result<(String, u64, u64, u64), String> {
-  let mut worker = rt::new_worker(memory);
+  let mut worker = rt::new_worker(size);
 
   // Parses and reads the input file
   let file = lang::read_file(code)?;
@@ -642,12 +642,12 @@ pub fn eval_code(
 
   // Builds arities
   worker.aris = build_runtime_arities(&book);
-
+  
   // Allocates the main term
   let host = alloc_term(&mut worker, &book, call);
 
   // Normalizes it
-  let init = Instant::now();
+  let init = instant::Instant::now();
   rt::run_io(&mut worker, &funs, host, Some(&book.id_to_name), debug);
   rt::normal(&mut worker, &funs, host, Some(&book.id_to_name), debug);
   let time = init.elapsed().as_millis() as u64;

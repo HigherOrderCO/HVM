@@ -85,9 +85,9 @@ typedef u64 Ptr;
 #define ERA (0x4) // signals that a binder doesn't use its bound variable
 #define LAM (0x5) // arity = 2
 #define APP (0x6) // arity = 2
-#define PAR (0x7) // arity = 2 // TODO: rename to SUP
+#define SUP (0x7) // arity = 2 // TODO: rename to SUP
 #define CTR (0x8) // arity = user defined
-#define CAL (0x9) // arity = user defined
+#define FUN (0x9) // arity = user defined
 #define OP2 (0xA) // arity = 2
 #define NUM (0xB) // arity = 0 (unboxed)
 #define FLO (0xC) // arity = 0 (unboxed)
@@ -253,7 +253,7 @@ Ptr App(u64 pos) {
 }
 
 Ptr Par(u64 col, u64 pos) {
-  return (PAR * TAG) | (col * EXT) | pos;
+  return (SUP * TAG) | (col * EXT) | pos;
 }
 
 Ptr Op2(u64 ope, u64 pos) {
@@ -273,7 +273,7 @@ Ptr Ctr(u64 ari, u64 fun, u64 pos) {
 }
 
 Ptr Cal(u64 ari, u64 fun, u64 pos) {
-  return (CAL * TAG) | (fun * EXT) | pos;
+  return (FUN * TAG) | (fun * EXT) | pos;
 }
 
 u64 get_tag(Ptr lnk) {
@@ -395,7 +395,7 @@ void collect(Worker* mem, Ptr term) {
       clear(mem, get_loc(term,0), 2);
       break;
     }
-    case PAR: {
+    case SUP: {
       collect(mem, ask_arg(mem,term,0));
       collect(mem, ask_arg(mem,term,1));
       clear(mem, get_loc(term,0), 2);
@@ -410,7 +410,7 @@ void collect(Worker* mem, Ptr term) {
     case NUM: {
       break;
     }
-    case CTR: case CAL: {
+    case CTR: case FUN: {
       u64 arity = ask_ari(mem, term);
       for (u64 i = 0; i < arity; ++i) {
         collect(mem, ask_arg(mem,term,i));
@@ -444,7 +444,7 @@ void subst(Worker* mem, Ptr lnk, Ptr val) {
 }
 
 // (F {a0 a1} b c ...)
-// ------------------- CAL-PAR
+// ------------------- FUN-SUP
 // dup b0 b1 = b
 // dup c0 c1 = c
 // ...
@@ -534,7 +534,7 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
           }
           break;
         }
-        case CAL: {
+        case FUN: {
           u64 fun = get_ext(term);
           u64 ari = ask_ari(mem, term);
 
@@ -572,10 +572,10 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
             }
 
             // ({a b} c)
-            // ----------------- APP-PAR
+            // ----------------- APP-SUP
             // dup x0 x1 = c
             // {(a x0) (b x1)}
-            case PAR: {
+            case SUP: {
               //printf("app-sup\n");
               inc_cost(mem);
               u64 app0 = get_loc(term, 0);
@@ -633,7 +633,7 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
             }
 
             // dup x y = {a b}
-            // --------------- DUP-PAR (equal)
+            // --------------- DUP-SUP (equal)
             // x <- a
             // y <- b
             //
@@ -643,7 +643,7 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
             // y <- {yA yB}
             // dup xA yA = a
             // dup xB yB = b
-            case PAR: {
+            case SUP: {
               //printf("dup-sup\n");
               if (get_ext(term) == get_ext(arg0)) {
                 inc_cost(mem);
@@ -795,7 +795,7 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
           // --------------------- OP2-SUP-0
           // let b0 b1 = b
           // {(+ a0 b0) (+ a1 b1)}
-          else if (get_tag(arg0) == PAR) {
+          else if (get_tag(arg0) == SUP) {
             //printf("op2-sup-0\n");
             inc_cost(mem);
             u64 op20 = get_loc(term, 0);
@@ -817,7 +817,7 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
           // --------------- OP2-SUP-1
           // dup a0 a1 = a
           // {(+ a0 b0) (+ a1 b1)}
-          else if (get_tag(arg1) == PAR) {
+          else if (get_tag(arg1) == SUP) {
             //printf("op2-sup-1\n");
             inc_cost(mem);
             u64 op20 = get_loc(term, 0);
@@ -837,7 +837,7 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
 
           break;
         }
-        case CAL: {
+        case FUN: {
           u64 fun = get_ext(term);
           u64 ari = ask_ari(mem, term);
 
@@ -910,7 +910,7 @@ Ptr normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
         rec_locs[rec_size++] = get_loc(term,1);
         break;
       }
-      case PAR: {
+      case SUP: {
         rec_locs[rec_size++] = get_loc(term,0);
         rec_locs[rec_size++] = get_loc(term,1);
         break;
@@ -930,7 +930,7 @@ Ptr normal_go(Worker* mem, u64 host, u64 sidx, u64 slen) {
           break;
         }
       }
-      case CTR: case CAL: {
+      case CTR: case FUN: {
         u64 arity = (u64)ask_ari(mem, term);
         for (u64 i = 0; i < arity; ++i) {
           rec_locs[rec_size++] = get_loc(term,i);
@@ -1158,7 +1158,7 @@ void readback_vars(Stk* vars, Worker* mem, Ptr term, Stk* seen) {
         readback_vars(vars, mem, arg, seen);
         break;
       }
-      case PAR: {
+      case SUP: {
         u64 arg0 = ask_arg(mem, term, 0);
         u64 arg1 = ask_arg(mem, term, 1);
         readback_vars(vars, mem, arg0, seen);
@@ -1182,7 +1182,7 @@ void readback_vars(Stk* vars, Worker* mem, Ptr term, Stk* seen) {
         readback_vars(vars, mem, arg1, seen);
         break;
       }
-      case CTR: case CAL: {
+      case CTR: case FUN: {
         u64 arity = ask_ari(mem, term);
         for (u64 i = 0; i < arity; ++i) {
           readback_vars(vars, mem, ask_arg(mem, term, i), seen);
@@ -1232,7 +1232,7 @@ void readback_term(Stk* chrs, Worker* mem, Ptr term, Stk* vars, Stk* dirs, char*
       stk_push(chrs, ')');
       break;
     }
-    case PAR: {
+    case SUP: {
       u64 col = get_ext(term);
       if (dirs[col].size > 0) {
         u64 head = stk_pop(&dirs[col]);
@@ -1291,7 +1291,7 @@ void readback_term(Stk* chrs, Worker* mem, Ptr term, Stk* vars, Stk* dirs, char*
       //printf("- u32 done\n");
       break;
     }
-    case CTR: case CAL: {
+    case CTR: case FUN: {
       u64 func = get_ext(term);
       u64 arit = ask_ari(mem, term);
       stk_push(chrs, '(');
@@ -1375,9 +1375,9 @@ void debug_print_lnk(Ptr x) {
     case ERA: printf("ERA"); break;
     case LAM: printf("LAM"); break;
     case APP: printf("APP"); break;
-    case PAR: printf("PAR"); break;
+    case SUP: printf("SUP"); break;
     case CTR: printf("CTR"); break;
-    case CAL: printf("CAL"); break;
+    case FUN: printf("FUN"); break;
     case OP2: printf("OP2"); break;
     case NUM: printf("NUM"); break;
     case FLO: printf("FLO"); break;

@@ -46,7 +46,7 @@ pub fn as_term(mem: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64) -> B
         gen_var_names(mem, ctx, lam, depth + 1);
         gen_var_names(mem, ctx, arg, depth + 1);
       }
-      rt::PAR => {
+      rt::SUP => {
         let arg0 = rt::ask_arg(ctx.mem, term, 0);
         let arg1 = rt::ask_arg(ctx.mem, term, 1);
         gen_var_names(mem, ctx, arg0, depth + 1);
@@ -67,7 +67,7 @@ pub fn as_term(mem: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64) -> B
         gen_var_names(mem, ctx, arg1, depth + 1);
       }
       rt::NUM => {}
-      rt::CTR | rt::CAL => {
+      rt::CTR | rt::FUN => {
         let arity = rt::ask_ari(mem, term);
         for i in 0..arity {
           let arg = rt::ask_arg(ctx.mem, term, i);
@@ -128,7 +128,7 @@ pub fn as_term(mem: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64) -> B
         let argm = readback(mem, ctx, stacks, argm, depth + 1);
         return Box::new(lang::Term::App { func, argm });
       }
-      rt::PAR => {
+      rt::SUP => {
         let col = rt::get_ext(term);
         let empty = &Vec::new();
         let stack = stacks.get(col).unwrap_or(empty);
@@ -195,7 +195,7 @@ pub fn as_term(mem: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64) -> B
         let numb = rt::get_num(term);
         return Box::new(lang::Term::Num { numb });
       }
-      rt::CTR | rt::CAL => {
+      rt::CTR | rt::FUN => {
         let func = rt::get_ext(term);
         let arit = rt::ask_ari(mem, term);
         let mut args = Vec::new();
@@ -269,7 +269,7 @@ pub fn as_linear_term(rt: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64
           stack.push(rt::ask_arg(rt, term, 1));
           stack.push(rt::ask_arg(rt, term, 0));
         }
-        rt::PAR => {
+        rt::SUP => {
           stack.push(rt::ask_arg(rt, term, 1));
           stack.push(rt::ask_arg(rt, term, 0));
         }
@@ -293,7 +293,7 @@ pub fn as_linear_term(rt: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64
           stack.push(rt::ask_arg(rt, term, 1));
           stack.push(rt::ask_arg(rt, term, 0));
         }
-        rt::CTR | rt::CAL => {
+        rt::CTR | rt::FUN => {
           let arity = rt::ask_ari(rt, term);
           for i in (0..arity).rev() {
             stack.push(rt::ask_arg(rt, term, i));
@@ -343,7 +343,7 @@ pub fn as_linear_term(rt: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64
               let name = ctr_name(i2n, func);
               output.push(lang::Term::Ctr { name, args });
             },
-            rt::CAL => {
+            rt::FUN => {
               let func = rt::get_ext(term);
               let arit = rt::ask_ari(rt, term);
               let mut args = Vec::new();
@@ -414,7 +414,7 @@ pub fn as_linear_term(rt: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64
               stack.push(StackItem::Term(rt::ask_arg(rt, term, 1)));
               stack.push(StackItem::Term(rt::ask_arg(rt, term, 0)));
             }
-            rt::PAR => {}
+            rt::SUP => {}
             rt::OP2 => {
               stack.push(StackItem::Resolver(term));
               stack.push(StackItem::Term(rt::ask_arg(rt, term, 1)));
@@ -431,7 +431,7 @@ pub fn as_linear_term(rt: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64
                 stack.push(StackItem::Term(rt::ask_arg(rt, term, i)));
               }
             }
-            rt::CAL => {
+            rt::FUN => {
               let arit = rt::ask_ari(rt, term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
@@ -449,4 +449,9 @@ pub fn as_linear_term(rt: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64
 
   let mut names: HashMap<u64, String> = HashMap::new();
   Box::new(dups(rt, i2n, rt::ask_lnk(rt, host), &mut names))
+}
+
+/// Reads back a term from Runtime's memory
+pub fn as_linear_code(mem: &Worker, i2n: Option<&HashMap<u64, String>>, host: u64) -> String {
+  return format!("{}", as_linear_term(mem, i2n, host));
 }

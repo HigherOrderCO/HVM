@@ -115,7 +115,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
   // Applies the cal_par rule to superposed args
   for (i, is_redex) in dynfun.redex.iter().enumerate() {
     if *is_redex {
-      line(&mut code, tab + 0, &format!("if (get_tag(ask_arg(mem,term,{})) == PAR) {{", i));
+      line(&mut code, tab + 0, &format!("if (get_tag(ask_arg(mem,term,{})) == SUP) {{", i));
       line(
         &mut code,
         tab + 1,

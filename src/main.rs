@@ -40,14 +40,14 @@ fn run_cli() -> Result<(), String> {
     Command::Run { file, params } => {
       let code = load_file_code(&hvm(&file))?;
 
-      run_code(&code, false, params, cli_matches.memory_size)?;
+      run_code(&code, false, params, cli_matches.memory_size / std::mem::size_of::<u64>())?;
       Ok(())
     }
 
     Command::Debug { file, params } => {
       let code = load_file_code(&hvm(&file))?;
 
-      run_code(&code, true, params, cli_matches.memory_size)?;
+      run_code(&code, true, params, cli_matches.memory_size / std::mem::size_of::<u64>())?;
       Ok(())
     }
   }
