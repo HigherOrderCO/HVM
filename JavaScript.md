@@ -4,13 +4,14 @@ HVM on JavaScript
 HVM is now available as a JavaScript library. To use it, first install with `npm`:
 
 ```
-npm i --save hvm-js
+npm i --save hvm-nodejs # for node.js
+npm i --save hvm-web    # for browsers
 ```
 
-Then, import and use it on your JavaScript application:
+Then, import and use it on your JavaScript code:
 
 ```javascript
-var hvm = require("hvm");
+var hvm = require("hvm-nodejs");
 
 // Instantiates an HVM runtime given a source code
 var runtime = hvm.Runtime.from_code(`
@@ -20,6 +21,13 @@ var runtime = hvm.Runtime.from_code(`
 
 // Evaluates an expression to normal form
 console.log(runtime.eval("(U60.sum 10000000)"));
+```
+
+If you're importing from a web browser, you must use instead:
+
+```javascript
+import init, * as hvm from "hvm-web";
+await init();
 ```
 
 You can also handle HVM's memory directly:
