@@ -117,6 +117,12 @@ export class Runtime {
 */
   get_name(id: bigint): string;
 /**
+* Returns the arity of a given id
+* @param {bigint} id
+* @returns {bigint}
+*/
+  get_arity(id: bigint): bigint;
+/**
 * Returns the name of a given id
 * @param {string} name
 * @returns {bigint}
@@ -298,6 +304,7 @@ export interface InitOutput {
   readonly runtime_show: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_show_linear: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_get_name: (a: number, b: number, c: number, d: number) => void;
+  readonly runtime_get_arity: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_get_id: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_DP1: (a: number) => void;
   readonly runtime_ARG: (a: number) => void;

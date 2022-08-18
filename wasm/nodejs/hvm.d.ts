@@ -117,6 +117,12 @@ export class Runtime {
 */
   get_name(id: bigint): string;
 /**
+* Returns the arity of a given id
+* @param {bigint} id
+* @returns {bigint}
+*/
+  get_arity(id: bigint): bigint;
+/**
 * Returns the name of a given id
 * @param {string} name
 * @returns {bigint}

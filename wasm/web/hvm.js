@@ -498,6 +498,28 @@ export class Runtime {
         }
     }
     /**
+    * Returns the arity of a given id
+    * @param {bigint} id
+    * @returns {bigint}
+    */
+    get_arity(id) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = id;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            wasm.runtime_get_arity(retptr, this.ptr, low0, high0);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n1 = uint64CvtShim[0];
+            return n1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
     * Returns the name of a given id
     * @param {string} name
     * @returns {bigint}
@@ -522,7 +544,6 @@ export class Runtime {
     * @returns {bigint}
     */
     static DP0() {
-        console.log("ue");
         try {
             const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
             wasm.runtime_ADD(retptr);
