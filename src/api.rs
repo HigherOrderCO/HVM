@@ -219,6 +219,11 @@ impl Runtime {
     self.book.id_to_name.get(&id).unwrap_or(&"?".to_string()).clone()
   }
 
+  /// Returns the arity of a given id
+  pub fn get_arity(&self, id: u64) -> u64 {
+    *self.book.id_to_arit.get(&id).unwrap_or(&u64::MAX)
+  }
+
   /// Returns the name of a given id
   pub fn get_id(&self, name: &str) -> u64 {
     *self.book.name_to_id.get(name).unwrap_or(&u64::MAX)
