@@ -343,6 +343,7 @@ pub fn Ctr(_ari: u64, fun: u64, pos: u64) -> Ptr {
   (CTR * TAG) | (fun * EXT) | pos
 }
 
+// FIXME: update name to Fun
 pub fn Cal(_ari: u64, fun: u64, pos: u64) -> Ptr {
   (FUN * TAG) | (fun * EXT) | pos
 }

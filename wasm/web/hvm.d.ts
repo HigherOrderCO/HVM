@@ -278,6 +278,71 @@ export class Runtime {
 * @returns {bigint}
 */
   static get_loc(lnk: bigint, arg: bigint): bigint;
+/**
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Var(pos: bigint): bigint;
+/**
+* @param {bigint} col
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Dp0(col: bigint, pos: bigint): bigint;
+/**
+* @param {bigint} col
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Dp1(col: bigint, pos: bigint): bigint;
+/**
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Arg(pos: bigint): bigint;
+/**
+* @returns {bigint}
+*/
+  static Era(): bigint;
+/**
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Lam(pos: bigint): bigint;
+/**
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static App(pos: bigint): bigint;
+/**
+* @param {bigint} col
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Par(col: bigint, pos: bigint): bigint;
+/**
+* @param {bigint} ope
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Op2(ope: bigint, pos: bigint): bigint;
+/**
+* @param {bigint} val
+* @returns {bigint}
+*/
+  static Num(val: bigint): bigint;
+/**
+* @param {bigint} fun
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Ctr(fun: bigint, pos: bigint): bigint;
+/**
+* @param {bigint} fun
+* @param {bigint} pos
+* @returns {bigint}
+*/
+  static Fun(fun: bigint, pos: bigint): bigint;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -327,6 +392,18 @@ export interface InitOutput {
   readonly runtime_get_val: (a: number, b: number, c: number) => void;
   readonly runtime_get_num: (a: number, b: number, c: number) => void;
   readonly runtime_get_loc: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly runtime_Var: (a: number, b: number, c: number) => void;
+  readonly runtime_Dp0: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly runtime_Dp1: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly runtime_Arg: (a: number, b: number, c: number) => void;
+  readonly runtime_Era: (a: number) => void;
+  readonly runtime_Lam: (a: number, b: number, c: number) => void;
+  readonly runtime_App: (a: number, b: number, c: number) => void;
+  readonly runtime_Par: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly runtime_Op2: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly runtime_Num: (a: number, b: number, c: number) => void;
+  readonly runtime_Ctr: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly runtime_Fun: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly runtime_normalize_code: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_DP0: (a: number) => void;
   readonly runtime_SUB: (a: number) => void;

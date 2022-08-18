@@ -272,6 +272,7 @@ Ptr Ctr(u64 ari, u64 fun, u64 pos) {
   return (CTR * TAG) | (fun * EXT) | pos;
 }
 
+// FIXME: update name to Fun
 Ptr Cal(u64 ari, u64 fun, u64 pos) {
   return (FUN * TAG) | (fun * EXT) | pos;
 }

@@ -374,6 +374,55 @@ impl Runtime {
   pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
     return get_loc(lnk, arg);
   }
+
+  pub fn Var(pos: u64) -> Ptr {
+    return runtime::Var(pos);
+  }
+
+  pub fn Dp0(col: u64, pos: u64) -> Ptr {
+    return runtime::Dp0(col, pos);
+  }
+
+  pub fn Dp1(col: u64, pos: u64) -> Ptr {
+    return runtime::Dp1(col, pos);
+  }
+
+  pub fn Arg(pos: u64) -> Ptr {
+    return runtime::Arg(pos);
+  }
+
+  pub fn Era() -> Ptr {
+    return runtime::Era();
+  }
+
+  pub fn Lam(pos: u64) -> Ptr {
+    return runtime::Lam(pos);
+  }
+
+  pub fn App(pos: u64) -> Ptr {
+    return runtime::App(pos);
+  }
+
+  pub fn Par(col: u64, pos: u64) -> Ptr {
+    return runtime::Par(col, pos);
+  }
+
+  pub fn Op2(ope: u64, pos: u64) -> Ptr {
+    return runtime::Op2(ope, pos);
+  }
+
+  pub fn Num(val: u64) -> Ptr {
+    return runtime::Num(val);
+  }
+
+  pub fn Ctr(fun: u64, pos: u64) -> Ptr {
+    return runtime::Ctr(0, fun, pos);
+  }
+
+  pub fn Fun(fun: u64, pos: u64) -> Ptr {
+    return runtime::Cal(0, fun, pos);
+  }
+
 }
 
 // Methods that aren't compiled to JS

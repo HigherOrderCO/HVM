@@ -60,11 +60,11 @@ while the identical Haskell code takes about **19.2 seconds** in the same
 machine with GHC. This is HVM: write a functional program, get a parallel C
 runtime. And that's just the tip of iceberg!
 
-[See JavaScript usage documentation here.](./JavaScript.md)
-
 [See Nix usage documentation here.](./NIX.md)
 
 [See build instructions here.](./BUILDING.md)
+
+[See also HVM-JS, a WASM wrapper for HVM on JavaScript.](https://github.com/kindelia/hvm-js)
 
 Benchmarks
 ==========

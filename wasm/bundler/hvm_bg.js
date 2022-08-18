@@ -1149,6 +1149,278 @@ export class Runtime {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
     }
+    /**
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Var(pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = pos;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            wasm.runtime_Var(retptr, low0, high0);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n1 = uint64CvtShim[0];
+            return n1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} col
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Dp0(col, pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = col;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            uint64CvtShim[0] = pos;
+            const low1 = u32CvtShim[0];
+            const high1 = u32CvtShim[1];
+            wasm.runtime_Dp0(retptr, low0, high0, low1, high1);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n2 = uint64CvtShim[0];
+            return n2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} col
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Dp1(col, pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = col;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            uint64CvtShim[0] = pos;
+            const low1 = u32CvtShim[0];
+            const high1 = u32CvtShim[1];
+            wasm.runtime_Dp1(retptr, low0, high0, low1, high1);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n2 = uint64CvtShim[0];
+            return n2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Arg(pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = pos;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            wasm.runtime_Arg(retptr, low0, high0);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n1 = uint64CvtShim[0];
+            return n1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @returns {bigint}
+    */
+    static Era() {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            wasm.runtime_Era(retptr);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n0 = uint64CvtShim[0];
+            return n0;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Lam(pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = pos;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            wasm.runtime_Lam(retptr, low0, high0);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n1 = uint64CvtShim[0];
+            return n1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static App(pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = pos;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            wasm.runtime_App(retptr, low0, high0);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n1 = uint64CvtShim[0];
+            return n1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} col
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Par(col, pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = col;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            uint64CvtShim[0] = pos;
+            const low1 = u32CvtShim[0];
+            const high1 = u32CvtShim[1];
+            wasm.runtime_Par(retptr, low0, high0, low1, high1);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n2 = uint64CvtShim[0];
+            return n2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} ope
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Op2(ope, pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = ope;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            uint64CvtShim[0] = pos;
+            const low1 = u32CvtShim[0];
+            const high1 = u32CvtShim[1];
+            wasm.runtime_Op2(retptr, low0, high0, low1, high1);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n2 = uint64CvtShim[0];
+            return n2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} val
+    * @returns {bigint}
+    */
+    static Num(val) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = val;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            wasm.runtime_Num(retptr, low0, high0);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n1 = uint64CvtShim[0];
+            return n1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} fun
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Ctr(fun, pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = fun;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            uint64CvtShim[0] = pos;
+            const low1 = u32CvtShim[0];
+            const high1 = u32CvtShim[1];
+            wasm.runtime_Ctr(retptr, low0, high0, low1, high1);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n2 = uint64CvtShim[0];
+            return n2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} fun
+    * @param {bigint} pos
+    * @returns {bigint}
+    */
+    static Fun(fun, pos) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = fun;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            uint64CvtShim[0] = pos;
+            const low1 = u32CvtShim[0];
+            const high1 = u32CvtShim[1];
+            wasm.runtime_Fun(retptr, low0, high0, low1, high1);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n2 = uint64CvtShim[0];
+            return n2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
 }
 
 export function __wbindgen_string_new(arg0, arg1) {
