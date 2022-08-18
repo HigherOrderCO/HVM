@@ -343,6 +343,26 @@ export class Runtime {
 * @returns {bigint}
 */
   static Fun(fun: bigint, pos: bigint): bigint;
+/**
+* @param {bigint} loc
+* @param {bigint} lnk
+* @returns {bigint}
+*/
+  link(loc: bigint, lnk: bigint): bigint;
+/**
+* @param {bigint} size
+* @returns {bigint}
+*/
+  alloc(size: bigint): bigint;
+/**
+* @param {bigint} loc
+* @param {bigint} size
+*/
+  clear(loc: bigint, size: bigint): void;
+/**
+* @param {bigint} term
+*/
+  collect(term: bigint): void;
 }
 
 export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembly.Module;
@@ -404,6 +424,10 @@ export interface InitOutput {
   readonly runtime_Num: (a: number, b: number, c: number) => void;
   readonly runtime_Ctr: (a: number, b: number, c: number, d: number, e: number) => void;
   readonly runtime_Fun: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly runtime_link: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+  readonly runtime_alloc: (a: number, b: number, c: number, d: number) => void;
+  readonly runtime_clear: (a: number, b: number, c: number, d: number, e: number) => void;
+  readonly runtime_collect: (a: number, b: number, c: number) => void;
   readonly runtime_normalize_code: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_DP0: (a: number) => void;
   readonly runtime_SUB: (a: number) => void;

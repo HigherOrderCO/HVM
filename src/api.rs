@@ -423,6 +423,22 @@ impl Runtime {
     return runtime::Cal(0, fun, pos);
   }
 
+  pub fn link(&mut self, loc: u64, lnk: Ptr) -> Ptr {
+    return runtime::link(&mut self.heap, loc, lnk);
+  }
+
+  pub fn alloc(&mut self, size: u64) -> u64 {
+    return runtime::alloc(&mut self.heap, size);
+  }
+
+  pub fn clear(&mut self, loc: u64, size: u64) {
+    return runtime::clear(&mut self.heap, loc, size);
+  }
+
+  pub fn collect(&mut self, term: Ptr) {
+    return runtime::collect(&mut self.heap, term);
+  }
+
 }
 
 // Methods that aren't compiled to JS

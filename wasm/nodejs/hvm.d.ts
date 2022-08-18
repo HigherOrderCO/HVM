@@ -343,4 +343,24 @@ export class Runtime {
 * @returns {bigint}
 */
   static Fun(fun: bigint, pos: bigint): bigint;
+/**
+* @param {bigint} loc
+* @param {bigint} lnk
+* @returns {bigint}
+*/
+  link(loc: bigint, lnk: bigint): bigint;
+/**
+* @param {bigint} size
+* @returns {bigint}
+*/
+  alloc(size: bigint): bigint;
+/**
+* @param {bigint} loc
+* @param {bigint} size
+*/
+  clear(loc: bigint, size: bigint): void;
+/**
+* @param {bigint} term
+*/
+  collect(term: bigint): void;
 }

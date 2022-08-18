@@ -1421,6 +1421,74 @@ class Runtime {
             wasm.__wbindgen_add_to_stack_pointer(16);
         }
     }
+    /**
+    * @param {bigint} loc
+    * @param {bigint} lnk
+    * @returns {bigint}
+    */
+    link(loc, lnk) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = loc;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            uint64CvtShim[0] = lnk;
+            const low1 = u32CvtShim[0];
+            const high1 = u32CvtShim[1];
+            wasm.runtime_link(retptr, this.ptr, low0, high0, low1, high1);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n2 = uint64CvtShim[0];
+            return n2;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} size
+    * @returns {bigint}
+    */
+    alloc(size) {
+        try {
+            const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
+            uint64CvtShim[0] = size;
+            const low0 = u32CvtShim[0];
+            const high0 = u32CvtShim[1];
+            wasm.runtime_alloc(retptr, this.ptr, low0, high0);
+            var r0 = getInt32Memory0()[retptr / 4 + 0];
+            var r1 = getInt32Memory0()[retptr / 4 + 1];
+            u32CvtShim[0] = r0;
+            u32CvtShim[1] = r1;
+            const n1 = uint64CvtShim[0];
+            return n1;
+        } finally {
+            wasm.__wbindgen_add_to_stack_pointer(16);
+        }
+    }
+    /**
+    * @param {bigint} loc
+    * @param {bigint} size
+    */
+    clear(loc, size) {
+        uint64CvtShim[0] = loc;
+        const low0 = u32CvtShim[0];
+        const high0 = u32CvtShim[1];
+        uint64CvtShim[0] = size;
+        const low1 = u32CvtShim[0];
+        const high1 = u32CvtShim[1];
+        wasm.runtime_clear(this.ptr, low0, high0, low1, high1);
+    }
+    /**
+    * @param {bigint} term
+    */
+    collect(term) {
+        uint64CvtShim[0] = term;
+        const low0 = u32CvtShim[0];
+        const high0 = u32CvtShim[1];
+        wasm.runtime_collect(this.ptr, low0, high0);
+    }
 }
 module.exports.Runtime = Runtime;
 

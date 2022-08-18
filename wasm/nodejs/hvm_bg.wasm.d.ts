@@ -56,6 +56,10 @@ export function runtime_Op2(a: number, b: number, c: number, d: number, e: numbe
 export function runtime_Num(a: number, b: number, c: number): void;
 export function runtime_Ctr(a: number, b: number, c: number, d: number, e: number): void;
 export function runtime_Fun(a: number, b: number, c: number, d: number, e: number): void;
+export function runtime_link(a: number, b: number, c: number, d: number, e: number, f: number): void;
+export function runtime_alloc(a: number, b: number, c: number, d: number): void;
+export function runtime_clear(a: number, b: number, c: number, d: number, e: number): void;
+export function runtime_collect(a: number, b: number, c: number): void;
 export function runtime_normalize_code(a: number, b: number, c: number, d: number): void;
 export function runtime_DP0(a: number): void;
 export function runtime_SUB(a: number): void;
