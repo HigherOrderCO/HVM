@@ -233,24 +233,24 @@ pub const IO_DO_INPUT  : u64 = 5;
 pub const IO_DO_OUTPUT : u64 = 6;
 
 // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
-pub const HOAS_CT0 : u64 = 6;
-pub const HOAS_CT1 : u64 = 7;
-pub const HOAS_CT2 : u64 = 8;
-pub const HOAS_CT3 : u64 = 9;
-pub const HOAS_CT4 : u64 = 10;
-pub const HOAS_CT5 : u64 = 11;
-pub const HOAS_CT6 : u64 = 12;
-pub const HOAS_CT7 : u64 = 13;
-pub const HOAS_CT8 : u64 = 14;
-pub const HOAS_CT9 : u64 = 15;
-pub const HOAS_CTA : u64 = 16;
-pub const HOAS_CTB : u64 = 17;
-pub const HOAS_CTC : u64 = 18;
-pub const HOAS_CTD : u64 = 19;
-pub const HOAS_CTE : u64 = 20;
-pub const HOAS_CTF : u64 = 21;
-pub const HOAS_CTG : u64 = 22;
-pub const HOAS_NUM : u64 = 23;
+pub const HOAS_CT0 : u64 = 7;
+pub const HOAS_CT1 : u64 = 8;
+pub const HOAS_CT2 : u64 = 9;
+pub const HOAS_CT3 : u64 = 10;
+pub const HOAS_CT4 : u64 = 11;
+pub const HOAS_CT5 : u64 = 12;
+pub const HOAS_CT6 : u64 = 13;
+pub const HOAS_CT7 : u64 = 14;
+pub const HOAS_CT8 : u64 = 15;
+pub const HOAS_CT9 : u64 = 16;
+pub const HOAS_CTA : u64 = 17;
+pub const HOAS_CTB : u64 = 18;
+pub const HOAS_CTC : u64 = 19;
+pub const HOAS_CTD : u64 = 20;
+pub const HOAS_CTE : u64 = 21;
+pub const HOAS_CTF : u64 = 22;
+pub const HOAS_CTG : u64 = 23;
+pub const HOAS_NUM : u64 = 24;
 
 // Types
 // -----
