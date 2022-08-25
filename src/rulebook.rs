@@ -54,24 +54,24 @@ pub fn new_rulebook() -> RuleBook {
   register(&mut book, "IO.done"     , rt::IO_DONE     , 1, false); // IO.done a : (IO a)
   register(&mut book, "IO.do_input" , rt::IO_DO_INPUT , 1, false); // IO.do_input (String -> IO a) : (IO a)
   register(&mut book, "IO.do_output", rt::IO_DO_OUTPUT, 2, false); // IO.do_output String (Num -> IO a) : (IO a)
-  register_name(&mut book, "Ct0", rt::HOAS_CT0);
-  register_name(&mut book, "Ct1", rt::HOAS_CT1);
-  register_name(&mut book, "Ct2", rt::HOAS_CT2);
-  register_name(&mut book, "Ct3", rt::HOAS_CT3);
-  register_name(&mut book, "Ct4", rt::HOAS_CT4);
-  register_name(&mut book, "Ct5", rt::HOAS_CT5);
-  register_name(&mut book, "Ct6", rt::HOAS_CT6);
-  register_name(&mut book, "Ct7", rt::HOAS_CT7);
-  register_name(&mut book, "Ct8", rt::HOAS_CT8);
-  register_name(&mut book, "Ct9", rt::HOAS_CT9);
-  register_name(&mut book, "CtA", rt::HOAS_CTA);
-  register_name(&mut book, "CtB", rt::HOAS_CTB);
-  register_name(&mut book, "CtC", rt::HOAS_CTC);
-  register_name(&mut book, "CtD", rt::HOAS_CTD);
-  register_name(&mut book, "CtE", rt::HOAS_CTE);
-  register_name(&mut book, "CtF", rt::HOAS_CTF);
-  register_name(&mut book, "CtG", rt::HOAS_CTG);
-  register_name(&mut book, "Num", rt::HOAS_NUM);
+  register_name(&mut book, "Kind.Term.ct0", rt::HOAS_CT0);
+  register_name(&mut book, "Kind.Term.ct1", rt::HOAS_CT1);
+  register_name(&mut book, "Kind.Term.ct2", rt::HOAS_CT2);
+  register_name(&mut book, "Kind.Term.ct3", rt::HOAS_CT3);
+  register_name(&mut book, "Kind.Term.ct4", rt::HOAS_CT4);
+  register_name(&mut book, "Kind.Term.ct5", rt::HOAS_CT5);
+  register_name(&mut book, "Kind.Term.ct6", rt::HOAS_CT6);
+  register_name(&mut book, "Kind.Term.ct7", rt::HOAS_CT7);
+  register_name(&mut book, "Kind.Term.ct8", rt::HOAS_CT8);
+  register_name(&mut book, "Kind.Term.ct9", rt::HOAS_CT9);
+  register_name(&mut book, "Kind.Term.ctA", rt::HOAS_CTA);
+  register_name(&mut book, "Kind.Term.ctB", rt::HOAS_CTB);
+  register_name(&mut book, "Kind.Term.ctC", rt::HOAS_CTC);
+  register_name(&mut book, "Kind.Term.ctD", rt::HOAS_CTD);
+  register_name(&mut book, "Kind.Term.ctE", rt::HOAS_CTE);
+  register_name(&mut book, "Kind.Term.ctF", rt::HOAS_CTF);
+  register_name(&mut book, "Kind.Term.ctG", rt::HOAS_CTG);
+  register_name(&mut book, "Kind.Term.num", rt::HOAS_NUM);
   return book;
 }
 
