@@ -1,7 +1,7 @@
 {
   "name": "hvm-bundler",
   "description": "A lazy, beta-optimal, massively-parallel, non-garbage-collected and strongly-confluent functional compilation target.",
-  "version": "0.1.80",
+  "version": "0.1.81",
   "license": "MIT",
   "repository": {
     "type": "git",
