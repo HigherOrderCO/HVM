@@ -38,10 +38,9 @@ typedef pthread_t Thd;
 #define U64_PER_MB (0x20000)
 #define U64_PER_GB (0x8000000)
 
-// HVM pointers can address a 2^32 space of 64-bit elements, so, when the
-// program starts, we pre-alloc the maximum addressable heap, 32 GB. This will
-// be replaced by a proper arena allocator soon (see the Issues)!
-#define HEAP_SIZE (8 * U64_PER_GB * sizeof(u64))
+// When the program starts, we pre-alloc a big chunk of memory (set by cli flag).
+// This will be replaced by a proper arena allocator soon (see the Issues)!
+#define HEAP_SIZE /*! GENERATED_HEAP_SIZE */ 1 /* GENERATED_HEAP_SIZE !*/
 
 #ifdef PARALLEL
 #define MAX_WORKERS (/*! GENERATED_NUM_THREADS */ 1 /* GENERATED_NUM_THREADS !*/)
