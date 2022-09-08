@@ -992,7 +992,7 @@ pub fn run_io(
               let text = make_string(mem, &body);
               link(mem, app0 + 0, cont);
               link(mem, app0 + 1, text);
-              clear(mem, get_loc(term, 0), 2);
+              clear(mem, get_loc(term, 0), 3);
               let opts = ask_arg(mem, term, 1); // FIXME: use options
               collect(mem, opts);
               let done = App(app0);
