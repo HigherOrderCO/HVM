@@ -231,6 +231,7 @@ pub const STRING_CONS  : u64 = 3;
 pub const IO_DONE      : u64 = 4;
 pub const IO_DO_INPUT  : u64 = 5;
 pub const IO_DO_OUTPUT : u64 = 6;
+pub const IO_DO_FETCH  : u64 = 7;
 
 // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
 pub const HOAS_CT0 : u64 = 7;
@@ -921,6 +922,7 @@ pub fn normal(
   done
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_io(
   mem: &mut Worker,
   funs: &Funs,
@@ -973,6 +975,26 @@ pub fn run_io(
               clear(mem, get_loc(term, 0), 2);
               let text = ask_arg(mem, term, 0);
               collect(mem, text);
+              let done = App(app0);
+              link(mem, host, done);
+            } else {
+              println!("Runtime type error: attempted to print a non-string.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_fetch String (String -> IO a) : (IO a)
+          IO_DO_FETCH => {
+            if let Some(url) = readback_string(mem, funs, get_loc(term, 0)) {
+              let body = reqwest::blocking::get(url).unwrap().text().unwrap(); // FIXME: treat
+              let cont = ask_arg(mem, term, 2);
+              let app0 = alloc(mem, 2);
+              let text = make_string(mem, &body);
+              link(mem, app0 + 0, cont);
+              link(mem, app0 + 1, text);
+              clear(mem, get_loc(term, 0), 2);
+              let opts = ask_arg(mem, term, 1); // FIXME: use options
+              collect(mem, opts);
               let done = App(app0);
               link(mem, host, done);
             } else {

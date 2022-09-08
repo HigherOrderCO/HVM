@@ -195,6 +195,7 @@ impl Runtime {
   }
 
   /// Given a location, runs side-efefctive actions
+  #[cfg(not(target_arch = "wasm32"))]
   pub fn run_io(&mut self, host: u64) {
     runtime::run_io(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false)
   }

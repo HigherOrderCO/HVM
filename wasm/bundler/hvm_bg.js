@@ -413,16 +413,6 @@ export class Runtime {
         }
     }
     /**
-    * Given a location, runs side-efefctive actions
-    * @param {bigint} host
-    */
-    run_io(host) {
-        uint64CvtShim[0] = host;
-        const low0 = u32CvtShim[0];
-        const high0 = u32CvtShim[1];
-        wasm.runtime_run_io(this.ptr, low0, high0);
-    }
-    /**
     * Given a location, recovers the lambda Term stored on it, as code
     * @param {bigint} host
     * @returns {string}

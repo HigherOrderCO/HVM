@@ -89,11 +89,6 @@ export class Runtime {
 */
   eval(code: string): string;
 /**
-* Given a location, runs side-efefctive actions
-* @param {bigint} host
-*/
-  run_io(host: bigint): void;
-/**
 * Given a location, recovers the lambda Term stored on it, as code
 * @param {bigint} host
 * @returns {string}
@@ -385,7 +380,6 @@ export interface InitOutput {
   readonly runtime_normalize: (a: number, b: number, c: number) => void;
   readonly runtime_eval_to_loc: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_eval: (a: number, b: number, c: number, d: number) => void;
-  readonly runtime_run_io: (a: number, b: number, c: number) => void;
   readonly runtime_show: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_show_linear: (a: number, b: number, c: number, d: number) => void;
   readonly runtime_get_name: (a: number, b: number, c: number, d: number) => void;

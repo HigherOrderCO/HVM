@@ -54,6 +54,7 @@ pub fn new_rulebook() -> RuleBook {
   register(&mut book, "IO.done"     , rt::IO_DONE     , 1, false); // IO.done a : (IO a)
   register(&mut book, "IO.do_input" , rt::IO_DO_INPUT , 1, false); // IO.do_input (String -> IO a) : (IO a)
   register(&mut book, "IO.do_output", rt::IO_DO_OUTPUT, 2, false); // IO.do_output String (Num -> IO a) : (IO a)
+  register(&mut book, "IO.do_fetch" , rt::IO_DO_FETCH, 3, false); // IO.do_fetch String Options (String -> IO a) : (IO a)
   register_name(&mut book, "Kind.Term.ct0", rt::HOAS_CT0);
   register_name(&mut book, "Kind.Term.ct1", rt::HOAS_CT1);
   register_name(&mut book, "Kind.Term.ct2", rt::HOAS_CT2);

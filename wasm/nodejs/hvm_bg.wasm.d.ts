@@ -17,7 +17,6 @@ export function runtime_reduce(a: number, b: number, c: number): void;
 export function runtime_normalize(a: number, b: number, c: number): void;
 export function runtime_eval_to_loc(a: number, b: number, c: number, d: number): void;
 export function runtime_eval(a: number, b: number, c: number, d: number): void;
-export function runtime_run_io(a: number, b: number, c: number): void;
 export function runtime_show(a: number, b: number, c: number, d: number): void;
 export function runtime_show_linear(a: number, b: number, c: number, d: number): void;
 export function runtime_get_name(a: number, b: number, c: number, d: number): void;

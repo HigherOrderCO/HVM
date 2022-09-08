@@ -89,11 +89,6 @@ export class Runtime {
 */
   eval(code: string): string;
 /**
-* Given a location, runs side-efefctive actions
-* @param {bigint} host
-*/
-  run_io(host: bigint): void;
-/**
 * Given a location, recovers the lambda Term stored on it, as code
 * @param {bigint} host
 * @returns {string}

@@ -669,6 +669,7 @@ pub fn eval_code(
 
   // Normalizes it
   let init = instant::Instant::now();
+  #[cfg(not(target_arch = "wasm32"))]
   rt::run_io(&mut worker, &funs, host, Some(&book.id_to_name), debug);
   rt::normal(&mut worker, &funs, host, Some(&book.id_to_name), debug);
   let time = init.elapsed().as_millis() as u64;
