@@ -1,7 +1,7 @@
 {
   "name": "hvm-web",
   "description": "A lazy, beta-optimal, massively-parallel, non-garbage-collected and strongly-confluent functional compilation target.",
-  "version": "0.1.82",
+  "version": "0.1.85",
   "license": "MIT",
   "repository": {
     "type": "git",
