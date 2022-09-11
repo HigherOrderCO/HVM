@@ -34,7 +34,7 @@ fn run_cli() -> Result<(), String> {
       let file = &hvm(&file);
       let code = load_file_code(file)?;
 
-      compile_code(&code, file, !single_thread)?;
+      compile_code(&code, file, cli_matches.memory_size, !single_thread)?;
       Ok(())
     }
     Command::Run { file, params } => {
@@ -73,12 +73,12 @@ fn run_code(code: &str, debug: bool, params: Vec<String>, memory: usize) -> Resu
   Ok(())
 }
 
-fn compile_code(code: &str, name: &str, parallel: bool) -> Result<(), String> {
+fn compile_code(code: &str, name: &str, heap_size: usize, parallel: bool) -> Result<(), String> {
   if !name.ends_with(".hvm") {
     return Err("Input file must end with .hvm.".to_string());
   }
   let name = format!("{}.c", &name[0..name.len() - 4]);
-  compiler::compile_code_and_save(code, &name, parallel)?;
+  compiler::compile_code_and_save(code, &name, heap_size, parallel)?;
   println!("Compiled to '{}'.", name);
   Ok(())
 }
@@ -135,7 +135,7 @@ fn run_example() -> Result<(), String> {
   ";
 
   // Compiles to C and saves as 'main.c'
-  compiler::compile_code_and_save(code, "main.c", true)?;
+  compiler::compile_code_and_save(code, "main.c", 8589934592, true)?;
   println!("Compiled to 'main.c'.");
 
   // Evaluates with interpreter

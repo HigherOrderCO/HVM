@@ -9,8 +9,8 @@ use crate::language as lang;
 use crate::rulebook as rb;
 use crate::runtime as rt;
 
-pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> Result<(), String> {
-  let as_clang = compile_code(code, parallel)?;
+pub fn compile_code_and_save(code: &str, file_name: &str, heap_size: usize, parallel: bool) -> Result<(), String> {
+  let as_clang = compile_code(code, heap_size, parallel)?;
   let mut file = std::fs::OpenOptions::new()
     .read(true)
     .write(true)
@@ -22,11 +22,11 @@ pub fn compile_code_and_save(code: &str, file_name: &str, parallel: bool) -> Res
   Ok(())
 }
 
-fn compile_code(code: &str, parallel: bool) -> Result<String, String> {
+fn compile_code(code: &str, heap_size: usize, parallel: bool) -> Result<String, String> {
   let file = lang::read_file(code)?;
   let book = rb::gen_rulebook(&file);
   bd::build_runtime_functions(&book);
-  Ok(compile_book(&book, parallel))
+  Ok(compile_book(&book, heap_size, parallel))
 }
 
 fn compile_name(name: &str) -> String {
@@ -38,7 +38,7 @@ fn compile_name(name: &str) -> String {
   format!("_{}_", name.to_uppercase())
 }
 
-fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
+fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> String {
   let mut c_ids = String::new();
   let mut inits = String::new();
   let mut codes = String::new();
@@ -72,7 +72,7 @@ fn compile_book(comp: &rb::RuleBook, parallel: bool) -> String {
     line(&mut codes, 6, "};");
   }
 
-  c_runtime_template(&c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, &id2ar, comp.id_to_name.len() as u64, parallel)
+  c_runtime_template(heap_size, &c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, &id2ar, comp.id_to_name.len() as u64, parallel)
 }
 
 fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u64) -> (String, String) {
@@ -482,6 +482,7 @@ const REPLACEMENT_TOKEN_PATTERN: &str =
   r"(?s)(?:/\*! *(\w+?) *!\*/)|(?:/\*! *(\w+?) *\*/.+?/\* *(\w+?) *!\*/)";
 
 fn c_runtime_template(
+  heap_size: usize,
   c_ids: &str,
   inits: &str,
   codes: &str,
@@ -494,6 +495,7 @@ fn c_runtime_template(
   const C_RUNTIME_TEMPLATE: &str = include_str!("runtime.c");
   // Instantiate the template with the given sections' content
 
+  const C_HEAP_SIZE_TAG: &str = "GENERATED_HEAP_SIZE";
   const C_PARALLEL_FLAG_TAG: &str = "GENERATED_PARALLEL_FLAG";
   const C_NUM_THREADS_TAG: &str = "GENERATED_NUM_THREADS";
   const C_CONSTRUCTOR_IDS_TAG: &str = "GENERATED_CONSTRUCTOR_IDS";
@@ -525,11 +527,13 @@ fn c_runtime_template(
       panic!("Replacement token must have a tag.")
     };
 
+    let heap_size = &heap_size.to_string();
     let parallel_flag = if parallel { "#define PARALLEL" } else { "" };
     let num_threads = &num_cpus::get().to_string();
     let nmlen = &nmlen.to_string();
     let arlen = &arlen.to_string();
     match tag {
+      C_HEAP_SIZE_TAG => heap_size,
       C_PARALLEL_FLAG_TAG => parallel_flag,
       C_NUM_THREADS_TAG => num_threads,
       C_CONSTRUCTOR_IDS_TAG => c_ids,
