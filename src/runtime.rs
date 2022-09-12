@@ -232,26 +232,28 @@ pub const IO_DONE      : u64 = 4;
 pub const IO_DO_INPUT  : u64 = 5;
 pub const IO_DO_OUTPUT : u64 = 6;
 pub const IO_DO_FETCH  : u64 = 7;
+pub const IO_DO_STORE  : u64 = 8;
+pub const IO_DO_LOAD   : u64 = 9;
 
 // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
-pub const HOAS_CT0 : u64 = 8;
-pub const HOAS_CT1 : u64 = 9;
-pub const HOAS_CT2 : u64 = 10;
-pub const HOAS_CT3 : u64 = 11;
-pub const HOAS_CT4 : u64 = 12;
-pub const HOAS_CT5 : u64 = 13;
-pub const HOAS_CT6 : u64 = 14;
-pub const HOAS_CT7 : u64 = 15;
-pub const HOAS_CT8 : u64 = 16;
-pub const HOAS_CT9 : u64 = 17;
-pub const HOAS_CTA : u64 = 18;
-pub const HOAS_CTB : u64 = 19;
-pub const HOAS_CTC : u64 = 20;
-pub const HOAS_CTD : u64 = 21;
-pub const HOAS_CTE : u64 = 22;
-pub const HOAS_CTF : u64 = 23;
-pub const HOAS_CTG : u64 = 24;
-pub const HOAS_NUM : u64 = 25;
+pub const HOAS_CT0 : u64 = 10;
+pub const HOAS_CT1 : u64 = 11;
+pub const HOAS_CT2 : u64 = 12;
+pub const HOAS_CT3 : u64 = 13;
+pub const HOAS_CT4 : u64 = 14;
+pub const HOAS_CT5 : u64 = 15;
+pub const HOAS_CT6 : u64 = 16;
+pub const HOAS_CT7 : u64 = 17;
+pub const HOAS_CT8 : u64 = 18;
+pub const HOAS_CT9 : u64 = 19;
+pub const HOAS_CTA : u64 = 20;
+pub const HOAS_CTB : u64 = 21;
+pub const HOAS_CTC : u64 = 22;
+pub const HOAS_CTD : u64 = 23;
+pub const HOAS_CTE : u64 = 24;
+pub const HOAS_CTF : u64 = 25;
+pub const HOAS_CTG : u64 = 26;
+pub const HOAS_NUM : u64 = 27;
 
 // Types
 // -----
@@ -999,6 +1001,53 @@ pub fn run_io(
               link(mem, host, done);
             } else {
               println!("Runtime type error: attempted to print a non-string.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_store String String (Num -> IO a) : (IO a)
+          IO_DO_STORE => {
+            if let Some(key) = readback_string(mem, funs, get_loc(term, 0)) {
+              if let Some(val) = readback_string(mem, funs, get_loc(term, 1)) {
+                std::fs::write(key, val).ok(); // TODO: Handle errors
+                let cont = ask_arg(mem, term, 2);
+                let app0 = alloc(mem, 2);
+                link(mem, app0 + 0, cont);
+                link(mem, app0 + 1, Num(0));
+                clear(mem, get_loc(term, 0), 2);
+                let key = ask_arg(mem, term, 0);
+                collect(mem, key);
+                clear(mem, get_loc(term, 1), 2);
+                let val = ask_arg(mem, term, 1);
+                collect(mem, val);
+                let done = App(app0);
+                link(mem, host, done);
+              } else {
+                println!("Runtime type error: attempted to store a non-string.");
+                println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 1)));
+                std::process::exit(0);
+              }
+            } else {
+              println!("Runtime type error: attempted to store to a non-string key.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_load String (String -> IO a) : (IO a)
+          IO_DO_LOAD => {
+            if let Some(key) = readback_string(mem, funs, get_loc(term, 0)) {
+              let file = std::fs::read(key).unwrap(); // TODO: Handle errors
+              let file = std::str::from_utf8(&file).unwrap();
+              let cont = ask_arg(mem, term, 1); 
+              let text = make_string(mem, file);
+              let app0 = alloc(mem, 2);
+              link(mem, app0 + 0, cont);
+              link(mem, app0 + 1, text);
+              clear(mem, get_loc(term, 0), 2);
+              let done = App(app0);
+              link(mem, host, done);
+            } else {
+              println!("Runtime type error: attempted to read from a non-string key.");
               println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
               std::process::exit(0);
             }
