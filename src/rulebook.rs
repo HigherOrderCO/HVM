@@ -54,7 +54,9 @@ pub fn new_rulebook() -> RuleBook {
   register(&mut book, "IO.done"     , rt::IO_DONE     , 1, false); // IO.done a : (IO a)
   register(&mut book, "IO.do_input" , rt::IO_DO_INPUT , 1, false); // IO.do_input (String -> IO a) : (IO a)
   register(&mut book, "IO.do_output", rt::IO_DO_OUTPUT, 2, false); // IO.do_output String (Num -> IO a) : (IO a)
-  register(&mut book, "IO.do_fetch" , rt::IO_DO_FETCH, 3, false); // IO.do_fetch String Options (String -> IO a) : (IO a)
+  register(&mut book, "IO.do_fetch" , rt::IO_DO_FETCH , 3, false); // IO.do_fetch String Options (String -> IO a) : (IO a)
+  register(&mut book, "IO.do_load"  , rt::IO_DO_LOAD  , 2, false); // IO.do_load String (String -> IO a) : (IO a)
+  register(&mut book, "IO.do_store" , rt::IO_DO_STORE , 3, false); // IO.do_store String String (Num -> IO a) : (IO a)
   register_name(&mut book, "Kind.Term.ct0", rt::HOAS_CT0);
   register_name(&mut book, "Kind.Term.ct1", rt::HOAS_CT1);
   register_name(&mut book, "Kind.Term.ct2", rt::HOAS_CT2);
@@ -755,10 +757,10 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
   }
 
   fn split_group(rules: &[lang::Rule], name_count: &mut u64) -> Vec<lang::Rule> {
-    //println!("\n[split_group]");
-    //for rule in rules {
-      //println!("{}", rule);
-    //}
+    // println!("\n[split_group]");
+    // for rule in rules {
+    //   println!("{}", rule);
+    // }
     let mut skip: HashSet<usize> = HashSet::new();
     let mut new_rules: Vec<lang::Rule> = Vec::new();
     for i in 0..rules.len() {
@@ -814,7 +816,8 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
             //(Foo.0 a b c d) = ...
             let new_lhs = Box::new(lang::Term::Ctr { name: new_lhs_name, args: new_lhs_args.clone() });
             let new_rhs = Box::new(lang::Term::Ctr { name: new_rhs_name.clone(), args: new_rhs_args });
-            new_group.push(lang::Rule { lhs: new_lhs, rhs: new_rhs });
+            let new_rule = lang::Rule { lhs: new_lhs, rhs: new_rhs };
+            new_group.push(new_rule);
             for (j, other) in rules.iter().enumerate().skip(i) {
               let (compatible, same_shape) = matches_together(&rule, &other);
               if compatible {
@@ -887,7 +890,8 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                     name: other_new_lhs_name,
                     args: other_new_lhs_args,
                   });
-                  new_group.push(lang::Rule { lhs: other_new_lhs, rhs: other_new_rhs });
+                  let new_rule = lang::Rule { lhs: other_new_lhs, rhs: other_new_rhs };
+                  new_group.push(new_rule);
                 }
               }
             }
@@ -925,10 +929,10 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
     }
   }
 
-  //println!("\nresult:");
-  //for rule in &new_rules {
-    //println!("{}", rule);
-  //}
+  // println!("\nresult:");
+  // for rule in &new_rules {
+  //   println!("{}", rule);
+  // }
 
   new_rules
 }
