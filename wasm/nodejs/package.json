@@ -1,7 +1,7 @@
 {
   "name": "hvm-nodejs",
   "description": "A lazy, beta-optimal, massively-parallel, non-garbage-collected and strongly-confluent functional compilation target.",
-  "version": "0.1.87",
+  "version": "0.1.88",
   "license": "MIT",
   "repository": {
     "type": "git",
