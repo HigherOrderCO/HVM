@@ -2,12 +2,13 @@
 // modified to also include user-defined rules. It then can be compiled to run
 // in parallel with -lpthreads.
 
-#include <hvm-api.h>
 #include <assert.h>
+#include <stdint.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 /*! GENERATED_PARALLEL_FLAG !*/
 
@@ -19,12 +20,23 @@
 #define LIKELY(x) __builtin_expect((x), 1)
 #define UNLIKELY(x) __builtin_expect((x), 0)
 
+// Types
+// -----
+
+typedef uint8_t u8;
+typedef uint32_t u32;
+typedef uint64_t u64;
+
 #ifdef PARALLEL
 typedef pthread_t Thd;
 #endif
 
 // Consts
 // ------
+
+#define U64_PER_KB (0x80)
+#define U64_PER_MB (0x20000)
+#define U64_PER_GB (0x8000000)
 
 // When the program starts, we pre-alloc a big chunk of memory (set by cli flag).
 // This will be replaced by a proper arena allocator soon (see the Issues)!
@@ -49,6 +61,53 @@ typedef pthread_t Thd;
 
 // Terms
 // -----
+// HVM's runtime stores terms in a 64-bit memory. Each element is a Link, which
+// usually points to a constructor. It stores a Tag representing the ctor's
+// variant, and possibly a position on the memory. So, for example, `Ptr ptr =
+// APP * TAG | 137` creates a pointer to an app node stored on position 137.
+// Some links deal with variables: DP0, DP1, VAR, ARG and ERA.  The OP2 link
+// represents a numeric operation, and NUM and FLO links represent unboxed nums.
+
+typedef u64 Ptr;
+
+#define VAL ((u64) 1)
+#define EXT ((u64) 0x100000000)
+#define ARI ((u64) 0x100000000000000)
+#define TAG ((u64) 0x1000000000000000)
+
+#define NUM_MASK ((u64) 0xFFFFFFFFFFFFFFF)
+
+#define DP0 (0x0) // points to the dup node that binds this variable (left side)
+#define DP1 (0x1) // points to the dup node that binds this variable (right side)
+#define VAR (0x2) // points to the λ that binds this variable
+#define ARG (0x3) // points to the occurrence of a bound variable a linear argument
+#define ERA (0x4) // signals that a binder doesn't use its bound variable
+#define LAM (0x5) // arity = 2
+#define APP (0x6) // arity = 2
+#define SUP (0x7) // arity = 2 // TODO: rename to SUP
+#define CTR (0x8) // arity = user defined
+#define FUN (0x9) // arity = user defined
+#define OP2 (0xA) // arity = 2
+#define NUM (0xB) // arity = 0 (unboxed)
+#define FLO (0xC) // arity = 0 (unboxed)
+#define NIL (0xF) // not used
+
+#define ADD (0x0)
+#define SUB (0x1)
+#define MUL (0x2)
+#define DIV (0x3)
+#define MOD (0x4)
+#define AND (0x5)
+#define OR  (0x6)
+#define XOR (0x7)
+#define SHL (0x8)
+#define SHR (0x9)
+#define LTN (0xA)
+#define LTE (0xB)
+#define EQL (0xC)
+#define GTE (0xD)
+#define GTN (0xE)
+#define NEQ (0xF)
 
 //GENERATED_CONSTRUCTOR_IDS_START//
 /*! GENERATED_CONSTRUCTOR_IDS !*/
@@ -1304,29 +1363,29 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Ptr term, char** id_t
 // Debug
 // -----
 
-// void debug_print_lnk(Ptr x) {
-//   u64 tag = get_tag(x);
-//   u64 ext = get_ext(x);
-//   u64 val = get_val(x);
-//   switch (tag) {
-//     case DP0: printf("DP0"); break;
-//     case DP1: printf("DP1"); break;
-//     case VAR: printf("VAR"); break;
-//     case ARG: printf("ARG"); break;
-//     case ERA: printf("ERA"); break;
-//     case LAM: printf("LAM"); break;
-//     case APP: printf("APP"); break;
-//     case SUP: printf("SUP"); break;
-//     case CTR: printf("CTR"); break;
-//     case FUN: printf("FUN"); break;
-//     case OP2: printf("OP2"); break;
-//     case NUM: printf("NUM"); break;
-//     case FLO: printf("FLO"); break;
-//     case NIL: printf("NIL"); break;
-//     default : printf("???"); break;
-//   }
-//   printf(":%"PRIx64":%"PRIx64"", ext, val);
-// }
+void debug_print_lnk(Ptr x) {
+  u64 tag = get_tag(x);
+  u64 ext = get_ext(x);
+  u64 val = get_val(x);
+  switch (tag) {
+    case DP0: printf("DP0"); break;
+    case DP1: printf("DP1"); break;
+    case VAR: printf("VAR"); break;
+    case ARG: printf("ARG"); break;
+    case ERA: printf("ERA"); break;
+    case LAM: printf("LAM"); break;
+    case APP: printf("APP"); break;
+    case SUP: printf("SUP"); break;
+    case CTR: printf("CTR"); break;
+    case FUN: printf("FUN"); break;
+    case OP2: printf("OP2"); break;
+    case NUM: printf("NUM"); break;
+    case FLO: printf("FLO"); break;
+    case NIL: printf("NIL"); break;
+    default : printf("???"); break;
+  }
+  printf(":%"PRIx64":%"PRIx64"", ext, val);
+}
 
 // Main
 // ----
@@ -1339,9 +1398,11 @@ Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   }
 }
 
+// Uncomment to test without Deno FFI
 int main(int argc, char* argv[]) {
 
   Worker mem;
+  struct timeval stop, start;
 
   // Id-to-Name map
   const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
@@ -1373,12 +1434,15 @@ int main(int argc, char* argv[]) {
     workers[tid].funs = id_to_arity_size;
   }
 
-  // Reduces, performing IO when the program asks for it
-  
-  void * io_state = io_setup();
-  do {
-    ffi_normal((u8*)mem.node, mem.size, 0);
-  } while (io_step (io_state, mem.node));
+  // Reduces and benchmarks
+  //printf("Reducing.\n");
+  gettimeofday(&start, NULL);
+  ffi_normal((u8*)mem.node, mem.size, 0);
+  gettimeofday(&stop, NULL);
+
+  // Prints result statistics
+  u64 delta_time = (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec;
+  double rwt_per_sec = (double)ffi_cost / (double)delta_time;
 
   // Prints result normal form
   const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
@@ -1386,6 +1450,11 @@ int main(int argc, char* argv[]) {
   assert(code_data);
   readback(code_data, code_mcap, &mem, mem.node[0], id_to_name_data, id_to_name_size);
   printf("%s\n", code_data);
+
+  // Prints statistics
+  fprintf(stderr, "\n");
+  fprintf(stderr, "Rewrites: %"PRIu64" (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
+  fprintf(stderr, "Mem.Size: %"PRIu64" words.\n", ffi_size);
 
   // Cleanup
   free(code_data);
