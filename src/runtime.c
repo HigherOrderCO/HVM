@@ -1,14 +1,14 @@
 // This is HVM's C runtime template. HVM files generate a copy of this file,
-// modified to also include user-defined rules. It then can be compiled to run
-// in parallel with -lpthreads.
+// modified to also include user-defined rules.
+// Before compiling, an IO-handling platform should be appended.
+// It can then be compiled to run in parallel with -lpthreads.
 
 #include <assert.h>
 #include <stdint.h>
 #include <inttypes.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
+#include <stdbool.h>
 
 /*! GENERATED_PARALLEL_FLAG !*/
 
@@ -1363,29 +1363,39 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Ptr term, char** id_t
 // Debug
 // -----
 
-void debug_print_lnk(Ptr x) {
-  u64 tag = get_tag(x);
-  u64 ext = get_ext(x);
-  u64 val = get_val(x);
-  switch (tag) {
-    case DP0: printf("DP0"); break;
-    case DP1: printf("DP1"); break;
-    case VAR: printf("VAR"); break;
-    case ARG: printf("ARG"); break;
-    case ERA: printf("ERA"); break;
-    case LAM: printf("LAM"); break;
-    case APP: printf("APP"); break;
-    case SUP: printf("SUP"); break;
-    case CTR: printf("CTR"); break;
-    case FUN: printf("FUN"); break;
-    case OP2: printf("OP2"); break;
-    case NUM: printf("NUM"); break;
-    case FLO: printf("FLO"); break;
-    case NIL: printf("NIL"); break;
-    default : printf("???"); break;
-  }
-  printf(":%"PRIx64":%"PRIx64"", ext, val);
-}
+// void debug_print_lnk(Ptr x) {
+//   u64 tag = get_tag(x);
+//   u64 ext = get_ext(x);
+//   u64 val = get_val(x);
+//   switch (tag) {
+//     case DP0: printf("DP0"); break;
+//     case DP1: printf("DP1"); break;
+//     case VAR: printf("VAR"); break;
+//     case ARG: printf("ARG"); break;
+//     case ERA: printf("ERA"); break;
+//     case LAM: printf("LAM"); break;
+//     case APP: printf("APP"); break;
+//     case SUP: printf("SUP"); break;
+//     case CTR: printf("CTR"); break;
+//     case FUN: printf("FUN"); break;
+//     case OP2: printf("OP2"); break;
+//     case NUM: printf("NUM"); break;
+//     case FLO: printf("FLO"); break;
+//     case NIL: printf("NIL"); break;
+//     default : printf("???"); break;
+//   }
+//   printf(":%"PRIx64":%"PRIx64"", ext, val);
+// }
+
+// Platform-implemented signatures
+// -------------------------------
+
+typedef struct PlatState PlatState;
+
+PlatState * io_setup(Worker* mem, u64 id_to_name_size, char** id_to_name_data);
+
+bool io_step(PlatState* state);
+
 
 // Main
 // ----
@@ -1398,7 +1408,6 @@ Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   }
 }
 
-// Uncomment to test without Deno FFI
 int main(int argc, char* argv[]) {
 
   Worker mem;
@@ -1434,29 +1443,16 @@ int main(int argc, char* argv[]) {
     workers[tid].funs = id_to_arity_size;
   }
 
-  // Reduces and benchmarks
-  //printf("Reducing.\n");
-  gettimeofday(&start, NULL);
-  ffi_normal((u8*)mem.node, mem.size, 0);
-  gettimeofday(&stop, NULL);
+  // Reduces, calling platform for IO when program asks for it
 
-  // Prints result statistics
-  u64 delta_time = (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec;
-  double rwt_per_sec = (double)ffi_cost / (double)delta_time;
-
-  // Prints result normal form
-  const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
-  char* code_data = (char*)malloc(code_mcap * sizeof(char));
-  assert(code_data);
-  readback(code_data, code_mcap, &mem, mem.node[0], id_to_name_data, id_to_name_size);
-  printf("%s\n", code_data);
-
-  // Prints statistics
-  fprintf(stderr, "\n");
-  fprintf(stderr, "Rewrites: %"PRIu64" (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
-  fprintf(stderr, "Mem.Size: %"PRIu64" words.\n", ffi_size);
+  PlatState * plat_state = io_setup(&mem, id_to_name_size, id_to_name_data);
+  do {
+    ffi_normal((u8*)mem.node, mem.size, 0);
+  } while (io_step(plat_state));
 
   // Cleanup
-  free(code_data);
   free(mem.node);
 }
+
+// Platform implementation to be appended below
+// --------------------------------------------
