@@ -45,22 +45,20 @@ fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> String
   let mut id2nm = String::new();
   let mut id2ar = String::new();
 
+  // Populate id2nm and c_ids
   for (id, name) in &comp.id_to_name {
     line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
+    line(&mut c_ids, 0, &format!("#define {} ({})", &compile_name(name), id));
   }
 
+  // Populate id2ar
   for (id, arity) in &comp.id_to_arit {
     line(&mut id2ar, 1, &format!(r#"id_to_arity_data[{}] = {};"#, id, arity));
   }
 
+  // Generate rule-reduction code
   for (name, (_arity, rules)) in &comp.rule_group {
     let (init, code) = compile_func(comp, &name, rules, 7);
-
-    line(
-      &mut c_ids,
-      0,
-      &format!("#define {} ({})", &compile_name(name), comp.name_to_id.get(name).unwrap_or(&0)),
-    );
 
     line(&mut inits, 6, &format!("case {}: {{", &compile_name(name)));
     inits.push_str(&init);
