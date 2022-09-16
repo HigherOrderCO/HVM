@@ -1410,15 +1410,14 @@ Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
 
 // Id-to-Name map
 const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
-char* id_to_name_data[id_to_name_size];
+/*! GENERATED_ID_TO_NAME_DATA !*/
+
 // Id-to-Arity map
 const u64 id_to_arity_size = /*! GENERATED_ARITY_COUNT */ 1 /* GENERATED_ARITY_COUNT !*/;
-u64 id_to_arity_data[id_to_arity_size];
+/*! GENERATED_ID_TO_ARITY_DATA !*/
+
 
 int main(int argc, char* argv[]) {
-
-  /*! GENERATED_ID_TO_NAME_DATA !*/
-  /*! GENERATED_ID_TO_ARITY_DATA !*/
 
   Worker mem;
 

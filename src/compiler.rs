@@ -38,25 +38,45 @@ fn compile_name(name: &str) -> String {
   format!("_{}_", name.to_uppercase())
 }
 
-fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> String {
-  let mut c_ids = String::new();
-  let mut inits = String::new();
-  let mut codes = String::new();
-  let mut id2nm = String::new();
-  let mut id2ar = String::new();
+// Generate static initializer for C array
+// from a Rust HashMap
+fn gen_static_array_init(count : usize, default: String, mp: HashMap<u64,String>) -> String {
+  // Step 1: put in correct order using Vec
+  let mut arr = vec![default;count];
+  for (idx, entry) in mp {
+    arr[idx as usize] = entry;
+  }  
+  // Step 2: print vec to string  
+  let mut out = String::new();
+  line(&mut out,0,"{");
+  for entry in arr {
+    line(&mut out,1,&format!("{},",entry));
+  }
+  line(&mut out,1,"};");
+  return out;
+}
 
-  // Populate id2nm and c_ids
+fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> String {
+
+  // Generate c_ids
+  let mut c_ids = String::new(); 
   for (id, name) in &comp.id_to_name {
-    line(&mut id2nm, 1, &format!(r#"id_to_name_data[{}] = "{}";"#, id, name));
     line(&mut c_ids, 0, &format!("#define {} ({})", &compile_name(name), id));
   }
 
-  // Populate id2ar
-  for (id, arity) in &comp.id_to_arit {
-    line(&mut id2ar, 1, &format!(r#"id_to_arity_data[{}] = {};"#, id, arity));
-  }
+  let num_ids = comp.id_to_name.len();
+
+  // Generate static arrays id2ar and id2nm
+  let id2nm = &format!("static char * id_to_name_data[] = {}",
+    gen_static_array_init(num_ids, "IMPOSSIBLE".into(),
+      comp.id_to_name.iter().map(|(k,v)| (k.clone(),format!("\"{}\"",v))).collect()));
+  let id2ar = &format!("static u64 id_to_arity_data[] = {}",
+    gen_static_array_init(num_ids,"-1".into(),
+      comp.id_to_arit.iter().map(|(k,v)| (k.clone(),v.to_string())).collect()));
 
   // Generate rule-reduction code
+  let mut inits = String::new();
+  let mut codes = String::new();
   for (name, (_arity, rules)) in &comp.rule_group {
     let (init, code) = compile_func(comp, &name, rules, 7);
 
