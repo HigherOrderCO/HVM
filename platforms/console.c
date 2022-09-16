@@ -89,7 +89,7 @@ char * decode_tag(u64 tag){
     }
 }
 
-char * decode_cid(PlatState* state, u64 cid){
+char * decode_cid(u64 cid){
     if (cid < id_to_name_size) {
         return id_to_name_data[cid];
     } else {
@@ -97,31 +97,64 @@ char * decode_cid(PlatState* state, u64 cid){
     }
 }
 
+void print_term (FILE * stream, Worker* mem, Ptr ptr) {
+    const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
+    char* code_data = (char*)malloc(code_mcap * sizeof(char));
+    assert(code_data);
+    readback(
+        code_data,
+        code_mcap,
+        mem,
+        ptr,
+        id_to_name_data,
+        id_to_name_size);
+    fprintf(stream, "%s\n", code_data);
+    fflush(stream);
+    free(code_data);
+}
+
+bool fail(PlatState* state, char* msg, Ptr term){
+    fprintf(stderr,"[Console IO platform] %s\n",msg);
+    print_term(stderr,state->mem,term);
+    free (state);
+    return false;
+}
+
+char* BAD_TOP_MSG = "Illegal IO request!\nExpected one of the constructors {IO.do_output_chr/2, IO.do_input_chr/1, IO.done/0}, instead got:";
+
 bool io_step(PlatState* state) {
-    assert(get_tag(state->mem->node[0]) == CTR);
-    u64 cid = get_ext(state->mem->node[0]);
-    switch (cid) {
+    Worker* mem = state->mem;
+    Ptr top = mem->node[0];
+
+    if(get_tag(top) != CTR) return fail(state,BAD_TOP_MSG,top);
+
+    switch (get_ext(top)) {
 
         case _IO_DONE_:
-            printf("TODO -- handle IO.done");
-            return false;
-            break;
+            print_term(stdout,mem, ask_arg(mem,top,1));
+            // TODO: decrement IO.done node?
+        return false;
 
-        case _IO_DO_OUTPUT_:
-            printf("TODO -- handle IO.do_output");
-            return false;
-            break;
+        case _IO_DO__OUTPUT__CHR_:
+            Ptr num_cell  = ask_arg(mem,top,0);
+            Ptr rest_cell = ask_arg(mem,top,1);
 
-        case _IO_DO_INPUT_:
-            printf("TODO -- handle IO.do_input");
-            return false;
-            break;
+            // Step 1: extract character & print
+            if(!(get_tag(num_cell) == NUM && get_num(num_cell) <= 256))
+                return fail(state,"Bad number cell.\nExpected an int <= 256, instead got:",num_cell);
+            printf("%c", (char)get_num(num_cell));
 
-        default: // print debug info
-            fprintf(stderr, "[Console IO platform] Illegal IO request!\n");
-            fprintf(stderr, "node[0] cid: %s\n", decode_cid(state,cid));
-            free(state);
-            return false;
-            break;
+            // Step 2: replace top term with rest
+            link(mem, 0, rest_cell);        // Overwrite [CTR|IO.do_output|...] (the root) with [rest_cell], and update backpointers
+            // TODO: Free the constructor-data node (two consecutive cells: [num_cell][rest_cell])
+
+        return true;
+
+        case _IO_DO__INPUT__CHR_:
+            return fail(state,"Not implemented yet: IO.do_input_chr\nYour term:",top);
+        return true;
+
+        default:
+        return fail(state,BAD_TOP_MSG,top);
     }
 }
