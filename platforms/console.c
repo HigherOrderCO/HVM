@@ -1,34 +1,25 @@
-// IO platform supporting line-based console IO on UNIX-y systems
+// IO platform supporting character-based console IO on UNIX-y systems
 
 // This file is designed to be concatenated to the generated runtime
 
 // Protocol
 // ---------------------------------------------------------------------
-// Program halts with           Platform will
-// --------------------------   ----------------------------------------
+// Program halts with term         Platform will
+// -----------------------------   ----------------------------------------
 //
-//  IO.do_output str (@_ rest)  1. Convert HVM-string str to C-string
-//                              2. Print line to stdout
-//                              3. Replace term with rest
-//                              4. Tell runtime to continue
+//  IO.do_output_chr c rest         1. Print HVM-int c to stdout (as a character)
+//                                  2. Replace term with rest
+//  (c a fully-evalauted int)       3. Tell runtime to continue
 //
-//  IO.do_input cont            1. Read a line from stdin
-//                              2. Convert to HVM-string str
-//                              3. Replace term with (cont str)
-//                              4. Tell runtime to continue
+//  IO.do_input_chr cont            1. Read a character c from stdin
+//                                  2. Replace term with (cont c)
+//                                  3. Tell runtime to continue
 //
-//  IO.done e                   1. Read-back HVM-expression e to C-string
-//                              2. Print to stdout
-//                              3. Tell runtime to halt
+//  IO.done e                       1. Read-back HVM-expression e to C-string
+//                                  2. Print to stdout
+//                                  3. Tell runtime to halt
 //
 //  <anything else>             Undefined behaviour.
-
-// Other special constructors used
-// --------------------------------------------
-// Constructor      Used for
-// ------------     ---------------------------
-//  String.cons     Linked-list string encoding
-//  String.nil      Linked-list string encoding
 
 // Implementation
 // --------------
@@ -36,20 +27,14 @@
 // Programs may not use all the special constructors
 // In that case, these #define s make the platfrom still compile
 
-#ifndef _IO_DO_OUTPUT_
-#define _IO_DO_OUTPUT_ -1
+#ifndef _IO_DO__OUTPUT__CHR_
+#define _IO_DO__OUTPUT__CHR_ -1
 #endif
-#ifndef _IO_DO_INPUT_
-#define _IO_DO_INPUT_ -2
+#ifndef _IO_DO__INPUT__CHR_
+#define _IO_DO__INPUT__CHR_ -2
 #endif
 #ifndef _IO_DONE_
 #define _IO_DONE_ -3
-#endif
-#ifndef _STRING_NIL_
-#define _STRING_NIL_ -4
-#endif
-#ifndef _STRING_CONS_
-#define _STRING_CONS_ -5
 #endif
 
 
