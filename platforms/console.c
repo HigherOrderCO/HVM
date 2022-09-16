@@ -51,43 +51,7 @@ PlatState* io_setup(Worker* mem) {
     return state;
 }
 
-static char* str_TAG_DP0 = "DP0";
-static char* str_TAG_DP1 = "DP1";
-static char* str_TAG_VAR = "VAR";
-static char* str_TAG_ARG = "ARG";
-static char* str_TAG_ERA = "ERA";
-static char* str_TAG_LAM = "LAM";
-static char* str_TAG_APP = "APP";
-static char* str_TAG_SUP = "SUP";
-static char* str_TAG_CTR = "CTR";
-static char* str_TAG_FUN = "FUN";
-static char* str_TAG_OP2 = "OP2";
-static char* str_TAG_NUM = "NUM";
-static char* str_TAG_FLO = "FLO";
-static char* str_TAG_NIL = "NIL";
-
 static char* str_unknown = "???";
-
-
-char * decode_tag(u64 tag){
-    switch (tag) {
-      case DP0: return str_TAG_DP0;     break;
-      case DP1: return str_TAG_DP1;     break;
-      case VAR: return str_TAG_VAR;     break;
-      case ARG: return str_TAG_ARG;     break;
-      case ERA: return str_TAG_ERA;     break;
-      case LAM: return str_TAG_LAM;     break;
-      case APP: return str_TAG_APP;     break;
-      case SUP: return str_TAG_SUP;     break;
-      case CTR: return str_TAG_CTR;     break;
-      case FUN: return str_TAG_FUN;     break;
-      case OP2: return str_TAG_OP2;     break;
-      case NUM: return str_TAG_NUM;     break;
-      case FLO: return str_TAG_FLO;     break;
-      case NIL: return str_TAG_NIL;     break;
-      default : return str_unknown;     break;
-    }
-}
 
 char * decode_cid(u64 cid){
     if (cid < id_to_name_size) {
