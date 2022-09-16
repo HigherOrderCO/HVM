@@ -228,32 +228,44 @@ pub const HVM_LOG      : u64 = 0;
 pub const HVM_PUT      : u64 = 1;
 pub const STRING_NIL   : u64 = 2;
 pub const STRING_CONS  : u64 = 3;
-pub const IO_DONE      : u64 = 4;
-pub const IO_DO_INPUT  : u64 = 5;
-pub const IO_DO_OUTPUT : u64 = 6;
-pub const IO_DO_FETCH  : u64 = 7;
-pub const IO_DO_STORE  : u64 = 8;
-pub const IO_DO_LOAD   : u64 = 9;
+pub const LIST_NIL     : u64 = 4;
+pub const LIST_CONS    : u64 = 5;
+pub const IO_DONE      : u64 = 6;
+pub const IO_DO_INPUT  : u64 = 7;
+pub const IO_DO_OUTPUT : u64 = 8;
+pub const IO_DO_FETCH  : u64 = 9;
+pub const IO_DO_LOAD   : u64 = 10;
+pub const IO_DO_STORE  : u64 = 11;
+pub const IO_DO_EVENTS_POST       : u64 = 12;
+pub const IO_DO_EVENTS_VIEW       : u64 = 13;
+pub const IO_DO_EVENTS_WATCH      : u64 = 14;
+pub const IO_DO_EVENTS_UNWATCH    : u64 = 15;
+pub const IO_DO_EVENTS_SAVE       : u64 = 16;
+pub const IO_DO_EVENTS_FORGET     : u64 = 17;
+pub const IO_DO_EVENTS_GET_TIME   : u64 = 18;
+pub const IO_DO_EVENTS_GET_PING   : u64 = 19;
+pub const IO_DO_EVENTS_START_SYNC : u64 = 20;
+pub const IO_DO_EVENTS_STOP_SYNC  : u64 = 21;
 
 // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
-pub const HOAS_CT0 : u64 = 10;
-pub const HOAS_CT1 : u64 = 11;
-pub const HOAS_CT2 : u64 = 12;
-pub const HOAS_CT3 : u64 = 13;
-pub const HOAS_CT4 : u64 = 14;
-pub const HOAS_CT5 : u64 = 15;
-pub const HOAS_CT6 : u64 = 16;
-pub const HOAS_CT7 : u64 = 17;
-pub const HOAS_CT8 : u64 = 18;
-pub const HOAS_CT9 : u64 = 19;
-pub const HOAS_CTA : u64 = 20;
-pub const HOAS_CTB : u64 = 21;
-pub const HOAS_CTC : u64 = 22;
-pub const HOAS_CTD : u64 = 23;
-pub const HOAS_CTE : u64 = 24;
-pub const HOAS_CTF : u64 = 25;
-pub const HOAS_CTG : u64 = 26;
-pub const HOAS_NUM : u64 = 27;
+pub const HOAS_CT0 : u64 = 22;
+pub const HOAS_CT1 : u64 = 23;
+pub const HOAS_CT2 : u64 = 24;
+pub const HOAS_CT3 : u64 = 25;
+pub const HOAS_CT4 : u64 = 26;
+pub const HOAS_CT5 : u64 = 27;
+pub const HOAS_CT6 : u64 = 28;
+pub const HOAS_CT7 : u64 = 29;
+pub const HOAS_CT8 : u64 = 30;
+pub const HOAS_CT9 : u64 = 31;
+pub const HOAS_CTA : u64 = 32;
+pub const HOAS_CTB : u64 = 33;
+pub const HOAS_CTC : u64 = 34;
+pub const HOAS_CTD : u64 = 35;
+pub const HOAS_CTE : u64 = 36;
+pub const HOAS_CTF : u64 = 37;
+pub const HOAS_CTG : u64 = 38;
+pub const HOAS_NUM : u64 = 39;
 
 // Types
 // -----
@@ -947,11 +959,11 @@ pub fn run_io(
         match get_ext(term) {
           // IO.done a : (IO a)
           IO_DONE => {
+            println!("");
+            println!("");
             let done = ask_arg(mem, term, 0);
-            clear(mem, get_loc(term, 0), 1);
             link(mem, host, done);
-            println!("");
-            println!("");
+            clear(mem, get_loc(term, 0), 1);
             break;
           }
           // IO.do_input (String -> IO a) : (IO a)
@@ -961,9 +973,9 @@ pub fn run_io(
             let app0 = alloc(mem, 2);
             link(mem, app0 + 0, cont);
             link(mem, app0 + 1, text);
-            clear(mem, get_loc(term, 0), 1);
             let done = App(app0);
             link(mem, host, done);
+            clear(mem, get_loc(term, 0), 1);
           }
           // IO.do_output String (Num -> IO a) : (IO a)
           IO_DO_OUTPUT => {
@@ -974,11 +986,10 @@ pub fn run_io(
               let app0 = alloc(mem, 2);
               link(mem, app0 + 0, cont);
               link(mem, app0 + 1, Num(0));
-              clear(mem, get_loc(term, 0), 2);
-              let text = ask_arg(mem, term, 0);
-              collect(mem, text);
               let done = App(app0);
               link(mem, host, done);
+              collect(mem, ask_arg(mem, term, 0));
+              clear(mem, get_loc(term, 0), 2);
             } else {
               println!("Runtime type error: attempted to print a non-string.");
               println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
@@ -994,41 +1005,12 @@ pub fn run_io(
               let text = make_string(mem, &body);
               link(mem, app0 + 0, cont);
               link(mem, app0 + 1, text);
-              clear(mem, get_loc(term, 0), 3);
-              let opts = ask_arg(mem, term, 1); // FIXME: use options
-              collect(mem, opts);
               let done = App(app0);
               link(mem, host, done);
+              collect(mem, ask_arg(mem, term, 1)); // FIXME: use options
+              clear(mem, get_loc(term, 0), 3);
             } else {
               println!("Runtime type error: attempted to print a non-string.");
-              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
-              std::process::exit(0);
-            }
-          }
-          // IO.do_store String String (Num -> IO a) : (IO a)
-          IO_DO_STORE => {
-            if let Some(key) = readback_string(mem, funs, get_loc(term, 0)) {
-              if let Some(val) = readback_string(mem, funs, get_loc(term, 1)) {
-                std::fs::write(key, val).ok(); // TODO: Handle errors
-                let cont = ask_arg(mem, term, 2);
-                let app0 = alloc(mem, 2);
-                link(mem, app0 + 0, cont);
-                link(mem, app0 + 1, Num(0));
-                clear(mem, get_loc(term, 0), 2);
-                let key = ask_arg(mem, term, 0);
-                collect(mem, key);
-                clear(mem, get_loc(term, 1), 2);
-                let val = ask_arg(mem, term, 1);
-                collect(mem, val);
-                let done = App(app0);
-                link(mem, host, done);
-              } else {
-                println!("Runtime type error: attempted to store a non-string.");
-                println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 1)));
-                std::process::exit(0);
-              }
-            } else {
-              println!("Runtime type error: attempted to store to a non-string key.");
               println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
               std::process::exit(0);
             }
@@ -1043,14 +1025,224 @@ pub fn run_io(
               let app0 = alloc(mem, 2);
               link(mem, app0 + 0, cont);
               link(mem, app0 + 1, text);
-              clear(mem, get_loc(term, 0), 2);
               let done = App(app0);
               link(mem, host, done);
+              collect(mem, ask_arg(mem, term, 0));
+              clear(mem, get_loc(term, 0), 2);
             } else {
               println!("Runtime type error: attempted to read from a non-string key.");
               println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
               std::process::exit(0);
             }
+          }
+          // IO.do_store String String (Num -> IO a) : (IO a)
+          IO_DO_STORE => {
+            if let Some(key) = readback_string(mem, funs, get_loc(term, 0)) {
+              if let Some(val) = readback_string(mem, funs, get_loc(term, 1)) {
+                std::fs::write(key, val).ok(); // TODO: Handle errors
+                let cont = ask_arg(mem, term, 2);
+                let app0 = alloc(mem, 2);
+                link(mem, app0 + 0, cont);
+                link(mem, app0 + 1, Num(0));
+                let done = App(app0);
+                link(mem, host, done);
+                collect(mem, ask_arg(mem, term, 0));
+                collect(mem, ask_arg(mem, term, 1));
+                clear(mem, get_loc(term, 0), 2);
+              } else {
+                println!("Runtime type error: attempted to store a non-string.");
+                println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 1)));
+                std::process::exit(0);
+              }
+            } else {
+              println!("Runtime type error: attempted to store to a non-string key.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_events_post (room: U60) (data: List U60) (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_POST => {
+            if let Some(room) = readback_num(mem, funs, get_loc(term, 0)) {
+              if let Some(data) = readback_nums(mem, funs, get_loc(term, 1)) {
+                // TODO: Do the actual posting. Currently just a dummy
+                //events_client.post(room, data);
+                let cont = ask_arg(mem, term, 2);
+                let app0 = alloc(mem, 2);
+                link(mem, app0 + 0, cont);
+                link(mem, app0 + 1, Num(0));
+                let done = App(app0);
+                link(mem, host, done);
+                collect(mem, ask_arg(mem, term, 0));
+                collect(mem, ask_arg(mem, term, 1));
+                clear(mem, get_loc(term, 0), 3);
+              } else {
+                println!("Runtime type error: Post data not a list of nums.");
+                println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 1)));
+                std::process::exit(0);
+              }
+            } else {
+              println!("Runtime type error: room id not a number.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_events_view (room: U60) (from_id: U60) (to_id: U60) (cont: List (List U60) -> IO a) : (IO a)
+          IO_DO_EVENTS_VIEW => {
+            if let Some(room) = readback_num(mem, funs, get_loc(term, 0)) {
+              if let Some(from_id) = readback_num(mem, funs, get_loc(term, 1)) {
+                if let Some(to_id) = readback_num(mem, funs, get_loc(term, 2)) {
+                  // TODO: Do the reading. Currently just a dummy
+                  // let post_vec = events_client.view(room, from_id, to_id)
+                  // let posts = make_list(mem, post_vec, make_bytes)
+                  let cont = ask_arg(mem, term, 3);
+                  let app0 = alloc(mem, 2);
+                  link(mem, app0 + 0, cont);
+                  link(mem, app0 + 1, Ctr(0, LIST_NIL, 0));
+                  let done = App(app0);
+                  link(mem, host, done);
+                  collect(mem, ask_arg(mem, term, 0));
+                  collect(mem, ask_arg(mem, term, 1));
+                  collect(mem, ask_arg(mem, term, 2));
+                  clear(mem, get_loc(term, 0), 4);
+                } else {
+                  println!("Runtime type error: final post id not a number.");
+                  println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 2)));
+                  std::process::exit(0);
+                }
+              } else {
+                println!("Runtime type error: starting post id not a number.");
+                println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 1)));
+                std::process::exit(0);
+              }
+            } else {
+              println!("Runtime type error: room id not a number.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_events_watch (room: U60) (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_WATCH => {
+            if let Some(room) = readback_num(mem, funs, get_loc(term, 0)) {
+              // TODO: Start watching. Currently just a dummy
+              // events_client.watch(room);
+              let cont = ask_arg(mem, term, 1);
+              let app0 = alloc(mem, 2);
+              link(mem, app0 + 0, cont);
+              link(mem, app0 + 1, Num(0));
+              let done = App(app0);
+              link(mem, host, done);
+              collect(mem, ask_arg(mem, term, 0));
+              clear(mem, get_loc(term, 0), 2);
+            } else {
+              println!("Runtime type error: room id not a number.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_events_unwatch (room: U60) (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_UNWATCH => {
+            if let Some(room) = readback_num(mem, funs, get_loc(term, 0)) {
+              // TODO: Stop watching. Currently just a dummy
+              // events_client.unwatch(room);
+              let cont = ask_arg(mem, term, 1);
+              let app0 = alloc(mem, 2);
+              link(mem, app0 + 0, cont);
+              link(mem, app0 + 1, Num(0));
+              let done = App(app0);
+              link(mem, host, done);
+              collect(mem, ask_arg(mem, term, 0));
+              clear(mem, get_loc(term, 0), 2);
+            } else {
+              println!("Runtime type error: room id not a number.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_events_save (room: U60) (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_SAVE => {
+            if let Some(room) = readback_num(mem, funs, get_loc(term, 0)) {
+              // TODO: Save room posts. Currently just a dummy
+              // events_client.save(room);
+              let cont = ask_arg(mem, term, 1);
+              let app0 = alloc(mem, 2);
+              link(mem, app0 + 0, cont);
+              link(mem, app0 + 1, Num(0));
+              let done = App(app0);
+              link(mem, host, done);
+              collect(mem, ask_arg(mem, term, 0));
+              clear(mem, get_loc(term, 0), 2);
+            } else {
+              println!("Runtime type error: room id not a number.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_events_forget (room: U60) (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_FORGET => {
+            if let Some(room) = readback_num(mem, funs, get_loc(term, 0)) {
+              // TODO: Forget saved room. Currently just a dummy
+              // events_client.forget(room);
+              let cont = ask_arg(mem, term, 1);
+              let app0 = alloc(mem, 2);
+              link(mem, app0 + 0, cont);
+              link(mem, app0 + 1, Num(0));
+              let done = App(app0);
+              link(mem, host, done);
+              collect(mem, ask_arg(mem, term, 0));
+              clear(mem, get_loc(term, 0), 2);
+            } else {
+              println!("Runtime type error: room id not a number.");
+              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              std::process::exit(0);
+            }
+          }
+          // IO.do_events_get_time (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_GET_TIME => {
+            // TODO: Get time. Currently just a dummy
+            // events_client.get_time();
+            let cont = ask_arg(mem, term, 0);
+            let app0 = alloc(mem, 2);
+            link(mem, app0 + 0, cont);
+            link(mem, app0 + 1, Num(0));
+            let done = App(app0);
+            link(mem, host, done);
+            clear(mem, get_loc(term, 0), 1);
+          }
+          // IO.do_events_get_ping (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_GET_PING => {
+            // TODO: Get time. Currently just a dummy
+            // events_client.get_ping();
+            let cont = ask_arg(mem, term, 0);
+            let app0 = alloc(mem, 2);
+            link(mem, app0 + 0, cont);
+            link(mem, app0 + 1, Num(0));
+            let done = App(app0);
+            link(mem, host, done);
+            clear(mem, get_loc(term, 0), 1);
+          }
+          // IO.do_events_start_sync (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_START_SYNC => {
+            // TODO: Start sync with server. Currently just a dummy
+            // events_client.start_sync();
+            let cont = ask_arg(mem, term, 0);
+            let app0 = alloc(mem, 2);
+            link(mem, app0 + 0, cont);
+            link(mem, app0 + 1, Num(0));
+            let done = App(app0);
+            link(mem, host, done);
+            clear(mem, get_loc(term, 0), 1);
+          }
+          // IO.do_events_stop_sync (cont: U60 -> IO a) : (IO a)
+          IO_DO_EVENTS_STOP_SYNC => {
+            // TODO: Stop sync with server. Currently just a dummy
+            // events_client.stop_sync();
+            let cont = ask_arg(mem, term, 0);
+            let app0 = alloc(mem, 2);
+            link(mem, app0 + 0, cont);
+            link(mem, app0 + 1, Num(0));
+            let done = App(app0);
+            link(mem, host, done);
+            clear(mem, get_loc(term, 0), 1);
           }
           _ => { break; }
         }
@@ -1074,6 +1266,7 @@ pub fn make_string(mem: &mut Worker, text: &str) -> Ptr {
 }
 
 // TODO: finish this
+// Read a String from a String term
 pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<String> {
   let mut host = host;
   let mut text = String::new();
@@ -1086,14 +1279,10 @@ pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<Strin
             break;
           }
           STRING_CONS => {
-            let chr = reduce(mem, funs, get_loc(term, 0), None, false);
-            if get_tag(chr) == NUM {
-              text.push(std::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
-              host = get_loc(term, 1);
-              continue;
-            } else {
-              return None;
-            }
+            let chr = readback_num(mem, funs, get_loc(term, 0))?;
+            text.push(std::char::from_u32(chr as u32).unwrap_or('?'));
+            host = get_loc(term, 1);
+            continue;
           }
           _ => {
             return None;
@@ -1106,6 +1295,46 @@ pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<Strin
     }
   }
   return Some(text);
+}
+
+// Read a u64 from a U60 term
+pub fn readback_num(mem: &mut Worker, funs: &Funs, host: u64) -> Option<u64> {
+  let term = reduce(mem, funs, host, None, false);
+  match get_tag(term) {
+    NUM => Some(get_num(term)),
+    _   => None
+  }
+}
+
+// Read a Vec<u64> from a (List U60) term
+pub fn readback_nums(mem: &mut Worker, funs: &Funs, host: u64) -> Option<Vec<u64>> {
+  let mut host = host;
+  let mut nums: Vec<u64> = Vec::new();
+  loop {
+    let term = reduce(mem, funs, host, None, false);
+    match get_tag(term) {
+      CTR => {
+        match get_ext(term) {
+          LIST_NIL => {
+            break;
+          }
+          LIST_CONS => {
+            let num = readback_num(mem, funs, get_loc(term, 0))?;
+            nums.push(num);
+            host = get_loc(term, 1);
+            continue;
+          }
+          _ => {
+            return None;
+          }
+        }
+      }
+      _ => {
+        return None;
+      }
+    }
+  }
+  Some(nums)
 }
 
 

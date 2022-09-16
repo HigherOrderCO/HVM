@@ -51,12 +51,24 @@ pub fn new_rulebook() -> RuleBook {
   register(&mut book, "HVM.put"     , rt::HVM_PUT     , 2, true);  // HVM.put a b : b
   register(&mut book, "String.nil"  , rt::STRING_NIL  , 0, false); // String.nil : String
   register(&mut book, "String.cons" , rt::STRING_CONS , 2, false); // String.cons (head: U60) (tail: String) : String
+  register(&mut book, "List.nil"    , rt::LIST_NIL    , 0, false); // List.nil a : List a
+  register(&mut book, "List.cons"   , rt::LIST_CONS   , 2, false); // List.cons a (head: a) (tail: List) : List a
   register(&mut book, "IO.done"     , rt::IO_DONE     , 1, false); // IO.done a : (IO a)
   register(&mut book, "IO.do_input" , rt::IO_DO_INPUT , 1, false); // IO.do_input (String -> IO a) : (IO a)
   register(&mut book, "IO.do_output", rt::IO_DO_OUTPUT, 2, false); // IO.do_output String (Num -> IO a) : (IO a)
   register(&mut book, "IO.do_fetch" , rt::IO_DO_FETCH , 3, false); // IO.do_fetch String Options (String -> IO a) : (IO a)
   register(&mut book, "IO.do_load"  , rt::IO_DO_LOAD  , 2, false); // IO.do_load String (String -> IO a) : (IO a)
   register(&mut book, "IO.do_store" , rt::IO_DO_STORE , 3, false); // IO.do_store String String (Num -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_post"      , rt::IO_DO_EVENTS_POST      , 3, false); // IO.do_events_post (room: U60) (data: List U60) (cont: U60 -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_view"      , rt::IO_DO_EVENTS_VIEW      , 4, false); // IO.do_events_view (room: U60) (from_id: U60) (to_id: U60) (cont: List (List U60) -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_watch"     , rt::IO_DO_EVENTS_WATCH     , 2, false); // IO.do_events_watch (room: U60) (cont: U60 -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_unwatch"   , rt::IO_DO_EVENTS_UNWATCH   , 2, false); // IO.do_events_unwatch (room: U60) (cont: U60 -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_save"      , rt::IO_DO_EVENTS_SAVE      , 2, false); // IO.do_events_save (room: U60) (cont: U60 -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_forget"    , rt::IO_DO_EVENTS_FORGET    , 2, false); // IO.do_events_forget (room: U60) (cont: U60 -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_get_time"  , rt::IO_DO_EVENTS_GET_TIME  , 1, false); // IO.do_events_get_time (cont: U60 -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_get_ping"  , rt::IO_DO_EVENTS_GET_PING  , 1, false); // IO.do_events_get_ping (cont: U60 -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_start_sync", rt::IO_DO_EVENTS_START_SYNC, 1, false); // IO.do_events_start_sync (cont: U60 -> IO a) : (IO a)
+  register(&mut book, "IO.do_events_stop_sync" , rt::IO_DO_EVENTS_STOP_SYNC , 1, false); // IO.do_events_stop_sync (cont: U60 -> IO a) : (IO a)
   register_name(&mut book, "Kind.Term.ct0", rt::HOAS_CT0);
   register_name(&mut book, "Kind.Term.ct1", rt::HOAS_CT1);
   register_name(&mut book, "Kind.Term.ct2", rt::HOAS_CT2);
