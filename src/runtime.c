@@ -1421,7 +1421,6 @@ int main(int argc, char* argv[]) {
   /*! GENERATED_ID_TO_ARITY_DATA !*/
 
   Worker mem;
-  struct timeval stop, start;
 
   // Builds main term
   mem.size = 0;
