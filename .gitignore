@@ -11,4 +11,5 @@ examples/bug*
 *.tmp
 *.out
 tests/**/*.c
+examples/**/*.c
 ~*
