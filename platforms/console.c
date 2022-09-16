@@ -33,6 +33,26 @@
 // Implementation
 // --------------
 
+// Programs may not use all the special constructors
+// In that case, these #define s make the platfrom still compile
+
+#ifndef _IO_DO_OUTPUT_
+#define _IO_DO_OUTPUT_ -1
+#endif
+#ifndef _IO_DO_INPUT_
+#define _IO_DO_INPUT_ -2
+#endif
+#ifndef _IO_DONE_
+#define _IO_DONE_ -3
+#endif
+#ifndef _STRING_NIL_
+#define _STRING_NIL_ -4
+#endif
+#ifndef _STRING_CONS_
+#define _STRING_CONS_ -5
+#endif
+
+
 #include <stdio.h>
 #include <sys/time.h>
 
@@ -62,6 +82,7 @@ static char* str_TAG_FLO = "FLO";
 static char* str_TAG_NIL = "NIL";
 
 static char* str_unknown = "???";
+
 
 char * decode_tag(u64 tag){
     switch (tag) {
@@ -96,7 +117,20 @@ bool io_step(PlatState* state) {
     u64 cid = get_ext(state->mem->node[0]);
     switch (cid) {
 
-        // TODO: add cases for IO.do_output, IO.do_input, IO.done
+        case _IO_DONE_:
+            printf("TODO -- handle IO.done");
+            return false;
+            break;
+
+        case _IO_DO_OUTPUT_:
+            printf("TODO -- handle IO.do_output");
+            return false;
+            break;
+
+        case _IO_DO_INPUT_:
+            printf("TODO -- handle IO.do_input");
+            return false;
+            break;
 
         default: // print debug info
             fprintf(stderr, "[Console IO platform] Illegal IO request!\n");
