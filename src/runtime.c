@@ -1392,7 +1392,7 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Ptr term, char** id_t
 
 typedef struct PlatState PlatState;
 
-PlatState * io_setup(Worker* mem, u64 id_to_name_size, char** id_to_name_data);
+PlatState * io_setup(Worker* mem);
 
 bool io_step(PlatState* state);
 
@@ -1408,20 +1408,20 @@ Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   }
 }
 
+// Id-to-Name map
+const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
+char* id_to_name_data[id_to_name_size];
+// Id-to-Arity map
+const u64 id_to_arity_size = /*! GENERATED_ARITY_COUNT */ 1 /* GENERATED_ARITY_COUNT !*/;
+u64 id_to_arity_data[id_to_arity_size];
+
 int main(int argc, char* argv[]) {
+
+  /*! GENERATED_ID_TO_NAME_DATA !*/
+  /*! GENERATED_ID_TO_ARITY_DATA !*/
 
   Worker mem;
   struct timeval stop, start;
-
-  // Id-to-Name map
-  const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
-  char* id_to_name_data[id_to_name_size];
-/*! GENERATED_ID_TO_NAME_DATA !*/
-
-  // Id-to-Arity map
-  const u64 id_to_arity_size = /*! GENERATED_ARITY_COUNT */ 1 /* GENERATED_ARITY_COUNT !*/;
-  u64 id_to_arity_data[id_to_arity_size];
-/*! GENERATED_ID_TO_ARITY_DATA !*/
 
   // Builds main term
   mem.size = 0;
@@ -1445,7 +1445,7 @@ int main(int argc, char* argv[]) {
 
   // Reduces, calling platform for IO when program asks for it
 
-  PlatState * plat_state = io_setup(&mem, id_to_name_size, id_to_name_data);
+  PlatState * plat_state = io_setup(&mem);
   do {
     ffi_normal((u8*)mem.node, mem.size, 0);
   } while (io_step(plat_state));

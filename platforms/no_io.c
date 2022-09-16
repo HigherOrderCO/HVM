@@ -9,17 +9,13 @@
 
 struct PlatState {
     Worker* mem;
-    u64 id_to_name_size;
-    char** id_to_name_data;
 
     struct timeval start_time;
 };
 
-PlatState* io_setup(Worker* mem, u64 id_to_name_size, char** id_to_name_data) {
+PlatState* io_setup(Worker* mem) {
     PlatState * state = malloc (sizeof (PlatState));
     state -> mem = mem;
-    state -> id_to_name_size = id_to_name_size;
-    state -> id_to_name_data = id_to_name_data;
     gettimeofday(&(state -> start_time), NULL);
     return state;
 }
@@ -39,8 +35,8 @@ bool io_step(PlatState* state) {
         code_mcap,
         state->mem,
         state->mem->node[0],
-        state->id_to_name_data,
-        state->id_to_name_size);
+        id_to_name_data,
+        id_to_name_size);
     printf("%s\n", code_data);
     fflush(stdout);
 

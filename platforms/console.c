@@ -38,15 +38,11 @@
 
 struct PlatState {
     Worker* mem;
-    u64 id_to_name_size;
-    char** id_to_name_data;
 };
 
-PlatState* io_setup(Worker* mem, u64 id_to_name_size, char** id_to_name_data) {
+PlatState* io_setup(Worker* mem) {
     PlatState * state = malloc (sizeof (PlatState));
     state -> mem = mem;
-    state -> id_to_name_size = id_to_name_size;
-    state -> id_to_name_data = id_to_name_data;
     return state;
 }
 
@@ -88,8 +84,8 @@ char * decode_tag(u64 tag){
 }
 
 char * decode_cid(PlatState* state, u64 cid){
-    if (cid < state->id_to_name_size) {
-        return state->id_to_name_data[cid];
+    if (cid < id_to_name_size) {
+        return id_to_name_data[cid];
     } else {
         return str_unknown;
     }
