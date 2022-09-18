@@ -2,7 +2,6 @@ use crate::parser;
 use std::fmt;
 use std::hash::Hasher;
 
-
 // Types
 // =====
 
@@ -25,22 +24,10 @@ pub type BTerm = Box<Term>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Oper {
-  Add,
-  Sub,
-  Mul,
-  Div,
-  Mod,
-  And,
-  Or,
-  Xor,
-  Shl,
-  Shr,
-  Lte,
-  Ltn,
-  Eql,
-  Gte,
-  Gtn,
-  Neq,
+  Add, Sub, Mul, Div,
+  Mod, And, Or,  Xor,
+  Shl, Shr, Lte, Ltn,
+  Eql, Gte, Gtn, Neq,
 }
 
 // Rule

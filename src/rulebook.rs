@@ -1,6 +1,10 @@
 use crate::language as lang;
 use crate::runtime as rt;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use std::iter;
+//use std::time::Instant;
 
 // RuleBook
 // ========
@@ -47,16 +51,17 @@ pub fn new_rulebook() -> RuleBook {
     book.id_to_arit.insert(ctid, arity);
     book.ctr_is_cal.insert(name.clone(), is_fun);
   }
-  register(&mut book, "HVM.log"     , rt::HVM_LOG     , 2, true);  // HVM.log a b : b
-  register(&mut book, "HVM.put"     , rt::HVM_PUT     , 2, true);  // HVM.put a b : b
-  register(&mut book, "String.nil"  , rt::STRING_NIL  , 0, false); // String.nil : String
-  register(&mut book, "String.cons" , rt::STRING_CONS , 2, false); // String.cons (head: U60) (tail: String) : String
-  register(&mut book, "IO.done"     , rt::IO_DONE     , 1, false); // IO.done a : (IO a)
-  register(&mut book, "IO.do_input" , rt::IO_DO_INPUT , 1, false); // IO.do_input (String -> IO a) : (IO a)
+  register(&mut book, "HVM.log", rt::HVM_LOG, 2, true); // HVM.log a b : b
+  register(&mut book, "HVM.put", rt::HVM_PUT, 2, true); // HVM.put a b : b
+  register(&mut book, "String.nil", rt::STRING_NIL, 0, false); // String.nil : String
+  register(&mut book, "String.cons", rt::STRING_CONS, 2, false); // String.cons (head: U60) (tail: String) : String
+  register(&mut book, "IO.done", rt::IO_DONE, 1, false); // IO.done a : (IO a)
+  register(&mut book, "IO.do_input", rt::IO_DO_INPUT, 1, false); // IO.do_input (String -> IO a) : (IO a)
   register(&mut book, "IO.do_output", rt::IO_DO_OUTPUT, 2, false); // IO.do_output String (Num -> IO a) : (IO a)
-  register(&mut book, "IO.do_fetch" , rt::IO_DO_FETCH , 3, false); // IO.do_fetch String Options (String -> IO a) : (IO a)
-  register(&mut book, "IO.do_load"  , rt::IO_DO_LOAD  , 2, false); // IO.do_load String (String -> IO a) : (IO a)
-  register(&mut book, "IO.do_store" , rt::IO_DO_STORE , 3, false); // IO.do_store String String (Num -> IO a) : (IO a)
+  register(&mut book, "IO.do_fetch", rt::IO_DO_FETCH, 3, false); // IO.do_fetch String Options (String -> IO a) : (IO a)
+  register(&mut book, "IO.do_store", rt::IO_DO_STORE, 3, false); // IO.do_store String String (Num -> IO a) : (IO a)
+  register(&mut book, "IO.do_load", rt::IO_DO_LOAD, 2, false); // IO.do_load String (String -> IO a) : (IO a)
+//GENERATED-BOOK-ENTRIES//
   register_name(&mut book, "Kind.Term.ct0", rt::HOAS_CT0);
   register_name(&mut book, "Kind.Term.ct1", rt::HOAS_CT1);
   register_name(&mut book, "Kind.Term.ct2", rt::HOAS_CT2);
@@ -936,3 +941,426 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
 
   new_rules
 }
+
+// todo: "dups" still needs to be moved out on `alloc_body` etc.
+pub fn build_function(book: &RuleBook, fn_name: &str, rules: &[lang::Rule]) -> rt::Function {
+  let mut is_strict = if let lang::Term::Ctr { name: _, ref args } = *rules[0].lhs {
+    vec![false; args.len()]
+  } else {
+    panic!("invalid left-hand side: {}", rules[0].lhs);
+  };
+  let hoas = fn_name.starts_with("f$");
+  let dynrules = rules.iter().filter_map(|rule| {
+    if let lang::Term::Ctr { ref name, ref args } = *rule.lhs {
+      let mut cond = Vec::new();
+      let mut vars = Vec::new();
+      let mut inps = Vec::new();
+      let mut free = Vec::new();
+      if args.len() != is_strict.len() {
+        panic!("inconsistent length of left-hand side on equation for '{}'.", name);
+      }
+      for ((i, arg), is_strict) in args.iter().enumerate().zip(is_strict.iter_mut()) {
+        match &**arg {
+          lang::Term::Ctr { name, args } => {
+            *is_strict = true;
+            cond.push(rt::Ctr(args.len() as u64, *book.name_to_id.get(&*name).unwrap_or(&0), 0));
+            free.push((i as u64, args.len() as u64));
+            for (j, arg) in args.iter().enumerate() {
+              if let lang::Term::Var { ref name } = **arg {
+                vars.push(rt::RuleVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
+                inps.push(name.clone());
+              } else {
+                panic!("sorry, left-hand sides can't have nested constructors yet.");
+              }
+            }
+          }
+          lang::Term::Num { numb } => {
+            *is_strict = true;
+            cond.push(rt::Num(*numb as u64));
+          }
+          lang::Term::Var { name } => {
+            cond.push(rt::Var(0));
+            vars.push(rt::RuleVar { param: i as u64, field: None, erase: name == "*" });
+            inps.push(name.clone());
+          }
+          _ => {
+            panic!("invalid left-hand side.");
+          }
+        }
+      }
+
+      let term = term_to_dynterm(book, &rule.rhs, &inps);
+      let body = build_body(&term, vars.len() as u64);
+
+      Some(rt::Rule { hoas, cond, vars, term, body, free })
+    } else {
+      None
+    }
+  }).collect();
+
+  let arity = is_strict.len() as u64;
+  let mut stricts = Vec::new();
+  for (i, is_strict) in is_strict.iter().enumerate() {
+    if *is_strict {
+      stricts.push(i as u64);
+    }
+  }
+
+  rt::Function {
+    arity,
+    is_strict: is_strict,
+    stricts: stricts,
+    rules: dynrules,
+  }
+}
+
+pub fn hash<T: Hash>(t: &T) -> u64 {
+  let mut s = DefaultHasher::new();
+  t.hash(&mut s);
+  s.finish()
+}
+
+pub fn build_dynamic_arities(rb: &RuleBook) -> Vec<rt::Arity> {
+  // todo: checking arity consistency would be nice, but where?
+  fn find_arities(rb: &RuleBook, aris: &mut Vec<rt::Arity>, term: &lang::Term) {
+    match term {
+      lang::Term::Var { .. } => {}
+      lang::Term::Dup { expr, body, .. } => {
+        find_arities(rb, aris, expr);
+        find_arities(rb, aris, body);
+      }
+      lang::Term::Lam { body, .. } => {
+        find_arities(rb, aris, body);
+      }
+      lang::Term::Let { expr, body, .. } => {
+        find_arities(rb, aris, expr);
+        find_arities(rb, aris, body);
+      }
+      lang::Term::App { func, argm } => {
+        find_arities(rb, aris, func);
+        find_arities(rb, aris, argm);
+      }
+      lang::Term::Ctr { name, args } => {
+        if let Some(id) = rb.name_to_id.get(name) {
+          aris[*id as usize] = rt::Arity(args.len() as u64);
+          for arg in args {
+            find_arities(rb, aris, arg);
+          }
+        }
+      }
+      lang::Term::Num { .. } => {}
+      lang::Term::Op2 { val0, val1, .. } => {
+        find_arities(rb, aris, val0);
+        find_arities(rb, aris, val1);
+      }
+    }
+  }
+  let mut aris: Vec<rt::Arity> = iter::repeat_with(|| rt::Arity(0)).take(65535).collect(); // fixme: hardcoded limit
+  for rules_info in rb.rule_group.values() {
+    for rule in &rules_info.1 {
+      find_arities(rb, &mut aris, &rule.lhs);
+      find_arities(rb, &mut aris, &rule.rhs);
+    }
+  }
+  return aris;
+}
+
+pub fn build_dynamic_functions(book: &RuleBook) -> Vec<Option<rt::Function>> {
+  let mut funs: Vec<Option<rt::Function>> = iter::repeat_with(|| None).take(65535).collect(); // fixme: hardcoded limit
+  for (name, rules_info) in &book.rule_group {
+    let fnid = book.name_to_id.get(name).unwrap_or(&0);
+    let func = build_function(book, &name, &rules_info.1);
+    funs[*fnid as usize] = Some(func);
+  }
+  funs
+}
+
+/// converts a language term to a runtime term
+pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> rt::Term {
+  fn convert_oper(oper: &lang::Oper) -> u64 {
+    match oper {
+      lang::Oper::Add => rt::ADD,
+      lang::Oper::Sub => rt::SUB,
+      lang::Oper::Mul => rt::MUL,
+      lang::Oper::Div => rt::DIV,
+      lang::Oper::Mod => rt::MOD,
+      lang::Oper::And => rt::AND,
+      lang::Oper::Or  => rt::OR,
+      lang::Oper::Xor => rt::XOR,
+      lang::Oper::Shl => rt::SHL,
+      lang::Oper::Shr => rt::SHR,
+      lang::Oper::Ltn => rt::LTN,
+      lang::Oper::Lte => rt::LTE,
+      lang::Oper::Eql => rt::EQL,
+      lang::Oper::Gte => rt::GTE,
+      lang::Oper::Gtn => rt::GTN,
+      lang::Oper::Neq => rt::NEQ,
+    }
+  }
+
+  #[allow(clippy::identity_op)]
+  fn convert_term(
+    term: &lang::Term,
+    book: &RuleBook,
+    depth: u64,
+    vars: &mut Vec<String>,
+  ) -> rt::Term {
+    match term {
+      lang::Term::Var { name } => {
+        if let Some((idx, _)) = vars.iter().enumerate().rev().find(|(_, var)| var == &name) {
+          rt::Term::Var { bidx: idx as u64 }
+        } else {
+          rt::Term::Glo { glob: hash(name) }
+        }
+      }
+      lang::Term::Dup { nam0, nam1, expr, body } => {
+        let eras = (nam0 == "*", nam1 == "*");
+        let expr = Box::new(convert_term(expr, book, depth + 0, vars));
+        vars.push(nam0.clone());
+        vars.push(nam1.clone());
+        let body = Box::new(convert_term(body, book, depth + 2, vars));
+        vars.pop();
+        vars.pop();
+        rt::Term::Dup { eras, expr, body }
+      }
+      lang::Term::Lam { name, body } => {
+        let glob = if is_global_name(name) { hash(name) } else { 0 };
+        let eras = name == "*";
+        vars.push(name.clone());
+        let body = Box::new(convert_term(body, book, depth + 1, vars));
+        vars.pop();
+        rt::Term::Lam { eras, glob, body }
+      }
+      lang::Term::Let { name, expr, body } => {
+        let expr = Box::new(convert_term(expr, book, depth + 0, vars));
+        vars.push(name.clone());
+        let body = Box::new(convert_term(body, book, depth + 1, vars));
+        vars.pop();
+        rt::Term::Let { expr, body }
+      }
+      lang::Term::App { func, argm } => {
+        let func = Box::new(convert_term(func, book, depth + 0, vars));
+        let argm = Box::new(convert_term(argm, book, depth + 0, vars));
+        rt::Term::App { func, argm }
+      }
+      lang::Term::Ctr { name, args } => {
+        let term_func = *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
+        let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
+        if *book.ctr_is_cal.get(name).unwrap_or(&false) {
+          rt::Term::Cal { func: term_func, args: term_args }
+        } else {
+          rt::Term::Ctr { func: term_func, args: term_args }
+        }
+      }
+      lang::Term::Num { numb } => rt::Term::Num { numb: *numb },
+      lang::Term::Op2 { oper, val0, val1 } => {
+        let oper = convert_oper(oper);
+        let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
+        let val1 = Box::new(convert_term(val1, book, depth + 1, vars));
+        rt::Term::Op2 { oper, val0, val1 }
+      }
+    }
+  }
+
+  let mut vars = inps.to_vec();
+  convert_term(term, book, 0, &mut vars)
+}
+
+pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
+  fn link(nodes: &mut [rt::RuleBodyNode], targ: u64, slot: u64, elem: rt::RuleBodyCell) {
+    nodes[targ as usize][slot as usize] = elem;
+    if let rt::RuleBodyCell::Loc { value, targ: var_targ, slot: var_slot } = elem {
+      let tag = rt::get_tag(value);
+      if tag <= rt::VAR {
+        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] =
+          rt::RuleBodyCell::Loc { value: rt::Arg(0), targ, slot };
+      }
+    }
+  }
+  fn alloc_lam(globs: &mut HashMap<u64, u64>, nodes: &mut Vec<rt::RuleBodyNode>, glob: u64) -> u64 {
+    if let Some(targ) = globs.get(&glob) {
+      *targ
+    } else {
+      let targ = nodes.len() as u64;
+      nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; 2]);
+      link(nodes, targ, 0, rt::RuleBodyCell::Fix { value: rt::Era() });
+      if glob != 0 {
+        globs.insert(glob, targ);
+      }
+      targ
+    }
+  }
+  fn gen_elems(
+    term: &rt::Term,
+    dupk: &mut u64,
+    vars: &mut Vec<rt::RuleBodyCell>,
+    globs: &mut HashMap<u64, u64>,
+    nodes: &mut Vec<rt::RuleBodyNode>,
+    links: &mut Vec<(u64, u64, rt::RuleBodyCell)>,
+  ) -> rt::RuleBodyCell {
+    match term {
+      rt::Term::Var { bidx } => {
+        if *bidx < vars.len() as u64 {
+          vars[*bidx as usize]
+        } else {
+          panic!("unbound variable.");
+        }
+      }
+      rt::Term::Glo { glob } => {
+        let targ = alloc_lam(globs, nodes, *glob);
+        rt::RuleBodyCell::Loc { value: rt::Var(0), targ, slot: 0 }
+      }
+      rt::Term::Dup { eras: _, expr, body } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; 3]);
+        //let dupk = dups_count.next();
+        links.push((targ, 0, rt::RuleBodyCell::Fix { value: rt::Era() }));
+        links.push((targ, 1, rt::RuleBodyCell::Fix { value: rt::Era() }));
+        let expr = gen_elems(expr, dupk, vars, globs, nodes, links);
+        links.push((targ, 2, expr));
+        vars.push(rt::RuleBodyCell::Loc { value: rt::Dp0(*dupk, 0), targ, slot: 0 });
+        vars.push(rt::RuleBodyCell::Loc { value: rt::Dp1(*dupk, 0), targ, slot: 0 });
+        *dupk = *dupk + 1;
+        let body = gen_elems(body, dupk, vars, globs, nodes, links);
+        vars.pop();
+        vars.pop();
+        body
+      }
+      rt::Term::Let { expr, body } => {
+        let expr = gen_elems(expr, dupk, vars, globs, nodes, links);
+        vars.push(expr);
+        let body = gen_elems(body, dupk, vars, globs, nodes, links);
+        vars.pop();
+        body
+      }
+      rt::Term::Lam { eras: _, glob, body } => {
+        let targ = alloc_lam(globs, nodes, *glob);
+        let var = rt::RuleBodyCell::Loc { value: rt::Var(0), targ, slot: 0 };
+        vars.push(var);
+        let body = gen_elems(body, dupk, vars, globs, nodes, links);
+        links.push((targ, 1, body));
+        vars.pop();
+        rt::RuleBodyCell::Loc { value: rt::Lam(0), targ, slot: 0 }
+      }
+      rt::Term::App { func, argm } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; 2]);
+        let func = gen_elems(func, dupk, vars, globs, nodes, links);
+        links.push((targ, 0, func));
+        let argm = gen_elems(argm, dupk, vars, globs, nodes, links);
+        links.push((targ, 1, argm));
+        rt::RuleBodyCell::Loc { value: rt::App(0), targ, slot: 0 }
+      }
+      rt::Term::Cal { func, args } => {
+        if !args.is_empty() {
+          let targ = nodes.len() as u64;
+          nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; args.len() as usize]);
+          for (i, arg) in args.iter().enumerate() {
+            let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
+            links.push((targ, i as u64, arg));
+          }
+          rt::RuleBodyCell::Loc { value: rt::Cal(args.len() as u64, *func, 0), targ, slot: 0 }
+        } else {
+          rt::RuleBodyCell::Fix { value: rt::Cal(0, *func, 0) }
+        }
+      }
+      rt::Term::Ctr { func, args } => {
+        if !args.is_empty() {
+          let targ = nodes.len() as u64;
+          nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; args.len() as usize]);
+          for (i, arg) in args.iter().enumerate() {
+            let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
+            links.push((targ, i as u64, arg));
+          }
+          rt::RuleBodyCell::Loc { value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0 }
+        } else {
+          rt::RuleBodyCell::Fix { value: rt::Ctr(0, *func, 0) }
+        }
+      }
+      rt::Term::Num { numb } => rt::RuleBodyCell::Fix { value: rt::Num(*numb as u64) },
+      rt::Term::Op2 { oper, val0, val1 } => {
+        let targ = nodes.len() as u64;
+        nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; 2]);
+        let val0 = gen_elems(val0, dupk, vars, globs, nodes, links);
+        links.push((targ, 0, val0));
+        let val1 = gen_elems(val1, dupk, vars, globs, nodes, links);
+        links.push((targ, 1, val1));
+        rt::RuleBodyCell::Loc { value: rt::Op2(*oper, 0), targ, slot: 0 }
+      }
+    }
+  }
+
+  let mut links: Vec<(u64, u64, rt::RuleBodyCell)> = Vec::new();
+  let mut nodes: Vec<rt::RuleBodyNode> = Vec::new();
+  let mut globs: HashMap<u64, u64> = HashMap::new();
+  let mut vars: Vec<rt::RuleBodyCell> = (0..free_vars).map(|i| rt::RuleBodyCell::Ext { index: i }).collect();
+  let mut dupk: u64 = 0;
+
+  let elem = gen_elems(term, &mut dupk, &mut vars, &mut globs, &mut nodes, &mut links);
+  for (targ, slot, elem) in links {
+    link(&mut nodes, targ, slot, elem);
+  }
+
+  (elem, nodes, dupk)
+}
+
+pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &rt::Term) -> u64 {
+  let host = rt::alloc(mem, 1);
+  let body = build_body(term, 0);
+  let term = rt::alloc_body(mem, 0, &[], &body);
+  rt::link(mem, host, term);
+  host
+}
+
+pub fn alloc_term(mem: &mut rt::Worker, book: &RuleBook, term: &lang::Term) -> u64 {
+  alloc_closed_dynterm(mem, &term_to_dynterm(book, term, &vec![]))
+}
+
+// Evaluates a HVM term to normal form
+pub fn eval_code(
+  call: &lang::Term,
+  code: &str,
+  debug: bool,
+  size: usize,
+) -> Result<(String, u64, u64, u64), String> {
+  let mut worker = rt::new_worker(size);
+
+  // Parses and reads the input file
+  let file = lang::read_file(code)?;
+
+  // Converts the HVM "file" to a Rulebook
+  let book = gen_rulebook(&file);
+
+  // Builds functions
+  let funs = build_dynamic_functions(&book);
+
+  // Builds arities
+  worker.aris = build_dynamic_arities(&book);
+  
+  // Allocates the main term
+  let host = alloc_term(&mut worker, &book, call);
+
+  // Normalizes it
+  let init = instant::Instant::now();
+  #[cfg(not(target_arch = "wasm32"))]
+  rt::run_io(&mut worker, &funs, host, Some(&book.id_to_name), debug);
+  rt::normal(&mut worker, &funs, host, Some(&book.id_to_name), debug);
+  let time = init.elapsed().as_millis() as u64;
+
+  // Reads it back to a string
+  let code = format!("{}", crate::readback::as_term(&worker, Some(&book.id_to_name), host));
+
+  // Returns the normal form and the gas cost
+  Ok((code, worker.cost, worker.size, time))
+}
+
+// notes
+// -----
+
+// hoas_opt: this is an internal optimization that allows us to simplify kind2's hoas generator.
+// it will cause the default patterns of functions with a name starting with "f$" to only match
+// productive hoas constructors (ct0, ct1, ..., ctg, num), as well as native numbers and
+// constructors with 0-arity, which are used by kind2's hoas functions, unless it is the last
+// (default) clause, which kind2 uses to quote a call back to low-order. this is an internal
+// feature that won't affect programs other than kind2. we can remove this in a future, but that
+// would require kind2 to replicate hvm's flattener algorithm, so we just use it instead.

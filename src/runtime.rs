@@ -255,17 +255,68 @@ pub const HOAS_CTF : u64 = 25;
 pub const HOAS_CTG : u64 = 26;
 pub const HOAS_NUM : u64 = 27;
 
+//GENERATED-FUN-IDS//
+
+pub const HVM_MAX_RESERVED_ID : u64 = HOAS_NUM;
+
 // Types
 // -----
 
 pub type Ptr = u64;
 
-pub type Rewriter = Box<dyn Fn(&mut Worker, &Funs, &mut u64, u64, Ptr) -> bool>;
+// A runtime term
+#[derive(Debug)]
+pub enum Term {
+  Var { bidx: u64 },
+  Glo { glob: u64 },
+  Dup { eras: (bool, bool), expr: Box<Term>, body: Box<Term> },
+  Let { expr: Box<Term>, body: Box<Term> },
+  Lam { eras: bool, glob: u64, body: Box<Term> },
+  App { func: Box<Term>, argm: Box<Term> },
+  Cal { func: u64, args: Vec<Term> },
+  Ctr { func: u64, args: Vec<Term> },
+  Num { numb: u64 },
+  Op2 { oper: u64, val0: Box<Term>, val1: Box<Term> },
+}
+
+// A runtime rule
+#[derive(Debug)]
+pub struct Rule {
+  pub hoas: bool,
+  pub cond: Vec<Ptr>,
+  pub vars: Vec<RuleVar>,
+  pub term: Term,
+  pub body: RuleBody,
+  pub free: Vec<(u64, u64)>,
+}
+
+// A rule left-hand side variable
+#[derive(Debug)]
+pub struct RuleVar {
+  pub param: u64,
+  pub field: Option<u64>,
+  pub erase: bool,
+}
+
+// The rule right-hand side body (TODO: can the RuleBodyNode Vec be unboxed?)
+pub type RuleBody = (RuleBodyCell, Vec<RuleBodyNode>, u64);
+
+// A body node
+pub type RuleBodyNode = Vec<RuleBodyCell>;
+
+// A body cell
+#[derive(Copy, Clone, Debug)]
+pub enum RuleBodyCell {
+  Fix { value: u64 }, // Fixed value, doesn't require adjustment
+  Loc { value: u64, targ: u64, slot: u64 }, // Local link, requires adjustment
+  Ext { index: u64 }, // Link to an external variable
+}
 
 pub struct Function {
   pub arity: u64,
+  pub is_strict: Vec<bool>,
   pub stricts: Vec<u64>,
-  pub rewriter: Rewriter,
+  pub rules: Vec<Rule>,
 }
 
 pub struct Arity(pub u64);
@@ -378,15 +429,27 @@ pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
 // ------
 
 pub fn ask_ari(mem: &Worker, lnk: Ptr) -> u64 {
-  let got = match mem.aris.get(get_ext(lnk) as usize) {
-    Some(Arity(arit)) => *arit,
-    None              => 0,
-  };
-  // TODO: remove this in a future update where ari will be removed from the lnk
-  //if get_ari(lnk) != got {
-    //println!("[WARNING] arity inconsistency");
-  //}
-  return got;
+  let fid = get_ext(lnk);
+  match fid {
+    HVM_LOG => { return 2; }
+    HVM_PUT => { return 2; }
+    STRING_NIL => { return 0; }
+    STRING_CONS => { return 2; }
+    IO_DONE => { return 1; }
+    IO_DO_INPUT => { return 1; }
+    IO_DO_OUTPUT => { return 2; }
+    IO_DO_FETCH => { return 3; }
+    IO_DO_STORE => { return 3; }
+    IO_DO_LOAD => { return 2; }
+//GENERATED-FUN-ARI//
+    _ => {
+      // Dynamic functions
+      if let Some(Arity(arit)) = mem.aris.get(fid as usize) {
+        return *arit;
+      }
+      return 0;
+    }
+  }
 }
 
 pub fn ask_lnk(mem: &Worker, loc: u64) -> Ptr {
@@ -521,6 +584,78 @@ pub fn subst(mem: &mut Worker, lnk: Ptr, val: Ptr) {
   }
 }
 
+pub fn get_rule_var(mem: &Worker, term: Ptr, var: &RuleVar) -> Ptr {
+  let RuleVar { param, field, erase: _ } = var;
+  match field {
+    Some(i) => ask_arg(mem, ask_arg(mem, term, *param), *i),
+    None    => ask_arg(mem, term, *param),
+  }
+}
+
+pub fn gen_dupk(mem: &mut Worker) -> u64 {
+  let dup = mem.dups;
+  mem.dups += 1;
+  return dup & 0xFFFFFF;
+}
+
+static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
+pub fn alloc_body(mem: &mut Worker, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
+  unsafe {
+    let hosts = &mut ALLOC_BODY_WORKSPACE;
+    let (elem, nodes, dupk) = body;
+    fn elem_to_lnk(
+      mem: &mut Worker,
+      term: Ptr,
+      vars: &[RuleVar],
+      elem: &RuleBodyCell,
+    ) -> Ptr {
+      unsafe {
+        let hosts = &mut ALLOC_BODY_WORKSPACE;
+        match elem {
+          RuleBodyCell::Fix { value } => *value,
+          RuleBodyCell::Ext { index } => get_rule_var(mem, term, &vars[*index as usize]),
+          RuleBodyCell::Loc { value, targ, slot } => {
+            let mut val = value + hosts[*targ as usize] + slot;
+            // should be changed if the pointer format changes
+            if get_tag(*value) == DP0 {
+              val += (mem.dups & 0xFFFFFF) * EXT;
+            }
+            if get_tag(*value) == DP1 {
+              val += (mem.dups & 0xFFFFFF) * EXT;
+            }
+            val
+          }
+        }
+      }
+    }
+    nodes.iter().enumerate().for_each(|(i, node)| {
+      hosts[i] = alloc(mem, node.len() as u64);
+    });
+    nodes.iter().enumerate().for_each(|(i, node)| {
+      let host = hosts[i] as usize;
+      node.iter().enumerate().for_each(|(j, elem)| {
+        let lnk = elem_to_lnk(mem, term, vars, elem);
+        if let RuleBodyCell::Ext { .. } = elem {
+          link(mem, (host + j) as u64, lnk);
+        } else {
+          mem.node[host + j] = lnk;
+        }
+      });
+    });
+    let done = elem_to_lnk(mem, term, vars, elem);
+    mem.dups += dupk;
+    return done;
+  }
+}
+
+pub fn get_var(mem: &Worker, term: Ptr, var: &RuleVar) -> Ptr {
+  let RuleVar { param, field, erase: _ } = var;
+  match field {
+    Some(i) => ask_arg(mem, ask_arg(mem, term, *param), *i),
+    None    => ask_arg(mem, term, *param),
+  }
+}
+
 pub fn cal_par(mem: &mut Worker, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr {
   inc_cost(mem);
   let arit = ask_ari(mem, term);
@@ -547,19 +682,14 @@ pub fn cal_par(mem: &mut Worker, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr
   done
 }
 
-pub fn reduce(
-  mem: &mut Worker,
-  funs: &Funs,
-  root: u64,
-  _i2n: Option<&HashMap<u64, String>>,
-  debug: bool,
-) -> Ptr {
+pub fn reduce(mem: &mut Worker, funs: &Funs, root: u64, _i2n: Option<&HashMap<u64, String>>, debug: bool) -> Ptr {
   let mut stack: Vec<u64> = Vec::new();
 
   let mut init = 1;
   let mut host = root;
 
   loop {
+
     let term = ask_lnk(mem, host);
 
     if debug {
@@ -588,22 +718,35 @@ pub fn reduce(
         }
         FUN => {
           let fid = get_ext(term);
-          //let ari = ask_ari(mem, term);
-          if let Some(Some(f)) = &funs.get(fid as usize) {
-            let len = f.stricts.len() as u64;
-            if len == 0 {
+          match fid {
+            HVM_LOG => {
               init = 0;
-            } else {
-              stack.push(host);
-              for (i, strict) in f.stricts.iter().enumerate() {
-                if i < f.stricts.len() - 1 {
-                  stack.push(get_loc(term, *strict) | 0x80000000);
+              continue;
+            }
+            HVM_PUT => {
+              init = 0;
+              continue;
+            }
+//GENERATED-FUN-CTR-MATCH//
+            _ => {
+              // Dynamic functions
+              if let Some(Some(f)) = &funs.get(fid as usize) {
+                let len = f.stricts.len() as u64;
+                if len == 0 {
+                  init = 0;
                 } else {
-                  host = get_loc(term, *strict);
+                  stack.push(host);
+                  for (i, strict) in f.stricts.iter().enumerate() {
+                    if i < f.stricts.len() - 1 {
+                      stack.push(get_loc(term, *strict) | 0x80000000);
+                    } else {
+                      host = get_loc(term, *strict);
+                    }
+                  }
                 }
+                continue;
               }
             }
-            continue;
           }
         }
         _ => {}
@@ -816,17 +959,136 @@ pub fn reduce(
         }
         FUN => {
           let fid = get_ext(term);
-          let _ari = ask_ari(mem, term);
-          if let Some(Some(f)) = &funs.get(fid as usize) {
-            // FIXME: is this logic correct? remove this comment if yes
-            let mut dups = mem.dups;
-            if (f.rewriter)(mem, funs, &mut dups, host, term) {
-              //unsafe { CALL_COUNT[fun as usize] += 1; } //TODO: uncomment
+          match fid {
+            HVM_LOG => {
+              let msge = get_loc(term,0);
+              normal(mem, funs, msge, _i2n, false);
+              println!("{}", crate::readback::as_code(mem, _i2n, msge));
+              link(mem, host, ask_arg(mem, term, 1));
+              clear(mem, get_loc(term, 0), 2);
+              collect(mem, ask_lnk(mem, msge));
               init = 1;
-              mem.dups = dups;
               continue;
-            } else {
-              mem.dups = dups;
+            }
+            HVM_PUT => {
+              let msge = get_loc(term,0);
+              normal(mem, funs, msge, _i2n, false);
+              let code = crate::readback::as_code(mem, _i2n, msge);
+              if code.chars().nth(0) == Some('"') {
+                println!("{}", &code[1 .. code.len() - 1]);
+              } else {
+                println!("{}", code);
+              }
+              link(mem, host, ask_arg(mem, term, 1));
+              clear(mem, get_loc(term, 0), 2);
+              collect(mem, ask_lnk(mem, msge));
+              init = 1;
+              continue;
+            }
+//GENERATED-FUN-CTR-RULES//
+            _ => {
+              // Dynamic functions
+              if let Some(Some(function)) = &funs.get(fid as usize) {
+                // Reduces function superpositions
+                for (n, is_strict) in function.is_strict.iter().enumerate() {
+                  let n = n as u64;
+                  if *is_strict && get_tag(ask_arg(mem, term, n)) == SUP {
+                    cal_par(mem, host, term, ask_arg(mem, term, n), n);
+                    continue;
+                  }
+                }
+
+                // For each rule condition vector
+                let mut matched = false;
+                for (r, rule) in function.rules.iter().enumerate() {
+                  // Check if the rule matches
+                  matched = true;
+                  
+                  // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
+                  for (i, cond) in rule.cond.iter().enumerate() {
+                    let i = i as u64;
+                    match get_tag(*cond) {
+                      NUM => {
+                        //println!("Didn't match because of NUM. i={} {} {}", i, get_num(ask_arg(mem, term, i)), get_num(*cond));
+                        let same_tag = get_tag(ask_arg(mem, term, i)) == NUM;
+                        let same_val = get_num(ask_arg(mem, term, i)) == get_num(*cond);
+                        matched = matched && same_tag && same_val;
+                      }
+                      CTR => {
+                        //println!("Didn't match because of CTR. i={} {} {}", i, get_tag(ask_arg(mem, term, i)), get_ext(*cond));
+                        let same_tag = get_tag(ask_arg(mem, term, i)) == CTR;
+                        let same_ext = get_ext(ask_arg(mem, term, i)) == get_ext(*cond);
+                        matched = matched && same_tag && same_ext;
+                      }
+                      VAR => {
+                        // If this is a strict argument, then we're in a default variable
+                        if function.is_strict[i as usize] {
+
+                          // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
+                          if rule.hoas && r != function.rules.len() - 1 {
+
+                            // Matches number literals
+                            let is_num
+                              = get_tag(ask_arg(mem, term, i)) == NUM;
+
+                            // Matches constructor labels
+                            let is_ctr
+                              =  get_tag(ask_arg(mem, term, i)) == CTR
+                              && ask_ari(mem, ask_arg(mem, term, i)) == 0;
+
+                            // Matches HOAS numbers and constructors
+                            let is_hoas_ctr_num
+                              =  get_tag(ask_arg(mem, term, i)) == CTR
+                              && get_ext(ask_arg(mem, term, i)) >= HOAS_CT0
+                              && get_ext(ask_arg(mem, term, i)) <= HOAS_NUM;
+
+                            matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
+
+                          // Only match default variables on CTRs and NUMs
+                          } else {
+                            let is_ctr = get_tag(ask_arg(mem, term, i)) == CTR;
+                            let is_num = get_tag(ask_arg(mem, term, i)) == NUM;
+                            matched = matched && (is_ctr || is_num);
+                          }
+                        }
+                      }
+                      _ => {}
+                    }
+                  }
+
+                  // If all conditions are satisfied, the rule matched, so we must apply it
+                  if matched {
+                    // Increments the gas count
+                    inc_cost(mem);
+
+                    // Builds the right-hand side term (ex: `(Succ (Add a b))`)
+                    let done = alloc_body(mem, term, &rule.vars, &rule.body);
+
+                    // Links the host location to it
+                    link(mem, host, done);
+
+                    // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
+                    clear(mem, get_loc(term, 0), function.is_strict.len() as u64);
+                    for (i, arity) in &rule.free {
+                      let i = *i as u64;
+                      clear(mem, get_loc(ask_arg(mem, term, i), 0), *arity);
+                    }
+
+                    // Collects unused variables (none in this example)
+                    for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
+                      if *erase {
+                        collect(mem, get_var(mem, term, var));
+                      }
+                    }
+
+                    break;
+                  }
+                }
+                if matched {
+                  init = 1;
+                  continue;
+                }
+              }
             }
           }
         }
@@ -842,6 +1104,7 @@ pub fn reduce(
 
     break;
   }
+
   ask_lnk(mem, root)
 }
 

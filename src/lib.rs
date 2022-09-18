@@ -1,10 +1,10 @@
-//! # High-order Virtual Machine (HVM) library
-//!
-//! Note: this API is **unstable**.
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(non_snake_case)]
+#![allow(unused_macros)]
 
 // FIXME: what is the right way to export the definitions on api.rs as a lib?
 
-pub mod builder;
 pub mod compiler;
 pub mod language;
 pub mod parser;
@@ -13,16 +13,7 @@ pub mod rulebook;
 pub mod runtime;
 pub mod api;
 
-pub use builder::eval_code;
-
 pub use api::*;
-
-// FIXME: is this needed?? it's redundant with lib.rs:make_call
-// pub fn make_call(func: &str, args: &[&str]) -> Result<language::Term, String> {
-//   let args = args.iter().map(|par| language::read_term(par).unwrap()).collect();
-//   let name = func.to_string();
-//   Ok(language::Term::Ctr { name, args })
-// }
 
 #[cfg(test)]
 mod tests {
@@ -38,8 +29,7 @@ mod tests {
     (Main) = (Fn 20)
     ";
 
-    let (norm, _cost, _size, _time) =
-      eval_code(&make_call("Main", &[]).unwrap(), code, false, 32 << 20).unwrap();
+    let (norm, _cost, _size, _time) = rulebook::eval_code(&make_call("Main", &[]).unwrap(), code, false, 32 << 20).unwrap();
     assert_eq!(norm, "6765");
   }
 }

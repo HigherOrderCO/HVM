@@ -1,5 +1,9 @@
-mod builder;
-mod cli;
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(non_snake_case)]
+#![allow(unused_macros)]
+#![allow(unused_parens)]
+
 mod compiler;
 mod language;
 mod parser;
@@ -7,7 +11,67 @@ mod readback;
 mod rulebook;
 mod runtime;
 
-use cli::{Cli, Command, Parser};
+pub use clap::{Parser, Subcommand};
+use regex::RegexBuilder;
+
+#[derive(Parser)]
+#[clap(author, version, about, long_about = None)]
+#[clap(propagate_version = true)]
+pub struct Cli {
+  /// Set quantity of allocated memory
+  #[clap(short = 'M', long, default_value = "4G", parse(try_from_str=parse_mem_size))]
+  pub memory_size: usize,
+
+  #[clap(subcommand)]
+  pub command: Command,
+}
+
+#[derive(Subcommand)]
+pub enum Command {
+  /// Run a file interpreted
+  #[clap(aliases = &["r"])]
+  Run { file: String, params: Vec<String> },
+
+  /// Run in debug mode
+  #[clap(aliases = &["d"])]
+  Debug { file: String, params: Vec<String> },
+
+  /// Compile a file to C
+  #[clap(aliases = &["c"])]
+  Compile {
+    file: String,
+    #[clap(long)]
+    /// Disable multi-threading
+    single_thread: bool,
+  },
+}
+
+fn get_unit_ratio(unit: &str) -> Option<usize> {
+  match unit.to_lowercase().as_str() {
+    "k" => Some(1 << 10),
+    "m" => Some(1 << 20),
+    "g" => Some(1 << 30),
+    _ => None,
+  }
+}
+
+fn parse_mem_size(raw: &str) -> Result<usize, String> {
+  let re = RegexBuilder::new(r"^(\d+)([KMG])i?B?$").case_insensitive(true).build().unwrap();
+
+  if let Some(caps) = re.captures(raw) {
+    let size = caps.get(1).unwrap().as_str().parse::<usize>();
+    let unit = caps.get(2).unwrap().as_str();
+
+    if let Ok(size) = size {
+      if let Some(unit) = get_unit_ratio(unit) {
+        return Ok(size * unit);
+      }
+    }
+  }
+
+  Err(format!("'{}' is not a valid memory size", raw))
+}
+
 
 fn main() {
   match run_cli() {
@@ -33,7 +97,6 @@ fn run_cli() -> Result<(), String> {
     Command::Compile { file, single_thread } => {
       let file = &hvm(&file);
       let code = load_file_code(file)?;
-
       compile_code(&code, file, cli_matches.memory_size, !single_thread)?;
       Ok(())
     }
@@ -65,7 +128,7 @@ fn make_main_call(params: &Vec<String>) -> Result<language::Term, String> {
 
 fn run_code(code: &str, debug: bool, params: Vec<String>, memory: usize) -> Result<(), String> {
   let call = make_main_call(&params)?;
-  let (norm, cost, size, time) = builder::eval_code(&call, code, debug, memory)?;
+  let (norm, cost, size, time) = rulebook::eval_code(&call, code, debug, memory)?;
   println!("{}", norm);
   eprintln!();
   eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
@@ -78,74 +141,17 @@ fn compile_code(code: &str, name: &str, heap_size: usize, parallel: bool) -> Res
     return Err("Input file must end with .hvm.".to_string());
   }
   let name = format!("{}.c", &name[0..name.len() - 4]);
-  compiler::compile_code_and_save(code, &name, heap_size, parallel)?;
+  match compiler::compile(code, &name, heap_size, parallel) {
+    Err(er) => {
+      println!("{}", er);
+    }
+    Ok(res) => {}
+  }
+  //compiler::compile_code_and_save(code, &name, heap_size, parallel)?;
   println!("Compiled to '{}'.", name);
   Ok(())
 }
 
 fn load_file_code(file_name: &str) -> Result<String, String> {
   std::fs::read_to_string(file_name).map_err(|err| err.to_string())
-}
-
-#[allow(dead_code)]
-fn run_example() -> Result<(), String> {
-  // Source code
-  let _code = "(Main) = (λf λx (f (f x)) λf λx (f (f x)))";
-
-  let _code = "
-    (Fn 0) = 1
-    (Fn n) = (+ (Fn (- n 1)) (Fn (- n 1)))
-    (Main) = (Fn 20)
-  ";
-
-  let _code = "
-    // Applies a function to all elements in a list
-    (Map fn (Nil))            = (Nil)
-    (Map fn (Cons head tail)) = (Cons (fn head) (Map fn tail))
-
-    // Increments all numbers on [1,2,3]
-    (Main) = (Map λx(+ x 1) (Cons 1 (Cons 2 (Cons 3 (Nil)))))
-  ";
-
-  let _code = "
-    (Filter fn (Cons x xs)) = (Filter_Cons (fn x) fn x xs)
-      (Filter_Cons 1 fn x xs) = (Cons x (Filter fn xs))
-      (Filter_Cons 0 fn x xs) = (Filter fn xs)
-    (Filter fn (Nil)) = (Nil)
-
-    (Concat (Nil) b)        = b
-    (Concat (Cons ah at) b) = (Cons ah (Concat at b))
-
-    (Quicksort (Nil)) = (Nil)
-    (Quicksort (Cons h t)) =
-      let min = (Filter λx(< x h) t)
-      let max = (Filter λx(> x h) t)
-      (Concat (Quicksort min) (Cons h (Quicksort max)))
-
-    (Main) = (Quicksort (Cons 3 (Cons 1 (Cons 2 (Cons 4 (Nil))))))
-  ";
-
-  let code = "
-    (Sort (Nil))                         = 0
-    (Sort (Cons x Nil))                  = (Foo x)
-    (Sort (Cons x (Cons y Nil)))         = (Foo x y)
-    (Sort (Cons x (Cons y (Cons z zs)))) = (Foo x y z zs)
-    (Foo (Bar 1 x) (Baz z k))            = (+ x z)
-    (Foo (Bar 7 8) (Baz z k))            = 7
-  ";
-
-  // Compiles to C and saves as 'main.c'
-  compiler::compile_code_and_save(code, "main.c", 8589934592, true)?;
-  println!("Compiled to 'main.c'.");
-
-  // Evaluates with interpreter
-
-  eprintln!("Reducing with interpreter.");
-  let call = language::Term::Ctr { name: "Main".to_string(), args: Vec::new() };
-  let (norm, cost, size, time) = builder::eval_code(&call, code, false, 4 << 30)?;
-  println!("{}", norm);
-  eprintln!();
-  eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
-  eprintln!("Mem.Size: {}", size);
-  Ok(())
 }

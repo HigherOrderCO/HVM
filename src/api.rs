@@ -1,17 +1,9 @@
-#![allow(unused_variables)]
-#![allow(dead_code)]
-#![allow(non_snake_case)]
-#![allow(unused_macros)]
-
 use crate::language as language;
 use crate::rulebook as rulebook;
 use crate::runtime as runtime;
-use crate::builder as builder;
 use crate::readback as readback;
 
 use wasm_bindgen::prelude::*;
-
-pub use builder::eval_code;
 
 pub use runtime::{Ptr,
   DP0, DP1, VAR, ARG,
@@ -45,9 +37,9 @@ pub use language::{
 
 // Helps with WASM debugging
 macro_rules! log {
-    ( $( $t:tt )* ) => {
-        web_sys::console::log_1(&format!( $( $t )* ).into());
-    }
+  ( $( $t:tt )* ) => {
+    web_sys::console::log_1(&format!( $( $t )* ).into());
+  }
 }
 
 #[wasm_bindgen]
@@ -127,20 +119,13 @@ impl Runtime {
   pub fn from_code_with_size(code: &str, size: usize) -> Result<Runtime, String> {
     let file = language::read_file(code)?;
     let book = rulebook::gen_rulebook(&file);
-    let funs = builder::build_runtime_functions(&book);
+    let funs = rulebook::build_dynamic_functions(&book);
     let mut heap = runtime::new_worker(size);
-    heap.aris = builder::build_runtime_arities(&book);
+    heap.aris = rulebook::build_dynamic_arities(&book);
     return Ok(Runtime { heap, funs, book });
   }
 
   /// Creates a runtime from a source code
-  // Please, do *not* change the external API as it may break other libraries using HVM. Asking for
-  // a memory amount here isn't future-stable, since HVM will allocate memory dynamically. It is
-  // not responsibility of the API users to decide how much memory to alloc, thus it shouldn't be
-  // an argument of the from_code method. Leave this function with a hardcoded memory amount and
-  // create a separate function to explicitly allocate memory. When the HVM is updated to handle it
-  // automatically, both functions will just do the same (i.e., the first argument of
-  // `from_code_with_memory` will be ignored).
   #[cfg(not(target_arch = "wasm32"))]
   pub fn from_code(code: &str) -> Result<Runtime, String> {
     Runtime::from_code_with_size(code, 4 * CELLS_PER_GB)
@@ -446,7 +431,7 @@ impl Runtime {
 impl Runtime {
   /// Allocates a new term, returns its location
   pub fn alloc_term(&mut self, term: &language::Term) -> u64 {
-    builder::alloc_term(&mut self.heap, &self.book, term)
+    rulebook::alloc_term(&mut self.heap, &self.book, term)
   }
 
   /// Given a location, recovers the Term stored on it

@@ -3,8 +3,6 @@
 // FIXME: `as_code` and `as_term` should just call `readback`, but before doing so, we must test
 // the new readback properly to ensure it is correct
 
-#![allow(dead_code)]
-
 use crate::language as lang;
 use crate::runtime as rt;
 use crate::runtime::{Ptr, Worker};
