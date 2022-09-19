@@ -2,7 +2,7 @@
 
 
 // (PutStrLn str x) wraps c in IO requests that print str
-(PutStrLn (String.cons chr str) cont) = (IO.do_output_chr chr (PutStrLn str cont))
-(PutStrLn (String.nil) cont) = (IO.do_output_chr 10 cont)
+(PutStrLn (String.cons chr str) cont) = (Console.put_char chr (PutStrLn str cont))
+(PutStrLn (String.nil) cont) = (Console.put_char 10 cont)
 
-Main = (PutStrLn ("Hello World!") (IO.done Yippee))
+Main = (PutStrLn ("Hello World!") (Console.done Yippee))

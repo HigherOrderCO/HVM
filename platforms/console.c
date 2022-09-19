@@ -7,15 +7,15 @@
 // Program halts with term         Platform will
 // -----------------------------   ----------------------------------------
 //
-//  IO.do_output_chr c rest         1. Print HVM-int c to stdout (as a character)
+//  Console.put_char c rest         1. Print HVM-int c to stdout (as a character)
 //                                  2. Replace term with rest
 //  (c a fully-evalauted int)       3. Tell runtime to continue
 //
-//  IO.do_input_chr cont            1. Read a character c from stdin
+//  Console.get_char cont           1. Read a character c from stdin
 //                                  2. Replace term with (cont c)
 //                                  3. Tell runtime to continue
 //
-//  IO.done e                       1. Read-back HVM-expression e to C-string
+//  Console.done                    1. Read-back HVM-expression e to C-string
 //                                  2. Print to stdout
 //                                  3. Tell runtime to halt
 //
@@ -27,14 +27,14 @@
 // Programs may not use all the special constructors
 // In that case, these #define s make the platfrom still compile
 
-#ifndef _IO_DO__OUTPUT__CHR_
-#define _IO_DO__OUTPUT__CHR_ -1
+#ifndef _CONSOLE_PUT__CHAR_
+#define _CONSOLE_PUT__CHAR_ -1
 #endif
-#ifndef _IO_DO__INPUT__CHR_
-#define _IO_DO__INPUT__CHR_ -2
+#ifndef _CONSOLE_GET__CHAR_
+#define _CONSOLE_GET__CHAR_ -2
 #endif
-#ifndef _IO_DONE_
-#define _IO_DONE_ -3
+#ifndef _CONSOLE_DONE_
+#define _CONSOLE_DONE_ -3
 #endif
 
 
@@ -76,7 +76,7 @@ bool fail(char* msg, Ptr term){
     return false;
 }
 
-char* BAD_TOP_MSG = "Illegal IO request!\nExpected one of the constructors {IO.do_output_chr/2, IO.do_input_chr/1, IO.done/0}, instead got:";
+char* BAD_TOP_MSG = "Illegal IO request!\nExpected one of the constructors {Console.put_char/2, Console.get_char/1, Console.done/1}, instead got:";
 
 bool io_step() {
     Ptr top = mem->node[0];
@@ -85,12 +85,12 @@ bool io_step() {
 
     switch (get_ext(top)) {
 
-        case _IO_DONE_:
+        case _CONSOLE_DONE_:
             print_term(stdout,mem, ask_arg(mem,top,1));
             // TODO: decrement IO.done node?
         return false;
 
-        case _IO_DO__OUTPUT__CHR_:
+        case _CONSOLE_PUT__CHAR_:
             Ptr num_cell  = ask_arg(mem,top,0);
             Ptr rest_cell = ask_arg(mem,top,1);
 
@@ -105,8 +105,8 @@ bool io_step() {
 
         return true;
 
-        case _IO_DO__INPUT__CHR_:
-            return fail("Not implemented yet: IO.do_input_chr\nYour term:",top);
+        case _CONSOLE_GET__CHAR_:
+            return fail("Not implemented yet: Console.get_char/1\nYour term:",top);
         return true;
 
         default:
