@@ -1,18 +1,8 @@
 // Link me with the console.c platform
 
-Main =
-  (IO.do_output_chr 72
-  (IO.do_output_chr 101
-  (IO.do_output_chr 108
-  (IO.do_output_chr 108
-  (IO.do_output_chr 111
-  (IO.do_output_chr 32
-  (IO.do_output_chr 119
-  (IO.do_output_chr 111
-  (IO.do_output_chr 114
-  (IO.do_output_chr 108
-  (IO.do_output_chr 100
-  (IO.do_output_chr 33
-  (IO.do_output_chr 10
-  (IO.done Yippee)
-  )))))))))))))
+
+// (PutStrLn str x) wraps c in IO requests that print str
+(PutStrLn (String.cons chr str) cont) = (IO.do_output_chr chr (PutStrLn str cont))
+(PutStrLn (String.nil) cont) = (IO.do_output_chr 10 cont)
+
+Main = (PutStrLn ("Hello World!") (IO.done Yippee))
