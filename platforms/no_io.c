@@ -7,25 +7,18 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-typedef struct PlatState {
-    Worker* mem;
+struct timeval* start_time_p;
 
-    struct timeval start_time;
-} PlatState;
-
-PlatState* state;
-
-void io_setup(Worker* mem) {
-    state = malloc (sizeof (PlatState));
-    state -> mem = mem;
-    gettimeofday(&(state -> start_time), NULL);
+void io_setup() {
+    start_time_p = malloc (sizeof (struct timeval));
+    gettimeofday(start_time_p, NULL);
 }
 
 bool io_step() {
 
     struct timeval stop, start;
     gettimeofday(&stop, NULL);
-    start = state->start_time;
+    start = *start_time_p;
 
     // Prints result normal form
     const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
@@ -34,8 +27,8 @@ bool io_step() {
     readback(
         code_data,
         code_mcap,
-        state->mem,
-        state->mem->node[0],
+        mem,
+        mem->node[0],
         id_to_name_data,
         id_to_name_size);
     printf("%s\n", code_data);
@@ -50,6 +43,6 @@ bool io_step() {
 
     // Cleanup
     free(code_data);
-    free(state);
+    free(start_time_p);
     return false;
 }

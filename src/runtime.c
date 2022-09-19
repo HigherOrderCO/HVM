@@ -1399,7 +1399,7 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Ptr term, char** id_t
 // Platform-implemented signatures
 // -------------------------------
 
-void io_setup(Worker* mem);
+void io_setup();
 
 bool io_step();
 
@@ -1415,23 +1415,24 @@ Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   }
 }
 
+Worker* mem;
 
 int main(int argc, char* argv[]) {
 
-  Worker mem;
+  mem = malloc(sizeof(Worker));
 
   // Builds main term
-  mem.size = 0;
-  mem.node = (u64*)malloc(HEAP_SIZE);
-  mem.aris = id_to_arity_data;
-  mem.funs = id_to_arity_size;
-  assert(mem.node);
+  mem->size = 0;
+  mem->node = (u64*)malloc(HEAP_SIZE);
+  mem->aris = id_to_arity_data;
+  mem->funs = id_to_arity_size;
+  assert(mem->node);
   if (argc <= 1) {
-    mem.node[mem.size++] = Cal(0, _MAIN_, 0);
+    mem->node[mem->size++] = Cal(0, _MAIN_, 0);
   } else {
-    mem.node[mem.size++] = Cal(argc - 1, _MAIN_, 1);
+    mem->node[mem->size++] = Cal(argc - 1, _MAIN_, 1);
     for (u64 i = 1; i < argc; ++i) {
-      mem.node[mem.size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
+      mem->node[mem->size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
     }
   }
 
@@ -1444,11 +1445,12 @@ int main(int argc, char* argv[]) {
 
   io_setup(&mem);
   do {
-    ffi_normal((u8*)mem.node, mem.size, 0);
+    ffi_normal((u8*)mem->node, mem->size, 0);
   } while (io_step());
 
   // Cleanup
-  free(mem.node);
+  free(mem->node);
+  free(mem);
 }
 
 // Platform implementation to be appended below

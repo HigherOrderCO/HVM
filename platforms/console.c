@@ -41,15 +41,7 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-typedef struct PlatState {
-    Worker* mem;
-} PlatState;
-
-PlatState* state;
-
-void io_setup(Worker* mem) {
-    state = malloc (sizeof (PlatState));
-    state -> mem = mem;
+void io_setup() {
 }
 
 static char* str_unknown = "???";
@@ -78,20 +70,18 @@ void print_term (FILE * stream, Worker* mem, Ptr ptr) {
     free(code_data);
 }
 
-bool fail(PlatState* state, char* msg, Ptr term){
+bool fail(char* msg, Ptr term){
     fprintf(stderr,"[Console IO platform] %s\n",msg);
-    print_term(stderr,state->mem,term);
-    free (state);
+    print_term(stderr,mem,term);
     return false;
 }
 
 char* BAD_TOP_MSG = "Illegal IO request!\nExpected one of the constructors {IO.do_output_chr/2, IO.do_input_chr/1, IO.done/0}, instead got:";
 
 bool io_step() {
-    Worker* mem = state->mem;
     Ptr top = mem->node[0];
 
-    if(get_tag(top) != CTR) return fail(state,BAD_TOP_MSG,top);
+    if(get_tag(top) != CTR) return fail(BAD_TOP_MSG,top);
 
     switch (get_ext(top)) {
 
@@ -106,7 +96,7 @@ bool io_step() {
 
             // Step 1: extract character & print
             if(!(get_tag(num_cell) == NUM && get_num(num_cell) <= 256))
-                return fail(state,"Bad number cell.\nExpected an int <= 256, instead got:",num_cell);
+                return fail("Bad number cell.\nExpected an int <= 256, instead got:",num_cell);
             printf("%c", (char)get_num(num_cell));
 
             // Step 2: replace top term with rest
@@ -116,10 +106,10 @@ bool io_step() {
         return true;
 
         case _IO_DO__INPUT__CHR_:
-            return fail(state,"Not implemented yet: IO.do_input_chr\nYour term:",top);
+            return fail("Not implemented yet: IO.do_input_chr\nYour term:",top);
         return true;
 
         default:
-        return fail(state,BAD_TOP_MSG,top);
+        return fail(BAD_TOP_MSG,top);
     }
 }
