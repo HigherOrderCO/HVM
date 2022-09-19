@@ -1,7 +1,8 @@
+// Demonstrates adcanved use of Console.put_char
+
 // Link me with the console.c platform
 
-
-// (PutStrLn str x) wraps c in IO requests that print str
+// (PutStrLn str x) wraps x in IO requests that print str
 (PutStrLn (String.cons chr str) cont) = (Console.put_char chr (PutStrLn str cont))
 (PutStrLn (String.nil) cont) = (Console.put_char 10 cont)
 
