@@ -7,20 +7,21 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-struct PlatState {
+typedef struct PlatState {
     Worker* mem;
 
     struct timeval start_time;
-};
+} PlatState;
 
-PlatState* io_setup(Worker* mem) {
-    PlatState * state = malloc (sizeof (PlatState));
+PlatState* state;
+
+void io_setup(Worker* mem) {
+    state = malloc (sizeof (PlatState));
     state -> mem = mem;
     gettimeofday(&(state -> start_time), NULL);
-    return state;
 }
 
-bool io_step(PlatState* state) {
+bool io_step() {
 
     struct timeval stop, start;
     gettimeofday(&stop, NULL);

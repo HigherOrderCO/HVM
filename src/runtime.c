@@ -1399,11 +1399,9 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Ptr term, char** id_t
 // Platform-implemented signatures
 // -------------------------------
 
-typedef struct PlatState PlatState;
+void io_setup(Worker* mem);
 
-PlatState * io_setup(Worker* mem);
-
-bool io_step(PlatState* state);
+bool io_step();
 
 
 // Main
@@ -1444,10 +1442,10 @@ int main(int argc, char* argv[]) {
 
   // Reduces, calling platform for IO when program asks for it
 
-  PlatState * plat_state = io_setup(&mem);
+  io_setup(&mem);
   do {
     ffi_normal((u8*)mem.node, mem.size, 0);
-  } while (io_step(plat_state));
+  } while (io_step());
 
   // Cleanup
   free(mem.node);

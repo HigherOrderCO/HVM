@@ -41,14 +41,15 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-struct PlatState {
+typedef struct PlatState {
     Worker* mem;
-};
+} PlatState;
 
-PlatState* io_setup(Worker* mem) {
-    PlatState * state = malloc (sizeof (PlatState));
+PlatState* state;
+
+void io_setup(Worker* mem) {
+    state = malloc (sizeof (PlatState));
     state -> mem = mem;
-    return state;
 }
 
 static char* str_unknown = "???";
@@ -86,7 +87,7 @@ bool fail(PlatState* state, char* msg, Ptr term){
 
 char* BAD_TOP_MSG = "Illegal IO request!\nExpected one of the constructors {IO.do_output_chr/2, IO.do_input_chr/1, IO.done/0}, instead got:";
 
-bool io_step(PlatState* state) {
+bool io_step() {
     Worker* mem = state->mem;
     Ptr top = mem->node[0];
 
