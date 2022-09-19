@@ -106,7 +106,21 @@ bool io_step() {
         return true;
 
         case _CONSOLE_GET__CHAR_:
-            return fail("Not implemented yet: Console.get_char/1\nYour term:",top);
+
+            // Step 1: Read a character c from stdin
+            char c;
+            fread((void*)&c,1,1,stdin);
+
+            // Step 2: Replace term with (cont c)
+            Ptr cont_cell = ask_arg(mem,top,0);
+
+            Ptr app_data = alloc(mem,2);        // allocate cell for fun,arg pair
+            link(mem,0,App(app_data));          // make main term an App-ptr
+            link(mem,app_data+0,cont_cell);     // setup pair.fun
+            link(mem,app_data+1,Num((u64)c));   // setup pair.arg
+
+            // TODO: Free the constructor-data node (one cell: [cont_cell])
+
         return true;
 
         default:
