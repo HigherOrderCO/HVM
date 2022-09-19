@@ -1443,7 +1443,7 @@ int main(int argc, char* argv[]) {
 
   // Reduces, calling platform for IO when program asks for it
 
-  io_setup(&mem);
+  io_setup();
   do {
     ffi_normal((u8*)mem->node, mem->size, 0);
     mem->size = ffi_size;
