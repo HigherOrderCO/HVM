@@ -86,7 +86,7 @@ bool io_step() {
     switch (get_ext(top)) {
 
         case _CONSOLE_DONE_:
-            print_term(stdout,mem, ask_arg(mem,top,1));
+            print_term(stdout,mem, ask_arg(mem,top,0));
             // TODO: decrement IO.done node?
         return false;
 
