@@ -1,0 +1,11 @@
+// Demonstrates simple usage of Console.get_char
+// (read an uppcase letter and print it lowercase)
+
+// Link me with the console.c platform
+
+Main =
+    (Console.get_char (@c
+    (Console.put_char (+ c 32) (
+    (Console.put_char 10 (
+    (Console.done Finished)
+    )) )) ))
