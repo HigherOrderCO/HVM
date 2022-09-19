@@ -1446,6 +1446,7 @@ int main(int argc, char* argv[]) {
   io_setup(&mem);
   do {
     ffi_normal((u8*)mem->node, mem->size, 0);
+    mem->size = ffi_size;
   } while (io_step());
 
   // Cleanup
