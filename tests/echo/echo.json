@@ -1,0 +1,21 @@
+{
+   "compile_args":["-P","platforms/console.c"],
+   "cases" :{
+      "test-1":{
+         "stdin":"a\n",
+         "output":"a\n(ThatsAll)"
+      },
+      "test-2":{
+         "stdin":"Yi\n",
+         "output":"Yi\n(ThatsAll)"
+      },
+      "test-3":{
+         "stdin":"abc\n",
+         "output":"abc\n(ThatsAll)"
+      },
+      "test-4":{
+         "stdin":"abracadabra\n",
+         "output":"abracadabra\n(ThatsAll)"
+      }
+   }
+}

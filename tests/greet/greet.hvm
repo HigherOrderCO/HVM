@@ -1,12 +1,12 @@
-// Demonstrates advanced use of Console.get_char and Console.put_char
-
-// Link me with the console.c platform
+// Like echo, but with sharing
 
 Main =
+    (PutStrLn "What is your name?"
     (ReadLine @l
-    (PutStrLn l
+    (PutStrLn (Append "Hello, " l)
+    (PutStrLn (Append "Goodbye, " l)
     (Console.done ThatsAll
-    )))
+    )))))
 
 // IO utils
 // ////////
@@ -20,3 +20,14 @@ Main =
 (ReadLineHelper_1 cont) = @c (ReadLineHelper_2 cont c)
 (ReadLineHelper_2 cont 10) = (cont String.nil)
 (ReadLineHelper_2 cont c)  = (Console.get_char (ReadLineHelper_1 @s (cont (String.cons c s))))
+
+// General utils
+// /////////////
+
+// (RevApp s1 s2) reverses string s1, and appends s2
+(RevApp String.nil s2) = s2
+(RevApp (String.cons c s1) s2) = (RevApp s1 (String.cons c s2))
+
+(Reverse s) = (RevApp s String.nil)
+
+(Append s1 s2) = (RevApp (Reverse s1) s2)

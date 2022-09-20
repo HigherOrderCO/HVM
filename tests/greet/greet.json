@@ -1,0 +1,13 @@
+{
+   "compile_args":["-P","platforms/console.c"],
+   "cases" :{
+      "test-1":{
+         "stdin":"Mr. Bond\n",
+         "output":"What is your name?\nHello, Mr. Bond\nGoodbye, Mr. Bond\n(ThatsAll)"
+      },
+      "test-2":{
+         "stdin":"Rumpelstiltskin\n",
+         "output":"What is your name?\nHello, Rumpelstiltskin\nGoodbye, Rumpelstiltskin\n(ThatsAll)"
+      }
+   }
+}
