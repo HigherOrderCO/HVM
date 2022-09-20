@@ -1,6 +1,8 @@
 {
-  "kind2": {
-    "input": "0",
-    "output": "\"\""
+  "cases": {
+    "kind2": {
+      "input": "0",
+      "output": "\"\""
+    }
   }
 }

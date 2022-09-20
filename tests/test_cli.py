@@ -146,8 +146,9 @@ def run_test(
             yield from run_cases(differ, mode, test_name, specs)
         case "compiled" | "single-thread":
             single_threaded = mode_txt == "single-thread"
+            compile_args = specs.get("compile_args",[])
             exec_path = compile_test(
-                test_name, folder_path, hvm_cmd, code_path, single_threaded)
+                test_name, folder_path, hvm_cmd, compile_args, code_path, single_threaded)
             if exec_path is None:
                 yield TestResult(mode_txt, test_name, "*", False)
             else:
@@ -160,8 +161,9 @@ def run_test(
 
 
 def run_cases(differ: Differ, mode: TestMode, test_name: str, specs: Any):
-    for case_name, spec in specs.items():
-        case_args = spec["input"]
+    for case_name, spec in specs["cases"].items():
+        case_args = spec.get("input","")
+        case_stdin = spec.get("stdin","")
         expected_out = spec["output"]
 
         success = run_test_case(
@@ -169,6 +171,7 @@ def run_cases(differ: Differ, mode: TestMode, test_name: str, specs: Any):
             mode,
             case_name,
             case_args,
+            case_stdin,
             expected_out,
         )
         yield TestResult(get_mode_str(mode), test_name, case_name, success)
@@ -179,6 +182,7 @@ def run_test_case(
     mode: TestMode,
     case_name: str,
     case_args: str,  # TODO: refactor to list
+    case_stdin: str,
     expected_out: str,
 ) -> bool:
     mode_txt = get_mode_str(mode)
@@ -192,7 +196,7 @@ def run_test_case(
             program_path_abs = resolve_path(program_path)
             cmd = [program_path_abs, case_args]
 
-    p = subprocess.run(cmd, capture_output=True)
+    p = subprocess.run(cmd, capture_output=True, input=case_stdin.encode())
 
     if p.returncode != 0:
         print("❌ FAILED")
@@ -219,9 +223,9 @@ def run_test_case(
 
 
 def compile_test(
-    test_name: str, folder_path: Path, hvm_cmd: str, code_path: Path, single_threaded: bool
+    test_name: str, folder_path: Path, hvm_cmd: str, compile_args: list[str], code_path: Path, single_threaded: bool
 ) -> Optional[Path]:
-    hvm_comp_cmd = [hvm_cmd, "compile", str(code_path.absolute())]
+    hvm_comp_cmd = [hvm_cmd, "compile", str(code_path.absolute())] + compile_args
 
     if single_threaded:
         hvm_comp_cmd.append("--single-thread")
