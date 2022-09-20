@@ -14,12 +14,11 @@ from typing import Any, Iterator, List, Literal, Optional, Union
 from dataclasses import dataclass
 from difflib import Differ
 import json
-import shutil
 
 is_windows = platform.system() == "Windows"
 run_modes = ("compiled", "single-thread", "interpreted")
 C_COMPILER = "clang"
-platform_path = "platforms/no_io.c"
+
 
 def c_compiler_cmd(in_path: str, out_path: str) -> List[str]:
     cmd = [C_COMPILER]
@@ -27,6 +26,7 @@ def c_compiler_cmd(in_path: str, out_path: str) -> List[str]:
         cmd.append("-lpthread")
     cmd += [in_path, "-o", out_path]
     return cmd
+
 
 @dataclass
 class Compiled:
@@ -225,7 +225,7 @@ def compile_test(
 
     if single_threaded:
         hvm_comp_cmd.append("--single-thread")
-    
+
     p = subprocess.run(hvm_comp_cmd, capture_output=True)
 
     successful_comp = p.returncode == 0
@@ -236,20 +236,9 @@ def compile_test(
         return None
     else:
         c_path = folder_path.joinpath(f"{test_name}.c")
-        c_path2 = folder_path.joinpath(f"{test_name}.standalone.c")
-
-        # Concatenate files
-        # https://stackoverflow.com/a/27077437
-        import shutil
-
-        with open(resolve_path(c_path2),'wb') as wfd:
-            for f in [resolve_path(c_path) , platform_path]:
-                with open(f,'rb') as fd:
-                    shutil.copyfileobj(fd, wfd)
-
         bin_path = folder_path.joinpath(f"{test_name}.out")
         c_comp_cmd = c_compiler_cmd(
-            resolve_path(c_path2), resolve_path(bin_path))
+            resolve_path(c_path), resolve_path(bin_path))
 
         p = subprocess.run(c_comp_cmd, capture_output=True)
         successful_comp = p.returncode == 0
