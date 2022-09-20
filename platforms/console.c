@@ -140,8 +140,6 @@ bool io_step() {
             char c;
             fread((void*)&c,1,1,stdin);
 
-            fail("[DEBUG] main term before Console.get_char:",mem->node[0]);
-
             // Step 2: Replace term with (cont c)
             Ptr cont_cell = ask_arg(mem,top,0);
 
@@ -151,9 +149,6 @@ bool io_step() {
             link(mem,app_data+1,Num((u64)c));   // setup pair.arg
 
             // TODO: Free the constructor-data node (one cell: [cont_cell])
-
-            fail("[DEBUG] main term after Console.get_char:",mem->node[0]);
-            dump();
 
         return true;
 
