@@ -114,12 +114,12 @@ bool io_step() {
 
     switch (get_ext(top)) {
 
-        case _CONSOLE_DONE_:
+        case _CONSOLE_DONE_:{
             print_term(stdout,mem, ask_arg(mem,top,0));
             // TODO: decrement IO.done node?
-        return false;
+        return false;}
 
-        case _CONSOLE_PUT__CHAR_:
+        case _CONSOLE_PUT__CHAR_:{
             Ptr num_cell  = ask_arg(mem,top,0);
             Ptr rest_cell = ask_arg(mem,top,1);
 
@@ -132,9 +132,9 @@ bool io_step() {
             link(mem, 0, rest_cell);        // Overwrite [CTR|IO.do_output|...] (the root) with [rest_cell], and update backpointers
             // TODO: Free the constructor-data node (two consecutive cells: [num_cell][rest_cell])
 
-        return true;
+        return true;}
 
-        case _CONSOLE_GET__CHAR_:
+        case _CONSOLE_GET__CHAR_:{
 
             // Step 1: Read a character c from stdin
             char c;
@@ -150,9 +150,9 @@ bool io_step() {
 
             // TODO: Free the constructor-data node (one cell: [cont_cell])
 
-        return true;
+        return true;}
 
-        default:
-        return fail(BAD_TOP_MSG,top);
+        default:{
+        return fail(BAD_TOP_MSG,top);}
     }
 }
