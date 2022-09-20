@@ -78,6 +78,35 @@ bool fail(char* msg, Ptr term){
 
 char* BAD_TOP_MSG = "Illegal IO request!\nExpected one of the constructors {Console.put_char/2, Console.get_char/1, Console.done/1}, instead got:";
 
+void debug_print_lnk(Ptr x) {
+  u64 tag = get_tag(x);
+  u64 ext = get_ext(x);
+  u64 val = get_val(x);
+  u64 num = get_num(x);
+  switch (tag) {
+    case DP0: fprintf(stderr,"[DP0 | 0x%-20"PRIx64" | 0x%-20"PRIx64" ]\n",  ext,    val ); break;
+    case DP1: fprintf(stderr,"[DP1 | 0x%-20"PRIx64" | 0x%-20"PRIx64" ]\n",  ext,    val ); break;
+    case VAR: fprintf(stderr,"[VAR | %22s | 0x%-20"PRIx64" ]\n",            "",     val ); break;
+    case ARG: fprintf(stderr,"[ARG | %22s | 0x%-20"PRIx64" ]\n",            "",     val ); break;
+    case ERA: fprintf(stderr,"[ERA | %22s | %22s ]\n",                      "",     ""  ); break;
+    case LAM: fprintf(stderr,"[LAM | %22s | 0x%-20"PRIx64" ]\n",            "",     val ); break;
+    case APP: fprintf(stderr,"[APP | %22s | 0x%-20"PRIx64" ]\n",            "",     val ); break;
+    case SUP: fprintf(stderr,"[SUP | 0x%-20"PRIu64" | 0x%-20"PRIx64" ]\n",  ext,    val ); break;
+    case CTR: fprintf(stderr,"[CTR | %22s | 0x%-20"PRIx64" ]\n", decode_cid(ext),   val ); break;
+    case FUN: fprintf(stderr,"[FUN | %22s | 0x%-20"PRIx64" ]\n", decode_cid(ext),   val ); break;
+    case OP2: fprintf(stderr,"[OP2 | 0x%-20"PRIu64" | 0x%-20"PRIx64" ]\n",  ext,    val ); break;
+    case NUM: fprintf(stderr,"[NUM | %47"PRIu64" ]\n",                              num ); break;
+    default : fprintf(stderr,"[??? | 0x%45"PRIx64" ]\n",                            num ); break;
+  }
+}
+
+void dump(){
+    for (u64 i = 0; i < mem->size; i ++){
+        fprintf(stderr,"0x%-5"PRIx64"",i);
+        debug_print_lnk(mem->node[i]);
+    }
+}
+
 bool io_step() {
     Ptr top = mem->node[0];
 
@@ -124,6 +153,7 @@ bool io_step() {
             // TODO: Free the constructor-data node (one cell: [cont_cell])
 
             fail("[DEBUG] main term after Console.get_char:",mem->node[0]);
+            dump();
 
         return true;
 
