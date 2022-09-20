@@ -3,14 +3,17 @@
 use regex::Regex;
 use std::collections::HashMap;
 use std::io::Write;
+use std::fs;
 
 use crate::builder as bd;
 use crate::language as lang;
 use crate::rulebook as rb;
 use crate::runtime as rt;
 
-pub fn compile_code_and_save(code: &str, file_name: &str, heap_size: usize, parallel: bool) -> Result<(), String> {
+pub fn compile_code_and_save(code: &str, file_name: &str, plat_file_name: &str, heap_size: usize, parallel: bool) -> Result<(), String> {
   let as_clang = compile_code(code, heap_size, parallel)?;
+  let plat_code = fs::read_to_string(plat_file_name) // https://doc.rust-lang.org/book/ch12-02-reading-a-file.html
+    .expect("Expected the platform file to already exist");
   let mut file = std::fs::OpenOptions::new()
     .read(true)
     .write(true)
@@ -19,6 +22,7 @@ pub fn compile_code_and_save(code: &str, file_name: &str, heap_size: usize, para
     .open(file_name)
     .map_err(|err| err.to_string())?;
   file.write_all(as_clang.as_bytes()).map_err(|err| err.to_string())?;
+  file.write_all(plat_code.as_bytes()).map_err(|err| err.to_string())?;
   Ok(())
 }
 

@@ -30,6 +30,9 @@ pub enum Command {
     #[clap(long)]
     /// Disable multi-threading
     single_thread: bool,
+    #[clap(short = 'P', long, default_value = "platforms/no_io.c")]
+    /// Path to platform implementation. Will be appended to the generated runtime
+    platform: String,
   },
 }
 
