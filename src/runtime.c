@@ -8,7 +8,6 @@
 #include <inttypes.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdbool.h>
 
 /*! GENERATED_PARALLEL_FLAG !*/
 
@@ -112,10 +111,6 @@ typedef u64 Ptr;
 //GENERATED_CONSTRUCTOR_IDS_START//
 /*! GENERATED_CONSTRUCTOR_IDS !*/
 //GENERATED_CONSTRUCTOR_IDS_END//
-
-#ifndef _MAIN_
-#define _MAIN_ (0)
-#endif
 
 // Id-to-Name map
 const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
@@ -1396,16 +1391,8 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Ptr term, char** id_t
 //   printf(":%"PRIx64":%"PRIx64"", ext, val);
 // }
 
-// Platform-implemented signatures
-// -------------------------------
-
-void io_setup();
-
-bool io_step();
-
-
-// Main
-// ----
+// Misc. platforms-facing utils
+// ----------------------------
 
 Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   if (code[0] >= '0' && code[0] <= '9') {
@@ -1415,22 +1402,17 @@ Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
   }
 }
 
-Worker* mem;
-
-int main(int argc, char* argv[]) {
-
-  mem = malloc(sizeof(Worker));
-
-  // Builds main term
+// Build the main term
+void build_main_term_with_args(Worker* mem, u64 main_cid, int argc, char* argv[]){
   mem->size = 0;
   mem->node = (u64*)malloc(HEAP_SIZE);
   mem->aris = id_to_arity_data;
   mem->funs = id_to_arity_size;
   assert(mem->node);
   if (argc <= 1) {
-    mem->node[mem->size++] = Cal(0, _MAIN_, 0);
+    mem->node[mem->size++] = Cal(0, main_cid, 0);
   } else {
-    mem->node[mem->size++] = Cal(argc - 1, _MAIN_, 1);
+    mem->node[mem->size++] = Cal(argc - 1, main_cid, 1);
     for (u64 i = 1; i < argc; ++i) {
       mem->node[mem->size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
     }
@@ -1440,18 +1422,12 @@ int main(int argc, char* argv[]) {
     workers[tid].aris = id_to_arity_data;
     workers[tid].funs = id_to_arity_size;
   }
+}
 
-  // Reduces, calling platform for IO when program asks for it
-
-  io_setup();
-  do {
-    ffi_normal((u8*)mem->node, mem->size, 0);
-    mem->size = ffi_size;
-  } while (io_step());
-
-  // Cleanup
-  free(mem->node);
-  free(mem);
+// Reduce a term to WHNF (hiding details of threads, etc.)
+void whnf(Worker* mem){
+  ffi_normal((u8*)mem->node, mem->size, 0);
+  mem->size = ffi_size;
 }
 
 // Platform implementation to be appended below

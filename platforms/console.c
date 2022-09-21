@@ -4,20 +4,20 @@
 
 // Protocol
 // ---------------------------------------------------------------------
-// Program halts with term         Platform will
+// (Main args...) reduces to       Platform will
 // -----------------------------   ----------------------------------------
 //
 //  Console.put_char c rest         1. Print HVM-int c to stdout (as a character)
 //                                  2. Replace term with rest
-//  (c a fully-evalauted int)       3. Tell runtime to continue
+//  (c a fully-evalauted int)       3. Reduce again
 //
 //  Console.get_char cont           1. Read a character c from stdin
 //                                  2. Replace term with (cont c)
-//                                  3. Tell runtime to continue
+//                                  3. Reduce again
 //
 //  Console.done                    1. Read-back HVM-expression e to C-string
 //                                  2. Print to stdout
-//                                  3. Tell runtime to halt
+//                                  3. Reduce again
 //
 //  <anything else>             Undefined behaviour.
 
@@ -36,14 +36,15 @@
 #ifndef _CONSOLE_DONE_
 #define _CONSOLE_DONE_ -3
 #endif
-
+// (platform should not compile if _MAIN_ is missing)
 
 #include <stdio.h>
 #include <sys/time.h>
+#include <stdbool.h>
 
-void io_setup() {
-}
+Worker* mem;
 
+// Debug helpers
 static char* str_unknown = "???";
 
 char * decode_cid(u64 cid){
@@ -54,7 +55,7 @@ char * decode_cid(u64 cid){
     }
 }
 
-void print_term (FILE * stream, Worker* mem, Ptr ptr) {
+void print_term (FILE * stream, Ptr ptr) {
     const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
     char* code_data = (char*)malloc(code_mcap * sizeof(char));
     assert(code_data);
@@ -72,7 +73,7 @@ void print_term (FILE * stream, Worker* mem, Ptr ptr) {
 
 bool fail(char* msg, Ptr term){
     fprintf(stderr,"[Console IO platform] %s\n",msg);
-    print_term(stderr,mem,term);
+    print_term(stderr,term);
     return false;
 }
 
@@ -107,6 +108,8 @@ void dump(){
     }
 }
 
+// Main
+
 bool io_step() {
     Ptr top = mem->node[0];
 
@@ -115,7 +118,7 @@ bool io_step() {
     switch (get_ext(top)) {
 
         case _CONSOLE_DONE_:{
-            print_term(stdout,mem, ask_arg(mem,top,0));
+            print_term(stdout, ask_arg(mem,top,0));
             // TODO: decrement IO.done node?
         return false;}
 
@@ -155,4 +158,17 @@ bool io_step() {
         default:{
         return fail(BAD_TOP_MSG,top);}
     }
+}
+
+int main (int argc, char* argv[]){
+    mem = malloc(sizeof(Worker));
+    build_main_term_with_args(mem,_MAIN_,argc,argv);
+
+    do {
+        whnf(mem);
+    } while(io_step());
+
+    free(mem->node);
+    free(mem);
+    return 0;
 }

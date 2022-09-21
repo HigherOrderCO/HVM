@@ -7,18 +7,17 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-struct timeval* start_time_p;
 
-void io_setup() {
-    start_time_p = malloc (sizeof (struct timeval));
-    gettimeofday(start_time_p, NULL);
-}
+int main(int argc, char* argv[]){
 
-bool io_step() {
+    Worker mem;
+    build_main_term_with_args(&mem,_MAIN_,argc,argv);
 
     struct timeval stop, start;
+
+    gettimeofday(&start, NULL);
+    whnf(&mem);
     gettimeofday(&stop, NULL);
-    start = *start_time_p;
 
     // Prints result normal form
     const u64 code_mcap = 256 * 256 * 256; // max code size = 16 MB
@@ -27,8 +26,8 @@ bool io_step() {
     readback(
         code_data,
         code_mcap,
-        mem,
-        mem->node[0],
+        &mem,
+        mem.node[0],
         id_to_name_data,
         id_to_name_size);
     printf("%s\n", code_data);
@@ -43,6 +42,6 @@ bool io_step() {
 
     // Cleanup
     free(code_data);
-    free(start_time_p);
-    return false;
+    free(mem.node);
+    return 0;
 }
