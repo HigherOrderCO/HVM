@@ -652,8 +652,7 @@ mod tests {
       let mut code: String = if will_skip {
         spaces_comments
           .iter()
-          .flat_map(|(space, comment)|
-            [space.as_str(), COMMENT, comment.as_str(), "\n"])
+          .flat_map(|(space, comment)| [space.as_str(), COMMENT, comment.as_str(), "\n"])
           .collect()
       } else {
         String::with_capacity(any.len())

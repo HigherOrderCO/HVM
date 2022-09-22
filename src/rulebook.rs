@@ -1147,7 +1147,7 @@ pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> r
         let term_func = *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
         let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
         if *book.ctr_is_cal.get(name).unwrap_or(&false) {
-          rt::Term::Cal { func: term_func, args: term_args }
+          rt::Term::Fun { func: term_func, args: term_args }
         } else {
           rt::Term::Ctr { func: term_func, args: term_args }
         }
@@ -1251,7 +1251,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
         links.push((targ, 1, argm));
         rt::RuleBodyCell::Loc { value: rt::App(0), targ, slot: 0 }
       }
-      rt::Term::Cal { func, args } => {
+      rt::Term::Fun { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
           nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; args.len() as usize]);
@@ -1259,9 +1259,9 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
             let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
             links.push((targ, i as u64, arg));
           }
-          rt::RuleBodyCell::Loc { value: rt::Cal(args.len() as u64, *func, 0), targ, slot: 0 }
+          rt::RuleBodyCell::Loc { value: rt::Fun(args.len() as u64, *func, 0), targ, slot: 0 }
         } else {
-          rt::RuleBodyCell::Fix { value: rt::Cal(0, *func, 0) }
+          rt::RuleBodyCell::Fix { value: rt::Fun(0, *func, 0) }
         }
       }
       rt::Term::Ctr { func, args } => {
@@ -1304,16 +1304,16 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
   (elem, nodes, dupk)
 }
 
-pub fn alloc_closed_dynterm(mem: &mut rt::Worker, term: &rt::Term) -> u64 {
-  let host = rt::alloc(mem, 1);
+pub fn alloc_closed_dynterm(heap: &mut rt::Heap, stat: &mut rt::Stat, term: &rt::Term) -> u64 {
+  let host = rt::alloc(stat, 1);
   let body = build_body(term, 0);
-  let term = rt::alloc_body(mem, 0, &[], &body);
-  rt::link(mem, host, term);
+  let term = rt::alloc_body(heap, stat, 0, &[], &body);
+  rt::link(heap, host, term);
   host
 }
 
-pub fn alloc_term(mem: &mut rt::Worker, book: &RuleBook, term: &lang::Term) -> u64 {
-  alloc_closed_dynterm(mem, &term_to_dynterm(book, term, &vec![]))
+pub fn alloc_term(heap: &mut rt::Heap, stat: &mut rt::Stat, book: &RuleBook, term: &lang::Term) -> u64 {
+  alloc_closed_dynterm(heap, stat, &term_to_dynterm(book, term, &vec![]))
 }
 
 // Evaluates a HVM term to normal form
@@ -1323,7 +1323,9 @@ pub fn eval_code(
   debug: bool,
   size: usize,
 ) -> Result<(String, u64, u64, u64), String> {
-  let mut worker = rt::new_worker(size);
+  let mut heap = rt::new_heap();
+  let mut stat = rt::new_stats();
+  let mut info = rt::new_info();
 
   // Parses and reads the input file
   let file = lang::read_file(code)?;
@@ -1332,26 +1334,28 @@ pub fn eval_code(
   let book = gen_rulebook(&file);
 
   // Builds functions
-  let funs = build_dynamic_functions(&book);
+  info.funs = build_dynamic_functions(&book);
 
   // Builds arities
-  worker.aris = build_dynamic_arities(&book);
+  info.aris = build_dynamic_arities(&book);
+
+  // builds names
+  info.nams = book.id_to_name.clone();
   
   // Allocates the main term
-  let host = alloc_term(&mut worker, &book, call);
+  let host = alloc_term(&mut heap, &mut stat[0], &book, call); // FIXME tid?
 
   // Normalizes it
   let init = instant::Instant::now();
   #[cfg(not(target_arch = "wasm32"))]
-  rt::run_io(&mut worker, &funs, host, Some(&book.id_to_name), debug);
-  rt::normal(&mut worker, &funs, host, Some(&book.id_to_name), debug);
+  rt::normalize(&mut heap, &mut stat, &mut info, host, true);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a string
-  let code = format!("{}", crate::readback::as_term(&worker, Some(&book.id_to_name), host));
+  let code = format!("{}", crate::readback::as_term(&heap, &stat, &info, host));
 
   // Returns the normal form and the gas cost
-  Ok((code, worker.cost, worker.size, time))
+  Ok((code, rt::get_cost(&stat), rt::get_used(&stat), time))
 }
 
 // notes

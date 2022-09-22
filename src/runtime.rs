@@ -7,13 +7,13 @@
 // 
 // A pointer has 3 parts:
 //
-//   Ptr ::= TT AAAAAAAAAAAAAAA BBBBBBBBBBBBBBB
+//   Ptr ::= 0xTAAAAAAABBBBBBBB
 //
 // Where:
 //
-//   T : u8  is the pointer tag 
-//   A : u30 is the 1st value
-//   B : u30 is the 2nd value
+//   T : u4  is the pointer tag 
+//   A : u28 is the 1st value
+//   B : u32 is the 2nd value
 //
 // There are 12 possible tags:
 //
@@ -47,12 +47,12 @@
 //   CTR | the constructor name         | points to the constructor node
 //   FUN | the function name            | points to the function node
 //   OP2 | the operation name           | points to the operation node
-//   NUM | the most significant 30 bits | the least significant 30 bits
+//   NUM | the most significant 28 bits | the least significant 32 bits
 //
 // Notes:
 //
 //   1. The duplication label is an internal value used on the DUP-SUP rule.
-//   2. The operation name only uses 4 of the 30 bits, as there are only 16 ops.
+//   2. The operation name only uses 4 of the 28 bits, as there are only 16 ops.
 //   3. NUM pointers don't point anywhere, they just store the number directly.
 //
 // A node is a tuple of N pointers stored on sequential memory indices.
@@ -107,9 +107,9 @@
 //
 //   Memory:
 //
-//     Root : Ptr(CTR, 0x00000001, 0x00000000)
-//     0x00 | Ptr(NUM, 0x00000000, 0x00000007) // the tuple's 1st field
-//     0x01 | Ptr(NUM, 0x00000000, 0x00000008) // the tuple's 2nd field
+//     Root : Ptr(CTR, 0x0000001, 0x00000000)
+//     0x00 | Ptr(NUM, 0x0000000, 0x00000007) // the tuple's 1st field
+//     0x01 | Ptr(NUM, 0x0000000, 0x00000008) // the tuple's 2nd field
 //
 //   Notes:
 //     
@@ -126,11 +126,11 @@
 //
 //   Memory:
 //
-//     Root : Ptr(LAM, 0x00000000, 0x00000000)
-//     0x00 | Ptr(ERA, 0x00000000, 0x00000000) // 1st lambda's argument
-//     0x01 | Ptr(LAM, 0x00000000, 0x00000002) // 1st lambda's body
-//     0x02 | Ptr(ARG, 0x00000000, 0x00000003) // 2nd lambda's argument
-//     0x03 | Ptr(VAR, 0x00000000, 0x00000002) // 2nd lambda's body
+//     Root : Ptr(LAM, 0x0000000, 0x00000000)
+//     0x00 | Ptr(ERA, 0x0000000, 0x00000000) // 1st lambda's argument
+//     0x01 | Ptr(LAM, 0x0000000, 0x00000002) // 1st lambda's body
+//     0x02 | Ptr(ARG, 0x0000000, 0x00000003) // 2nd lambda's argument
+//     0x03 | Ptr(VAR, 0x0000000, 0x00000002) // 2nd lambda's body
 //
 //   Notes:
 //
@@ -147,14 +147,14 @@
 //
 //   Memory:
 //
-//     Root : Ptr(LAM, 0x00000000, 0x00000000)
-//     0x00 | Ptr(ARG, 0x00000000, 0x00000004) // the lambda's argument
-//     0x01 | Ptr(OP2, 0x00000002, 0x00000005) // the lambda's body
-//     0x02 | Ptr(ARG, 0x00000000, 0x00000005) // the duplication's 1st argument
-//     0x03 | Ptr(ARG, 0x00000000, 0x00000006) // the duplication's 2nd argument
-//     0x04 | Ptr(VAR, 0x00000000, 0x00000000) // the duplicated expression
-//     0x05 | Ptr(DP0, 0xba31fb21, 0x00000002) // the operator's 1st operand
-//     0x06 | Ptr(DP1, 0xba31fb21, 0x00000002) // the operator's 2st operand
+//     Root : Ptr(LAM, 0x0000000, 0x00000000)
+//     0x00 | Ptr(ARG, 0x0000000, 0x00000004) // the lambda's argument
+//     0x01 | Ptr(OP2, 0x0000002, 0x00000005) // the lambda's body
+//     0x02 | Ptr(ARG, 0x0000000, 0x00000005) // the duplication's 1st argument
+//     0x03 | Ptr(ARG, 0x000000, 0x00000006) // the duplication's 2nd argument
+//     0x04 | Ptr(VAR, 0x0000000, 0x00000000) // the duplicated expression
+//     0x05 | Ptr(DP0, 0xa31fb21, 0x00000002) // the operator's 1st operand
+//     0x06 | Ptr(DP1, 0xa31fb21, 0x00000002) // the operator's 2st operand
 //
 //   Notes:
 //     
@@ -162,7 +162,7 @@
 //     2. Notice how every ARGs point to a VAR/DP0/DP1, that points back its source node.
 //     3. DP1 does not point to its ARG. It points to the duplication node, which is at 0x02.
 //     4. The lambda's body does not point to the dup node, but to the operator. Dup nodes float.
-//     5. 0xba31fb21 is a globally unique random label assigned to the duplication node.
+//     5. 0xa31fb21 is a globally unique random label assigned to the duplication node.
 //     6. That duplication label is stored on the DP0/DP1 that point to the node, not on the node.
 //     7. A lambda uses 2 memory slots, a duplication uses 3, an operator uses 2. Total: 112 bytes.
 //     8. In-memory size is different to, and larger than, serialization size.
@@ -170,8 +170,12 @@
 #![allow(clippy::identity_op)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
+#![allow(unused_attributes)]
+#![allow(unused_imports)]
 
+use std::borrow::Cow;
 use std::collections::{hash_map, HashMap};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
 // Constants
 // ---------
@@ -179,12 +183,6 @@ use std::collections::{hash_map, HashMap};
 pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
 pub const CELLS_PER_GB: usize = 0x8000000;
-
-pub const MAX_ARITY: u64 = 16;
-pub const MEM_SPACE: u64 = CELLS_PER_GB as u64;
-pub const MAX_DYNFUNS: u64 = 65536;
-
-pub const SEEN_SIZE: usize = 4194304; // uses 32 MB, covers heaps up to 2 GB
 
 pub const VAL: u64 = 1;
 pub const EXT: u64 = 0x100000000;
@@ -205,6 +203,7 @@ pub const CTR: u64 = 0x8;
 pub const FUN: u64 = 0x9;
 pub const OP2: u64 = 0xA;
 pub const NUM: u64 = 0xB;
+pub const NIL: u64 = 0xF;
 
 pub const ADD: u64 = 0x0;
 pub const SUB: u64 = 0x1;
@@ -263,6 +262,7 @@ pub const HVM_MAX_RESERVED_ID : u64 = HOAS_NUM;
 // -----
 
 pub type Ptr = u64;
+pub type AtomicPtr = AtomicU64;
 
 // A runtime term
 #[derive(Debug)]
@@ -273,7 +273,7 @@ pub enum Term {
   Let { expr: Box<Term>, body: Box<Term> },
   Lam { eras: bool, glob: u64, body: Box<Term> },
   App { func: Box<Term>, argm: Box<Term> },
-  Cal { func: u64, args: Vec<Term> },
+  Fun { func: u64, args: Vec<Term> },
   Ctr { func: u64, args: Vec<Term> },
   Num { numb: u64 },
   Op2 { oper: u64, val0: Box<Term>, val1: Box<Term> },
@@ -323,35 +323,79 @@ pub struct Arity(pub u64);
 
 pub type Funs = Vec<Option<Function>>;
 pub type Aris = Vec<Arity>;
+pub type Nams = HashMap<u64, String>;
 
-pub struct Worker {
-  pub node: Vec<Ptr>,
+// Static information
+pub struct Info {
+  pub funs: Funs,
   pub aris: Aris,
-  pub size: u64,
-  pub free: Vec<Vec<u64>>,
-  pub dups: u64,
-  pub cost: u64,
+  pub nams: Nams,
 }
 
-pub fn new_worker(size: usize) -> Worker {
-  Worker {
-    node: vec![0; size],
+// Global memory buffer
+pub type Heap = Box<[AtomicPtr]>;
+//pub type AtomicHeap = [AtomicPtr];
+
+// Thread local data and stats
+#[derive(Clone, Debug)]
+pub struct Stat {
+  pub tid: usize,
+  pub free: Vec<Vec<u64>>, // free cells to re-allocate
+  pub abuf: Vec<u64>, // allocation buffer used by alloc_body
+  pub used: u64, // number of used memory cells
+  pub next: u64, // next allocation index
+  pub dups: u64, // next dup label to be created
+  pub cost: u64, // total number of rewrite rules
+}
+
+pub type Stats = [Stat];
+
+fn available_parallelism() -> usize {
+  return 8;
+}
+
+// Initializers
+// ------------
+
+const HEAP_SIZE : usize = 4 * CELLS_PER_GB;
+
+pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
+  return unsafe { Box::from_raw(AtomicU64::from_mut_slice(Box::leak(vec![0u64; size].into_boxed_slice()))) }
+}
+
+pub fn new_heap() -> Heap {
+  let size = HEAP_SIZE; // FIXME: accept size param
+  let heap = new_atomic_u64_array(size);
+  return heap;
+}
+
+pub fn new_stats() -> Box<Stats> {
+  let thread_count = available_parallelism();
+  let mut stats = vec![];
+  for tid in 0 .. thread_count {
+    stats.push(Stat {
+      tid: tid,
+      abuf: vec![0; 32 * 256 * 256],
+      free: vec![vec![]; 32],
+      used: 0,
+      next: (HEAP_SIZE / thread_count * tid) as u64,
+      dups: ((1 << 28) / thread_count * tid) as u64,
+      cost: 0,
+    })
+  }
+  return stats.into_boxed_slice();
+}
+
+pub fn new_info() -> Info {
+  Info {
+    funs: vec![],
     aris: vec![],
-    size: 0,
-    free: vec![vec![]; 256],
-    dups: 0,
-    cost: 0,
+    nams: HashMap::new(),
   }
 }
 
-// Globals
-// -------
-
-static mut SEEN_DATA: [u64; SEEN_SIZE] = [0; SEEN_SIZE];
-static mut CALL_COUNT: &mut [u64] = &mut [0; MAX_DYNFUNS as usize];
-
-// Constructors
-// ------------
+// Pointers
+// --------
 
 pub fn Var(pos: u64) -> Ptr {
   (VAR * TAG) | pos
@@ -398,12 +442,12 @@ pub fn Ctr(_ari: u64, fun: u64, pos: u64) -> Ptr {
 }
 
 // FIXME: update name to Fun
-pub fn Cal(_ari: u64, fun: u64, pos: u64) -> Ptr {
+pub fn Fun(_ari: u64, fun: u64, pos: u64) -> Ptr {
   (FUN * TAG) | (fun * EXT) | pos
 }
 
-// Getters
-// -------
+// Pointer Getters
+// ---------------
 
 pub fn get_tag(lnk: Ptr) -> u64 {
   lnk / TAG
@@ -425,10 +469,36 @@ pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
   get_val(lnk) + arg
 }
 
+// Area
+// ----
+
+//pub fn get_area(heap: &Heap, index: u64) -> Area {
+  //let size = heap.len() as u64;
+  //Area {
+    //node: AtomicU64::from_mut_slice(&heap[size / para * index .. size / para * (index + 1)]),
+    //used: &mut heap.used[index],
+    //next: &mut heap.next[index],
+    //free: &mut heap.free[index],
+    //dups: &mut heap.dups[index],
+    //cost: &mut heap.cost[index],
+  //}
+//}
+
+// Stats
+// -----
+
+pub fn get_cost(stats: &Stats) -> u64 {
+  stats.iter().map(|x| x.cost).sum()
+}
+
+pub fn get_used(stats: &Stats) -> u64 {
+  stats.iter().map(|x| x.cost).sum()
+}
+
 // Memory
 // ------
 
-pub fn ask_ari(mem: &Worker, lnk: Ptr) -> u64 {
+pub fn ask_ari(info: &Info, lnk: Ptr) -> u64 {
   let fid = get_ext(lnk);
   match fid {
     HVM_LOG => { return 2; }
@@ -444,7 +514,7 @@ pub fn ask_ari(mem: &Worker, lnk: Ptr) -> u64 {
 //GENERATED-FUN-ARI//
     _ => {
       // Dynamic functions
-      if let Some(Arity(arit)) = mem.aris.get(fid as usize) {
+      if let Some(Arity(arit)) = info.aris.get(fid as usize) {
         return *arit;
       }
       return 0;
@@ -452,46 +522,63 @@ pub fn ask_ari(mem: &Worker, lnk: Ptr) -> u64 {
   }
 }
 
-pub fn ask_lnk(mem: &Worker, loc: u64) -> Ptr {
-  unsafe { *mem.node.get_unchecked(loc as usize) }
-  // mem.node[loc as usize]
+pub fn ask_lnk(heap: &Heap, loc: u64) -> Ptr {
+  unsafe { *(*heap.get_unchecked(loc as usize)).as_mut_ptr() }
 }
 
-pub fn ask_arg(mem: &Worker, term: Ptr, arg: u64) -> Ptr {
-  ask_lnk(mem, get_loc(term, arg))
+pub fn ask_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
+  ask_lnk(heap, get_loc(term, arg))
 }
 
-pub fn link(mem: &mut Worker, loc: u64, lnk: Ptr) -> Ptr {
+pub fn atomic_ask_lnk(heap: &Heap, loc: u64) -> Ptr {
+  heap[loc as usize].load(Ordering::Relaxed)
+}
+
+pub fn atomic_ask_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
+  assert!(get_tag(term) <= VAR);
+  atomic_ask_lnk(heap, get_loc(term, arg))
+}
+
+pub fn link(heap: &Heap, loc: u64, lnk: Ptr) -> Ptr {
   unsafe {
-    // mem.node[loc as usize] = lnk;
-    *mem.node.get_unchecked_mut(loc as usize) = lnk;
+    *(*heap.get_unchecked(loc as usize)).as_mut_ptr() = lnk;
     if get_tag(lnk) <= VAR {
-      // let pos = get_loc(lnk, if get_tag(lnk) == DP1 { 1 } else { 0 });
       let pos = get_loc(lnk, get_tag(lnk) & 0x01);
-      // mem.node[pos as usize] = Arg(loc);
-      *mem.node.get_unchecked_mut(pos as usize) = Arg(loc);
+      *(*heap.get_unchecked(pos as usize)).as_mut_ptr() = Arg(loc);
     }
   }
   lnk
 }
 
-pub fn alloc(mem: &mut Worker, size: u64) -> u64 {
-  if size == 0 {
+pub fn atomic_link(heap: &Heap, loc: u64, lnk: Ptr) -> Ptr {
+  heap[loc as usize].store(lnk, Ordering::Relaxed);
+  if get_tag(lnk) <= VAR {
+    let pos = get_loc(lnk, get_tag(lnk) & 0x01);
+    heap[pos as usize].store(Arg(loc), Ordering::Relaxed);
+  }
+  lnk
+}
+
+pub fn alloc(stat: &mut Stat, arity: u64) -> u64 {
+  if arity == 0 {
     0
-  } else if let Some(reuse) = mem.free[size as usize].pop() {
+  } else if let Some(reuse) = stat.free[arity as usize].pop() {
+    stat.used += arity;
     reuse
   } else {
-    let loc = mem.size;
-    mem.size += size;
+    let loc = stat.next;
+    stat.next += arity;
+    stat.used += arity;
     loc
   }
 }
 
-pub fn clear(mem: &mut Worker, loc: u64, size: u64) {
-  mem.free[size as usize].push(loc);
+pub fn clear(stat: &mut Stat, loc: u64, arity: u64) {
+  stat.free[arity as usize].push(loc);
+  stat.used -= arity;
 }
 
-pub fn collect(mem: &mut Worker, term: Ptr) {
+pub fn collect(heap: &Heap, stat: &mut Stat, info: &Info, term: Ptr) {
   let mut stack: Vec<Ptr> = Vec::new();
   let mut next = term;
   //let mut dups : Vec<u64> = Vec::new();
@@ -499,53 +586,53 @@ pub fn collect(mem: &mut Worker, term: Ptr) {
     let term = next;
     match get_tag(term) {
       DP0 => {
-        link(mem, get_loc(term, 0), Era());
+        link(heap, get_loc(term, 0), Era());
         //dups.push(term);
       }
       DP1 => {
-        link(mem, get_loc(term, 1), Era());
+        link(heap, get_loc(term, 1), Era());
         //dups.push(term);
       }
       VAR => {
-        link(mem, get_loc(term, 0), Era());
+        link(heap, get_loc(term, 0), Era());
       }
       LAM => {
-        if get_tag(ask_arg(mem, term, 0)) != ERA {
-          link(mem, get_loc(ask_arg(mem, term, 0), 0), Era());
+        if get_tag(ask_arg(heap, term, 0)) != ERA {
+          link(heap, get_loc(ask_arg(heap, term, 0), 0), Era());
         }
-        next = ask_arg(mem, term, 1);
-        clear(mem, get_loc(term, 0), 2);
+        next = ask_arg(heap, term, 1);
+        clear(stat, get_loc(term, 0), 2);
         continue;
       }
       APP => {
-        stack.push(ask_arg(mem, term, 0));
-        next = ask_arg(mem, term, 1);
-        clear(mem, get_loc(term, 0), 2);
+        stack.push(ask_arg(heap, term, 0));
+        next = ask_arg(heap, term, 1);
+        clear(stat, get_loc(term, 0), 2);
         continue;
       }
       SUP => {
-        stack.push(ask_arg(mem, term, 0));
-        next = ask_arg(mem, term, 1);
-        clear(mem, get_loc(term, 0), 2);
+        stack.push(ask_arg(heap, term, 0));
+        next = ask_arg(heap, term, 1);
+        clear(stat, get_loc(term, 0), 2);
         continue;
       }
       OP2 => {
-        stack.push(ask_arg(mem, term, 0));
-        next = ask_arg(mem, term, 1);
-        clear(mem, get_loc(term, 0), 2);
+        stack.push(ask_arg(heap, term, 0));
+        next = ask_arg(heap, term, 1);
+        clear(stat, get_loc(term, 0), 2);
         continue;
       }
       NUM => {}
       CTR | FUN => {
-        let arity = ask_ari(mem, term);
+        let arity = ask_ari(info, term);
         for i in 0..arity {
           if i < arity - 1 {
-            stack.push(ask_arg(mem, term, i));
+            stack.push(ask_arg(heap, term, i));
           } else {
-            next = ask_arg(mem, term, i);
+            next = ask_arg(heap, term, i);
           }
         }
-        clear(mem, get_loc(term, 0), arity);
+        clear(stat, get_loc(term, 0), arity);
         if arity > 0 {
           continue;
         }
@@ -560,577 +647,769 @@ pub fn collect(mem: &mut Worker, term: Ptr) {
   }
   // TODO: add this to the C version
   //for dup in dups {
-    //let fst = ask_arg(mem, dup, 0);
-    //let snd = ask_arg(mem, dup, 1);
+    //let fst = ask_arg(rt, dup, 0);
+    //let snd = ask_arg(rt, dup, 1);
     //if get_tag(fst) == ERA && get_tag(snd) == ERA {
-      //collect(mem, ask_arg(mem, dup, 2));
-      //clear(mem, get_loc(dup, 0), 3);
+      //collect(rt, ask_arg(rt, dup, 2));
+      //clear(rt, get_loc(dup, 0), 3);
     //}
   //}
 }
 
-pub fn inc_cost(mem: &mut Worker) {
-  mem.cost += 1;
+pub fn inc_cost(stat: &mut Stat) {
+  stat.cost += 1;
 }
 
 // Reduction
 // ---------
 
-pub fn subst(mem: &mut Worker, lnk: Ptr, val: Ptr) {
+pub fn subst(heap: &Heap, stat: &mut Stat, info: &Info, lnk: Ptr, val: Ptr) {
   if get_tag(lnk) != ERA {
-    link(mem, get_loc(lnk, 0), val);
+    link(heap, get_loc(lnk, 0), val);
   } else {
-    collect(mem, val);
+    collect(heap, stat, info, val);
   }
 }
 
-pub fn get_rule_var(mem: &Worker, term: Ptr, var: &RuleVar) -> Ptr {
+pub fn atomic_subst(heap: &Heap, stat: &mut Stat, info: &Info, lnk: Ptr, val: Ptr) {
+  if get_tag(lnk) != ERA {
+    atomic_link(heap, get_loc(lnk, 0), val);
+  } else {
+    collect(heap, stat, info, val);
+  }
+}
+
+pub fn get_rule_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
   let RuleVar { param, field, erase: _ } = var;
   match field {
-    Some(i) => ask_arg(mem, ask_arg(mem, term, *param), *i),
-    None    => ask_arg(mem, term, *param),
+    Some(i) => ask_arg(heap, ask_arg(heap, term, *param), *i),
+    None    => ask_arg(heap, term, *param),
   }
 }
 
-pub fn gen_dupk(mem: &mut Worker) -> u64 {
-  let dup = mem.dups;
-  mem.dups += 1;
+pub fn gen_dup(stat: &mut Stat) -> u64 {
+  let dup = stat.dups;
+  stat.dups += 1;
   return dup & 0xFFFFFF;
 }
 
-static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
-pub fn alloc_body(mem: &mut Worker, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
-  unsafe {
-    let hosts = &mut ALLOC_BODY_WORKSPACE;
-    let (elem, nodes, dupk) = body;
-    fn elem_to_lnk(
-      mem: &mut Worker,
-      term: Ptr,
-      vars: &[RuleVar],
-      elem: &RuleBodyCell,
-    ) -> Ptr {
-      unsafe {
-        let hosts = &mut ALLOC_BODY_WORKSPACE;
-        match elem {
-          RuleBodyCell::Fix { value } => *value,
-          RuleBodyCell::Ext { index } => get_rule_var(mem, term, &vars[*index as usize]),
-          RuleBodyCell::Loc { value, targ, slot } => {
-            let mut val = value + hosts[*targ as usize] + slot;
-            // should be changed if the pointer format changes
-            if get_tag(*value) == DP0 {
-              val += (mem.dups & 0xFFFFFF) * EXT;
-            }
-            if get_tag(*value) == DP1 {
-              val += (mem.dups & 0xFFFFFF) * EXT;
-            }
-            val
-          }
+//static mut ALLOC_BODY_WORKSPACE: &mut [u64] = &mut [0; 256 * 256 * 256]; // to avoid dynamic allocations
+pub fn alloc_body(heap: &Heap, stat: &mut Stat, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
+  let (elem, nodes, dupk) = body;
+  fn elem_to_lnk(
+    heap: &Heap,
+    stat: &mut Stat,
+    term: Ptr,
+    vars: &[RuleVar],
+    elem: &RuleBodyCell,
+  ) -> Ptr {
+    match elem {
+      RuleBodyCell::Fix { value } => {
+        *value
+      },
+      RuleBodyCell::Ext { index } => {
+        get_rule_var(heap, term, &vars[*index as usize])
+      },
+      RuleBodyCell::Loc { value, targ, slot } => {
+        let mut val = value + stat.abuf[*targ as usize] + slot;
+        // should be changed if the pointer format changes
+        if get_tag(*value) == DP0 {
+          val += (stat.dups & 0xFFFFFF) * EXT;
         }
+        if get_tag(*value) == DP1 {
+          val += (stat.dups & 0xFFFFFF) * EXT;
+        }
+        val
       }
     }
-    nodes.iter().enumerate().for_each(|(i, node)| {
-      hosts[i] = alloc(mem, node.len() as u64);
-    });
-    nodes.iter().enumerate().for_each(|(i, node)| {
-      let host = hosts[i] as usize;
-      node.iter().enumerate().for_each(|(j, elem)| {
-        let lnk = elem_to_lnk(mem, term, vars, elem);
-        if let RuleBodyCell::Ext { .. } = elem {
-          link(mem, (host + j) as u64, lnk);
-        } else {
-          mem.node[host + j] = lnk;
-        }
-      });
-    });
-    let done = elem_to_lnk(mem, term, vars, elem);
-    mem.dups += dupk;
-    return done;
   }
+  nodes.iter().enumerate().for_each(|(i, node)| {
+    stat.abuf[i] = alloc(stat, node.len() as u64);
+  });
+  nodes.iter().enumerate().for_each(|(i, node)| {
+    let host = stat.abuf[i] as usize;
+    node.iter().enumerate().for_each(|(j, elem)| {
+      let lnk = elem_to_lnk(heap, stat, term, vars, elem);
+      if let RuleBodyCell::Ext { .. } = elem {
+        link(heap, (host + j) as u64, lnk);
+      } else {
+        heap[host + j].store(lnk, Ordering::Relaxed);
+      }
+    });
+  });
+  let done = elem_to_lnk(heap, stat, term, vars, elem);
+  stat.dups += dupk;
+  return done;
 }
 
-pub fn get_var(mem: &Worker, term: Ptr, var: &RuleVar) -> Ptr {
+pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
   let RuleVar { param, field, erase: _ } = var;
   match field {
-    Some(i) => ask_arg(mem, ask_arg(mem, term, *param), *i),
-    None    => ask_arg(mem, term, *param),
+    Some(i) => ask_arg(heap, ask_arg(heap, term, *param), *i),
+    None    => ask_arg(heap, term, *param),
   }
 }
 
-pub fn cal_par(mem: &mut Worker, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr {
-  inc_cost(mem);
-  let arit = ask_ari(mem, term);
+pub fn fun_sup(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr {
+  inc_cost(stat);
+  let arit = ask_ari(info, term);
   let func = get_ext(term);
   let fun0 = get_loc(term, 0);
-  let fun1 = alloc(mem, arit);
+  let fun1 = alloc(stat, arit);
   let par0 = get_loc(argn, 0);
   for i in 0..arit {
     if i != n {
-      let leti = alloc(mem, 3);
-      let argi = ask_arg(mem, term, i);
-      link(mem, fun0 + i, Dp0(get_ext(argn), leti));
-      link(mem, fun1 + i, Dp1(get_ext(argn), leti));
-      link(mem, leti + 2, argi);
+      let leti = alloc(stat, 3);
+      let argi = ask_arg(heap, term, i);
+      link(heap, fun0 + i, Dp0(get_ext(argn), leti));
+      link(heap, fun1 + i, Dp1(get_ext(argn), leti));
+      link(heap, leti + 2, argi);
     } else {
-      link(mem, fun0 + i, ask_arg(mem, argn, 0));
-      link(mem, fun1 + i, ask_arg(mem, argn, 1));
+      link(heap, fun0 + i, ask_arg(heap, argn, 0));
+      link(heap, fun1 + i, ask_arg(heap, argn, 1));
     }
   }
-  link(mem, par0 + 0, Cal(arit, func, fun0));
-  link(mem, par0 + 1, Cal(arit, func, fun1));
+  link(heap, par0 + 0, Fun(arit, func, fun0));
+  link(heap, par0 + 1, Fun(arit, func, fun1));
   let done = Par(get_ext(argn), par0);
-  link(mem, host, done);
+  link(heap, host, done);
   done
 }
 
-pub fn reduce(mem: &mut Worker, funs: &Funs, root: u64, _i2n: Option<&HashMap<u64, String>>, debug: bool) -> Ptr {
-  let mut stack: Vec<u64> = Vec::new();
+// Tasks
+// -----
 
-  let mut init = 1;
-  let mut host = root;
+const TASK_NONE : u64 = 0; // none      : not a task
+const TASK_INIT : u64 = 1; // init(loc) : initializer task, gets a node's children
+const TASK_WORK : u64 = 2; // comp(loc) : computer task, applies rewrite rules
+const TASK_WAIT : u64 = 3; // wait(bid) : stolen task. must wait for its completion
+const TASK_BACK : u64 = 4; // back(bid) : gives a task back to its owner once complete
 
-  loop {
+fn show_task(task: u64) -> String {
+  let tag = get_task_tag(task);
+  let val = get_task_val(task);
+  match tag {
+    TASK_NONE => format!("none"),
+    TASK_INIT => format!("init({})", val),
+    TASK_WORK => format!("comp({})", val),
+    TASK_WAIT => format!("wait({})", val),
+    TASK_BACK => format!("back({})", val),
+    _         => panic!("task?({:x})", task),
+  }
+}
 
-    let term = ask_lnk(mem, host);
+fn new_task(tag: u64, val: u64) -> u64 {
+  return (tag << 32) | val;
+}
 
-    if debug {
-      println!("------------------------");
-      println!("{}", show_term(mem, ask_lnk(mem, 0), _i2n, term));
-    }
+fn get_task_tag(task: u64) -> u64 {
+  return task >> 32;
+}
 
-    if init == 1 {
-      match get_tag(term) {
-        APP => {
-          stack.push(host);
-          init = 1;
-          host = get_loc(term, 0);
-          continue;
-        }
-        DP0 | DP1 => {
-          stack.push(host);
-          host = get_loc(term, 2);
-          continue;
-        }
-        OP2 => {
-          stack.push(host);
-          stack.push(get_loc(term, 1) | 0x80000000);
-          host = get_loc(term, 0);
-          continue;
-        }
-        FUN => {
-          let fid = get_ext(term);
-          match fid {
-            HVM_LOG => {
-              init = 0;
-              continue;
+fn get_task_val(task: u64) -> u64 {
+  return task & 0xFFFF_FFFF;
+}
+
+// Buckets
+// -------
+
+const BUCKET_EMPTY         : u64 = 0; // empty bucket
+const BUCKET_HAS_TASK      : u64 = 1; // bucket with a task to steal; holds task loc
+const BUCKET_TASK_STOLEN   : u64 = 2; // bucket task has been stolen
+const BUCKET_TASK_COMPLETE : u64 = 3; // bucket tas was completed
+
+const BUCKET_COUNT : usize = 65536;
+
+fn new_bucket(tag: u64, val: u64) -> u64 {
+  return (tag << 60) | val;
+}
+
+fn get_bucket_tag(bucket: u64) -> u64 {
+  return bucket >> 60;
+}
+
+fn get_bucket_val(bucket: u64) -> u64 {
+  return bucket & 0xFFF_FFFF_FFFF_FFFF;
+}
+
+pub fn reducer<const PARALLEL: bool>(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
+  println!("reduce_parallel root={} threads={}", root, stats.len());
+
+  #[derive(PartialEq, Clone, Copy)]
+  enum Mode {
+    Working,
+    Getting,
+    Sharing,
+    Robbing,
+  }
+
+  let threads = stats.len();
+  let buckets = &new_atomic_u64_array(if PARALLEL { BUCKET_COUNT } else { 0 });
+  let halters = &AtomicU64::new(0);
+  let fst_tid = stats[0].tid;
+
+  std::thread::scope(|s| {
+
+    for stat in stats.iter_mut() {
+
+      s.spawn(move || {
+        let tid = stat.tid;
+
+        let mut stack = vec![];
+
+        let mut init = true;
+        let mut host = if !PARALLEL || tid == fst_tid { root } else { 0 };
+        let mut mode = if !PARALLEL || tid == fst_tid { Mode::Working } else { Mode::Robbing };
+        let mut tick = 0;
+        let mut sidx = 0;
+        let mut halt = false;
+
+        loop {
+
+          // FIXME: improve halting condition logic / ugly code
+          if PARALLEL {
+            if !halt && mode == Mode::Robbing && stack.len() == 0 {
+              halt = true;
+              halters.fetch_add(1, Ordering::Relaxed);
             }
-            HVM_PUT => {
-              init = 0;
-              continue;
+            if halt && mode == Mode::Working {
+              halt = false;
+              halters.fetch_sub(1, Ordering::Relaxed);
             }
-//GENERATED-FUN-CTR-MATCH//
-            _ => {
-              // Dynamic functions
-              if let Some(Some(f)) = &funs.get(fid as usize) {
-                let len = f.stricts.len() as u64;
-                if len == 0 {
-                  init = 0;
-                } else {
-                  stack.push(host);
-                  for (i, strict) in f.stricts.iter().enumerate() {
-                    if i < f.stricts.len() - 1 {
-                      stack.push(get_loc(term, *strict) | 0x80000000);
-                    } else {
-                      host = get_loc(term, *strict);
-                    }
-                  }
-                }
-                continue;
-              }
+            if halt && halters.load(Ordering::Relaxed) == threads as u64 {
+              println!("[{}] halt (cost {})", tid, stat.cost);
+              break;
             }
           }
-        }
-        _ => {}
-      }
-    } else {
-      match get_tag(term) {
-        APP => {
-          let arg0 = ask_arg(mem, term, 0);
-          if get_tag(arg0) == LAM {
-            //println!("app-lam");
-            inc_cost(mem);
-            subst(mem, ask_arg(mem, arg0, 0), ask_arg(mem, term, 1));
-            let _done = link(mem, host, ask_arg(mem, arg0, 1));
-            clear(mem, get_loc(term, 0), 2);
-            clear(mem, get_loc(arg0, 0), 2);
-            init = 1;
-            continue;
-          }
-          if get_tag(arg0) == SUP {
-            //println!("app-sup");
-            inc_cost(mem);
-            let app0 = get_loc(term, 0);
-            let app1 = get_loc(arg0, 0);
-            let let0 = alloc(mem, 3);
-            let par0 = alloc(mem, 2);
-            link(mem, let0 + 2, ask_arg(mem, term, 1));
-            link(mem, app0 + 1, Dp0(get_ext(arg0), let0));
-            link(mem, app0 + 0, ask_arg(mem, arg0, 0));
-            link(mem, app1 + 0, ask_arg(mem, arg0, 1));
-            link(mem, app1 + 1, Dp1(get_ext(arg0), let0));
-            link(mem, par0 + 0, App(app0));
-            link(mem, par0 + 1, App(app1));
-            let done = Par(get_ext(arg0), par0);
-            link(mem, host, done);
-          }
-        }
-        DP0 | DP1 => {
-          let arg0 = ask_arg(mem, term, 2);
-          // let argK = ask_arg(mem, term, if get_tag(term) == DP0 { 1 } else { 0 });
-          // if get_tag(argK) == ERA {
-          //   let done = arg0;
-          //   link(mem, host, done);
-          //   init = 1;
-          //   continue;
-          // }
-          if get_tag(arg0) == LAM {
-            //println!("dup-lam");
-            inc_cost(mem);
-            let let0 = get_loc(term, 0);
-            let par0 = get_loc(arg0, 0);
-            let lam0 = alloc(mem, 2);
-            let lam1 = alloc(mem, 2);
-            link(mem, let0 + 2, ask_arg(mem, arg0, 1));
-            link(mem, par0 + 1, Var(lam1));
-            let arg0_arg_0 = ask_arg(mem, arg0, 0);
-            link(mem, par0 + 0, Var(lam0));
-            subst(mem, arg0_arg_0, Par(get_ext(term), par0));
-            let term_arg_0 = ask_arg(mem, term, 0);
-            link(mem, lam0 + 1, Dp0(get_ext(term), let0));
-            subst(mem, term_arg_0, Lam(lam0));
-            let term_arg_1 = ask_arg(mem, term, 1);
-            link(mem, lam1 + 1, Dp1(get_ext(term), let0));
-            subst(mem, term_arg_1, Lam(lam1));
-            let done = Lam(if get_tag(term) == DP0 { lam0 } else { lam1 });
-            link(mem, host, done);
-            init = 1;
-            continue;
-          } else if get_tag(arg0) == SUP {
-            //println!("dup-sup");
-            if get_ext(term) == get_ext(arg0) {
-              inc_cost(mem);
-              subst(mem, ask_arg(mem, term, 0), ask_arg(mem, arg0, 0));
-              subst(mem, ask_arg(mem, term, 1), ask_arg(mem, arg0, 1));
-              let _done =
-                link(mem, host, ask_arg(mem, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
-              clear(mem, get_loc(term, 0), 3);
-              clear(mem, get_loc(arg0, 0), 2);
-              init = 1;
-              continue;
-            } else {
-              inc_cost(mem);
-              let par0 = alloc(mem, 2);
-              let let0 = get_loc(term, 0);
-              let par1 = get_loc(arg0, 0);
-              let let1 = alloc(mem, 3);
-              link(mem, let0 + 2, ask_arg(mem, arg0, 0));
-              link(mem, let1 + 2, ask_arg(mem, arg0, 1));
-              let term_arg_0 = ask_arg(mem, term, 0);
-              let term_arg_1 = ask_arg(mem, term, 1);
-              link(mem, par1 + 0, Dp1(get_ext(term), let0));
-              link(mem, par1 + 1, Dp1(get_ext(term), let1));
-              link(mem, par0 + 0, Dp0(get_ext(term), let0));
-              link(mem, par0 + 1, Dp0(get_ext(term), let1));
-              subst(mem, term_arg_0, Par(get_ext(arg0), par0));
-              subst(mem, term_arg_1, Par(get_ext(arg0), par1));
-              let done = Par(get_ext(arg0), if get_tag(term) == DP0 { par0 } else { par1 });
-              link(mem, host, done);
-            }
-          } else if get_tag(arg0) == NUM {
-            //println!("dup-u32");
-            inc_cost(mem);
-            subst(mem, ask_arg(mem, term, 0), arg0);
-            subst(mem, ask_arg(mem, term, 1), arg0);
-            clear(mem, get_loc(term, 0), 3);
-            let _done = arg0;
-            link(mem, host, arg0);
-          } else if get_tag(arg0) == CTR {
-            //println!("dup-ctr");
-            inc_cost(mem);
-            let fnid = get_ext(arg0);
-            let arit = ask_ari(mem, arg0);
-            if arit == 0 {
-              subst(mem, ask_arg(mem, term, 0), Ctr(0, fnid, 0));
-              subst(mem, ask_arg(mem, term, 1), Ctr(0, fnid, 0));
-              clear(mem, get_loc(term, 0), 3);
-              let _done = link(mem, host, Ctr(0, fnid, 0));
-            } else {
-              let ctr0 = get_loc(arg0, 0);
-              let ctr1 = alloc(mem, arit);
-              for i in 0..arit - 1 {
-                let leti = alloc(mem, 3);
-                link(mem, leti + 2, ask_arg(mem, arg0, i));
-                link(mem, ctr0 + i, Dp0(get_ext(term), leti));
-                link(mem, ctr1 + i, Dp1(get_ext(term), leti));
-              }
-              let leti = get_loc(term, 0);
-              link(mem, leti + 2, ask_arg(mem, arg0, arit - 1));
-              let term_arg_0 = ask_arg(mem, term, 0);
-              link(mem, ctr0 + arit - 1, Dp0(get_ext(term), leti));
-              subst(mem, term_arg_0, Ctr(arit, fnid, ctr0));
-              let term_arg_1 = ask_arg(mem, term, 1);
-              link(mem, ctr1 + arit - 1, Dp1(get_ext(term), leti));
-              subst(mem, term_arg_1, Ctr(arit, fnid, ctr1));
-              let done = Ctr(arit, fnid, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
-              link(mem, host, done);
-            }
-          } else if get_tag(arg0) == ERA {
-            inc_cost(mem);
-            subst(mem, ask_arg(mem, term, 0), Era());
-            subst(mem, ask_arg(mem, term, 1), Era());
-            link(mem, host, Era());
-            clear(mem, get_loc(term, 0), 3);
-            init = 1;
-            continue;
-          }
-        }
-        OP2 => {
-          let arg0 = ask_arg(mem, term, 0);
-          let arg1 = ask_arg(mem, term, 1);
-          if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
-            //println!("op2-u32");
-            inc_cost(mem);
-            let a = get_num(arg0);
-            let b = get_num(arg1);
-            let c = match get_ext(term) {
-              ADD => a.wrapping_add(b) & NUM_MASK,
-              SUB => a.wrapping_sub(b) & NUM_MASK,
-              MUL => a.wrapping_mul(b) & NUM_MASK,
-              DIV => a.wrapping_div(b) & NUM_MASK,
-              MOD => a.wrapping_rem(b) & NUM_MASK,
-              AND => (a &  b) & NUM_MASK,
-              OR  => (a |  b) & NUM_MASK,
-              XOR => (a ^  b) & NUM_MASK,
-              SHL => a.wrapping_shl(b as u32) & NUM_MASK,
-              SHR => a.wrapping_shr(b as u32) & NUM_MASK,
-              LTN => u64::from(a <  b),
-              LTE => u64::from(a <= b),
-              EQL => u64::from(a == b),
-              GTE => u64::from(a >= b),
-              GTN => u64::from(a >  b),
-              NEQ => u64::from(a != b),
-              _   => panic!("Invalid operation!"),
-            };
-            let done = Num(c);
-            clear(mem, get_loc(term, 0), 2);
-            link(mem, host, done);
-          } else if get_tag(arg0) == SUP {
-            //println!("op2-sup-0");
-            inc_cost(mem);
-            let op20 = get_loc(term, 0);
-            let op21 = get_loc(arg0, 0);
-            let let0 = alloc(mem, 3);
-            let par0 = alloc(mem, 2);
-            link(mem, let0 + 2, arg1);
-            link(mem, op20 + 1, Dp0(get_ext(arg0), let0));
-            link(mem, op20 + 0, ask_arg(mem, arg0, 0));
-            link(mem, op21 + 0, ask_arg(mem, arg0, 1));
-            link(mem, op21 + 1, Dp1(get_ext(arg0), let0));
-            link(mem, par0 + 0, Op2(get_ext(term), op20));
-            link(mem, par0 + 1, Op2(get_ext(term), op21));
-            let done = Par(get_ext(arg0), par0);
-            link(mem, host, done);
-          } else if get_tag(arg1) == SUP {
-            //println!("op2-sup-1");
-            inc_cost(mem);
-            let op20 = get_loc(term, 0);
-            let op21 = get_loc(arg1, 0);
-            let let0 = alloc(mem, 3);
-            let par0 = alloc(mem, 2);
-            link(mem, let0 + 2, arg0);
-            link(mem, op20 + 0, Dp0(get_ext(arg1), let0));
-            link(mem, op20 + 1, ask_arg(mem, arg1, 0));
-            link(mem, op21 + 1, ask_arg(mem, arg1, 1));
-            link(mem, op21 + 0, Dp1(get_ext(arg1), let0));
-            link(mem, par0 + 0, Op2(get_ext(term), op20));
-            link(mem, par0 + 1, Op2(get_ext(term), op21));
-            let done = Par(get_ext(arg1), par0);
-            link(mem, host, done);
-          }
-        }
-        FUN => {
-          let fid = get_ext(term);
-          match fid {
-            HVM_LOG => {
-              let msge = get_loc(term,0);
-              normal(mem, funs, msge, _i2n, false);
-              println!("{}", crate::readback::as_code(mem, _i2n, msge));
-              link(mem, host, ask_arg(mem, term, 1));
-              clear(mem, get_loc(term, 0), 2);
-              collect(mem, ask_lnk(mem, msge));
-              init = 1;
-              continue;
-            }
-            HVM_PUT => {
-              let msge = get_loc(term,0);
-              normal(mem, funs, msge, _i2n, false);
-              let code = crate::readback::as_code(mem, _i2n, msge);
-              if code.chars().nth(0) == Some('"') {
-                println!("{}", &code[1 .. code.len() - 1]);
-              } else {
-                println!("{}", code);
-              }
-              link(mem, host, ask_arg(mem, term, 1));
-              clear(mem, get_loc(term, 0), 2);
-              collect(mem, ask_lnk(mem, msge));
-              init = 1;
-              continue;
-            }
-//GENERATED-FUN-CTR-RULES//
-            _ => {
-              // Dynamic functions
-              if let Some(Some(function)) = &funs.get(fid as usize) {
-                // Reduces function superpositions
-                for (n, is_strict) in function.is_strict.iter().enumerate() {
-                  let n = n as u64;
-                  if *is_strict && get_tag(ask_arg(mem, term, n)) == SUP {
-                    cal_par(mem, host, term, ask_arg(mem, term, n), n);
-                    continue;
-                  }
-                }
 
-                // For each rule condition vector
-                let mut matched = false;
-                for (r, rule) in function.rules.iter().enumerate() {
-                  // Check if the rule matches
-                  matched = true;
-                  
-                  // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
-                  for (i, cond) in rule.cond.iter().enumerate() {
-                    let i = i as u64;
-                    match get_tag(*cond) {
-                      NUM => {
-                        //println!("Didn't match because of NUM. i={} {} {}", i, get_num(ask_arg(mem, term, i)), get_num(*cond));
-                        let same_tag = get_tag(ask_arg(mem, term, i)) == NUM;
-                        let same_val = get_num(ask_arg(mem, term, i)) == get_num(*cond);
-                        matched = matched && same_tag && same_val;
-                      }
-                      CTR => {
-                        //println!("Didn't match because of CTR. i={} {} {}", i, get_tag(ask_arg(mem, term, i)), get_ext(*cond));
-                        let same_tag = get_tag(ask_arg(mem, term, i)) == CTR;
-                        let same_ext = get_ext(ask_arg(mem, term, i)) == get_ext(*cond);
-                        matched = matched && same_tag && same_ext;
-                      }
-                      VAR => {
-                        // If this is a strict argument, then we're in a default variable
-                        if function.is_strict[i as usize] {
-
-                          // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
-                          if rule.hoas && r != function.rules.len() - 1 {
-
-                            // Matches number literals
-                            let is_num
-                              = get_tag(ask_arg(mem, term, i)) == NUM;
-
-                            // Matches constructor labels
-                            let is_ctr
-                              =  get_tag(ask_arg(mem, term, i)) == CTR
-                              && ask_ari(mem, ask_arg(mem, term, i)) == 0;
-
-                            // Matches HOAS numbers and constructors
-                            let is_hoas_ctr_num
-                              =  get_tag(ask_arg(mem, term, i)) == CTR
-                              && get_ext(ask_arg(mem, term, i)) >= HOAS_CT0
-                              && get_ext(ask_arg(mem, term, i)) <= HOAS_NUM;
-
-                            matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
-
-                          // Only match default variables on CTRs and NUMs
-                          } else {
-                            let is_ctr = get_tag(ask_arg(mem, term, i)) == CTR;
-                            let is_num = get_tag(ask_arg(mem, term, i)) == NUM;
-                            matched = matched && (is_ctr || is_num);
-                          }
-                        }
-                      }
-                      _ => {}
-                    }
-                  }
-
-                  // If all conditions are satisfied, the rule matched, so we must apply it
-                  if matched {
-                    // Increments the gas count
-                    inc_cost(mem);
-
-                    // Builds the right-hand side term (ex: `(Succ (Add a b))`)
-                    let done = alloc_body(mem, term, &rule.vars, &rule.body);
-
-                    // Links the host location to it
-                    link(mem, host, done);
-
-                    // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-                    clear(mem, get_loc(term, 0), function.is_strict.len() as u64);
-                    for (i, arity) in &rule.free {
-                      let i = *i as u64;
-                      clear(mem, get_loc(ask_arg(mem, term, i), 0), *arity);
-                    }
-
-                    // Collects unused variables (none in this example)
-                    for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
-                      if *erase {
-                        collect(mem, get_var(mem, term, var));
-                      }
-                    }
-
-                    break;
-                  }
-                }
-                if matched {
-                  init = 1;
+          match mode {
+            Mode::Working => {
+              if PARALLEL {
+                tick += 1;
+                if tick > 65536 {
+                  mode = Mode::Sharing;
+                  tick = 0;
                   continue;
                 }
               }
+
+              //println!("[{}] reduce {}", tid, show_term(heap, info, term, host));
+              let term = ask_lnk(heap, host);
+
+              if init {
+                match get_tag(term) {
+                  APP => {
+                    stack.push(new_task(TASK_WORK, host));
+                    init = true;
+                    host = get_loc(term, 0);
+                    continue;
+                  }
+                  DP0 | DP1 => {
+                    stack.push(new_task(TASK_WORK, host));
+                    host = get_loc(term, 2);
+                    continue;
+                  }
+                  OP2 => {
+                    stack.push(new_task(TASK_WORK, host));
+                    stack.push(new_task(TASK_INIT, get_loc(term, 1)));
+                    host = get_loc(term, 0);
+                    continue;
+                  }
+                  FUN => {
+                    let fid = get_ext(term);
+                    match fid {
+                      HVM_LOG => {
+                        init = false;
+                        continue;
+                      }
+                      HVM_PUT => {
+                        init = false;
+                        continue;
+                      }
+//GENERATED-FUN-CTR-MATCH//
+                      _ => {
+                        // Dynamic functions
+                        if let Some(Some(f)) = &info.funs.get(fid as usize) {
+                          let len = f.stricts.len() as u64;
+                          if len == 0 {
+                            init = false;
+                          } else {
+                            stack.push(new_task(TASK_WORK, host));
+                            for (i, strict) in f.stricts.iter().enumerate() {
+                              if i < f.stricts.len() - 1 {
+                                stack.push(new_task(TASK_INIT, get_loc(term, *strict)));
+                              } else {
+                                host = get_loc(term, *strict);
+                              }
+                            }
+                          }
+                          continue;
+                        }
+                      }
+                    }
+                  }
+                  _ => {}
+                }
+              } else {
+                match get_tag(term) {
+                  APP => {
+                    let arg0 = ask_arg(heap, term, 0);
+                    if get_tag(arg0) == LAM {
+                      //println!("app-lam");
+                      inc_cost(stat);
+                      subst(heap, stat, info, ask_arg(heap, arg0, 0), ask_arg(heap, term, 1));
+                      let _done = link(heap, host, ask_arg(heap, arg0, 1));
+                      clear(stat, get_loc(term, 0), 2);
+                      clear(stat, get_loc(arg0, 0), 2);
+                      init = true;
+                      continue;
+                    }
+                    if get_tag(arg0) == SUP {
+                      //println!("app-sup");
+                      inc_cost(stat);
+                      let app0 = get_loc(term, 0);
+                      let app1 = get_loc(arg0, 0);
+                      let let0 = alloc(stat, 3);
+                      let par0 = alloc(stat, 2);
+                      link(heap, let0 + 2, ask_arg(heap, term, 1));
+                      link(heap, app0 + 1, Dp0(get_ext(arg0), let0));
+                      link(heap, app0 + 0, ask_arg(heap, arg0, 0));
+                      link(heap, app1 + 0, ask_arg(heap, arg0, 1));
+                      link(heap, app1 + 1, Dp1(get_ext(arg0), let0));
+                      link(heap, par0 + 0, App(app0));
+                      link(heap, par0 + 1, App(app1));
+                      let done = Par(get_ext(arg0), par0);
+                      link(heap, host, done);
+                    }
+                  }
+                  DP0 | DP1 => {
+                    let arg0 = ask_arg(heap, term, 2);
+                    // let argK = ask_arg(heap, term, if get_tag(term) == DP0 { 1 } else { 0 });
+                    // if get_tag(argK) == ERA {
+                    //   let done = arg0;
+                    //   link(heap, host, done);
+                    //   init = true;
+                    //   continue;
+                    // }
+                    if get_tag(arg0) == LAM {
+                      //println!("dup-lam");
+                      inc_cost(stat);
+                      let let0 = get_loc(term, 0);
+                      let par0 = get_loc(arg0, 0);
+                      let lam0 = alloc(stat, 2);
+                      let lam1 = alloc(stat, 2);
+                      link(heap, let0 + 2, ask_arg(heap, arg0, 1));
+                      link(heap, par0 + 1, Var(lam1));
+                      let arg0_arg_0 = ask_arg(heap, arg0, 0);
+                      link(heap, par0 + 0, Var(lam0));
+                      subst(heap, stat, info, arg0_arg_0, Par(get_ext(term), par0));
+                      let term_arg_0 = ask_arg(heap, term, 0);
+                      link(heap, lam0 + 1, Dp0(get_ext(term), let0));
+                      subst(heap, stat, info, term_arg_0, Lam(lam0));
+                      let term_arg_1 = ask_arg(heap, term, 1);
+                      link(heap, lam1 + 1, Dp1(get_ext(term), let0));
+                      subst(heap, stat, info, term_arg_1, Lam(lam1));
+                      let done = Lam(if get_tag(term) == DP0 { lam0 } else { lam1 });
+                      link(heap, host, done);
+                      init = true;
+                      continue;
+                    } else if get_tag(arg0) == SUP {
+                      //println!("dup-sup");
+                      if get_ext(term) == get_ext(arg0) {
+                        inc_cost(stat);
+                        subst(heap, stat, info, ask_arg(heap, term, 0), ask_arg(heap, arg0, 0));
+                        subst(heap, stat, info, ask_arg(heap, term, 1), ask_arg(heap, arg0, 1));
+                        let _done = link(heap, host, ask_arg(heap, arg0, if get_tag(term) == DP0 { 0 } else { 1 }));
+                        clear(stat, get_loc(term, 0), 3);
+                        clear(stat, get_loc(arg0, 0), 2);
+                        init = true;
+                        continue;
+                      } else {
+                        inc_cost(stat);
+                        let par0 = alloc(stat, 2);
+                        let let0 = get_loc(term, 0);
+                        let par1 = get_loc(arg0, 0);
+                        let let1 = alloc(stat, 3);
+                        link(heap, let0 + 2, ask_arg(heap, arg0, 0));
+                        link(heap, let1 + 2, ask_arg(heap, arg0, 1));
+                        let term_arg_0 = ask_arg(heap, term, 0);
+                        let term_arg_1 = ask_arg(heap, term, 1);
+                        link(heap, par1 + 0, Dp1(get_ext(term), let0));
+                        link(heap, par1 + 1, Dp1(get_ext(term), let1));
+                        link(heap, par0 + 0, Dp0(get_ext(term), let0));
+                        link(heap, par0 + 1, Dp0(get_ext(term), let1));
+                        subst(heap, stat, info, term_arg_0, Par(get_ext(arg0), par0));
+                        subst(heap, stat, info, term_arg_1, Par(get_ext(arg0), par1));
+                        let done = Par(get_ext(arg0), if get_tag(term) == DP0 { par0 } else { par1 });
+                        link(heap, host, done);
+                      }
+                    } else if get_tag(arg0) == NUM {
+                      //println!("dup-u32");
+                      inc_cost(stat);
+                      subst(heap, stat, info, ask_arg(heap, term, 0), arg0);
+                      subst(heap, stat, info, ask_arg(heap, term, 1), arg0);
+                      clear(stat, get_loc(term, 0), 3);
+                      let _done = arg0;
+                      link(heap, host, arg0);
+                    } else if get_tag(arg0) == CTR {
+                      //println!("dup-ctr");
+                      inc_cost(stat);
+                      let fnid = get_ext(arg0);
+                      let arit = ask_ari(info, arg0);
+                      if arit == 0 {
+                        subst(heap, stat, info, ask_arg(heap, term, 0), Ctr(0, fnid, 0));
+                        subst(heap, stat, info, ask_arg(heap, term, 1), Ctr(0, fnid, 0));
+                        clear(stat, get_loc(term, 0), 3);
+                        let _done = link(heap, host, Ctr(0, fnid, 0));
+                      } else {
+                        let ctr0 = get_loc(arg0, 0);
+                        let ctr1 = alloc(stat, arit);
+                        for i in 0..arit - 1 {
+                          let leti = alloc(stat, 3);
+                          link(heap, leti + 2, ask_arg(heap, arg0, i));
+                          link(heap, ctr0 + i, Dp0(get_ext(term), leti));
+                          link(heap, ctr1 + i, Dp1(get_ext(term), leti));
+                        }
+                        let leti = get_loc(term, 0);
+                        link(heap, leti + 2, ask_arg(heap, arg0, arit - 1));
+                        let term_arg_0 = ask_arg(heap, term, 0);
+                        link(heap, ctr0 + arit - 1, Dp0(get_ext(term), leti));
+                        subst(heap, stat, info, term_arg_0, Ctr(arit, fnid, ctr0));
+                        let term_arg_1 = ask_arg(heap, term, 1);
+                        link(heap, ctr1 + arit - 1, Dp1(get_ext(term), leti));
+                        subst(heap, stat, info, term_arg_1, Ctr(arit, fnid, ctr1));
+                        let done = Ctr(arit, fnid, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
+                        link(heap, host, done);
+                      }
+                    } else if get_tag(arg0) == ERA {
+                      inc_cost(stat);
+                      subst(heap, stat, info, ask_arg(heap, term, 0), Era());
+                      subst(heap, stat, info, ask_arg(heap, term, 1), Era());
+                      link(heap, host, Era());
+                      clear(stat, get_loc(term, 0), 3);
+                      init = true;
+                      continue;
+                    }
+                  }
+                  OP2 => {
+                    let arg0 = ask_arg(heap, term, 0);
+                    let arg1 = ask_arg(heap, term, 1);
+                    if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
+                      //println!("op2-u32");
+                      inc_cost(stat);
+                      let a = get_num(arg0);
+                      let b = get_num(arg1);
+                      let c = match get_ext(term) {
+                        ADD => a.wrapping_add(b) & NUM_MASK,
+                        SUB => a.wrapping_sub(b) & NUM_MASK,
+                        MUL => a.wrapping_mul(b) & NUM_MASK,
+                        DIV => a.wrapping_div(b) & NUM_MASK,
+                        MOD => a.wrapping_rem(b) & NUM_MASK,
+                        AND => (a &  b) & NUM_MASK,
+                        OR  => (a |  b) & NUM_MASK,
+                        XOR => (a ^  b) & NUM_MASK,
+                        SHL => a.wrapping_shl(b as u32) & NUM_MASK,
+                        SHR => a.wrapping_shr(b as u32) & NUM_MASK,
+                        LTN => u64::from(a <  b),
+                        LTE => u64::from(a <= b),
+                        EQL => u64::from(a == b),
+                        GTE => u64::from(a >= b),
+                        GTN => u64::from(a >  b),
+                        NEQ => u64::from(a != b),
+                        _   => panic!("Invalid operation!"),
+                      };
+                      let done = Num(c);
+                      clear(stat, get_loc(term, 0), 2);
+                      link(heap, host, done);
+                    } else if get_tag(arg0) == SUP {
+                      //println!("op2-sup-0");
+                      inc_cost(stat);
+                      let op20 = get_loc(term, 0);
+                      let op21 = get_loc(arg0, 0);
+                      let let0 = alloc(stat, 3);
+                      let par0 = alloc(stat, 2);
+                      link(heap, let0 + 2, arg1);
+                      link(heap, op20 + 1, Dp0(get_ext(arg0), let0));
+                      link(heap, op20 + 0, ask_arg(heap, arg0, 0));
+                      link(heap, op21 + 0, ask_arg(heap, arg0, 1));
+                      link(heap, op21 + 1, Dp1(get_ext(arg0), let0));
+                      link(heap, par0 + 0, Op2(get_ext(term), op20));
+                      link(heap, par0 + 1, Op2(get_ext(term), op21));
+                      let done = Par(get_ext(arg0), par0);
+                      link(heap, host, done);
+                    } else if get_tag(arg1) == SUP {
+                      //println!("op2-sup-1");
+                      inc_cost(stat);
+                      let op20 = get_loc(term, 0);
+                      let op21 = get_loc(arg1, 0);
+                      let let0 = alloc(stat, 3);
+                      let par0 = alloc(stat, 2);
+                      link(heap, let0 + 2, arg0);
+                      link(heap, op20 + 0, Dp0(get_ext(arg1), let0));
+                      link(heap, op20 + 1, ask_arg(heap, arg1, 0));
+                      link(heap, op21 + 1, ask_arg(heap, arg1, 1));
+                      link(heap, op21 + 0, Dp1(get_ext(arg1), let0));
+                      link(heap, par0 + 0, Op2(get_ext(term), op20));
+                      link(heap, par0 + 1, Op2(get_ext(term), op21));
+                      let done = Par(get_ext(arg1), par0);
+                      link(heap, host, done);
+                    }
+                  }
+                  FUN => {
+                    let fid = get_ext(term);
+                    match fid {
+                      //HVM_LOG => {
+                        //let msge = get_loc(term,0);
+                        //normalize(heap, stats, info, msge);
+                        //println!("{}", crate::readback::as_code(heap, stats, info, msge));
+                        //link(heap, host, ask_arg(heap, term, 1));
+                        //clear(stat, get_loc(term, 0), 2);
+                        //collect(heap, stat, info, ask_lnk(heap, msge));
+                        //init = true;
+                        //continue;
+                      //}
+                      //HVM_PUT => {
+                        //let msge = get_loc(term,0);
+                        //normalize(heap, stats, info, msge);
+                        //let code = crate::readback::as_code(heap, stats, info, msge);
+                        //if code.chars().nth(0) == Some('"') {
+                          //println!("{}", &code[1 .. code.len() - 1]);
+                        //} else {
+                          //println!("{}", code);
+                        //}
+                        //link(heap, host, ask_arg(heap, term, 1));
+                        //clear(stat, get_loc(term, 0), 2);
+                        //collect(heap, stat, info, ask_lnk(heap, msge));
+                        //init = true;
+                        //continue;
+                      //}
+//GENERATED-FUN-CTR-RULES//
+                      _ => {
+                        // Dynamic functions
+                        if let Some(Some(function)) = &info.funs.get(fid as usize) {
+                          // Reduces function superpositions
+                          for (n, is_strict) in function.is_strict.iter().enumerate() {
+                            let n = n as u64;
+                            if *is_strict && get_tag(ask_arg(heap, term, n)) == SUP {
+                              fun_sup(heap, stat, info, host, term, ask_arg(heap, term, n), n);
+                              continue;
+                            }
+                          }
+
+                          // For each rule condition vector
+                          let mut matched = false;
+                          for (r, rule) in function.rules.iter().enumerate() {
+                            // Check if the rule matches
+                            matched = true;
+                            
+                            // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
+                            for (i, cond) in rule.cond.iter().enumerate() {
+                              let i = i as u64;
+                              match get_tag(*cond) {
+                                NUM => {
+                                  //println!("Didn't match because of NUM. i={} {} {}", i, get_num(ask_arg(heap, term, i)), get_num(*cond));
+                                  let same_tag = get_tag(ask_arg(heap, term, i)) == NUM;
+                                  let same_val = get_num(ask_arg(heap, term, i)) == get_num(*cond);
+                                  matched = matched && same_tag && same_val;
+                                }
+                                CTR => {
+                                  //println!("Didn't match because of CTR. i={} {} {}", i, get_tag(ask_arg(heap, term, i)), get_ext(*cond));
+                                  let same_tag = get_tag(ask_arg(heap, term, i)) == CTR;
+                                  let same_ext = get_ext(ask_arg(heap, term, i)) == get_ext(*cond);
+                                  matched = matched && same_tag && same_ext;
+                                }
+                                VAR => {
+                                  // If this is a strict argument, then we're in a default variable
+                                  if function.is_strict[i as usize] {
+
+                                    // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
+                                    if rule.hoas && r != function.rules.len() - 1 {
+
+                                      // Matches number literals
+                                      let is_num
+                                        = get_tag(ask_arg(heap, term, i)) == NUM;
+
+                                      // Matches constructor labels
+                                      let is_ctr
+                                        =  get_tag(ask_arg(heap, term, i)) == CTR
+                                        && ask_ari(info, ask_arg(heap, term, i)) == 0;
+
+                                      // Matches HOAS numbers and constructors
+                                      let is_hoas_ctr_num
+                                        =  get_tag(ask_arg(heap, term, i)) == CTR
+                                        && get_ext(ask_arg(heap, term, i)) >= HOAS_CT0
+                                        && get_ext(ask_arg(heap, term, i)) <= HOAS_NUM;
+
+                                      matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
+
+                                    // Only match default variables on CTRs and NUMs
+                                    } else {
+                                      let is_ctr = get_tag(ask_arg(heap, term, i)) == CTR;
+                                      let is_num = get_tag(ask_arg(heap, term, i)) == NUM;
+                                      matched = matched && (is_ctr || is_num);
+                                    }
+                                  }
+                                }
+                                _ => {}
+                              }
+                            }
+
+                            // If all conditions are satisfied, the rule matched, so we must apply it
+                            if matched {
+                              // Increments the gas count
+                              inc_cost(stat);
+
+                              // Builds the right-hand side term
+                              let done = alloc_body(heap, stat, term, &rule.vars, &rule.body);
+
+                              // Links the host location to it
+                              link(heap, host, done);
+
+                              // Collects unused variables
+                              for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
+                                if *erase {
+                                  collect(heap, stat, info, get_var(heap, term, var));
+                                }
+                              }
+
+                              // Clears the matched ctrs
+                              for (i, arity) in &rule.free {
+                                let i = *i as u64;
+                                clear(stat, get_loc(ask_arg(heap, term, i), 0), *arity);
+                              }
+                              clear(stat, get_loc(term, 0), function.arity);
+
+                              break;
+                            }
+                          }
+                          if matched {
+                            init = true;
+                            continue;
+                          }
+                        }
+                      }
+                    }
+                  }
+                  _ => {}
+                }
+              }
+
+              mode = Mode::Getting;
+              continue;
+            }
+            Mode::Getting => {
+              if let Some(task) = stack.pop() {
+                let task_tag = get_task_tag(task);
+                let task_val = get_task_val(task);
+                if PARALLEL && task_tag == TASK_WAIT {
+                  // If the task was completed, pop it and get another task
+                  if let Ok(old) = buckets[task_val as usize].compare_exchange(new_bucket(BUCKET_TASK_COMPLETE,0), new_bucket(BUCKET_EMPTY,0), Ordering::Relaxed, Ordering::Relaxed) {
+                    //println!("[{}] received a stolen task on bucket {} (cost {})", tid, task_val, stat.cost);
+                    continue;
+                  // Otherwise, put it back and enter steal mode
+                  } else {
+                    stack.push(task);
+                    mode = Mode::Robbing;
+                    continue;
+                  }
+                } else if PARALLEL && task_tag == TASK_BACK {
+                  //println!("[{}] completed a stolen task on bucket {} (cost {})", tid, task_val, stat.cost);
+                  match buckets[task_val as usize].compare_exchange(new_bucket(BUCKET_TASK_STOLEN,0), new_bucket(BUCKET_TASK_COMPLETE,0), Ordering::Relaxed, Ordering::Relaxed) {
+                    Ok(old) => {
+                      continue;
+                    }
+                    Err(old) => {
+                      panic!("[{}] failed to return task on bucket {}. Found: {}.", tid, task_val, old >> 60);
+                    }
+                  }
+                } else {
+                  init = task_tag == TASK_INIT;
+                  host = task_val;
+                  sidx = std::cmp::min(sidx, stack.len());
+                  mode = Mode::Working;
+                  continue;
+                }
+              } else {
+                if PARALLEL {
+                  mode = Mode::Robbing;
+                  continue;
+                } else {
+                  break;
+                }
+              }
+            }
+            Mode::Sharing => {
+              //println!("[{}] sharing {} {}", tid, sidx, stack.len());
+              while sidx < stack.len() {
+                let task = unsafe { *stack.get_unchecked_mut(sidx) };
+                let task_tag = get_task_tag(task);
+                let task_val = get_task_val(task);
+                if task_tag == TASK_INIT {
+                  let bid = fastrand::usize(..) % BUCKET_COUNT;
+                  if let Ok(old) = buckets[bid].compare_exchange(new_bucket(BUCKET_EMPTY,0), new_bucket(BUCKET_HAS_TASK,task), Ordering::Relaxed, Ordering::Relaxed) {
+                    //println!("[{}] shared task {} on bucket {}", tid, sidx, bid);
+                    let task_ref = unsafe { stack.get_unchecked_mut(sidx) };
+                    *task_ref = new_task(TASK_WAIT, bid as u64);
+                  }
+                  break;
+                } else {
+                  sidx = sidx + 1;
+                }
+              }
+              mode = Mode::Working;
+              continue;
+            }
+            Mode::Robbing => {
+              // Try to steal a task from another thread
+              let bid = fastrand::usize(..) % BUCKET_COUNT;
+              let buk = buckets[bid].load(Ordering::Relaxed);
+              if get_bucket_tag(buk) == BUCKET_HAS_TASK {
+                if let Ok(old) = buckets[bid].compare_exchange(buk, new_bucket(BUCKET_TASK_STOLEN,0), Ordering::Relaxed, Ordering::Relaxed) {
+                  //println!("[{}] stolen task on bucket {} (cost {})", tid, bid, stat.cost);
+                  stack.push(new_task(TASK_BACK, bid as u64));
+                  let task = get_bucket_val(buk);
+                  init = get_task_tag(task) == TASK_INIT;
+                  host = get_task_val(task);
+                  mode = Mode::Working;
+                  continue;
+                }
+              }
+              mode = Mode::Getting;
+              continue;
             }
           }
         }
-        _ => {}
-      }
+      });
     }
+  });
 
-    if let Some(item) = stack.pop() {
-      init = item >> 31;
-      host = item & 0x7FFFFFFF;
-      continue;
-    }
+  ask_lnk(heap, root)
+}
 
-    break;
+pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
+  reducer::<true>(heap, stats, info, root)
+}
+
+pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &Box<[AtomicU64]>) -> Ptr {
+  println!("normal host={} threads={} {}", host, stats.len(), show_term(heap, info, ask_lnk(heap,host), host));
+  pub fn set_visited(visited: &Box<[AtomicU64]>, bit: u64) {
+    let val = &visited[bit as usize >> 6];
+    val.store(val.load(Ordering::Relaxed) | (1 << (bit & 0x3f)), Ordering::Relaxed);
   }
-
-  ask_lnk(mem, root)
-}
-
-pub fn set_bit(bits: &mut [u64], bit: u64) {
-  bits[bit as usize >> 6] |= 1 << (bit & 0x3f);
-}
-
-pub fn get_bit(bits: &[u64], bit: u64) -> bool {
-  (((bits[bit as usize >> 6] >> (bit & 0x3f)) as u8) & 1) == 1
-}
-
-pub fn normal_go(
-  mem: &mut Worker,
-  funs: &Funs,
-  host: u64,
-  seen: &mut [u64],
-  i2n: Option<&HashMap<u64, String>>,
-  debug: bool,
-) -> Ptr {
-  let term = ask_lnk(mem, host);
-  if get_bit(seen, host) {
+  pub fn was_visited(visited: &Box<[AtomicU64]>, bit: u64) -> bool {
+    let val = &visited[bit as usize >> 6];
+    (((val.load(Ordering::Relaxed) >> (bit & 0x3f)) as u8) & 1) == 1
+  }
+  let term = ask_lnk(heap, host);
+  if was_visited(visited, host) {
     term
   } else {
-    let term = reduce(mem, funs, host, i2n, debug);
-    set_bit(seen, host);
-    let mut rec_locs = Vec::with_capacity(16);
+    let term = match stats.len() > 1 {
+      false => { reducer::<false>(heap, stats, info, host) }
+      true  => { reducer::<true>(heap, stats, info, host) }
+    };
+    set_visited(visited, host);
+    let mut rec_locs = vec![];
     match get_tag(term) {
       LAM => {
         rec_locs.push(get_loc(term, 1));
@@ -1150,51 +1429,75 @@ pub fn normal_go(
         rec_locs.push(get_loc(term, 2));
       }
       CTR | FUN => {
-        let arity = ask_ari(mem, term);
-        for i in 0..arity {
+        let arity = ask_ari(info, term);
+        for i in 0 .. arity {
           rec_locs.push(get_loc(term, i));
         }
       }
       _ => {}
     }
-    for loc in rec_locs {
-      let lnk: Ptr = normal_go(mem, funs, loc, seen, i2n, debug);
-      link(mem, loc, lnk);
+    let rec_len = rec_locs.len(); // locations where we must recurse
+    let thd_len = stats.len(); // number of available threads
+    let rec_loc = &rec_locs;
+    println!("~ rec_len={} thd_len={} {}", rec_len, thd_len, show_term(heap, info, ask_lnk(heap,host), host));
+    if rec_len > 0 {
+      std::thread::scope(|s| {
+        // If there are more threads than rec_locs, splits threads for reach rec_loc
+        if thd_len >= rec_len {
+          let spt_len = thd_len / rec_len;
+          let mut stats = stats;
+          for (rec_num, rec_loc) in rec_loc.iter().enumerate() {
+            let (rec_stats, new_stats) = stats.split_at_mut(if rec_num == rec_len - 1 { stats.len() } else { spt_len });
+            println!("~ rec_loc {} gets {} threads", rec_loc, rec_stats.len());
+            s.spawn(move || {
+              let lnk = normal(heap, rec_stats, info, *rec_loc, visited);
+              link(heap, *rec_loc, lnk);
+            });
+            stats = new_stats;
+          }
+        // Otherwise, splits rec_locs for each thread
+        } else {
+          for (thd_num, stat) in stats.iter_mut().enumerate() {
+            let min_idx = thd_num * rec_len / thd_len;
+            let max_idx = if thd_num < thd_len - 1 { (thd_num + 1) * rec_len / thd_len } else { rec_len };
+            println!("~ thread {} gets rec_locs {} to {}", thd_num, min_idx, max_idx);
+            s.spawn(move || {
+              for idx in min_idx .. max_idx {
+                let loc = rec_loc[idx];
+                let lnk = normal(heap, std::slice::from_mut(stat), info, loc, visited);
+                link(heap, loc, lnk);
+              }
+            });
+          }
+        }
+      });
     }
     term
   }
 }
 
-pub fn normal(
-  mem: &mut Worker,
-  funs: &Funs,
-  host: u64,
-  i2n: Option<&HashMap<u64, String>>,
-  debug: bool,
-) -> Ptr {
-  let mut done;
-  let mut cost = mem.cost;
+pub fn normalize(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, run_io: bool) -> Ptr {
+  println!("normalize");
+  // TODO: rt::run_io(&mut heap, &mut stat, &mut info, host);
+  // FIXME: reuse `visited`
+  let mut cost = get_cost(stats);
+  let visited = new_atomic_u64_array(heap.len() / 64);
   loop {
-    let mut seen = vec![0; 4194304];
-    done = normal_go(mem, funs, host, &mut seen, i2n, debug);
-    if mem.cost != cost {
-      cost = mem.cost;
+    let visited = new_atomic_u64_array(heap.len() / 64);
+    normal(heap, stats, info, host, &visited);
+    let new_cost = get_cost(stats);
+    if new_cost != cost {
+      cost = new_cost;
     } else {
       break;
     }
   }
-  //print_call_counts(i2n); // TODO: uncomment
-  done
+  //normal(heap, &mut stats[0 .. 1], info, host, &visited);
+  ask_lnk(heap, host)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn run_io(
-  mem: &mut Worker,
-  funs: &Funs,
-  host: u64,
-  i2n: Option<&HashMap<u64, String>>,
-  debug: bool,
-) {
+pub fn run_io(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) {
   fn read_input() -> String {
     let mut input = String::new();
     stdin().read_line(&mut input).expect("string");
@@ -1204,114 +1507,115 @@ pub fn run_io(
   }
   use std::io::{stdin,stdout,Write};
   loop {
-    let term = reduce(mem, funs, host, i2n, debug);
+    println!("??? {}", stats.len());
+    let term = reduce(heap, stats, info, host); // FIXME: add parallelism
     match get_tag(term) {
       CTR => {
         match get_ext(term) {
           // IO.done a : (IO a)
           IO_DONE => {
-            let done = ask_arg(mem, term, 0);
-            clear(mem, get_loc(term, 0), 1);
-            link(mem, host, done);
+            let done = ask_arg(heap, term, 0);
+            clear(&mut stats[0], get_loc(term, 0), 1);
+            link(heap, host, done);
             println!("");
             println!("");
             break;
           }
           // IO.do_input (String -> IO a) : (IO a)
           IO_DO_INPUT => {
-            let cont = ask_arg(mem, term, 0);
-            let text = make_string(mem, &read_input());
-            let app0 = alloc(mem, 2);
-            link(mem, app0 + 0, cont);
-            link(mem, app0 + 1, text);
-            clear(mem, get_loc(term, 0), 1);
+            let cont = ask_arg(heap, term, 0);
+            let text = make_string(heap, &mut stats[0], &read_input());
+            let app0 = alloc(&mut stats[0], 2);
+            link(heap, app0 + 0, cont);
+            link(heap, app0 + 1, text);
+            clear(&mut stats[0], get_loc(term, 0), 1);
             let done = App(app0);
-            link(mem, host, done);
+            link(heap, host, done);
           }
           // IO.do_output String (Num -> IO a) : (IO a)
           IO_DO_OUTPUT => {
-            if let Some(show) = readback_string(mem, funs, get_loc(term, 0)) {
+            if let Some(show) = readback_string(heap, stats, info, get_loc(term, 0)) {
               print!("{}", show);
               stdout().flush().ok();
-              let cont = ask_arg(mem, term, 1);
-              let app0 = alloc(mem, 2);
-              link(mem, app0 + 0, cont);
-              link(mem, app0 + 1, Num(0));
-              clear(mem, get_loc(term, 0), 2);
-              let text = ask_arg(mem, term, 0);
-              collect(mem, text);
+              let cont = ask_arg(heap, term, 1);
+              let app0 = alloc(&mut stats[0], 2);
+              link(heap, app0 + 0, cont);
+              link(heap, app0 + 1, Num(0));
+              clear(&mut stats[0], get_loc(term, 0), 2);
+              let text = ask_arg(heap, term, 0);
+              collect(heap, &mut stats[0], info, text);
               let done = App(app0);
-              link(mem, host, done);
+              link(heap, host, done);
             } else {
               println!("Runtime type error: attempted to print a non-string.");
-              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 0)));
               std::process::exit(0);
             }
           }
           // IO.do_fetch String (String -> IO a) : (IO a)
           IO_DO_FETCH => {
-            if let Some(url) = readback_string(mem, funs, get_loc(term, 0)) {
+            if let Some(url) = readback_string(heap, stats, info, get_loc(term, 0)) {
               let body = reqwest::blocking::get(url).unwrap().text().unwrap(); // FIXME: treat
-              let cont = ask_arg(mem, term, 2);
-              let app0 = alloc(mem, 2);
-              let text = make_string(mem, &body);
-              link(mem, app0 + 0, cont);
-              link(mem, app0 + 1, text);
-              clear(mem, get_loc(term, 0), 3);
-              let opts = ask_arg(mem, term, 1); // FIXME: use options
-              collect(mem, opts);
+              let cont = ask_arg(heap, term, 2);
+              let app0 = alloc(&mut stats[0], 2);
+              let text = make_string(heap, &mut stats[0], &body);
+              link(heap, app0 + 0, cont);
+              link(heap, app0 + 1, text);
+              clear(&mut stats[0], get_loc(term, 0), 3);
+              let opts = ask_arg(heap, term, 1); // FIXME: use options
+              collect(heap, &mut stats[0], info, opts);
               let done = App(app0);
-              link(mem, host, done);
+              link(heap, host, done);
             } else {
               println!("Runtime type error: attempted to print a non-string.");
-              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 0)));
               std::process::exit(0);
             }
           }
           // IO.do_store String String (Num -> IO a) : (IO a)
           IO_DO_STORE => {
-            if let Some(key) = readback_string(mem, funs, get_loc(term, 0)) {
-              if let Some(val) = readback_string(mem, funs, get_loc(term, 1)) {
+            if let Some(key) = readback_string(heap, stats, info, get_loc(term, 0)) {
+              if let Some(val) = readback_string(heap, stats, info, get_loc(term, 1)) {
                 std::fs::write(key, val).ok(); // TODO: Handle errors
-                let cont = ask_arg(mem, term, 2);
-                let app0 = alloc(mem, 2);
-                link(mem, app0 + 0, cont);
-                link(mem, app0 + 1, Num(0));
-                clear(mem, get_loc(term, 0), 2);
-                let key = ask_arg(mem, term, 0);
-                collect(mem, key);
-                clear(mem, get_loc(term, 1), 2);
-                let val = ask_arg(mem, term, 1);
-                collect(mem, val);
+                let cont = ask_arg(heap, term, 2);
+                let app0 = alloc(&mut stats[0], 2);
+                link(heap, app0 + 0, cont);
+                link(heap, app0 + 1, Num(0));
+                clear(&mut stats[0], get_loc(term, 0), 2);
+                let key = ask_arg(heap, term, 0);
+                collect(heap, &mut stats[0], info, key);
+                clear(&mut stats[0], get_loc(term, 1), 2);
+                let val = ask_arg(heap, term, 1);
+                collect(heap, &mut stats[0], info, val);
                 let done = App(app0);
-                link(mem, host, done);
+                link(heap, host, done);
               } else {
                 println!("Runtime type error: attempted to store a non-string.");
-                println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 1)));
+                println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 1)));
                 std::process::exit(0);
               }
             } else {
               println!("Runtime type error: attempted to store to a non-string key.");
-              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 0)));
               std::process::exit(0);
             }
           }
           // IO.do_load String (String -> IO a) : (IO a)
           IO_DO_LOAD => {
-            if let Some(key) = readback_string(mem, funs, get_loc(term, 0)) {
+            if let Some(key) = readback_string(heap, stats, info, get_loc(term, 0)) {
               let file = std::fs::read(key).unwrap(); // TODO: Handle errors
               let file = std::str::from_utf8(&file).unwrap();
-              let cont = ask_arg(mem, term, 1); 
-              let text = make_string(mem, file);
-              let app0 = alloc(mem, 2);
-              link(mem, app0 + 0, cont);
-              link(mem, app0 + 1, text);
-              clear(mem, get_loc(term, 0), 2);
+              let cont = ask_arg(heap, term, 1); 
+              let text = make_string(heap, &mut stats[0], file);
+              let app0 = alloc(&mut stats[0], 2);
+              link(heap, app0 + 0, cont);
+              link(heap, app0 + 1, text);
+              clear(&mut stats[0], get_loc(term, 0), 2);
               let done = App(app0);
-              link(mem, host, done);
+              link(heap, host, done);
             } else {
               println!("Runtime type error: attempted to read from a non-string key.");
-              println!("{}", crate::readback::as_code(mem, i2n, get_loc(term, 0)));
+              println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 0)));
               std::process::exit(0);
             }
           }
@@ -1321,27 +1625,25 @@ pub fn run_io(
       _ => { break; }
     }
   }
-  //println!("NORMALIZING {}", show_term(mem, host, i2n, 0));
-  //return normal(mem, funs, host, i2n, debug); 
 }
 
-pub fn make_string(mem: &mut Worker, text: &str) -> Ptr {
+pub fn make_string(heap: &Heap, stat: &mut Stat, text: &str) -> Ptr {
   let mut term = Ctr(0, STRING_NIL, 0);
   for chr in text.chars().rev() { // TODO: reverse
-    let ctr0 = alloc(mem, 2);
-    link(mem, ctr0 + 0, Num(chr as u64));
-    link(mem, ctr0 + 1, term);
+    let ctr0 = alloc(stat, 2);
+    link(heap, ctr0 + 0, Num(chr as u64));
+    link(heap, ctr0 + 1, term);
     term = Ctr(2, STRING_CONS, ctr0);
   }
   return term;
 }
 
 // TODO: finish this
-pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<String> {
+pub fn readback_string(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) -> Option<String> {
   let mut host = host;
   let mut text = String::new();
   loop {
-    let term = reduce(mem, funs, host, None, false);
+    let term = reduce(heap, stats, info, host);
     match get_tag(term) {
       CTR => {
         match get_ext(term) {
@@ -1349,7 +1651,7 @@ pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<Strin
             break;
           }
           STRING_CONS => {
-            let chr = reduce(mem, funs, get_loc(term, 0), None, false);
+            let chr = reduce(heap, stats, info, get_loc(term, 0));
             if get_tag(chr) == NUM {
               text.push(std::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
               host = get_loc(term, 1);
@@ -1372,34 +1674,10 @@ pub fn readback_string(mem: &mut Worker, funs: &Funs, host: u64) -> Option<Strin
 }
 
 
-// Debug: prints call counts
-fn print_call_counts(i2n: Option<&HashMap<u64, String>>) {
-  unsafe {
-    let mut counts: Vec<(String, u64)> = Vec::new();
-    for fun in 0..MAX_DYNFUNS {
-      if let Some(id_to_name) = i2n {
-        match id_to_name.get(&fun) {
-          None => {
-            break;
-          }
-          Some(fun_name) => {
-            counts.push((fun_name.clone(), CALL_COUNT[fun as usize]));
-          }
-        }
-      }
-    }
-    counts.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-    for (name, count) in counts {
-      println!("{} - {}", name, count);
-    }
-    println!();
-  }
-}
-
 // Debug
 // -----
 
-pub fn show_lnk(x: Ptr) -> String {
+pub fn show_ptr(x: Ptr) -> String {
   if x == 0 {
     String::from("~")
   } else {
@@ -1425,29 +1703,38 @@ pub fn show_lnk(x: Ptr) -> String {
   }
 }
 
-pub fn show_mem(worker: &Worker) -> String {
-  let mut s: String = String::new();
-  for i in 0..48 {
-    // pushes to the string
-    s.push_str(&format!("{:x} | ", i));
-    s.push_str(&show_lnk(worker.node[i]));
-    s.push('\n');
+pub fn show_heap(heap: &Heap) -> String {
+  let para = available_parallelism();
+  let mut idxs = vec![];
+  for tid in 0 .. para {
+    idxs.push(heap.len() / para * tid);
   }
-  s
+  let mut text: String = String::new();
+  for idx in idxs {
+    let mut idx = idx;
+    loop {
+      let ptr = heap[idx].load(Ordering::Relaxed);
+      if ptr == 0 {
+        break;
+      } else {
+        text.push_str(&format!("{:x} | ", idx));
+        text.push_str(&show_ptr(ptr));
+        text.push('\n');
+        idx = idx + 1;
+      }
+    }
+  }
+  text
 }
 
-pub fn show_term(
-  mem: &Worker,
-  term: Ptr,
-  i2n: Option<&HashMap<u64, String>>,
-  focus: u64,
-) -> String {
+pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
   let mut lets: HashMap<u64, u64> = HashMap::new();
   let mut kinds: HashMap<u64, u64> = HashMap::new();
   let mut names: HashMap<u64, String> = HashMap::new();
   let mut count: u64 = 0;
   fn find_lets(
-    mem: &Worker,
+    heap: &Heap,
+    info: &Info,
     term: Ptr,
     lets: &mut HashMap<u64, u64>,
     kinds: &mut HashMap<u64, u64>,
@@ -1458,15 +1745,15 @@ pub fn show_term(
       LAM => {
         names.insert(get_loc(term, 0), format!("{}", count));
         *count += 1;
-        find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
+        find_lets(heap, info, ask_arg(heap, term, 1), lets, kinds, names, count);
       }
       APP => {
-        find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
-        find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
+        find_lets(heap, info, ask_arg(heap, term, 0), lets, kinds, names, count);
+        find_lets(heap, info, ask_arg(heap, term, 1), lets, kinds, names, count);
       }
       SUP => {
-        find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
-        find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
+        find_lets(heap, info, ask_arg(heap, term, 0), lets, kinds, names, count);
+        find_lets(heap, info, ask_arg(heap, term, 1), lets, kinds, names, count);
       }
       DP0 => {
         if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
@@ -1474,7 +1761,7 @@ pub fn show_term(
           *count += 1;
           kinds.insert(get_loc(term, 0), get_ext(term));
           e.insert(get_loc(term, 0));
-          find_lets(mem, ask_arg(mem, term, 2), lets, kinds, names, count);
+          find_lets(heap, info, ask_arg(heap, term, 2), lets, kinds, names, count);
         }
       }
       DP1 => {
@@ -1483,27 +1770,27 @@ pub fn show_term(
           *count += 1;
           kinds.insert(get_loc(term, 0), get_ext(term));
           e.insert(get_loc(term, 0));
-          find_lets(mem, ask_arg(mem, term, 2), lets, kinds, names, count);
+          find_lets(heap, info, ask_arg(heap, term, 2), lets, kinds, names, count);
         }
       }
       OP2 => {
-        find_lets(mem, ask_arg(mem, term, 0), lets, kinds, names, count);
-        find_lets(mem, ask_arg(mem, term, 1), lets, kinds, names, count);
+        find_lets(heap, info, ask_arg(heap, term, 0), lets, kinds, names, count);
+        find_lets(heap, info, ask_arg(heap, term, 1), lets, kinds, names, count);
       }
       CTR | FUN => {
-        let arity = ask_ari(mem, term);
+        let arity = ask_ari(info, term);
         for i in 0..arity {
-          find_lets(mem, ask_arg(mem, term, i), lets, kinds, names, count);
+          find_lets(heap, info, ask_arg(heap, term, i), lets, kinds, names, count);
         }
       }
       _ => {}
     }
   }
   fn go(
-    mem: &Worker,
+    heap: &Heap,
+    info: &Info,
     term: Ptr,
     names: &HashMap<u64, String>,
-    i2n: Option<&HashMap<u64, String>>,
     focus: u64,
   ) -> String {
     let done = match get_tag(term) {
@@ -1518,23 +1805,23 @@ pub fn show_term(
       }
       LAM => {
         let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("?d")));
-        format!("λ{} {}", name, go(mem, ask_arg(mem, term, 1), names, i2n, focus))
+        format!("λ{} {}", name, go(heap, info, ask_arg(heap, term, 1), names, focus))
       }
       APP => {
-        let func = go(mem, ask_arg(mem, term, 0), names, i2n, focus);
-        let argm = go(mem, ask_arg(mem, term, 1), names, i2n, focus);
+        let func = go(heap, info, ask_arg(heap, term, 0), names, focus);
+        let argm = go(heap, info, ask_arg(heap, term, 1), names, focus);
         format!("({} {})", func, argm)
       }
       SUP => {
         //let kind = get_ext(term);
-        let func = go(mem, ask_arg(mem, term, 0), names, i2n, focus);
-        let argm = go(mem, ask_arg(mem, term, 1), names, i2n, focus);
+        let func = go(heap, info, ask_arg(heap, term, 0), names, focus);
+        let argm = go(heap, info, ask_arg(heap, term, 1), names, focus);
         format!("{{{} {}}}", func, argm)
       }
       OP2 => {
         let oper = get_ext(term);
-        let val0 = go(mem, ask_arg(mem, term, 0), names, i2n, focus);
-        let val1 = go(mem, ask_arg(mem, term, 1), names, i2n, focus);
+        let val0 = go(heap, info, ask_arg(heap, term, 0), names, focus);
+        let val1 = go(heap, info, ask_arg(heap, term, 1), names, focus);
         let symb = match oper {
           0x0 => "+",
           0x1 => "-",
@@ -1561,18 +1848,9 @@ pub fn show_term(
       }
       CTR | FUN => {
         let func = get_ext(term);
-        let arit = ask_ari(mem, term);
-        let args: Vec<String> =
-          (0..arit).map(|i| go(mem, ask_arg(mem, term, i), names, i2n, focus)).collect();
-        let name = if let Some(id_to_name) = i2n {
-          id_to_name.get(&func).unwrap_or(&String::from("?f")).clone()
-        } else {
-          format!(
-            "{}{}",
-            if get_tag(term) < FUN { String::from("C") } else { String::from("F") },
-            func
-          )
-        };
+        let arit = ask_ari(info, term);
+        let args: Vec<String> = (0..arit).map(|i| go(heap, info, ask_arg(heap, term, i), names, focus)).collect();
+        let name = &info.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
         format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
       ERA => "*".to_string(),
@@ -1584,24 +1862,16 @@ pub fn show_term(
       done
     }
   }
-  find_lets(mem, term, &mut lets, &mut kinds, &mut names, &mut count);
-  let mut text = go(mem, term, &names, i2n, focus);
+  find_lets(heap, info, term, &mut lets, &mut kinds, &mut names, &mut count);
+  let mut text = go(heap, info, term, &names, focus);
   for (_key, pos) in lets {
     // todo: reverse
     let what = String::from("?h");
     //let kind = kinds.get(&pos).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
-    let nam0 =
-      if ask_lnk(mem, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
-    let nam1 =
-      if ask_lnk(mem, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
-    text.push_str(&format!(
-      "\ndup {} {} = {};",
-      //kind,
-      nam0,
-      nam1,
-      go(mem, ask_lnk(mem, pos + 2), &names, i2n, focus)
-    ));
+    let nam0 = if ask_lnk(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+    let nam1 = if ask_lnk(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+    text.push_str(&format!("\ndup {} {} = {};", nam0, nam1, go(heap, info, ask_lnk(heap, pos + 2), &names, focus)));
   }
   text
 }

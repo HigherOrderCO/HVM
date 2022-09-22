@@ -33,6 +33,7 @@ test = false
 itertools = "0.10"
 num_cpus = "1.13"
 regex = "1.5.4"
+fastrand = "1.8.0"
 highlight_error = "0.1.1"
 clap = { version = "3.1.8", features = ["derive"] }
 wasm-bindgen = "0.2.82"
@@ -42,6 +43,9 @@ instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
   "#;
 
   let main = r#"
+#![feature(atomic_from_mut)]
+#![feature(atomic_mut_ptr)]
+
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
@@ -80,8 +84,8 @@ fn main() -> Result<(), String> {
 }
 "#;
 
-  std::fs::create_dir("./_hvm_")?;
-  std::fs::create_dir("./_hvm_/src")?;
+  std::fs::create_dir("./_hvm_").ok();
+  std::fs::create_dir("./_hvm_/src").ok();
   std::fs::write("./_hvm_/src/language.rs", language)?;
   std::fs::write("./_hvm_/src/parser.rs", parser)?;
   std::fs::write("./_hvm_/src/readback.rs", readback)?;
@@ -117,15 +121,15 @@ fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> (Strin
   let mut fun_rules = String::new();
 
   for (name, (arity, rules)) in &comp.rule_group {
-    let (init, func) = compile_func(comp, &name, rules, 7);
+    let (init, func) = compile_func(comp, &name, rules, 12);
 
-    line(&mut fun_match, 6, &format!("{} => {{", &compile_name(name)));
+    line(&mut fun_match, 11, &format!("{} => {{", &compile_name(name)));
     fun_match.push_str(&init);
-    line(&mut fun_match, 6, &format!("}}"));
+    line(&mut fun_match, 11, &format!("}}"));
 
-    line(&mut fun_rules, 6, &format!("{} => {{", &compile_name(name)));
+    line(&mut fun_rules, 11, &format!("{} => {{", &compile_name(name)));
     fun_rules.push_str(&func);
-    line(&mut fun_rules, 6, &format!("}}"));
+    line(&mut fun_rules, 11, &format!("}}"));
   }
 
   // Constructor and function ids and arities
@@ -210,12 +214,12 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
   // Computes the initializer, which calls reduce recursively
   //line(&mut init, tab + 0, &format!("if ask_ari(mem, term) == {} {{", function.is_strict.len()));
   if function.stricts.is_empty() {
-    line(&mut init, tab + 0, "init = 0;");
+    line(&mut init, tab + 0, "init = false;");
   } else {
-    line(&mut init, tab + 0, "stack.push(host);");
+    line(&mut init, tab + 0, "stack.push(new_task(TASK_WORK, host));");
     for (i, strict) in function.stricts.iter().enumerate() {
       if i < function.stricts.len() - 1 {
-        line(&mut init, tab + 0, &format!("stack.push(get_loc(term, {}) | 0x80000000);", strict));
+        line(&mut init, tab + 0, &format!("stack.push(new_task(TASK_INIT, get_loc(term, {})));", strict));
       } else {
         line(&mut init, tab + 0, &format!("host = get_loc(term, {});", strict));
       }
@@ -224,14 +228,14 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
   line(&mut init, tab + 0, "continue;");
   //line(&mut init, tab + 0, "}");
 
-  // Applies the cal_par rule to superposed args
+  // Applies the fun_sup rule to superposed args
   for (i, is_strict) in function.is_strict.iter().enumerate() {
     if *is_strict {
-      line(&mut code, tab + 0, &format!("if get_tag(ask_arg(mem,term,{})) == SUP {{", i));
+      line(&mut code, tab + 0, &format!("if get_tag(ask_arg(heap,term,{})) == SUP {{", i));
       line(
         &mut code,
         tab + 1,
-        &format!("cal_par(mem, host, term, ask_arg(mem, term, {}), {});", i, i),
+        &format!("fun_sup(heap, stat, info, host, term, ask_arg(heap, term, {}), {});", i, i),
       );
       line(&mut code, tab + 1, "continue;");
       line(&mut code, tab + 0, "}");
@@ -246,13 +250,13 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
     for (i, cond) in dynrule.cond.iter().enumerate() {
       let i = i as u64;
       if rt::get_tag(*cond) == rt::NUM {
-        let same_tag = format!("get_tag(ask_arg(mem, term, {})) == NUM", i);
-        let same_val = format!("get_num(ask_arg(mem, term, {})) == {}", i, rt::get_num(*cond));
+        let same_tag = format!("get_tag(ask_arg(heap, term, {})) == NUM", i);
+        let same_val = format!("get_num(ask_arg(heap, term, {})) == {}", i, rt::get_num(*cond));
         matched.push(format!("({} && {})", same_tag, same_val));
       }
       if rt::get_tag(*cond) == rt::CTR {
-        let some_tag = format!("get_tag(ask_arg(mem, term, {})) == CTR", i);
-        let some_ext = format!("get_ext(ask_arg(mem, term, {})) == {}", i, rt::get_ext(*cond));
+        let some_tag = format!("get_tag(ask_arg(heap, term, {})) == CTR", i);
+        let some_ext = format!("get_ext(ask_arg(heap, term, {})) == {}", i, rt::get_ext(*cond));
         matched.push(format!("({} && {})", some_tag, some_ext));
       }
         // If this is a strict argument, then we're in a default variable
@@ -263,25 +267,25 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
 
           // Matches number literals
           let is_num
-            = format!("get_tag(ask_arg(mem, term, {})) == NUM", i);
+            = format!("get_tag(ask_arg(heap, term, {})) == NUM", i);
 
           // Matches constructor labels
           let is_ctr = format!("({} && {})",
-            format!("get_tag(ask_arg(mem, term, {})) == CTR", i),
-            format!("ask_ari(mem, ask_arg(mem, term, {})) == 0u", i));
+            format!("get_tag(ask_arg(heap, term, {})) == CTR", i),
+            format!("ask_ari(heap, ask_arg(heap, term, {})) == 0u", i));
 
           // Matches HOAS numbers and constructors
           let is_hoas_ctr_num = format!("({} && {} && {})",
-            format!("get_tag(ask_arg(mem, term, {})) == CTR", i),
-            format!("get_ext(ask_arg(mem, term, {})) >= HOAS_CT0", i),
-            format!("get_ext(ask_arg(mem, term, {})) <= HOAS_NUM", i));
+            format!("get_tag(ask_arg(heap, term, {})) == CTR", i),
+            format!("get_ext(ask_arg(heap, term, {})) >= HOAS_CT0", i),
+            format!("get_ext(ask_arg(heap, term, {})) <= HOAS_NUM", i));
 
           matched.push(format!("({} || {} || {})", is_num, is_ctr, is_hoas_ctr_num));
 
         // Only match default variables on CTRs and NUMs
         } else {
-          let is_ctr = format!("get_tag(ask_arg(mem, term, {})) == CTR", i);
-          let is_num = format!("get_tag(ask_arg(mem, term, {})) == NUM", i);
+          let is_ctr = format!("get_tag(ask_arg(heap, term, {})) == CTR", i);
+          let is_num = format!("get_tag(ask_arg(heap, term, {})) == NUM", i);
           matched.push(format!("({} || {})", is_ctr, is_num));
         }
 
@@ -292,7 +296,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
     line(&mut code, tab + 0, &format!("if {} {{", conds));
 
     // Increments the gas count
-    line(&mut code, tab + 1, "inc_cost(mem);");
+    line(&mut code, tab + 1, "inc_cost(stat);");
 
     // Builds the right-hand side term (ex: `(Succ (Add a b))`)
     //let done = compile_func_rule_body(&mut code, tab + 1, &dynrule.body, &dynrule.vars);
@@ -300,27 +304,27 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
     line(&mut code, tab + 1, &format!("let done = {};", done));
 
     // Links the host location to it
-    line(&mut code, tab + 1, "link(mem, host, done);");
+    line(&mut code, tab + 1, "link(heap, host, done);");
 
     // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-    line(&mut code, tab + 1, &format!("clear(mem, get_loc(term, 0), {});", function.is_strict.len()));
+    line(&mut code, tab + 1, &format!("clear(stat, get_loc(term, 0), {});", function.is_strict.len()));
     for (i, arity) in &dynrule.free {
       let i = *i as u64;
       line(
         &mut code,
         tab + 1,
-        &format!("clear(mem, get_loc(ask_arg(mem, term, {}), 0), {});", i, arity),
+        &format!("clear(stat, get_loc(ask_arg(heap, term, {}), 0), {});", i, arity),
       );
     }
 
     // Collects unused variables (none in this example)
     for dynvar @ rt::RuleVar { param: _, field: _, erase } in dynrule.vars.iter() {
       if *erase {
-        line(&mut code, tab + 1, &format!("collect(mem, {});", get_var(dynvar)));
+        line(&mut code, tab + 1, &format!("collect(heap, stat, info, {});", get_var(dynvar)));
       }
     }
 
-    line(&mut code, tab + 1, "init = 1;");
+    line(&mut code, tab + 1, "init = true;");
     line(&mut code, tab + 1, "continue;");
 
     line(&mut code, tab + 0, "}");
@@ -346,11 +350,11 @@ fn compile_func_rule_term(
       got.clone()
     } else {
       let name = fresh(nams, "lam");
-      line(code, tab, &format!("let {} = alloc(mem, 2);", name));
+      line(code, tab, &format!("let {} = alloc(stat, 2);", name));
       if glob != 0 {
         // FIXME: sanitizer still can't detect if a scopeless lambda doesn't use its bound
         // variable, so we must write an Era() here. When it does, we can remove this line.
-        line(code, tab, &format!("link(mem, {} + 0, Era());", name));
+        line(code, tab, &format!("link(heap, {} + 0, Era());", name));
         globs.insert(glob, name.clone());
       }
       name
@@ -392,7 +396,7 @@ fn compile_func_rule_term(
         line(code, tab, &format!("let {};", dup1));
         if INLINE_NUMBERS {
           line(code, tab + 0, &format!("if get_tag({}) == NUM {{", copy));
-          line(code, tab + 1, "inc_cost(mem);");
+          line(code, tab + 1, "inc_cost(stat);");
           line(code, tab + 1, &format!("{} = {};", dup0, copy));
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
           line(code, tab + 0, "} else {");
@@ -401,15 +405,15 @@ fn compile_func_rule_term(
         let coln = fresh(nams, "col");
         //let colx = *dups;
         //*dups += 1;
-        line(code, tab + 1, &format!("let {} = alloc(mem, 3);", name));
-        line(code, tab + 1, &format!("let {} = gen_dupk(mem);", coln));
+        line(code, tab + 1, &format!("let {} = alloc(stat, 3);", name));
+        line(code, tab + 1, &format!("let {} = gen_dup(stat);", coln));
         if eras.0 {
-          line(code, tab + 1, &format!("link(mem, {} + 0, Era());", name));
+          line(code, tab + 1, &format!("link(heap, {} + 0, Era());", name));
         }
         if eras.1 {
-          line(code, tab + 1, &format!("link(mem, {} + 1, Era());", name));
+          line(code, tab + 1, &format!("link(heap, {} + 1, Era());", name));
         }
-        line(code, tab + 1, &format!("link(mem, {} + 2, {});", name, copy));
+        line(code, tab + 1, &format!("link(heap, {} + 2, {});", name, copy));
         line(code, tab + 1, &format!("{} = Dp0({}, {});", dup0, coln, name));
         line(code, tab + 1, &format!("{} = Dp1({}, {});", dup1, coln, name));
         if INLINE_NUMBERS {
@@ -435,39 +439,38 @@ fn compile_func_rule_term(
         let body = compile_term(code, tab, vars, nams, globs, body);
         vars.pop();
         if *eras {
-          line(code, tab, &format!("link(mem, {} + 0, Era());", name));
+          line(code, tab, &format!("link(heap, {} + 0, Era());", name));
         }
-        line(code, tab, &format!("link(mem, {} + 1, {});", name, body));
+        line(code, tab, &format!("link(heap, {} + 1, {});", name, body));
         format!("Lam({})", name)
       }
       rt::Term::App { func, argm } => {
         let name = fresh(nams, "app");
         let func = compile_term(code, tab, vars, nams, globs, func);
         let argm = compile_term(code, tab, vars, nams, globs, argm);
-        line(code, tab, &format!("let {} = alloc(mem, 2);", name));
-        line(code, tab, &format!("link(mem, {} + 0, {});", name, func));
-        line(code, tab, &format!("link(mem, {} + 1, {});", name, argm));
+        line(code, tab, &format!("let {} = alloc(stat, 2);", name));
+        line(code, tab, &format!("link(heap, {} + 0, {});", name, func));
+        line(code, tab, &format!("link(heap, {} + 1, {});", name, argm));
         format!("App({})", name)
       }
       rt::Term::Ctr { func, args } => {
-        let ctr_args: Vec<String> =
-          args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
+        let ctr_args: Vec<String> = args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
         let name = fresh(nams, "ctr");
-        line(code, tab, &format!("let {} = alloc(mem, {});", name, ctr_args.len()));
+        line(code, tab, &format!("let {} = alloc(stat, {});", name, ctr_args.len()));
         for (i, arg) in ctr_args.iter().enumerate() {
-          line(code, tab, &format!("link(mem, {} + {}, {});", name, i, arg));
+          line(code, tab, &format!("link(heap, {} + {}, {});", name, i, arg));
         }
         format!("Ctr({}, {}, {})", ctr_args.len(), func, name)
       }
-      rt::Term::Cal { func, args } => {
+      rt::Term::Fun { func, args } => {
         let cal_args: Vec<String> =
           args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
         let name = fresh(nams, "cal");
-        line(code, tab, &format!("let {} = alloc(mem, {});", name, cal_args.len()));
+        line(code, tab, &format!("let {} = alloc(stat, {});", name, cal_args.len()));
         for (i, arg) in cal_args.iter().enumerate() {
-          line(code, tab, &format!("link(mem, {} + {}, {});", name, i, arg));
+          line(code, tab, &format!("link(heap, {} + {}, {});", name, i, arg));
         }
-        format!("Cal({}, {}, {})", cal_args.len(), func, name)
+        format!("Fun({}, {}, {})", cal_args.len(), func, name)
       }
       rt::Term::Num { numb } => {
         format!("Num({})", numb)
@@ -498,20 +501,20 @@ fn compile_func_rule_term(
             rt::XOR => line(code, tab + 1, &format!("{} = Num({} ^ {});", retx, a, b)),
             rt::SHL => line(code, tab + 1, &format!("{} = Num({} << {});", retx, a, b)),
             rt::SHR => line(code, tab + 1, &format!("{} = Num({} >> {});", retx, a, b)),
-            rt::LTN => line(code, tab + 1, &format!("{} = Num({} <  {} ? 1 : 0);", retx, a, b)),
-            rt::LTE => line(code, tab + 1, &format!("{} = Num({} <= {} ? 1 : 0);", retx, a, b)),
-            rt::EQL => line(code, tab + 1, &format!("{} = Num({} == {} ? 1 : 0);", retx, a, b)),
-            rt::GTE => line(code, tab + 1, &format!("{} = Num({} >= {} ? 1 : 0);", retx, a, b)),
-            rt::GTN => line(code, tab + 1, &format!("{} = Num({} >  {} ? 1 : 0);", retx, a, b)),
-            rt::NEQ => line(code, tab + 1, &format!("{} = Num({} != {} ? 1 : 0);", retx, a, b)),
+            rt::LTN => line(code, tab + 1, &format!("{} = Num(if {} < {} {{ 1 }} else {{ 0 }});", retx, a, b)),
+            rt::LTE => line(code, tab + 1, &format!("{} = Num(if {} <= {} {{ 1 }} else {{ 0 }});", retx, a, b)),
+            rt::EQL => line(code, tab + 1, &format!("{} = Num(if {} == {} {{ 1 }} else {{ 0 }});", retx, a, b)),
+            rt::GTE => line(code, tab + 1, &format!("{} = Num(if {} >= {} {{ 1 }} else {{ 0 }});", retx, a, b)),
+            rt::GTN => line(code, tab + 1, &format!("{} = Num(if {} >  {} {{ 1 }} else {{ 0 }});", retx, a, b)),
+            rt::NEQ => line(code, tab + 1, &format!("{} = Num(if {} != {} {{ 1 }} else {{ 0 }});", retx, a, b)),
             _ => line(code, tab + 1, &format!("{} = ?;", retx)),
           }
-          line(code, tab + 1, "inc_cost(mem);");
+          line(code, tab + 1, "inc_cost(stat);");
           line(code, tab + 0, "} else {");
         }
-        line(code, tab + 1, &format!("let {} = alloc(mem, 2);", name));
-        line(code, tab + 1, &format!("link(mem, {} + 0, {});", name, val0));
-        line(code, tab + 1, &format!("link(mem, {} + 1, {});", name, val1));
+        line(code, tab + 1, &format!("let {} = alloc(stat, 2);", name));
+        line(code, tab + 1, &format!("link(heap, {} + 0, {});", name, val0));
+        line(code, tab + 1, &format!("link(heap, {} + 1, {});", name, val1));
         let oper_name = match *oper {
           rt::ADD => "ADD",
           rt::SUB => "SUB",
@@ -549,10 +552,10 @@ fn compile_func_rule_term(
     .iter()
     .map(|_var @ rt::RuleVar { param, field, erase: _ }| match field {
       Some(field) => {
-        format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, field)
+        format!("ask_arg(heap, ask_arg(heap, term, {}), {})", param, field)
       }
       None => {
-        format!("ask_arg(mem, term, {})", param)
+        format!("ask_arg(heap, term, {})", param)
       }
     })
     .collect();
@@ -564,10 +567,10 @@ fn get_var(var: &rt::RuleVar) -> String {
   let rt::RuleVar { param, field, erase: _ } = var;
   match field {
     Some(i) => {
-      format!("ask_arg(mem, ask_arg(mem, term, {}), {})", param, i)
+      format!("ask_arg(heap, ask_arg(heap, term, {}), {})", param, i)
     }
     None => {
-      format!("ask_arg(mem, term, {})", param)
+      format!("ask_arg(heap, term, {})", param)
     }
   }
 }

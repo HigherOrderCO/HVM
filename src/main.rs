@@ -1,3 +1,6 @@
+#![feature(atomic_from_mut)]
+#![feature(atomic_mut_ptr)]
+
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
@@ -128,11 +131,19 @@ fn make_main_call(params: &Vec<String>) -> Result<language::Term, String> {
 
 fn run_code(code: &str, debug: bool, params: Vec<String>, memory: usize) -> Result<(), String> {
   let call = make_main_call(&params)?;
-  let (norm, cost, size, time) = rulebook::eval_code(&call, code, debug, memory)?;
+  //FIXME: remove below (parallel debug)
+  //let call = language::Term::Ctr {
+    //name: "Pair".to_string(),
+    //args: vec![
+      //Box::new(language::Term::Ctr { name: "Main0".to_string(), args: vec![] }),
+      //Box::new(language::Term::Ctr { name: "Main1".to_string(), args: vec![] }),
+    //]
+  //};
+  let (norm, cost, used, time) = rulebook::eval_code(&call, code, debug, memory)?;
   println!("{}", norm);
   eprintln!();
-  eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
-  eprintln!("Mem.Size: {}", size);
+  eprintln!("rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  eprintln!("used_mem: {}", used);
   Ok(())
 }
 

@@ -1,3 +1,6 @@
+#![feature(atomic_from_mut)]
+#![feature(atomic_mut_ptr)]
+
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]

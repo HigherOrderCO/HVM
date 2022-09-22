@@ -44,8 +44,9 @@ macro_rules! log {
 
 #[wasm_bindgen]
 pub struct Runtime {
-  heap: runtime::Worker,
-  funs: runtime::Funs,
+  heap: runtime::Heap,
+  stat: Box<runtime::Stats>,
+  info: runtime::Info,
   book: rulebook::RuleBook,
 }
 
@@ -109,8 +110,9 @@ impl Runtime {
   /// Creates a new, empty runtime
   pub fn new(size: usize) -> Runtime {
     Runtime {
-      heap: runtime::new_worker(size),
-      funs: vec![],
+      heap: runtime::new_heap(),
+      stat: runtime::new_stats(),
+      info: runtime::new_info(),
       book: rulebook::new_rulebook(),
     }
   }
@@ -118,12 +120,16 @@ impl Runtime {
   /// Creates a runtime from source code, given a max number of nodes
   pub fn from_code_with_size(code: &str, size: usize) -> Result<Runtime, String> {
     let file = language::read_file(code)?;
+    let heap = runtime::new_heap();
+    let stat = runtime::new_stats();
+    let info = runtime::new_info();
     let book = rulebook::gen_rulebook(&file);
-    let funs = rulebook::build_dynamic_functions(&book);
-    let mut heap = runtime::new_worker(size);
-    heap.aris = rulebook::build_dynamic_arities(&book);
-    return Ok(Runtime { heap, funs, book });
+    return Ok(Runtime { heap, stat, info, book });
   }
+
+  //fn get_area(&mut self) -> runtime::Area {
+    //return runtime::get_area(&mut self.heap, 0)
+  //}
 
   /// Creates a runtime from a source code
   #[cfg(not(target_arch = "wasm32"))]
@@ -153,12 +159,12 @@ impl Runtime {
 
   /// Given a location, evaluates a term to head normal form
   pub fn reduce(&mut self, host: u64) {
-    runtime::reduce(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false);
+    runtime::reduce(&mut self.heap, &mut self.stat, &self.info, host); // FIXME: add parallelism
   }
 
   /// Given a location, evaluates a term to full normal form
   pub fn normalize(&mut self, host: u64) {
-    runtime::normal(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false);
+    runtime::normalize(&mut self.heap, &mut self.stat, &self.info, host, false);
   }
 
   /// Evaluates a code, allocs and evaluates to full normal form. Returns its location.
@@ -179,25 +185,25 @@ impl Runtime {
     return self.show(host);
   }
 
-  /// Given a location, runs side-efefctive actions
+  /// Given a location, runs side-effective actions
   #[cfg(not(target_arch = "wasm32"))]
   pub fn run_io(&mut self, host: u64) {
-    runtime::run_io(&mut self.heap, &self.funs, host, Some(&self.book.id_to_name), false)
+    runtime::run_io(&mut self.heap, &mut self.stat, &self.info, host)
   }
 
   /// Given a location, recovers the lambda Term stored on it, as code
   pub fn show(&self, host: u64) -> String {
-    readback::as_code(&self.heap, Some(&self.book.id_to_name), host)
+    readback::as_code(&self.heap, &self.stat, &self.info, host)
   }
 
   /// Given a location, recovers the linear Term stored on it, as code
   pub fn show_linear(&self, host: u64) -> String {
-    readback::as_linear_code(&self.heap, Some(&self.book.id_to_name), host)
+    readback::as_linear_code(&self.heap, &self.stat, &self.info, host)
   }
 
   /// Return the total number of graph rewrites computed
   pub fn get_rewrites(&self) -> u64 {
-    self.heap.cost
+    runtime::get_cost(&self.stat)
   }
 
   /// Returns the name of a given id
@@ -406,7 +412,7 @@ impl Runtime {
   }
 
   pub fn Fun(fun: u64, pos: u64) -> Ptr {
-    return runtime::Cal(0, fun, pos);
+    return runtime::Fun(0, fun, pos);
   }
 
   pub fn link(&mut self, loc: u64, lnk: Ptr) -> Ptr {
@@ -414,15 +420,15 @@ impl Runtime {
   }
 
   pub fn alloc(&mut self, size: u64) -> u64 {
-    return runtime::alloc(&mut self.heap, size);
+    return runtime::alloc(&mut self.stat[0], size); // FIXME tid?
   }
 
   pub fn clear(&mut self, loc: u64, size: u64) {
-    return runtime::clear(&mut self.heap, loc, size);
+    return runtime::clear(&mut self.stat[0], loc, size); // FIXME tid?
   }
 
   pub fn collect(&mut self, term: Ptr) {
-    return runtime::collect(&mut self.heap, term);
+    return runtime::collect(&mut self.heap, &mut self.stat[0], &self.info, term); // FIXME tid?
   }
 
 }
@@ -431,17 +437,17 @@ impl Runtime {
 impl Runtime {
   /// Allocates a new term, returns its location
   pub fn alloc_term(&mut self, term: &language::Term) -> u64 {
-    rulebook::alloc_term(&mut self.heap, &self.book, term)
+    rulebook::alloc_term(&mut self.heap, &mut self.stat[0], &self.book, term) // FIXME tid?
   }
 
   /// Given a location, recovers the Term stored on it
   pub fn readback(&self, host: u64) -> Box<Term> {
-    readback::as_term(&self.heap, Some(&self.book.id_to_name), host)
+    readback::as_term(&self.heap, &self.stat, &self.info, host)
   }
 
   /// Given a location, recovers the Term stored on it
   pub fn linear_readback(&self, host: u64) -> Box<Term> {
-    readback::as_linear_term(&self.heap, Some(&self.book.id_to_name), host)
+    readback::as_linear_term(&self.heap, &self.stat, &self.info, host)
   }
 }
 
