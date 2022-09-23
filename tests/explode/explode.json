@@ -12,9 +12,9 @@
          "input":"2",
          "output":"(Bang (Explode 1) (Explode 1))"
       },
-      "test-500":{
-         "input":"500",
-         "output":"(Bang (Explode 499) (Explode 499))"
+      "test-6":{
+         "input":"6",
+         "output":"(Bang (Explode 5) (Explode 5))"
       }
    }
 }
