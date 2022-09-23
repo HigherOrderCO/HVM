@@ -16,7 +16,7 @@ int main(int argc, char* argv[]){
     struct timeval stop, start;
 
     gettimeofday(&start, NULL);
-    whnf(&mem);
+    whnf(&mem,0);
     gettimeofday(&stop, NULL);
 
     // Prints result normal form

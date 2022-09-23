@@ -165,7 +165,7 @@ int main (int argc, char* argv[]){
     build_main_term_with_args(mem,_MAIN_,argc,argv);
 
     do {
-        whnf(mem);
+        whnf(mem,0);
     } while(io_step());
 
     free(mem->node);
