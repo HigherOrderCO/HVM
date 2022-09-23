@@ -1418,6 +1418,10 @@ void build_main_term_with_args(Worker* mem, u64 main_cid, int argc, char* argv[]
     }
   }
 
+  for (u64 a = 0; a < MAX_ARITY; ++a) {
+    stk_init(&mem->free[a]);
+  }
+
   for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {
     workers[tid].aris = id_to_arity_data;
     workers[tid].funs = id_to_arity_size;
@@ -1426,9 +1430,6 @@ void build_main_term_with_args(Worker* mem, u64 main_cid, int argc, char* argv[]
 
 // Reduce a term to WHNF (hiding details of threads, etc.)
 void whnf(Worker* mem, u64 root){
-  for (u64 a = 0; a < MAX_ARITY; ++a) {
-    stk_init(&mem->free[a]);
-  }
   reduce(mem,root,1);  // TODO: parallelism (currently single-threaded)
 }
 
