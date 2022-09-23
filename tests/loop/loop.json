@@ -1,0 +1,7 @@
+{
+   "cases": {
+      "test-0":{
+          "output":"(Foo (Loop))"
+       }
+   }
+}

@@ -1,0 +1,7 @@
+// Tests amount of normaliation
+// (does it stop at WHNF, or go for NF)?
+
+(Explode 0) = Boom
+(Explode n) = (Bang (Explode (- n 1)) (Explode (- n 1)))
+
+(Main n) = (Explode n)

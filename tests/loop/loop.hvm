@@ -1,0 +1,6 @@
+// Tests amount of nrormalisation
+// (deos it stop at WHNF, or go for NF)?
+
+Loop = (Foo Loop)
+
+Main = Loop
