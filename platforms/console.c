@@ -7,9 +7,10 @@
 // (Main args...) reduces to       Platform will
 // -----------------------------   ----------------------------------------
 //
-//  Console.put_char c rest         1. Print HVM-int c to stdout (as a character)
+//  Console.put_char e rest         1. Evaluate e to whnf  (expect an int c)
+//                                  2. Print HVM-int c to stdout (as a character)
 //                                  2. Replace term with rest
-//  (c a fully-evalauted int)       3. Reduce again
+//                                  3. Reduce again
 //
 //  Console.get_char cont           1. Read a character c from stdin
 //                                  2. Replace term with (cont c)
@@ -123,15 +124,18 @@ bool io_step() {
         return false;}
 
         case _CONSOLE_PUT__CHAR_:{
-            Ptr num_cell  = ask_arg(mem,top,0);
-            Ptr rest_cell = ask_arg(mem,top,1);
+            // Step 1: evaluate character
+            u64 num_cell_p = get_loc(top,0);
+            whnf(mem,num_cell_p);
 
-            // Step 1: extract character & print
+            // Step 2: extract character & print
+            Ptr num_cell  = ask_lnk(mem,num_cell_p);
             if(!(get_tag(num_cell) == NUM && get_num(num_cell) <= 256))
                 return fail("Bad number cell.\nExpected an int <= 256, instead got:",num_cell);
             printf("%c", (char)get_num(num_cell));
 
-            // Step 2: replace top term with rest
+            // Step 3: replace top term with rest
+            Ptr rest_cell = ask_arg(mem,top,1);
             link(mem, 0, rest_cell);        // Overwrite [CTR|IO.do_output|...] (the root) with [rest_cell], and update backpointers
             // TODO: Free the constructor-data node (two consecutive cells: [num_cell][rest_cell])
 
