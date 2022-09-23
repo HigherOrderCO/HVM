@@ -1426,8 +1426,10 @@ void build_main_term_with_args(Worker* mem, u64 main_cid, int argc, char* argv[]
 
 // Reduce a term to WHNF (hiding details of threads, etc.)
 void whnf(Worker* mem){
-  ffi_normal((u8*)mem->node, mem->size, 0);
-  mem->size = ffi_size;
+  for (u64 a = 0; a < MAX_ARITY; ++a) {
+    stk_init(&mem->free[a]);
+  }
+  reduce(mem,0,1);  // TODO: parallelism (currently single-threaded)
 }
 
 // Platform implementation to be appended below

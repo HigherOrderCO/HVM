@@ -35,10 +35,10 @@ int main(int argc, char* argv[]){
 
     // Prints result statistics
     u64 delta_time = (stop.tv_sec - start.tv_sec) * 1000000 + stop.tv_usec - start.tv_usec;
-    double rwt_per_sec = (double)ffi_cost / (double)delta_time;
+    double rwt_per_sec = (double)mem.cost / (double)delta_time;
     fprintf(stderr, "\n");
-    fprintf(stderr, "Rewrites: %"PRIu64" (%.2f MR/s).\n", ffi_cost, rwt_per_sec);
-    fprintf(stderr, "Mem.Size: %"PRIu64" words.\n", ffi_size);
+    fprintf(stderr, "Rewrites: %"PRIu64" (%.2f MR/s).\n", mem.cost, rwt_per_sec);
+    fprintf(stderr, "Mem.Size: %"PRIu64" words.\n", mem.size);
 
     // Cleanup
     free(code_data);
