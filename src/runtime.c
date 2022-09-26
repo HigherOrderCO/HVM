@@ -356,7 +356,11 @@ u64 alloc(Worker* mem, u64 size) {
 
 // Frees a block of memory by adding its position a freelist
 void clear(Worker* mem, u64 loc, u64 size) {
-  stk_push(&mem->free[size], loc);
+  if (UNLIKELY(size == 0)) {
+    assert (loc == 0);
+  } else {
+    stk_push(&mem->free[size], loc);
+  }
 }
 
 // Garbage Collection
