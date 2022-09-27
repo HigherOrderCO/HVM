@@ -872,6 +872,8 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
 
   }
 
+  stk_free(&stk);
+
   return ask_lnk(mem, root);
 }
 
