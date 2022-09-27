@@ -1409,6 +1409,12 @@ Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
 // Build the main term
 void build_main_term_with_args(Worker* mem, u64 main_cid, int argc, char* argv[]){
   mem->size = 0;
+  mem->tid = 0;
+  mem->dups = 0;
+  mem->cost = 0;
+  for (u64 a = 0; a < MAX_ARITY; ++a) {
+    stk_init(&mem->free[a]);
+  }
   mem->node = (u64*)malloc(HEAP_SIZE);
   mem->aris = id_to_arity_data;
   mem->funs = id_to_arity_size;
@@ -1420,10 +1426,6 @@ void build_main_term_with_args(Worker* mem, u64 main_cid, int argc, char* argv[]
     for (u64 i = 1; i < argc; ++i) {
       mem->node[mem->size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
     }
-  }
-
-  for (u64 a = 0; a < MAX_ARITY; ++a) {
-    stk_init(&mem->free[a]);
   }
 
   for (u64 tid = 0; tid < MAX_WORKERS; ++tid) {
