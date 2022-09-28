@@ -113,7 +113,7 @@ typedef u64 Ptr;
 //GENERATED_CONSTRUCTOR_IDS_END//
 
 // Id-to-Name map
-const u64 id_to_name_size = /*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/;
+#define ID_TO_NAME_SIZE (/*! GENERATED_NAME_COUNT */ 1 /* GENERATED_NAME_COUNT !*/)
 /*! GENERATED_ID_TO_NAME_DATA !*/
 
 // Id-to-Arity map
@@ -1400,7 +1400,7 @@ void readback(char* code_data, u64 code_mcap, Worker* mem, Ptr term, char** id_t
 // Misc. platforms-facing utils
 // ----------------------------
 
-Ptr parse_arg(char* code, char** id_to_name_data, u64 id_to_name_size) {
+Ptr parse_arg(char* code) {
   if (code[0] >= '0' && code[0] <= '9') {
     return Num(strtol(code, 0, 10));
   } else {
@@ -1426,7 +1426,7 @@ void build_main_term_with_args(Worker* mem, u64 main_cid, int argc, char* argv[]
   } else {
     mem->node[mem->size++] = Cal(argc - 1, main_cid, 1);
     for (u64 i = 1; i < argc; ++i) {
-      mem->node[mem->size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
+      mem->node[mem->size++] = parse_arg(argv[i]);
     }
   }
 
