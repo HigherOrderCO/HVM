@@ -1437,8 +1437,8 @@ void build_main_term_with_args(Worker* mem, u64 main_cid, int argc, char* argv[]
 }
 
 // Reduce a term to WHNF (hiding details of threads, etc.)
-void whnf(Worker* mem, u64 root){
-  reduce(mem,root,1);  // TODO: parallelism (currently single-threaded)
+Ptr whnf(Worker* mem, u64 root){
+  return reduce(mem,root,1);  // TODO: parallelism (currently single-threaded)
 }
 
 // Platform implementation to be appended below
