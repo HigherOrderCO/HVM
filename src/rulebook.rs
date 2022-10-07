@@ -530,23 +530,37 @@ mod tests {
       (
         "(Double (Succ a)) = (Double (Succ (Succ a)))",
         "(Double (Succ x0)) = let x0.0 = x0; (Double (Succ (Succ x0.0)))"
+      ),
+      (
+        "(Main) = 3 // HVM's parser should remove this comment\n",
+        "(Main) = 3"
       )
     ];
 
     // test if after sanitize all are equal
     // to the expected
     for (code, expected) in codes {
-      let rule = read_rule(code).unwrap();
-      match rule {
-        None => panic!("Rule not parsed"),
-        Some(v) => {
-          let result = sanitize_rule(&v);
+      let result = sanitize_rule(&read_rule(code).unwrap());
           match result {
             Ok(rule) => assert_eq!(rule.to_string(), expected),
             Err(_) => panic!("Rule not sanitized"),
           }
         }
       }
+
+  #[test]
+  fn test_multi_rule_parse() {
+    let codes =
+    [ "(Id 0) = 0 (Id n) = n"
+    , "(Id 0) = 0\n(Id n) = n"
+    , "(Id 0) = 0 // Id is a *strict* identity function\n(Id n) = n"
+    , "(Id 0) = 0 // Id is a *strict* identity function\n(Id n) = n\n"
+    , "(Id 0) = 0 (Foo n) = n // The comment can go at the end\n"
+    , "// The comment can go at the start\n(Id 0) = 0 (Id n) = n"
+    , "// Computes nth Fibonacci number\n(Fib 0) = 0\n(Fib 1) = 1\n(Fib n) = (+ (Fib (- n 1)) (Fib (- n 2)))\n"
+    ];
+    for code in codes {
+      read_file(code).unwrap();
     }
   }
 
@@ -562,14 +576,8 @@ mod tests {
     ];
 
     for code in FAILS {
-      let rule = read_rule(code).unwrap();
-      match rule {
-        None => panic!("Rule not parsed"),
-        Some(v) => {
-          let result = sanitize_rule(&v);
-          assert!(matches!(result, Err(_)));
-        }
-      }
+      let result = sanitize_rule(&read_rule(code).unwrap());
+      assert!(matches!(result, Err(_)));
     }
   }
 

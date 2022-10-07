@@ -1,0 +1,87 @@
+use std::str::FromStr;
+use crate::language::{File,Rule,Term,BTerm,Oper};
+
+grammar;
+
+pub File: File = {
+    <rules:(Rule*)> => File{<>},
+}
+
+pub Rule: Rule = {
+    <lhs:CRecTerm> "=" <rhs:RRecTerm> => Rule{<>},
+}
+
+pub RRecTerm: BTerm = { // Right-recursive terms
+    "dup" <nam0:Var> <nam1:Var> "=" <expr:RRecTerm> ";" <body:RRecTerm>
+        => Box::new(Term::Dup{<>}),
+    "let" <name:Var> "=" <expr:RRecTerm1> <body:RRecTerm>
+        => Box::new(Term::Let{<>}),
+    r"[λ@]" <name:Var> <body:RRecTerm>
+        => Box::new(Term::Lam{<>}),
+    CRecTerm,
+}
+RRecTerm1: BTerm = { // Right-recursive terms, excluding let binders on the right
+    r"[λ@]" <name:Var> <body:RRecTerm1>
+        => Box::new(Term::Lam{<>}),
+    "dup" <nam0:Var> <nam1:Var> "=" <expr:RRecTerm> ";" <body:RRecTerm1>
+        => Box::new(Term::Dup{<>}),
+    CRecTerm,
+}
+LRecTerm: BTerm = { // Left-recursive terms
+    <func:LRecTerm> <argm:CRecTerm>
+        => Box::new(Term::App{<>}),
+    <func:CRecTerm1> <argm:CRecTerm>
+        => Box::new(Term::App{<>}),
+}
+CRecTerm: BTerm = { // Center-recursive terms (aka "closed" terms)
+    <name:Ctr>
+        => Box::new(Term::Ctr{<>,args: vec![]}),
+    CRecTerm1,
+}
+CRecTerm1: BTerm = {  // Center-recursive terms, excluding raw Ctrs
+    <name:Var>
+        => Box::new(Term::Var{<>}),
+    <numb:Num>
+        => Box::new(Term::Num{<>}),
+    "(" <name:Ctr> <args:(RRecTerm +)> ")"
+        => Box::new(Term::Ctr{<>}),
+    "(" <oper:Oper> <val0:CRecTerm> <val1:CRecTerm> ")"
+        => Box::new(Term::Op2{<>}),
+    "(" <RRecTerm> ")",
+    "(" <LRecTerm> ")",
+}
+
+Oper: Oper = {
+    "+" => Oper::Add,
+    "-" => Oper::Sub,
+    "*" => Oper::Mul,
+    "/" => Oper::Div,
+    "%" => Oper::Mod,
+    "&" => Oper::And,
+    "|" => Oper::Or,
+    "^" => Oper::Xor,
+    "<<" => Oper::Shl,
+    ">>" => Oper::Shr,
+    "<=" => Oper::Lte,
+    "<" => Oper::Ltn,
+    "==" => Oper::Eql,
+    ">=" => Oper::Gte,
+    ">" => Oper::Gtn,
+    "!=" => Oper::Neq,
+}
+
+// Atoms
+Ctr: String = {r"[A-Z][A-Za-z0-9_]*" => <>.to_string()}
+
+Var: String = {r"[a-z][A-Za-z0-9_]*" => <>.to_string()}
+
+Num: u64 = {r"[0-9]+" => u64::from_str(<>).unwrap()}
+
+// Lexer
+match {
+    r"//[^\n\r]*[\n\r]" => { }, // Skip comments
+    r"\s*" => { },              // Skip whitespace
+} else {
+    _  // Otherwise, lex tokens as specified inline
+}
+
