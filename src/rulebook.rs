@@ -618,6 +618,29 @@ mod tests {
     // key contains expected value
     assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
   }
+
+  #[test]
+  fn test_num_flattening() {
+    let file = "(A (B 2) 1) = 9";
+    let file = read_file(file).unwrap();
+    let rulebook = gen_rulebook(&file);
+    // After flattening, should generate 2 groups with 1 rule each
+    assert_eq!(rulebook.rule_group.len(), 2);
+
+    // The "A" rule group is "(A (B .1) 1) = (A.0 .1)"
+    let a_group = rulebook.rule_group.get("A").unwrap();
+    assert_eq!(a_group.0, 2);  // Arity
+    assert_eq!(a_group.1.len(), 1);  // Number of rules
+    let a_rule = format!("{}", &a_group.1[0]);
+    assert_eq!(a_rule, "(A (B x0) 1) = let x0.0 = x0; (A.0 x0.0)");
+
+    // The "A.0" rule group is "(A.0 2) = 9"
+    let a0_group = rulebook.rule_group.get("A.0").unwrap();
+    assert_eq!(a0_group.0, 1);
+    assert_eq!(a0_group.1.len(), 1);
+    let a0_rule = format!("{}", &a0_group.1[0]);
+    assert_eq!(a0_rule, "(A.0 2) = 9");
+  }
 }
 
 pub fn subst(term: &mut lang::Term, sub_name: &str, value: &lang::Term) {
@@ -780,12 +803,7 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                   let mut new_arg_args = Vec::new();
                   for field in arg_args {
                     match &**field {
-                      lang::Term::Ctr { .. } => {
-                        let var_name = format!(".{}", fresh(name_count));
-                        new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
-                        new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
-                      }
-                      lang::Term::Num { .. } => {
+                      lang::Term::Ctr { .. } | lang::Term::Num { .. } => {
                         let var_name = format!(".{}", fresh(name_count));
                         new_arg_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(lang::Term::Var { name: var_name.clone() }));
@@ -804,6 +822,10 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                 lang::Term::Var { .. } => {
                   new_lhs_args.push(Box::new(*arg.clone()));
                   new_rhs_args.push(Box::new(*arg.clone()));
+                }
+                lang::Term::Num { .. } => {
+                  // Like a Ctr with no args, so nothing goes to the rhs
+                  new_lhs_args.push(Box::new(*arg.clone()));
                 }
                 _ => {}
               }
@@ -864,15 +886,11 @@ pub fn flatten(rules: &[lang::Rule]) -> Vec<lang::Rule> {
                       lang::Term::Var { .. } => {
                         other_new_lhs_args.push(other_arg.clone());
                       }
-                      lang::Term::Num { numb: rule_arg_numb } => {
+                      lang::Term::Num { .. } => {
                         match &**other_arg {
-                          lang::Term::Num { numb: other_arg_numb } => {
-                            if rule_arg_numb == other_arg_numb {
-                              other_new_lhs_args.push(Box::new(*other_arg.clone()));
-                            } else {
-                              panic!("Internal error. Please report."); // not possible since it matches
-                            }
-                          }
+                          // Numbers are like a 0-arity constructor of a different kind,
+                          // so no internal structures to flatten.
+                          lang::Term::Num { .. } => (),
                           lang::Term::Var { name: ref other_arg_name } => {
                             subst(&mut other_new_rhs, other_arg_name, &rule_arg);
                           }
