@@ -29,15 +29,6 @@ fn compile_code(code: &str, heap_size: usize, parallel: bool) -> Result<String, 
   Ok(compile_book(&book, heap_size, parallel))
 }
 
-fn compile_name(name: &str) -> String {
-  // TODO: this can still cause some name collisions.
-  // Note: avoiding the use of `$` because it is not an actually valid
-  // identifier character in C.
-  let name = name.replace('_', "__");
-  let name = name.replace('.', "_");
-  format!("_{}_", name.to_uppercase())
-}
-
 fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> String {
   let mut c_ids = String::new();
   let mut inits = String::new();
@@ -59,17 +50,18 @@ fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> String
     line(
       &mut c_ids,
       0,
-      &format!("#define {} ({})", &compile_name(name), comp.name_to_id.get(name).unwrap_or(&0)),
+      &format!("(strcmp(str,\"{}\")==0) ? {} : \\", name, comp.name_to_id.get(name).unwrap_or(&0)),
     );
 
-    line(&mut inits, 6, &format!("case {}: {{", &compile_name(name)));
+    line(&mut inits, 6, &format!("if (fun == LOOKUP_CID(\"{}\") ) {{", name));
     inits.push_str(&init);
-    line(&mut inits, 6, "};");
+    line(&mut inits, 7, "break;");
+    line(&mut inits, 6, "}");
 
-    line(&mut codes, 6, &format!("case {}: {{", &compile_name(name)));
+    line(&mut codes, 6, &format!("if (fun == LOOKUP_CID(\"{}\") ) {{", name));
     codes.push_str(&code);
     line(&mut codes, 7, "break;");
-    line(&mut codes, 6, "};");
+    line(&mut codes, 6, "}");
   }
 
   c_runtime_template(heap_size, &c_ids, &inits, &codes, &id2nm, comp.id_to_name.len() as u64, &id2ar, comp.id_to_name.len() as u64, parallel)

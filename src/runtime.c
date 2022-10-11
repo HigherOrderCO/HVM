@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,13 +110,10 @@ typedef u64 Ptr;
 #define GTN (0xE)
 #define NEQ (0xF)
 
-//GENERATED_CONSTRUCTOR_IDS_START//
-/*! GENERATED_CONSTRUCTOR_IDS !*/
-//GENERATED_CONSTRUCTOR_IDS_END//
 
-#ifndef _MAIN_
-#define _MAIN_ (0)
-#endif
+#define LOOKUP_CID(str) (\
+/*! GENERATED_CONSTRUCTOR_IDS !*/\
+-1)
 
 // Threads
 // -------
@@ -538,11 +536,8 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
           u64 fun = get_ext(term);
           u64 ari = ask_ari(mem, term);
 
-          switch (fun)
           //GENERATED_REWRITE_RULES_STEP_0_START//
-          {
 /*! GENERATED_REWRITE_RULES_STEP_0 !*/
-          }
           //GENERATED_REWRITE_RULES_STEP_0_END//
 
           break;
@@ -841,11 +836,8 @@ Ptr reduce(Worker* mem, u64 root, u64 slen) {
           u64 fun = get_ext(term);
           u64 ari = ask_ari(mem, term);
 
-          switch (fun)
           //GENERATED_REWRITE_RULES_STEP_1_START//
-          {
 /*! GENERATED_REWRITE_RULES_STEP_1 !*/
-          }
           //GENERATED_REWRITE_RULES_STEP_1_END//
 
           break;
@@ -1421,9 +1413,9 @@ int main(int argc, char* argv[]) {
   mem.funs = id_to_arity_size;
   assert(mem.node);
   if (argc <= 1) {
-    mem.node[mem.size++] = Cal(0, _MAIN_, 0);
+    mem.node[mem.size++] = Cal(0, LOOKUP_CID("Main"), 0);
   } else {
-    mem.node[mem.size++] = Cal(argc - 1, _MAIN_, 1);
+    mem.node[mem.size++] = Cal(argc - 1, LOOKUP_CID("Main"), 1);
     for (u64 i = 1; i < argc; ++i) {
       mem.node[mem.size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
     }
