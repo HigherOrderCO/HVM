@@ -593,28 +593,11 @@ mod tests {
     // key contains expected arity
     assert_eq!(rulebook.rule_group.get("Double").unwrap().0, 1);
 
-    // id_to_name e name_to_id testing
-    // check expected length
-    assert_eq!(rulebook.id_to_name.len(), 3);
-    // check determinism and existence
-    assert_eq!(rulebook.id_to_name.get(&0).unwrap(), "Double");
-    assert_eq!(rulebook.id_to_name.get(&1).unwrap(), "Zero");
-    assert_eq!(rulebook.id_to_name.get(&2).unwrap(), "Succ");
-    // check cohesion
-    let _size = rulebook.id_to_name.len();
-    for (id, name) in rulebook.id_to_name {
-      // assert name_to_id id will have same
-      // id that generate name in id_to_name
-      // also checks if the two maps have same length
-      let id_to_compare = rulebook.name_to_id.get(&name).unwrap();
-      assert_eq!(*id_to_compare, id);
-    }
-
     // ctr_is_cal testing
     // expected key exist
     assert!(rulebook.ctr_is_cal.contains_key("Double"));
     // contains expected number of keys
-    assert_eq!(rulebook.ctr_is_cal.len(), 1);
+    assert!(rulebook.ctr_is_cal.len() >= 1);
     // key contains expected value
     assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
   }
