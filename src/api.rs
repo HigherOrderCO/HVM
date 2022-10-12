@@ -159,12 +159,12 @@ impl Runtime {
 
   /// Given a location, evaluates a term to head normal form
   pub fn reduce(&mut self, host: u64) {
-    runtime::reduce(&mut self.heap, &mut self.stat, &self.info, host); // FIXME: add parallelism
+    runtime::reduce(&self.heap, &mut self.stat, &self.info, host); // FIXME: add parallelism
   }
 
   /// Given a location, evaluates a term to full normal form
   pub fn normalize(&mut self, host: u64) {
-    runtime::normalize(&mut self.heap, &mut self.stat, &self.info, host, false);
+    runtime::normalize(&self.heap, &mut self.stat, &self.info, host, false);
   }
 
   /// Evaluates a code, allocs and evaluates to full normal form. Returns its location.
@@ -416,7 +416,7 @@ impl Runtime {
   }
 
   pub fn link(&mut self, loc: u64, lnk: Ptr) -> Ptr {
-    return runtime::link(&mut self.heap, loc, lnk);
+    return runtime::link(&self.heap, loc, lnk);
   }
 
   pub fn alloc(&mut self, size: u64) -> u64 {
@@ -424,11 +424,11 @@ impl Runtime {
   }
 
   pub fn free(&mut self, loc: u64, size: u64) {
-    return runtime::free(&mut self.stat[0], loc, size); // FIXME tid?
+    return runtime::free(&self.heap, &mut self.stat[0], loc, size); // FIXME tid?
   }
 
   pub fn collect(&mut self, term: Ptr) {
-    return runtime::collect(&mut self.heap, &mut self.stat[0], &self.info, term); // FIXME tid?
+    return runtime::collect(&self.heap, &mut self.stat[0], &self.info, term); // FIXME tid?
   }
 
 }
@@ -437,7 +437,7 @@ impl Runtime {
 impl Runtime {
   /// Allocates a new term, returns its location
   pub fn alloc_term(&mut self, term: &language::Term) -> u64 {
-    rulebook::alloc_term(&mut self.heap, &mut self.stat[0], &self.book, term) // FIXME tid?
+    rulebook::alloc_term(&self.heap, &mut self.stat[0], &self.book, term) // FIXME tid?
   }
 
   /// Given a location, recovers the Term stored on it

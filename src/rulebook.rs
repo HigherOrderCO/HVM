@@ -1304,7 +1304,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
   (elem, nodes, dupk)
 }
 
-pub fn alloc_closed_dynterm(heap: &mut rt::Heap, stat: &mut rt::Stat, term: &rt::Term) -> u64 {
+pub fn alloc_closed_dynterm(heap: &rt::Heap, stat: &mut rt::Stat, term: &rt::Term) -> u64 {
   let host = rt::alloc(stat, 1);
   let body = build_body(term, 0);
   let term = rt::alloc_body(heap, stat, 0, &[], &body);
@@ -1312,7 +1312,7 @@ pub fn alloc_closed_dynterm(heap: &mut rt::Heap, stat: &mut rt::Stat, term: &rt:
   host
 }
 
-pub fn alloc_term(heap: &mut rt::Heap, stat: &mut rt::Stat, book: &RuleBook, term: &lang::Term) -> u64 {
+pub fn alloc_term(heap: &rt::Heap, stat: &mut rt::Stat, book: &RuleBook, term: &lang::Term) -> u64 {
   alloc_closed_dynterm(heap, stat, &term_to_dynterm(book, term, &vec![]))
 }
 
