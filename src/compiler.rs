@@ -53,12 +53,12 @@ fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> String
       &format!("(strcmp(str,\"{}\")==0) ? {} : \\", name, comp.name_to_id.get(name).unwrap_or(&0)),
     );
 
-    line(&mut inits, 6, &format!("if (fun == LOOKUP_CID(\"{}\") ) {{", name));
+    line(&mut inits, 6, &format!("if (fun == lookup_cid(\"{}\") ) {{", name));
     inits.push_str(&init);
     line(&mut inits, 7, "break;");
     line(&mut inits, 6, "}");
 
-    line(&mut codes, 6, &format!("if (fun == LOOKUP_CID(\"{}\") ) {{", name));
+    line(&mut codes, 6, &format!("if (fun == lookup_cid(\"{}\") ) {{", name));
     codes.push_str(&code);
     line(&mut codes, 7, "break;");
     line(&mut codes, 6, "}");

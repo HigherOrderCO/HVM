@@ -111,9 +111,13 @@ typedef u64 Ptr;
 #define NEQ (0xF)
 
 
-#define LOOKUP_CID(str) (\
-/*! GENERATED_CONSTRUCTOR_IDS !*/\
--1)
+#define FORCE_INLINE __attribute__((always_inline)) inline
+
+FORCE_INLINE u64 lookup_cid(const char* str) {
+  return
+    /*! GENERATED_CONSTRUCTOR_IDS !*/
+    -1;
+}
 
 // Threads
 // -------
@@ -1413,9 +1417,9 @@ int main(int argc, char* argv[]) {
   mem.funs = id_to_arity_size;
   assert(mem.node);
   if (argc <= 1) {
-    mem.node[mem.size++] = Cal(0, LOOKUP_CID("Main"), 0);
+    mem.node[mem.size++] = Cal(0, lookup_cid("Main"), 0);
   } else {
-    mem.node[mem.size++] = Cal(argc - 1, LOOKUP_CID("Main"), 1);
+    mem.node[mem.size++] = Cal(argc - 1, lookup_cid("Main"), 1);
     for (u64 i = 1; i < argc; ++i) {
       mem.node[mem.size++] = parse_arg(argv[i], id_to_name_data, id_to_name_size);
     }
