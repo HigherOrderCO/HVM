@@ -423,8 +423,8 @@ impl Runtime {
     return runtime::alloc(&mut self.stat[0], size); // FIXME tid?
   }
 
-  pub fn clear(&mut self, loc: u64, size: u64) {
-    return runtime::clear(&mut self.stat[0], loc, size); // FIXME tid?
+  pub fn free(&mut self, loc: u64, size: u64) {
+    return runtime::free(&mut self.stat[0], loc, size); // FIXME tid?
   }
 
   pub fn collect(&mut self, term: Ptr) {
