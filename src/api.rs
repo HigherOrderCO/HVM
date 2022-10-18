@@ -416,7 +416,7 @@ impl Runtime {
   }
 
   pub fn link(&mut self, loc: u64, lnk: Ptr) -> Ptr {
-    return runtime::link(&self.heap, loc, lnk);
+    return runtime::link(0xFF, &self.heap, loc, lnk);
   }
 
   pub fn alloc(&mut self, size: u64) -> u64 {

@@ -16,7 +16,7 @@ use std::iter;
 // - ctr_is_cal: true if a ctr is used as a function
 // A sanitized rule has all its variables renamed to have unique names.
 // Variables that are never used are renamed to "*".
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RuleBook {
   pub rule_group: HashMap<String, RuleGroup>,
   pub name_count: u64,
@@ -1169,11 +1169,11 @@ pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> r
 pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
   fn link(nodes: &mut [rt::RuleBodyNode], targ: u64, slot: u64, elem: rt::RuleBodyCell) {
     nodes[targ as usize][slot as usize] = elem;
-    if let rt::RuleBodyCell::Loc { value, targ: var_targ, slot: var_slot } = elem {
+    if let rt::RuleBodyCell::Ptr { value, targ: var_targ, slot: var_slot } = elem {
       let tag = rt::get_tag(value);
       if tag <= rt::VAR {
         nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] =
-          rt::RuleBodyCell::Loc { value: rt::Arg(0), targ, slot };
+          rt::RuleBodyCell::Ptr { value: rt::Arg(0), targ, slot };
       }
     }
   }
@@ -1182,8 +1182,8 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
       *targ
     } else {
       let targ = nodes.len() as u64;
-      nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; 2]);
-      link(nodes, targ, 0, rt::RuleBodyCell::Fix { value: rt::Era() });
+      nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 2]);
+      link(nodes, targ, 0, rt::RuleBodyCell::Val { value: rt::Era() });
       if glob != 0 {
         globs.insert(glob, targ);
       }
@@ -1208,18 +1208,18 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
       }
       rt::Term::Glo { glob } => {
         let targ = alloc_lam(globs, nodes, *glob);
-        rt::RuleBodyCell::Loc { value: rt::Var(0), targ, slot: 0 }
+        rt::RuleBodyCell::Ptr { value: rt::Var(0), targ, slot: 0 }
       }
       rt::Term::Dup { eras: _, expr, body } => {
         let targ = nodes.len() as u64;
-        nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; 3]);
+        nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 3]);
         //let dupk = dups_count.next();
-        links.push((targ, 0, rt::RuleBodyCell::Fix { value: rt::Era() }));
-        links.push((targ, 1, rt::RuleBodyCell::Fix { value: rt::Era() }));
+        links.push((targ, 0, rt::RuleBodyCell::Val { value: rt::Era() }));
+        links.push((targ, 1, rt::RuleBodyCell::Val { value: rt::Era() }));
         let expr = gen_elems(expr, dupk, vars, globs, nodes, links);
         links.push((targ, 2, expr));
-        vars.push(rt::RuleBodyCell::Loc { value: rt::Dp0(*dupk, 0), targ, slot: 0 });
-        vars.push(rt::RuleBodyCell::Loc { value: rt::Dp1(*dupk, 0), targ, slot: 0 });
+        vars.push(rt::RuleBodyCell::Ptr { value: rt::Dp0(*dupk, 0), targ, slot: 0 });
+        vars.push(rt::RuleBodyCell::Ptr { value: rt::Dp1(*dupk, 0), targ, slot: 0 });
         *dupk = *dupk + 1;
         let body = gen_elems(body, dupk, vars, globs, nodes, links);
         vars.pop();
@@ -1235,57 +1235,57 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
       }
       rt::Term::Lam { eras: _, glob, body } => {
         let targ = alloc_lam(globs, nodes, *glob);
-        let var = rt::RuleBodyCell::Loc { value: rt::Var(0), targ, slot: 0 };
+        let var = rt::RuleBodyCell::Ptr { value: rt::Var(0), targ, slot: 0 };
         vars.push(var);
         let body = gen_elems(body, dupk, vars, globs, nodes, links);
         links.push((targ, 1, body));
         vars.pop();
-        rt::RuleBodyCell::Loc { value: rt::Lam(0), targ, slot: 0 }
+        rt::RuleBodyCell::Ptr { value: rt::Lam(0), targ, slot: 0 }
       }
       rt::Term::App { func, argm } => {
         let targ = nodes.len() as u64;
-        nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; 2]);
+        nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 2]);
         let func = gen_elems(func, dupk, vars, globs, nodes, links);
         links.push((targ, 0, func));
         let argm = gen_elems(argm, dupk, vars, globs, nodes, links);
         links.push((targ, 1, argm));
-        rt::RuleBodyCell::Loc { value: rt::App(0), targ, slot: 0 }
+        rt::RuleBodyCell::Ptr { value: rt::App(0), targ, slot: 0 }
       }
       rt::Term::Fun { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
-          nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; args.len() as usize]);
+          nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
             let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
             links.push((targ, i as u64, arg));
           }
-          rt::RuleBodyCell::Loc { value: rt::Fun(args.len() as u64, *func, 0), targ, slot: 0 }
+          rt::RuleBodyCell::Ptr { value: rt::Fun(args.len() as u64, *func, 0), targ, slot: 0 }
         } else {
-          rt::RuleBodyCell::Fix { value: rt::Fun(0, *func, 0) }
+          rt::RuleBodyCell::Val { value: rt::Fun(0, *func, 0) }
         }
       }
       rt::Term::Ctr { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
-          nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; args.len() as usize]);
+          nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
             let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
             links.push((targ, i as u64, arg));
           }
-          rt::RuleBodyCell::Loc { value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0 }
+          rt::RuleBodyCell::Ptr { value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0 }
         } else {
-          rt::RuleBodyCell::Fix { value: rt::Ctr(0, *func, 0) }
+          rt::RuleBodyCell::Val { value: rt::Ctr(0, *func, 0) }
         }
       }
-      rt::Term::Num { numb } => rt::RuleBodyCell::Fix { value: rt::Num(*numb as u64) },
+      rt::Term::Num { numb } => rt::RuleBodyCell::Val { value: rt::Num(*numb as u64) },
       rt::Term::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
-        nodes.push(vec![rt::RuleBodyCell::Fix { value: 0 }; 2]);
+        nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 2]);
         let val0 = gen_elems(val0, dupk, vars, globs, nodes, links);
         links.push((targ, 0, val0));
         let val1 = gen_elems(val1, dupk, vars, globs, nodes, links);
         links.push((targ, 1, val1));
-        rt::RuleBodyCell::Loc { value: rt::Op2(*oper, 0), targ, slot: 0 }
+        rt::RuleBodyCell::Ptr { value: rt::Op2(*oper, 0), targ, slot: 0 }
       }
     }
   }
@@ -1293,7 +1293,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
   let mut links: Vec<(u64, u64, rt::RuleBodyCell)> = Vec::new();
   let mut nodes: Vec<rt::RuleBodyNode> = Vec::new();
   let mut globs: HashMap<u64, u64> = HashMap::new();
-  let mut vars: Vec<rt::RuleBodyCell> = (0..free_vars).map(|i| rt::RuleBodyCell::Ext { index: i }).collect();
+  let mut vars: Vec<rt::RuleBodyCell> = (0..free_vars).map(|i| rt::RuleBodyCell::Var { index: i }).collect();
   let mut dupk: u64 = 0;
 
   let elem = gen_elems(term, &mut dupk, &mut vars, &mut globs, &mut nodes, &mut links);
@@ -1308,7 +1308,7 @@ pub fn alloc_closed_dynterm(heap: &rt::Heap, stat: &mut rt::Stat, term: &rt::Ter
   let host = rt::alloc(stat, 1);
   let body = build_body(term, 0);
   let term = rt::alloc_body(heap, stat, 0, &[], &body);
-  rt::link(heap, host, term);
+  rt::link(0xFF, heap, host, term);
   host
 }
 
@@ -1323,8 +1323,6 @@ pub fn eval_code(
   debug: bool,
   size: usize,
 ) -> Result<(String, u64, u64, u64), String> {
-  let mut heap = rt::new_heap();
-  let mut stat = rt::new_stats();
   let mut info = rt::new_info();
 
   // Parses and reads the input file
@@ -1341,14 +1339,17 @@ pub fn eval_code(
 
   // builds names
   info.nams = book.id_to_name.clone();
-  
+
+  let mut heap = rt::new_heap();
+  let mut stat = rt::new_stats();
+
   // Allocates the main term
   let host = alloc_term(&mut heap, &mut stat[0], &book, call); // FIXME tid?
 
   // Normalizes it
   let init = instant::Instant::now();
   #[cfg(not(target_arch = "wasm32"))]
-  rt::normalize(&mut heap, &mut stat, &mut info, host, true);
+  rt::normalize(&heap, &mut stat, &info, host, true);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a string

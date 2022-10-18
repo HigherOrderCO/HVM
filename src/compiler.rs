@@ -307,13 +307,13 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
     line(&mut code, tab + 1, "link(heap, host, done);");
 
     // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-    line(&mut code, tab + 1, &format!("clear(stat, get_loc(term, 0), {});", function.is_strict.len()));
+    line(&mut code, tab + 1, &format!("free(heap, stat, get_loc(term, 0), {});", function.is_strict.len()));
     for (i, arity) in &dynrule.free {
       let i = *i as u64;
       line(
         &mut code,
         tab + 1,
-        &format!("clear(stat, get_loc(ask_arg(heap, term, {}), 0), {});", i, arity),
+        &format!("free(heap, stat, get_loc(ask_arg(heap, term, {}), 0), {});", i, arity),
       );
     }
 
