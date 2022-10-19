@@ -30,6 +30,8 @@ name = "hvm-app"
 test = false
 
 [dependencies]
+crossbeam = "0.8.2"
+thread-priority = "0.9.2"
 itertools = "0.10"
 num_cpus = "1.13"
 regex = "1.5.4"
@@ -307,13 +309,13 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
     line(&mut code, tab + 1, "link(heap, host, done);");
 
     // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-    line(&mut code, tab + 1, &format!("free(heap, stat, get_loc(term, 0), {});", function.is_strict.len()));
+    line(&mut code, tab + 1, &format!("free(heap, get_loc(term, 0), {});", function.is_strict.len()));
     for (i, arity) in &dynrule.free {
       let i = *i as u64;
       line(
         &mut code,
         tab + 1,
-        &format!("free(heap, stat, get_loc(ask_arg(heap, term, {}), 0), {});", i, arity),
+        &format!("free(heap, get_loc(ask_arg(heap, term, {}), 0), {});", i, arity),
       );
     }
 
@@ -350,7 +352,7 @@ fn compile_func_rule_term(
       got.clone()
     } else {
       let name = fresh(nams, "lam");
-      line(code, tab, &format!("let {} = alloc(stat, 2);", name));
+      line(code, tab, &format!("let {} = alloc(heap, stat, 2);", name));
       if glob != 0 {
         // FIXME: sanitizer still can't detect if a scopeless lambda doesn't use its bound
         // variable, so we must write an Era() here. When it does, we can remove this line.
@@ -405,7 +407,7 @@ fn compile_func_rule_term(
         let coln = fresh(nams, "col");
         //let colx = *dups;
         //*dups += 1;
-        line(code, tab + 1, &format!("let {} = alloc(stat, 3);", name));
+        line(code, tab + 1, &format!("let {} = alloc(heap, stat, 3);", name));
         line(code, tab + 1, &format!("let {} = gen_dup(stat);", coln));
         if eras.0 {
           line(code, tab + 1, &format!("link(heap, {} + 0, Era());", name));
@@ -448,7 +450,7 @@ fn compile_func_rule_term(
         let name = fresh(nams, "app");
         let func = compile_term(code, tab, vars, nams, globs, func);
         let argm = compile_term(code, tab, vars, nams, globs, argm);
-        line(code, tab, &format!("let {} = alloc(stat, 2);", name));
+        line(code, tab, &format!("let {} = alloc(heap, stat, 2);", name));
         line(code, tab, &format!("link(heap, {} + 0, {});", name, func));
         line(code, tab, &format!("link(heap, {} + 1, {});", name, argm));
         format!("App({})", name)
@@ -456,7 +458,7 @@ fn compile_func_rule_term(
       rt::Term::Ctr { func, args } => {
         let ctr_args: Vec<String> = args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
         let name = fresh(nams, "ctr");
-        line(code, tab, &format!("let {} = alloc(stat, {});", name, ctr_args.len()));
+        line(code, tab, &format!("let {} = alloc(heap, stat, {});", name, ctr_args.len()));
         for (i, arg) in ctr_args.iter().enumerate() {
           line(code, tab, &format!("link(heap, {} + {}, {});", name, i, arg));
         }
@@ -466,7 +468,7 @@ fn compile_func_rule_term(
         let cal_args: Vec<String> =
           args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
         let name = fresh(nams, "cal");
-        line(code, tab, &format!("let {} = alloc(stat, {});", name, cal_args.len()));
+        line(code, tab, &format!("let {} = alloc(heap, stat, {});", name, cal_args.len()));
         for (i, arg) in cal_args.iter().enumerate() {
           line(code, tab, &format!("link(heap, {} + {}, {});", name, i, arg));
         }
@@ -512,7 +514,7 @@ fn compile_func_rule_term(
           line(code, tab + 1, "inc_cost(stat);");
           line(code, tab + 0, "} else {");
         }
-        line(code, tab + 1, &format!("let {} = alloc(stat, 2);", name));
+        line(code, tab + 1, &format!("let {} = alloc(heap, stat, 2);", name));
         line(code, tab + 1, &format!("link(heap, {} + 0, {});", name, val0));
         line(code, tab + 1, &format!("link(heap, {} + 1, {});", name, val1));
         let oper_name = match *oper {

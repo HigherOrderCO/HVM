@@ -1305,10 +1305,10 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
 }
 
 pub fn alloc_closed_dynterm(heap: &rt::Heap, stat: &mut rt::Stat, term: &rt::Term) -> u64 {
-  let host = rt::alloc(stat, 1);
+  let host = rt::alloc(heap, stat, 1);
   let body = build_body(term, 0);
   let term = rt::alloc_body(heap, stat, 0, &[], &body);
-  rt::link(0xFF, heap, host, term);
+  rt::link(heap, host, term);
   host
 }
 

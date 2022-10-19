@@ -416,15 +416,15 @@ impl Runtime {
   }
 
   pub fn link(&mut self, loc: u64, lnk: Ptr) -> Ptr {
-    return runtime::link(0xFF, &self.heap, loc, lnk);
+    return runtime::link(&self.heap, loc, lnk);
   }
 
   pub fn alloc(&mut self, size: u64) -> u64 {
-    return runtime::alloc(&mut self.stat[0], size); // FIXME tid?
+    return runtime::alloc(&self.heap, &mut self.stat[0], size); // FIXME tid?
   }
 
   pub fn free(&mut self, loc: u64, size: u64) {
-    return runtime::free(&self.heap, &mut self.stat[0], loc, size); // FIXME tid?
+    return runtime::free(&self.heap, loc, size); // FIXME tid?
   }
 
   pub fn collect(&mut self, term: Ptr) {
