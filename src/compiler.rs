@@ -104,8 +104,8 @@ fn compile_name(name: &str) -> String {
   // Note: avoiding the use of `$` because it is not an actually valid
   // identifier character in C.
   //let name = name.replace('_', "__");
-  let name = name.replace('.', "_");
-  format!("{}", name.to_uppercase())
+  let name = name.replace('.', "_").replace('$', "_S_");
+  format!("_{}_", name)
 }
 
 fn compile_code(code: &str, heap_size: usize, parallel: bool) -> Result<(String,String), String> {

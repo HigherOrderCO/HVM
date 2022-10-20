@@ -365,7 +365,7 @@ fn available_parallelism() -> usize {
 // Initializers
 // ------------
 
-const HEAP_SIZE : usize = 1 * CELLS_PER_GB;
+const HEAP_SIZE : usize = 4 * CELLS_PER_GB;
 
 pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
   return unsafe { Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice()))) }
@@ -610,9 +610,11 @@ pub fn alloc(heap: &Heap, stat: &mut Stat, arity: u64) -> u64 {
       if stat.next >= stat.amax {
         length = 0;
         stat.next = stat.amin;
+        //println!("[{}] loop", stat.tid);
       }
       // If length equals arity, allocate that space
       if length == arity {
+        //println!("[{}] return", stat.tid);
         //println!("[{}] alloc {} at {}", stat.tid, arity, stat.next - length);
         return stat.next - length;
       }
@@ -628,15 +630,6 @@ pub fn free(heap: &Heap, loc: u64, arity: u64) {
 
 // Substitution
 // ------------
-
-pub fn subst(heap: &Heap, stat: &mut Stat, info: &Info, lnk: Ptr, val: Ptr) {
-  let var = load_ptr(heap, get_loc(lnk, get_tag(lnk) & 0x01));
-  if get_tag(var) != ERA {
-    link(heap, get_loc(var, 0), val);
-  } else {
-    collect(heap, stat, info, val);
-  }
-}
 
 // Atomically replaces a ptr by another. Updates binders.
 pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, Ptr> {
@@ -1247,7 +1240,8 @@ fn get_bucket_val(bucket: u64) -> u64 {
 }
 
 pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
-  println!("[{}] reduce {} stealing={} threads={}", stats[0].tid, root, STEALING, stats.len());
+  //println!("[{}] reducer {} stealing={} threads={}", stats[0].tid, root, STEALING, stats.len());
+
   //println!("{}", show_term(heap, info, load_ptr(heap, 0), load_ptr(heap, root)));
 
   #[derive(PartialEq, Clone, Copy, Debug)]
@@ -1300,7 +1294,7 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
     for stat in stats.iter_mut() {
 
       s.spawn(move || {
-        assert!(thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Max).is_ok());
+        //assert!(thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Max).is_ok());
 
         const SHARE_TICK : u64 = 65536;
 
@@ -1309,16 +1303,30 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
         let tid = stat.tid;
 
         let mut stack = vec![];
-        let mut locks = 0;
+        //let mut locks = 0;
 
         let mut init = true;
         let mut host = if tid == fst_tid { root } else { 0 };
         let mut mode = if tid == fst_tid { Mode::Working } else { Mode::Robbing };
         let mut tick = 0;
         let mut sidx = 0;
+        //let mut slim = usize::MAX;
         let mut halt = false;
 
+        //let mut count = 0;
+
         'main: loop {
+
+          //count = count + 1;
+          //if count > 2000000000 {
+            //let mut busy = 0;
+            //for i in 0 .. BUCKET_COUNT {
+              //if buckets[i].load(Ordering::Relaxed) != BUCKET_EMPTY {
+                //busy += 1;
+              //}
+            //}
+            //println!("[{}] hmm count={} busy={} mode={:?} stack.len()={}", stat.tid, count, busy, mode, stack.len());
+          //}
 
           // FIXME: improve halting condition logic / ugly code
           if STEALING {
@@ -1370,28 +1378,49 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
                     let locker = get_locker(heap, term, tid);
                     match acquire_lock(locker, tid) {
                       Err(locker_tid) => {
-                        // If the DUP node is locked by another thread...
-                        if locker_tid != stat.tid as u8 {
-                          // If the locker is in the same task-stealing group, share the task and enter steal mode
-                          if STEALING && is_local[locker_tid as usize].load(Ordering::Relaxed) == 1 {
-                            while share_task(buckets, new_task(TASK_INIT, host)).is_none() {};
-                            mode = Mode::Robbing;
-                            continue 'main;
-                          // If the locker isn't in the same task-stealing group, try again (spin)
-                          } else {
-                            backoff.snooze();
-                            //println!("[{}] waits for {}", tid, get_loc(term, 0));
-                            continue 'main;
-                          }
+                        //mode = Mode::Getting;
+                        //continue 'main;
+                        //println!("[{}] vish {}", stat.tid, locks);
+                        if locker_tid == stat.tid as u8 {
+                          mode = Mode::Getting;
+                          continue 'main;
+                        } else {
+                          backoff.snooze();
+                          continue 'main;
                         }
+                        // If the DUP node is locked by another thread...
+                        //if locker_tid != stat.tid as u8 {
+                          //// If the locker is in the same task-stealing group, share the task and enter steal mode
+                          //if STEALING && is_local[locker_tid as usize].load(Ordering::Relaxed) == 1 {
+                            ////println!("[{}] vish", stat.tid);
+                            ////let mut attempts = 0;
+                            //while share_task(buckets, new_task(TASK_INIT, host)).is_none() {
+                              ////attempts = attempts + 1;
+                              ////if attempts > 100000000 * 16 {
+                                ////println!("[{}] fu {}", stat.tid, attempts);
+                              ////}
+                            //};
+                            //mode = Mode::Robbing;
+                            //continue 'main;
+                          //// If the locker isn't in the same task-stealing group, try again (spin)
+                          //} else {
+                            //backoff.snooze();
+                            ////println!("[{}] waits for {}", tid, get_loc(term, 0));
+                            //continue 'main;
+                          //}
+                        //}
                       }
                       Ok(_) => {
                         // If the term changed, release lock and try again
                         if term != load_ptr(heap, host) {
+                          //locks = locks - 1;
                           release_lock(locker);
                           continue 'main;
                         }
+                        //locks = locks + 1;
                         // Otherwise, push the dup and reduce the expression
+                        //slim = std::cmp::min(stack.len(), slim);
+                        //println!("[{}] slim {}/{}", stat.tid, sidx, slim.unwrap());
                         stack.push(new_task(TASK_WORK, host));
                         host = get_loc(term, 2);
                         continue;
@@ -1460,7 +1489,7 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
                     if get_tag(arg0) == LAM {
                       //println!("dup-lam");
                       dup_lam(heap, stat, info, host, term, arg0, tcol);
-                      locks = locks - 1;
+                      //locks = locks - 1;
                       release_lock(get_locker(heap, term, tid));
                       init = true;
                       continue;
@@ -1468,37 +1497,37 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
                       //println!("dup-sup {}", tcol == get_ext(arg0));
                       if tcol == get_ext(arg0) {
                         dup_sup_0(heap, stat, info, host, term, arg0, tcol);
-                        locks = locks - 1;
+                        //locks = locks - 1;
                         release_lock(get_locker(heap, term, tid));
                         init = true;
                         continue;
                       } else {
                         dup_sup_1(heap, stat, info, host, term, arg0, tcol);
-                        locks = locks - 1;
+                        //locks = locks - 1;
                         release_lock(get_locker(heap, term, tid));
                         init = true;
                         continue;
                       }
                     } else if get_tag(arg0) == NUM {
                       dup_num(heap, stat, info, host, term, arg0, tcol);
-                      locks = locks - 1;
+                      //locks = locks - 1;
                       release_lock(get_locker(heap, term, tid));
                       init = true;
                       continue;
                     } else if get_tag(arg0) == CTR {
                       dup_ctr(heap, stat, info, host, term, arg0, tcol);
-                      locks = locks - 1;
+                      //locks = locks - 1;
                       release_lock(get_locker(heap, term, tid));
                       init = true;
                       continue;
                     } else if get_tag(arg0) == ERA {
                       dup_era(heap, stat, info, host, term, arg0, tcol);
-                      locks = locks - 1;
+                      //locks = locks - 1;
                       release_lock(get_locker(heap, term, tid));
                       init = true;
                       continue;
                     } else {
-                      locks = locks - 1;
+                      //locks = locks - 1;
                       release_lock(get_locker(heap, term, tid));
                     }
                   }
@@ -1542,7 +1571,6 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
                         //continue;
                       //}
 //GENERATED-FUN-CTR-RULES//
-                      
                       _ => {
                         // Dynamic functions
                         if fun_ctr(heap, stat, info, host, term, fid) {
@@ -1588,6 +1616,7 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
                   init = task_tag == TASK_INIT;
                   host = task_val;
                   sidx = std::cmp::min(sidx, stack.len());
+                  //slim = if slim == stack.len() { usize::MAX } else { slim };
                   mode = Mode::Working;
                   continue;
                 }
@@ -1605,6 +1634,7 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
               while sidx < stack.len() {
                 let task = unsafe { *stack.get_unchecked_mut(sidx) };
                 if get_task_tag(task) == TASK_INIT {
+                  //println!("[{}] share {}/{}", stat.tid, sidx, stack.len());
                   if let Some(bid) = share_task(buckets, task) {
                     stack[sidx] = new_task(TASK_WAIT, bid as u64);
                   }
@@ -1617,17 +1647,19 @@ pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info
             }
             Mode::Robbing => {
               // Try to steal a task from another thread
-              let bid = fastrand::usize(..) % BUCKET_COUNT;
-              let buc = buckets[bid].load(Ordering::Relaxed);
-              if get_bucket_tag(buc) == BUCKET_FILLED {
-                if let Ok(old) = buckets[bid].compare_exchange(buc, new_bucket(BUCKET_STOLEN,0), Ordering::Relaxed, Ordering::Relaxed) {
-                  //println!("[{}] stolen task on bucket {} (cost {})", tid, bid, stat.cost);
-                  stack.push(new_task(TASK_BACK, bid as u64));
-                  let task = get_bucket_val(buc);
-                  init = get_task_tag(task) == TASK_INIT;
-                  host = get_task_val(task);
-                  mode = Mode::Working;
-                  continue;
+              for _ in 0 .. BUCKET_COUNT {
+                let bid = fastrand::usize(..) % BUCKET_COUNT;
+                let buc = buckets[bid].load(Ordering::Relaxed);
+                if get_bucket_tag(buc) == BUCKET_FILLED {
+                  if let Ok(old) = buckets[bid].compare_exchange(buc, new_bucket(BUCKET_STOLEN,0), Ordering::Relaxed, Ordering::Relaxed) {
+                    //println!("[{}] stolen task on bucket {} (cost {})", tid, bid, stat.cost);
+                    stack.push(new_task(TASK_BACK, bid as u64));
+                    let task = get_bucket_val(buc);
+                    init = get_task_tag(task) == TASK_INIT;
+                    host = get_task_val(task);
+                    mode = Mode::Working;
+                    continue 'main;
+                  }
                 }
               }
               mode = Mode::Getting;
@@ -2192,526 +2224,4 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
     text.push_str(&format!("\ndup[{:x}] {} {} = {};", pos, nam0, nam1, go(heap, info, load_ptr(heap, pos + 2), &names, focus)));
   }
   text
-}
-
-
-pub fn reduce2(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
-  //println!("reduce root={} stats.len()={}", root, stats.len());
-  let stat = &mut stats[0];
-  let tid = stat.tid.clone();
-  let mut stack = vec![];
-  let mut init = true;
-  let mut host = root;
-  'main: loop {
-    let term = load_ptr(heap, host);
-    //println!("[{}] at {}", tid, host);
-    //println!("[{}] reduce:\n{}\n", tid, show_term(heap, info, ask_lnk(heap, 0), term));
-    if init {
-      match get_tag(term) {
-        APP => {
-          stack.push(new_task(TASK_WORK, host));
-          init = true;
-          host = get_loc(term, 0);
-          continue;
-        }
-        DP0 | DP1 => {
-          //let got_lock = heap.lock[get_loc(term, 0) as usize].compare_exchange(tid as u8, Ordering::Acquire, Ordering::Acquire);
-          //if let Err(old) = got_lock {
-            //panic!("todo");
-          //}
-          stack.push(new_task(TASK_WORK, host));
-          host = get_loc(term, 2);
-          continue;
-        }
-        OP2 => {
-          stack.push(new_task(TASK_WORK, host));
-          stack.push(new_task(TASK_INIT, get_loc(term, 1)));
-          host = get_loc(term, 0);
-          continue;
-        }
-        FUN => {
-          let fid = get_ext(term);
-          match fid {
-            HVM_LOG => {
-              init = false;
-              continue;
-            }
-            HVM_PUT => {
-              init = false;
-              continue;
-            }
-//GENERATED-FUN-CTR-MATCH//
-            _ => {
-              // Dynamic functions
-              if let Some(Some(f)) = &info.funs.get(fid as usize) {
-                let len = f.stricts.len() as u64;
-                if len == 0 {
-                  init = false;
-                } else {
-                  stack.push(new_task(TASK_WORK, host));
-                  for (i, strict) in f.stricts.iter().enumerate() {
-                    if i < f.stricts.len() - 1 {
-                      stack.push(new_task(TASK_INIT, get_loc(term, *strict)));
-                    } else {
-                      host = get_loc(term, *strict);
-                    }
-                  }
-                }
-                continue;
-              }
-            }
-          }
-        }
-        _ => {}
-      }
-    } else {
-      match get_tag(term) {
-        APP => {
-          let arg0 = load_field(heap, term, 0);
-
-          // (λx(body) a)
-          // ------------ APP-LAM
-          // x <- a
-          // body
-          if get_tag(arg0) == LAM {
-            //println!("app-lam");
-            inc_cost(stat);
-            subst(heap, stat, info, Var(get_loc(arg0, 0)), take_field(heap, term, 1));
-            link(heap, host, take_field(heap, arg0, 1));
-            free(heap, get_loc(term, 0), 2);
-            free(heap, get_loc(arg0, 0), 2);
-            init = true;
-            continue;
-          }
-
-          // ({a b} c)
-          // --------------- APP-SUP
-          // dup x0 x1 = c
-          // {(a x0) (b x1)}
-          if get_tag(arg0) == SUP {
-            //println!("app-sup");
-            inc_cost(stat);
-            let app0 = get_loc(term, 0);
-            let app1 = get_loc(arg0, 0);
-            let let0 = alloc(heap, stat, 3);
-            let par0 = alloc(heap, stat, 2);
-            link(heap, let0 + 2, take_field(heap, term, 1));
-            link(heap, app0 + 1, Dp0(get_ext(arg0), let0));
-            link(heap, app0 + 0, take_field(heap, arg0, 0));
-            link(heap, app1 + 0, take_field(heap, arg0, 1));
-            link(heap, app1 + 1, Dp1(get_ext(arg0), let0));
-            link(heap, par0 + 0, App(app0));
-            link(heap, par0 + 1, App(app1));
-            let done = Par(get_ext(arg0), par0);
-            link(heap, host, done);
-          }
-        }
-        DP0 | DP1 => {
-          //println!("[{}] on-dup {}", tid, heap.lock[get_loc(term, 0) as usize].load(Ordering::Relaxed));
-
-          let arg0 = load_field(heap, term, 2);
-          let tcol = get_ext(term);
-
-          //println!("[{}] dups {}", tid, get_loc(term, 0));
-
-          // dup r s = λx(f)
-          // --------------- DUP-LAM
-          // dup f0 f1 = f
-          // r <- λx0(f0)
-          // s <- λx1(f1)
-          // x <- {x0 x1}
-          if get_tag(arg0) == LAM {
-            //println!("dup-lam");
-            inc_cost(stat);
-            let let0 = alloc(heap, stat, 3);
-            let par0 = alloc(heap, stat, 2);
-            let lam0 = alloc(heap, stat, 2);
-            let lam1 = alloc(heap, stat, 2);
-            link(heap, let0 + 2, take_field(heap, arg0, 1));
-            link(heap, par0 + 1, Var(lam1));
-
-            link(heap, par0 + 0, Var(lam0));
-            link(heap, lam0 + 1, Dp0(get_ext(term), let0));
-            link(heap, lam1 + 1, Dp1(get_ext(term), let0));
-
-            subst(heap, stat, info, Var(get_loc(arg0, 0)), Par(get_ext(term), par0));
-            subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Lam(lam0));
-            subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Lam(lam1));
-
-            let done = Lam(if get_tag(term) == DP0 { lam0 } else { lam1 });
-            link(heap, host, done);
-
-            free(heap, get_loc(term, 0), 3);
-            free(heap, get_loc(arg0, 0), 2);
-
-            //println!("[{}] unlocks {}", tid, get_loc(term, 0));
-            //heap.lock[get_loc(term, 0) as usize].store(Ordering::Release);
-
-            init = true;
-            continue;
-
-
-          // dup x y = {a b}
-          // --------------- DUP-SUP (equal)
-          // x <- a
-          // y <- b
-          //
-          // dup x y = {a b}
-          // ----------------- DUP-SUP (different)
-          // x <- {xA xB}
-          // y <- {yA yB}
-          // dup xA yA = a
-          // dup xB yB = b
-          } else if get_tag(arg0) == SUP {
-            //println!("dup-sup {}", tcol == get_ext(arg0));
-            if tcol == get_ext(arg0) {
-              inc_cost(stat);
-              //println!("A");
-              subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), take_field(heap, arg0, 0));
-              //println!("B");
-              subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), take_field(heap, arg0, 1));
-              //println!("C");
-              //link(heap, host, take_field(heap, arg0, if get_tag(term) == DP0 { 0 } else { 1 })); // <- FIXME: WTF lol
-              free(heap, get_loc(term, 0), 3);
-              free(heap, get_loc(arg0, 0), 2);
-              //println!("[{}] unlocks {}", tid, get_loc(term, 0));
-              //heap.lock[get_loc(term, 0) as usize].store(Ordering::Release);
-              init = true;
-              continue;
-            } else {
-              inc_cost(stat);
-              let par0 = alloc(heap, stat, 2);
-              let let0 = alloc(heap, stat, 3);
-              let par1 = get_loc(arg0, 0);
-              let let1 = alloc(heap, stat, 3);
-              link(heap, let0 + 2, take_field(heap, arg0, 0));
-              link(heap, let1 + 2, take_field(heap, arg0, 1));
-              link(heap, par1 + 0, Dp1(tcol, let0));
-              link(heap, par1 + 1, Dp1(tcol, let1));
-              link(heap, par0 + 0, Dp0(tcol, let0));
-              link(heap, par0 + 1, Dp0(tcol, let1));
-
-              //println!("A");
-              subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Par(get_ext(arg0), par0));
-              subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Par(get_ext(arg0), par1));
-              //println!("B");
-
-              free(heap, get_loc(term, 0), 3);
-
-              //println!("[{}] unlocks {}", tid, get_loc(term, 0));
-              //heap.lock[get_loc(term, 0) as usize].store(Ordering::Release);
-
-              init = true;
-              continue;
-
-              //let done = Par(get_ext(arg0), if get_tag(term) == DP0 { par0 } else { par1 });
-              //link(heap, host, done);
-            }
-
-          // dup x y = N
-          // ----------- DUP-NUM
-          // x <- N
-          // y <- N
-          // ~
-          } else if get_tag(arg0) == NUM {
-            //println!("dup-u32");
-            inc_cost(stat);
-            subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), arg0);
-            subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), arg0);
-            free(heap, get_loc(term, 0), 3);
-
-            //println!("[{}] unlocks {}", tid, get_loc(term, 0));
-            //heap.lock[get_loc(term, 0) as usize].store(Ordering::Release);
-
-            init = true;
-            continue;
-            //link(heap, host, arg0);
-
-          // dup x y = (K a b c ...)
-          // ----------------------- DUP-CTR
-          // dup a0 a1 = a
-          // dup b0 b1 = b
-          // dup c0 c1 = c
-          // ...
-          // x <- (K a0 b0 c0 ...)
-          // y <- (K a1 b1 c1 ...)
-          } else if get_tag(arg0) == CTR {
-            //println!("dup-ctr");
-            inc_cost(stat);
-            let fnid = get_ext(arg0);
-            let arit = ask_ari(info, arg0);
-            if arit == 0 {
-              subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Ctr(0, fnid, 0));
-              subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Ctr(0, fnid, 0));
-              free(heap, get_loc(term, 0), 3);
-            } else {
-              let ctr0 = get_loc(arg0, 0);
-              let ctr1 = alloc(heap, stat, arit);
-              for i in 0 .. arit - 1 {
-                let leti = alloc(heap, stat, 3);
-                link(heap, leti + 2, take_field(heap, arg0, i));
-                link(heap, ctr0 + i, Dp0(get_ext(term), leti));
-                link(heap, ctr1 + i, Dp1(get_ext(term), leti));
-              }
-              let leti = alloc(heap, stat, 3);
-              link(heap, leti + 2, take_field(heap, arg0, arit - 1));
-              link(heap, ctr0 + arit - 1, Dp0(get_ext(term), leti));
-              link(heap, ctr1 + arit - 1, Dp1(get_ext(term), leti));
-              subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Ctr(arit, fnid, ctr0));
-              subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Ctr(arit, fnid, ctr1));
-              free(heap, get_loc(term, 0), 3);
-            }
-            //println!("[{}] unlocks {}", tid, get_loc(term, 0));
-            //heap.lock[get_loc(term, 0) as usize].store(Ordering::Release);
-            init = true;
-            continue;
-
-          // dup x y = *
-          // ----------- DUP-ERA
-          // x <- *
-          // y <- *
-          } else if get_tag(arg0) == ERA {
-            inc_cost(stat);
-            subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Era());
-            subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Era());
-            link(heap, host, Era());
-            free(heap, get_loc(term, 0), 3);
-            //heap.lock[get_loc(term, 0) as usize].store(Ordering::Release);
-            init = true;
-            continue;
-          }
-
-          //println!("[{}] unlocks {}", tid, get_loc(term, 0));
-          //heap.lock[get_loc(term, 0) as usize].store(Ordering::Release);
-        }
-        OP2 => {
-          let arg0 = load_field(heap, term, 0);
-          let arg1 = load_field(heap, term, 1);
-
-          // (+ a b)
-          // --------- OP2-NUM
-          // add(a, b)
-          if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
-            //println!("op2-u32");
-            inc_cost(stat);
-            let a = get_num(arg0);
-            let b = get_num(arg1);
-            let c = match get_ext(term) {
-              ADD => a.wrapping_add(b) & NUM_MASK,
-              SUB => a.wrapping_sub(b) & NUM_MASK,
-              MUL => a.wrapping_mul(b) & NUM_MASK,
-              DIV => a.wrapping_div(b) & NUM_MASK,
-              MOD => a.wrapping_rem(b) & NUM_MASK,
-              AND => (a & b) & NUM_MASK,
-              OR  => (a | b) & NUM_MASK,
-              XOR => (a ^ b) & NUM_MASK,
-              SHL => a.wrapping_shl(b as u32) & NUM_MASK,
-              SHR => a.wrapping_shr(b as u32) & NUM_MASK,
-              LTN => u64::from(a <  b),
-              LTE => u64::from(a <= b),
-              EQL => u64::from(a == b),
-              GTE => u64::from(a >= b),
-              GTN => u64::from(a >  b),
-              NEQ => u64::from(a != b),
-              _   => panic!("Invalid operation!"),
-            };
-            let done = Num(c);
-            link(heap, host, done);
-            free(heap, get_loc(term, 0), 2);
-
-          // (+ {a0 a1} b)
-          // --------------------- OP2-SUP-0
-          // dup b0 b1 = b
-          // {(+ a0 b0) (+ a1 b1)}
-          } else if get_tag(arg0) == SUP {
-            //println!("op2-sup-0");
-            inc_cost(stat);
-            let op20 = get_loc(term, 0);
-            let op21 = get_loc(arg0, 0);
-            let let0 = alloc(heap, stat, 3);
-            let par0 = alloc(heap, stat, 2);
-            link(heap, let0 + 2, arg1);
-            link(heap, op20 + 1, Dp0(get_ext(arg0), let0));
-            link(heap, op20 + 0, take_field(heap, arg0, 0));
-            link(heap, op21 + 0, take_field(heap, arg0, 1));
-            link(heap, op21 + 1, Dp1(get_ext(arg0), let0));
-            link(heap, par0 + 0, Op2(get_ext(term), op20));
-            link(heap, par0 + 1, Op2(get_ext(term), op21));
-            let done = Par(get_ext(arg0), par0);
-            link(heap, host, done);
-
-          // (+ a {b0 b1})
-          // --------------- OP2-SUP-1
-          // dup a0 a1 = a
-          // {(+ a0 b0) (+ a1 b1)}
-          } else if get_tag(arg1) == SUP {
-            //println!("op2-sup-1");
-            inc_cost(stat);
-            let op20 = get_loc(term, 0);
-            let op21 = get_loc(arg1, 0);
-            let let0 = alloc(heap, stat, 3);
-            let par0 = alloc(heap, stat, 2);
-            link(heap, let0 + 2, arg0);
-            link(heap, op20 + 0, Dp0(get_ext(arg1), let0));
-            link(heap, op20 + 1, take_field(heap, arg1, 0));
-            link(heap, op21 + 1, take_field(heap, arg1, 1));
-            link(heap, op21 + 0, Dp1(get_ext(arg1), let0));
-            link(heap, par0 + 0, Op2(get_ext(term), op20));
-            link(heap, par0 + 1, Op2(get_ext(term), op21));
-            let done = Par(get_ext(arg1), par0);
-            link(heap, host, done);
-          }
-        }
-        FUN => {
-          let fid = get_ext(term);
-          match fid {
-            //HVM_LOG => {
-              //let msge = get_loc(term,0);
-              //normalize(heap, stats, info, msge);
-              //println!("{}", crate::readback::as_code(heap, stats, info, msge));
-              //link(heap, host, load_field(heap, term, 1));
-              //free(heap, get_loc(term, 0), 2);
-              //collect(heap, stat, info, ask_lnk(heap, msge));
-              //init = true;
-              //continue;
-            //}
-            //HVM_PUT => {
-              //let msge = get_loc(term,0);
-              //normalize(heap, stats, info, msge);
-              //let code = crate::readback::as_code(heap, stats, info, msge);
-              //if code.chars().nth(0) == Some('"') {
-                //println!("{}", &code[1 .. code.len() - 1]);
-              //} else {
-                //println!("{}", code);
-              //}
-              //link(heap, host, load_field(heap, term, 1));
-              //free(heap, get_loc(term, 0), 2);
-              //collect(heap, stat, info, ask_lnk(heap, msge));
-              //init = true;
-              //continue;
-            //}
-//GENERATED-FUN-CTR-RULES//
-            
-            _ => {
-              // Dynamic functions
-              if let Some(Some(function)) = &info.funs.get(fid as usize) {
-                // Reduces function superpositions
-                for (n, is_strict) in function.is_strict.iter().enumerate() {
-                  let n = n as u64;
-                  if *is_strict && get_tag(load_field(heap, term, n)) == SUP {
-                    fun_sup(heap, stat, info, host, term, load_field(heap, term, n), n);
-                    continue 'main;
-                  }
-                }
-
-                // For each rule condition vector
-                let mut matched = false;
-                for (r, rule) in function.rules.iter().enumerate() {
-                  // Check if the rule matches
-                  matched = true;
-                  
-                  // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
-                  for (i, cond) in rule.cond.iter().enumerate() {
-                    let i = i as u64;
-                    match get_tag(*cond) {
-                      NUM => {
-                        //println!("Didn't match because of NUM. i={} {} {}", i, get_num(ask_arg(heap, term, i)), get_num(*cond));
-                        let same_tag = get_tag(load_field(heap, term, i)) == NUM;
-                        let same_val = get_num(load_field(heap, term, i)) == get_num(*cond);
-                        matched = matched && same_tag && same_val;
-                      }
-                      CTR => {
-                        //println!("Didn't match because of CTR. i={} {} {}", i, get_tag(ask_arg(heap, term, i)), get_ext(*cond));
-                        let same_tag = get_tag(load_field(heap, term, i)) == CTR;
-                        let same_ext = get_ext(load_field(heap, term, i)) == get_ext(*cond);
-                        matched = matched && same_tag && same_ext;
-                      }
-                      VAR => {
-                        // If this is a strict argument, then we're in a default variable
-                        if function.is_strict[i as usize] {
-
-                          // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
-                          if rule.hoas && r != function.rules.len() - 1 {
-
-                            // Matches number literals
-                            let is_num
-                              = get_tag(load_field(heap, term, i)) == NUM;
-
-                            // Matches constructor labels
-                            let is_ctr
-                              =  get_tag(load_field(heap, term, i)) == CTR
-                              && ask_ari(info, load_field(heap, term, i)) == 0;
-
-                            // Matches HOAS numbers and constructors
-                            let is_hoas_ctr_num
-                              =  get_tag(load_field(heap, term, i)) == CTR
-                              && get_ext(load_field(heap, term, i)) >= HOAS_CT0
-                              && get_ext(load_field(heap, term, i)) <= HOAS_NUM;
-
-                            matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
-
-                          // Only match default variables on CTRs and NUMs
-                          } else {
-                            let is_ctr = get_tag(load_field(heap, term, i)) == CTR;
-                            let is_num = get_tag(load_field(heap, term, i)) == NUM;
-                            matched = matched && (is_ctr || is_num);
-                          }
-                        }
-                      }
-                      _ => {}
-                    }
-                  }
-
-                  // If all conditions are satisfied, the rule matched, so we must apply it
-                  if matched {
-                    //println!("fun-ctr {:?}", info.nams.get(&get_ext(term)));
-
-                    // Increments the gas count
-                    inc_cost(stat);
-
-                    // Builds the right-hand side term
-                    let done = alloc_body(heap, stat, term, &rule.vars, &rule.body);
-
-                    // Links the host location to it
-                    link(heap, host, done);
-
-                    // Collects unused variables
-                    for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
-                      if *erase {
-                        collect(heap, stat, info, get_var(heap, term, var));
-                      }
-                    }
-
-                    // free the matched ctrs
-                    for (i, arity) in &rule.free {
-                      let i = *i as u64;
-                      free(heap, get_loc(load_field(heap, term, i), 0), *arity);
-                    }
-                    free(heap, get_loc(term, 0), function.arity);
-
-                    break;
-                  }
-                }
-                if matched {
-                  init = true;
-                  continue;
-                }
-              }
-            }
-          }
-        }
-        _ => {}
-      }
-    }
-    if let Some(task) = stack.pop() {
-      let task_tag = get_task_tag(task);
-      let task_val = get_task_val(task);
-      init = task_tag == TASK_INIT;
-      host = task_val;
-      continue;
-    } else {
-      break;
-    }
-  }
-  load_ptr(heap, root)
 }
