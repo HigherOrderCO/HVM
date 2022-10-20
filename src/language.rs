@@ -41,6 +41,14 @@ pub enum Oper {
   Neq,
 }
 
+pub fn desugar_string(string: String) -> BTerm {
+  let empty = Term::Ctr { name: "String.nil".to_string(), args: Vec::new() };
+  Box::new(string.chars().rfold(empty, |t, h| Term::Ctr {
+    name: "String.cons".to_string(),
+    args: vec![Box::new(Term::Num { numb: h as u64 }), Box::new(t)],
+  }))
+}
+
 // Rule
 // ----
 

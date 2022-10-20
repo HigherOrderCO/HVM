@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::language::{File,Rule,Term,BTerm,Oper};
+use crate::language::{File,Rule,Term,BTerm,Oper,desugar_string};
 
 grammar;
 
@@ -43,6 +43,8 @@ CRecTerm1: BTerm = {  // Center-recursive terms, excluding raw Ctrs
         => Box::new(Term::Var{<>}),
     <numb:Num>
         => Box::new(Term::Num{<>}),
+    Str
+        => desugar_string(<>),
     "(" <name:Ctr> <args:(RRecTerm +)> ")"
         => Box::new(Term::Ctr{<>}),
     "(" <oper:Oper> <val0:CRecTerm> <val1:CRecTerm> ")"
@@ -71,11 +73,19 @@ Oper: Oper = {
 }
 
 // Atoms
-Ctr: String = {r"[A-Z][A-Za-z0-9_]*" => <>.to_string()}
+Ctr: String = {r"[A-Z][A-Za-z0-9_.]*" => <>.to_string()}
 
-Var: String = {r"[a-z][A-Za-z0-9_]*" => <>.to_string()}
+Var: String = {r"[a-z][A-Za-z0-9_.]*" => <>.to_string()}
 
 Num: u64 = {r"[0-9]+" => u64::from_str(<>).unwrap()}
+
+Str: String = {r##""[^"]*""## => {
+    // drop first/last char: https://stackoverflow.com/a/65976629
+    let mut chars = <>.chars();
+    chars.next();       // drop opening quote
+    chars.next_back();  // drop closing quote
+    chars.collect::<String>()
+}}
 
 // Lexer
 match {

@@ -534,7 +534,19 @@ mod tests {
       (
         "(Main) = 3 // HVM's parser should remove this comment\n",
         "(Main) = 3"
-      )
+      ),
+      (
+        "(Main) = An.identifier.with.dots.and.1.Number",
+        "(Main) = (An.identifier.with.dots.and.1.Number)"
+      ),
+      (
+        "(Main) = \"String literal, can contain special chars e.g. / = ' # ] \t ' ö 🐊 \"",
+        "(Main) = \"String literal, can contain special chars e.g. / = ' # ] \t ' ö 🐊 \""
+      ),
+      (
+        "(Main a.variable.with.dots.and.1.Number) = a.variable.with.dots.and.1.Number",
+        "(Main x0) = let x0.0 = x0; x0.0"
+      ),
     ];
 
     // test if after sanitize all are equal
