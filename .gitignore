@@ -12,3 +12,4 @@ examples/bug*
 *.out
 tests/**/*.c
 ~*
+stuff/
