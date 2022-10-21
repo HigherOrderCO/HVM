@@ -5,25 +5,24 @@
 
 use crate::language as lang;
 use crate::runtime as runtime;
-use crate::runtime::{Ptr, Heap, Stats, Info};
+use crate::runtime::{Ptr, Heap, Program};
 use std::collections::{hash_map, HashMap, HashSet};
 
 /// Reads back a term from Runtime's memory
-pub fn as_code(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> String {
-  return format!("{}", as_term(heap, stats, info, host));
+pub fn as_code(heap: &Heap, prog: &Program, host: u64) -> String {
+  return format!("{}", as_term(heap, prog, host));
 }
 
 /// Reads back a term from Runtime's memory
-pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::Term> {
+pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<lang::Term> {
   struct CtxName<'a> {
     heap: &'a Heap,
-    stats: &'a Stats,
-    info: &'a Info,
+    prog: &'a Program,
     names: &'a mut HashMap<Ptr, String>,
     seen: &'a mut HashSet<Ptr>,
   }
 
-  fn gen_var_names(heap: &Heap, stats: &Stats, info: &Info, ctx: &mut CtxName, term: Ptr, depth: u32) {
+  fn gen_var_names(heap: &Heap, prog: &Program, ctx: &mut CtxName, term: Ptr, depth: u32) {
     if ctx.seen.contains(&term) {
       return;
     };
@@ -38,40 +37,40 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
           let var = runtime::Var(runtime::get_loc(term, 0));
           ctx.names.insert(var, format!("x{}", ctx.names.len()));
         };
-        gen_var_names(heap, stats, info, ctx, body, depth + 1);
+        gen_var_names(heap, prog, ctx, body, depth + 1);
       }
       runtime::APP => {
         let lam = runtime::ask_arg(&ctx.heap, term, 0);
         let arg = runtime::ask_arg(&ctx.heap, term, 1);
-        gen_var_names(heap, stats, info, ctx, lam, depth + 1);
-        gen_var_names(heap, stats, info, ctx, arg, depth + 1);
+        gen_var_names(heap, prog, ctx, lam, depth + 1);
+        gen_var_names(heap, prog, ctx, arg, depth + 1);
       }
       runtime::SUP => {
         let arg0 = runtime::ask_arg(&ctx.heap, term, 0);
         let arg1 = runtime::ask_arg(&ctx.heap, term, 1);
-        gen_var_names(heap, stats, info, ctx, arg0, depth + 1);
-        gen_var_names(heap, stats, info, ctx, arg1, depth + 1);
+        gen_var_names(heap, prog, ctx, arg0, depth + 1);
+        gen_var_names(heap, prog, ctx, arg1, depth + 1);
       }
       runtime::DP0 => {
         let arg = runtime::ask_arg(&ctx.heap, term, 2);
-        gen_var_names(heap, stats, info, ctx, arg, depth + 1);
+        gen_var_names(heap, prog, ctx, arg, depth + 1);
       }
       runtime::DP1 => {
         let arg = runtime::ask_arg(&ctx.heap, term, 2);
-        gen_var_names(heap, stats, info, ctx, arg, depth + 1);
+        gen_var_names(heap, prog, ctx, arg, depth + 1);
       }
       runtime::OP2 => {
         let arg0 = runtime::ask_arg(&ctx.heap, term, 0);
         let arg1 = runtime::ask_arg(&ctx.heap, term, 1);
-        gen_var_names(heap, stats, info, ctx, arg0, depth + 1);
-        gen_var_names(heap, stats, info, ctx, arg1, depth + 1);
+        gen_var_names(heap, prog, ctx, arg0, depth + 1);
+        gen_var_names(heap, prog, ctx, arg1, depth + 1);
       }
       runtime::NUM => {}
       runtime::CTR | runtime::FUN => {
-        let arity = runtime::ask_ari(&ctx.info, term);
+        let arity = runtime::ask_ari(&ctx.prog, term);
         for i in 0..arity {
           let arg = runtime::ask_arg(&ctx.heap, term, i);
-          gen_var_names(heap, stats, info, ctx, arg, depth + 1);
+          gen_var_names(heap, prog, ctx, arg, depth + 1);
         }
       }
       _ => {}
@@ -81,8 +80,7 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
   #[allow(dead_code)]
   struct CtxGo<'a> {
     heap: &'a Heap,
-    stats: &'a Stats,
-    info: &'a Info,
+    prog: &'a Program,
     names: &'a HashMap<Ptr, String>,
     seen: &'a HashSet<Ptr>,
   }
@@ -108,11 +106,11 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
     }
   }
 
-  fn readback(heap: &Heap, stats: &Stats, info: &Info, ctx: &mut CtxGo, stacks: &mut Stacks, term: Ptr, depth: u32) -> Box<lang::Term> {
+  fn readback(heap: &Heap, prog: &Program, ctx: &mut CtxGo, stacks: &mut Stacks, term: Ptr, depth: u32) -> Box<lang::Term> {
     match runtime::get_tag(term) {
       runtime::LAM => {
         let body = runtime::ask_arg(&ctx.heap, term, 1);
-        let body = readback(heap, stats, info, ctx, stacks, body, depth + 1);
+        let body = readback(heap, prog, ctx, stacks, body, depth + 1);
         let bind = runtime::ask_arg(&ctx.heap, term, 0);
         let name = if runtime::get_tag(bind) == runtime::ERA {
           "*".to_string()
@@ -125,8 +123,8 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
       runtime::APP => {
         let func = runtime::ask_arg(&ctx.heap, term, 0);
         let argm = runtime::ask_arg(&ctx.heap, term, 1);
-        let func = readback(heap, stats, info, ctx, stacks, func, depth + 1);
-        let argm = readback(heap, stats, info, ctx, stacks, argm, depth + 1);
+        let func = readback(heap, prog, ctx, stacks, func, depth + 1);
+        let argm = readback(heap, prog, ctx, stacks, argm, depth + 1);
         return Box::new(lang::Term::App { func, argm });
       }
       runtime::SUP => {
@@ -137,15 +135,15 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
           let arg_idx = *val as u64;
           let val = runtime::ask_arg(&ctx.heap, term, arg_idx);
           let old = stacks.pop(col);
-          let got = readback(heap, stats, info, ctx, stacks, val, depth + 1);
+          let got = readback(heap, prog, ctx, stacks, val, depth + 1);
           stacks.push(col, old);
           got
         } else {
           let name = "HVM.sup".to_string(); // lang::Term doesn't have a Sup variant
           let val0 = runtime::ask_arg(&ctx.heap, term, 0);
           let val1 = runtime::ask_arg(&ctx.heap, term, 1);
-          let val0 = readback(heap, stats, info, ctx, stacks, val0, depth + 1);
-          let val1 = readback(heap, stats, info, ctx, stacks, val1, depth + 1);
+          let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
+          let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
           let args = vec![val0, val1];
           return Box::new(lang::Term::Ctr { name, args });
         }
@@ -154,7 +152,7 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
         let col = runtime::get_ext(term);
         let val = runtime::ask_arg(&ctx.heap, term, 2);
         stacks.push(col, false);
-        let result = readback(heap, stats, info, ctx, stacks, val, depth + 1);
+        let result = readback(heap, prog, ctx, stacks, val, depth + 1);
         stacks.pop(col);
         result
       }
@@ -162,7 +160,7 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
         let col = runtime::get_ext(term);
         let val = runtime::ask_arg(&ctx.heap, term, 2);
         stacks.push(col, true);
-        let result = readback(heap, stats, info, ctx, stacks, val, depth + 1);
+        let result = readback(heap, prog, ctx, stacks, val, depth + 1);
         stacks.pop(col);
         result
       }
@@ -188,8 +186,8 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
         };
         let val0 = runtime::ask_arg(&ctx.heap, term, 0);
         let val1 = runtime::ask_arg(&ctx.heap, term, 1);
-        let val0 = readback(heap, stats, info, ctx, stacks, val0, depth + 1);
-        let val1 = readback(heap, stats, info, ctx, stacks, val1, depth + 1);
+        let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
+        let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
         return Box::new(lang::Term::Op2 { oper, val0, val1 });
       }
       runtime::NUM => {
@@ -198,13 +196,13 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
       }
       runtime::CTR | runtime::FUN => {
         let func = runtime::get_ext(term);
-        let arit = runtime::ask_ari(&ctx.info, term);
+        let arit = runtime::ask_ari(&ctx.prog, term);
         let mut args = Vec::new();
         for i in 0 .. arit {
           let arg = runtime::ask_arg(&ctx.heap, term, i);
-          args.push(readback(heap, stats, info, ctx, stacks, arg, depth + 1));
+          args.push(readback(heap, prog, ctx, stacks, arg, depth + 1));
         }
-        let name = ctx.info.nams.get(&func).map(String::to_string).unwrap_or_else(|| format!("${}", func));
+        let name = ctx.prog.nams.get(&func).map(String::to_string).unwrap_or_else(|| format!("${}", func));
         return Box::new(lang::Term::Ctr { name, args });
       }
       runtime::VAR => {
@@ -228,30 +226,30 @@ pub fn as_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::
   let mut names = HashMap::<Ptr, String>::new();
   let mut seen = HashSet::<Ptr>::new();
 
-  let ctx = &mut CtxName { heap, stats, info, names: &mut names, seen: &mut seen };
-  gen_var_names(heap, stats, info, ctx, term, 0);
+  let ctx = &mut CtxName { heap, prog, names: &mut names, seen: &mut seen };
+  gen_var_names(heap, prog, ctx, term, 0);
 
-  let ctx = &mut CtxGo { heap, stats, info, names: &names, seen: &seen };
+  let ctx = &mut CtxGo { heap, prog, names: &names, seen: &seen };
   let mut stacks = Stacks::new();
-  readback(heap, stats, info, ctx, &mut stacks, term, 0)
+  readback(heap, prog, ctx, &mut stacks, term, 0)
 }
 
 // Reads a term linearly, i.e., preserving dups
-pub fn as_linear_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box<lang::Term> {
+pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<lang::Term> {
   enum StackItem {
     Term(Ptr),
     Resolver(Ptr),
   }
 
-  fn ctr_name(info: &Info, id: u64) -> String {
-    if let Some(name) = info.nams.get(&id) {
+  fn ctr_name(prog: &Program, id: u64) -> String {
+    if let Some(name) = prog.nams.get(&id) {
       return name.clone();
     } else {
       return format!("${}", id);
     }
   }
 
-  fn dups(heap: &Heap, stats: &Stats, info: &Info, term: Ptr, names: &mut HashMap<u64, String>) -> lang::Term {
+  fn dups(heap: &Heap, prog: &Program, term: Ptr, names: &mut HashMap<u64, String>) -> lang::Term {
     let mut lets: HashMap<u64, u64> = HashMap::new();
     let mut kinds: HashMap<u64, u64> = HashMap::new();
     let mut stack = vec![term];
@@ -291,7 +289,7 @@ pub fn as_linear_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box
           stack.push(runtime::ask_arg(heap, term, 0));
         }
         runtime::CTR | runtime::FUN => {
-          let arity = runtime::ask_ari(info, term);
+          let arity = runtime::ask_ari(prog, term);
           for i in (0..arity).rev() {
             stack.push(runtime::ask_arg(heap, term, i));
           }
@@ -300,7 +298,7 @@ pub fn as_linear_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box
       }
     }
 
-    let cont = expr(heap, stats, info, term, &names);
+    let cont = expr(heap, prog, term, &names);
     if lets.is_empty() {
       cont
     } else {
@@ -311,7 +309,7 @@ pub fn as_linear_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box
         let name = names.get(&pos).unwrap_or(&what);
         let nam0 = if runtime::ask_lnk(heap, pos + 0) == runtime::Era() { String::from("*") } else { format!("a{}", name) };
         let nam1 = if runtime::ask_lnk(heap, pos + 1) == runtime::Era() { String::from("*") } else { format!("b{}", name) };
-        let expr = expr(heap, stats, info, runtime::ask_lnk(heap, pos + 2), &names);
+        let expr = expr(heap, prog, runtime::ask_lnk(heap, pos + 2), &names);
         if i == 0 {
           output = lang::Term::Dup { nam0, nam1, expr: Box::new(expr), body: Box::new(cont.clone()) };
         } else {
@@ -322,7 +320,7 @@ pub fn as_linear_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box
     }
   }
 
-  fn expr(heap: &Heap, stats: &Stats, info: &Info, term: Ptr, names: &HashMap<u64, String>) -> lang::Term {
+  fn expr(heap: &Heap, prog: &Program, term: Ptr, names: &HashMap<u64, String>) -> lang::Term {
     let mut stack = vec![StackItem::Term(term)];
     let mut output : Vec<lang::Term> = Vec::new();
     while !stack.is_empty() {
@@ -332,22 +330,22 @@ pub fn as_linear_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box
           match runtime::get_tag(term) {
             runtime::CTR => {
               let func = runtime::get_ext(term);
-              let arit = runtime::ask_ari(info, term);
+              let arit = runtime::ask_ari(prog, term);
               let mut args = Vec::new();
               for _ in 0..arit {
                 args.push(Box::new(output.pop().unwrap()));
               }
-              let name = ctr_name(info, func);
+              let name = ctr_name(prog, func);
               output.push(lang::Term::Ctr { name, args });
             },
             runtime::FUN => {
               let func = runtime::get_ext(term);
-              let arit = runtime::ask_ari(info, term);
+              let arit = runtime::ask_ari(prog, term);
               let mut args = Vec::new();
               for _ in 0..arit {
                 args.push(Box::new(output.pop().unwrap()));
               }
-              let name = ctr_name(info, func);
+              let name = ctr_name(prog, func);
               output.push(lang::Term::Ctr { name, args });
             }
             runtime::LAM => {
@@ -422,14 +420,14 @@ pub fn as_linear_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box
               output.push(lang::Term::Num { numb });
             }
             runtime::CTR => {
-              let arit = runtime::ask_ari(info, term);
+              let arit = runtime::ask_ari(prog, term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
                 stack.push(StackItem::Term(runtime::ask_arg(heap, term, i)));
               }
             }
             runtime::FUN => {
-              let arit = runtime::ask_ari(info, term);
+              let arit = runtime::ask_ari(prog, term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
                 stack.push(StackItem::Term(runtime::ask_arg(heap, term, i)));
@@ -445,10 +443,10 @@ pub fn as_linear_term(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> Box
   }
 
   let mut names: HashMap<u64, String> = HashMap::new();
-  Box::new(dups(heap, stats, info, runtime::ask_lnk(heap, host), &mut names))
+  Box::new(dups(heap, prog, runtime::ask_lnk(heap, host), &mut names))
 }
 
 /// Reads back a term from Runtime's memory
-pub fn as_linear_code(heap: &Heap, stats: &Stats, info: &Info, host: u64) -> String {
-  return format!("{}", as_linear_term(heap, stats, info, host));
+pub fn as_linear_code(heap: &Heap, prog: &Program, host: u64) -> String {
+  return format!("{}", as_linear_term(heap, prog, host));
 }

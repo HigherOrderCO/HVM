@@ -1304,16 +1304,16 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
   (elem, nodes, dupk)
 }
 
-pub fn alloc_closed_dynterm(heap: &rt::Heap, stat: &mut rt::Stat, term: &rt::Term) -> u64 {
-  let host = rt::alloc(heap, stat, 1);
+pub fn alloc_closed_dynterm(heap: &rt::Heap, tid: usize, term: &rt::Term) -> u64 {
+  let host = rt::alloc(heap, tid, 1);
   let body = build_body(term, 0);
-  let term = rt::alloc_body(heap, stat, 0, &[], &body);
+  let term = rt::alloc_body(heap, tid, 0, &[], &body);
   rt::link(heap, host, term);
   host
 }
 
-pub fn alloc_term(heap: &rt::Heap, stat: &mut rt::Stat, book: &RuleBook, term: &lang::Term) -> u64 {
-  alloc_closed_dynterm(heap, stat, &term_to_dynterm(book, term, &vec![]))
+pub fn alloc_term(heap: &rt::Heap, tid: usize, book: &RuleBook, term: &lang::Term) -> u64 {
+  alloc_closed_dynterm(heap, tid, &term_to_dynterm(book, term, &vec![]))
 }
 
 // Evaluates a HVM term to normal form
@@ -1323,7 +1323,7 @@ pub fn eval_code(
   debug: bool,
   size: usize,
 ) -> Result<(String, u64, u64, u64), String> {
-  let mut info = rt::new_info();
+  let mut prog = rt::new_program();
 
   // Parses and reads the input file
   let file = lang::read_file(code)?;
@@ -1332,31 +1332,31 @@ pub fn eval_code(
   let book = gen_rulebook(&file);
 
   // Builds functions
-  info.funs = build_dynamic_functions(&book);
+  prog.funs = build_dynamic_functions(&book);
 
   // Builds arities
-  info.aris = build_dynamic_arities(&book);
+  prog.aris = build_dynamic_arities(&book);
 
   // builds names
-  info.nams = book.id_to_name.clone();
+  prog.nams = book.id_to_name.clone();
 
   let mut heap = rt::new_heap();
-  let mut stat = rt::new_stats();
+  let     tids = rt::new_tids();
 
   // Allocates the main term
-  let host = alloc_term(&mut heap, &mut stat[0], &book, call); // FIXME tid?
+  let host = alloc_term(&mut heap, tids[0], &book, call); // FIXME tid?
 
   // Normalizes it
   let init = instant::Instant::now();
   #[cfg(not(target_arch = "wasm32"))]
-  rt::normalize(&heap, &mut stat, &info, host, true);
+  rt::normalize(&heap, &prog, &tids, host, true);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a string
-  let code = format!("{}", crate::readback::as_term(&heap, &stat, &info, host));
+  let code = format!("{}", crate::readback::as_term(&heap, &prog, host));
 
   // Returns the normal form and the gas cost
-  Ok((code, rt::get_cost(&stat), rt::get_used(&stat), time))
+  Ok((code, rt::get_cost(&heap), rt::get_used(&heap), time))
 }
 
 // notes

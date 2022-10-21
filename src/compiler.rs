@@ -218,7 +218,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
   if function.stricts.is_empty() {
     line(&mut init, tab + 0, "init = false;");
   } else {
-    line(&mut init, tab + 0, &format!("let goup = redex.insert(stat.tid, new_redex(host, cont, {}));", function.stricts.len()));
+    line(&mut init, tab + 0, &format!("let goup = redex.insert(tid, new_redex(host, cont, {}));", function.stricts.len()));
     for (i, strict) in function.stricts.iter().enumerate() {
       if i < function.stricts.len() - 1 {
         line(&mut init, tab + 0, &format!("visit.push(new_visit(get_loc(term, {}), goup));", strict));
@@ -240,7 +240,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
       line(
         &mut code,
         tab + 1,
-        &format!("fun_sup(heap, stat, info, host, term, ask_arg(heap, term, {}), {});", i, i),
+        &format!("fun_sup(heap, prog, tid, host, term, ask_arg(heap, term, {}), {});", i, i),
       );
       line(&mut code, tab + 1, "continue;");
       line(&mut code, tab + 0, "}");
@@ -301,7 +301,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
     line(&mut code, tab + 0, &format!("if {} {{", conds));
 
     // Increments the gas count
-    line(&mut code, tab + 1, "inc_cost(stat);");
+    line(&mut code, tab + 1, "inc_cost(heap, tid);");
 
     // Builds the right-hand side term (ex: `(Succ (Add a b))`)
     //let done = compile_func_rule_body(&mut code, tab + 1, &dynrule.body, &dynrule.vars);
@@ -325,7 +325,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
     // Collects unused variables (none in this example)
     for dynvar @ rt::RuleVar { param: _, field: _, erase } in dynrule.vars.iter() {
       if *erase {
-        line(&mut code, tab + 1, &format!("collect(heap, stat, info, {});", get_var(dynvar)));
+        line(&mut code, tab + 1, &format!("collect(heap, prog, {});", get_var(dynvar)));
       }
     }
 
@@ -355,7 +355,7 @@ fn compile_func_rule_term(
       got.clone()
     } else {
       let name = fresh(nams, "lam");
-      line(code, tab, &format!("let {} = alloc(heap, stat, 2);", name));
+      line(code, tab, &format!("let {} = alloc(heap, tid, 2);", name));
       if glob != 0 {
         // FIXME: sanitizer still can't detect if a scopeless lambda doesn't use its bound
         // variable, so we must write an Era() here. When it does, we can remove this line.
@@ -401,7 +401,7 @@ fn compile_func_rule_term(
         line(code, tab, &format!("let {};", dup1));
         if INLINE_NUMBERS {
           line(code, tab + 0, &format!("if get_tag({}) == NUM {{", copy));
-          line(code, tab + 1, "inc_cost(stat);");
+          line(code, tab + 1, "inc_cost(heap, tid);");
           line(code, tab + 1, &format!("{} = {};", dup0, copy));
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
           line(code, tab + 0, "} else {");
@@ -410,8 +410,8 @@ fn compile_func_rule_term(
         let coln = fresh(nams, "col");
         //let colx = *dups;
         //*dups += 1;
-        line(code, tab + 1, &format!("let {} = alloc(heap, stat, 3);", name));
-        line(code, tab + 1, &format!("let {} = gen_dup(stat);", coln));
+        line(code, tab + 1, &format!("let {} = alloc(heap, tid, 3);", name));
+        line(code, tab + 1, &format!("let {} = gen_dup(heap, tid);", coln));
         if eras.0 {
           line(code, tab + 1, &format!("link(heap, {} + 0, Era());", name));
         }
@@ -453,7 +453,7 @@ fn compile_func_rule_term(
         let name = fresh(nams, "app");
         let func = compile_term(code, tab, vars, nams, globs, func);
         let argm = compile_term(code, tab, vars, nams, globs, argm);
-        line(code, tab, &format!("let {} = alloc(heap, stat, 2);", name));
+        line(code, tab, &format!("let {} = alloc(heap, tid, 2);", name));
         line(code, tab, &format!("link(heap, {} + 0, {});", name, func));
         line(code, tab, &format!("link(heap, {} + 1, {});", name, argm));
         format!("App({})", name)
@@ -461,7 +461,7 @@ fn compile_func_rule_term(
       rt::Term::Ctr { func, args } => {
         let ctr_args: Vec<String> = args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
         let name = fresh(nams, "ctr");
-        line(code, tab, &format!("let {} = alloc(heap, stat, {});", name, ctr_args.len()));
+        line(code, tab, &format!("let {} = alloc(heap, tid, {});", name, ctr_args.len()));
         for (i, arg) in ctr_args.iter().enumerate() {
           line(code, tab, &format!("link(heap, {} + {}, {});", name, i, arg));
         }
@@ -471,7 +471,7 @@ fn compile_func_rule_term(
         let cal_args: Vec<String> =
           args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
         let name = fresh(nams, "cal");
-        line(code, tab, &format!("let {} = alloc(heap, stat, {});", name, cal_args.len()));
+        line(code, tab, &format!("let {} = alloc(heap, tid, {});", name, cal_args.len()));
         for (i, arg) in cal_args.iter().enumerate() {
           line(code, tab, &format!("link(heap, {} + {}, {});", name, i, arg));
         }
@@ -514,10 +514,10 @@ fn compile_func_rule_term(
             rt::NEQ => line(code, tab + 1, &format!("{} = Num(if {} != {} {{ 1 }} else {{ 0 }});", retx, a, b)),
             _ => line(code, tab + 1, &format!("{} = ?;", retx)),
           }
-          line(code, tab + 1, "inc_cost(stat);");
+          line(code, tab + 1, "inc_cost(heap, tid);");
           line(code, tab + 0, "} else {");
         }
-        line(code, tab + 1, &format!("let {} = alloc(heap, stat, 2);", name));
+        line(code, tab + 1, &format!("let {} = alloc(heap, tid, 2);", name));
         line(code, tab + 1, &format!("link(heap, {} + 0, {});", name, val0));
         line(code, tab + 1, &format!("link(heap, {} + 1, {});", name, val1));
         let oper_name = match *oper {

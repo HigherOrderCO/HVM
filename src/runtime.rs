@@ -327,37 +327,34 @@ pub type Funs = Vec<Option<Function>>;
 pub type Aris = Vec<Arity>;
 pub type Nams = HashMap<u64, String>;
 
-// Static information
-
 #[derive(Clone)]
-pub struct Info {
+pub struct Program {
   pub funs: Funs,
   pub aris: Aris,
   pub nams: Nams,
 }
 
+// Thread local data and stats
+#[derive(Debug)]
+pub struct LocalVars {
+  pub tid: usize,
+  pub used: AtomicU64, // number of used memory cells
+  pub next: AtomicU64, // next alloc index
+  pub amin: AtomicU64, // min alloc index
+  pub amax: AtomicU64, // max alloc index
+  pub dups: AtomicU64, // next dup label to be created
+  pub cost: AtomicU64, // total number of rewrite rules
+}
+
 // Global memory buffer
 pub struct Heap {
   node: Box<[AtomicPtr]>,
+  lvar: Box<[CachePadded<LocalVars>]>,
   lock: Box<[AtomicU8]>,
   vstk: Box<[VisitQueue]>,
+  aloc: Box<[Box<[AtomicU64]>]>,
   rbag: RedexBag,
 }
-
-// Thread local data and stats
-#[derive(Clone, Debug)]
-pub struct Stat {
-  pub tid: usize,
-  pub aloc: Vec<u64>, // allocation buffer used by alloc_body
-  pub used: u64, // number of used memory cells
-  pub next: u64, // next alloc index
-  pub amin: u64, // min alloc index
-  pub amax: u64, // max alloc index
-  pub dups: u64, // next dup label to be created
-  pub cost: u64, // total number of rewrite rules
-}
-
-pub type Stats = [CachePadded<Stat>];
 
 fn available_parallelism() -> usize {
   return std::thread::available_parallelism().unwrap().get();
@@ -378,34 +375,34 @@ pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
 
 pub fn new_heap() -> Heap {
   let tids = available_parallelism();
-  let size = HEAP_SIZE; // FIXME: accept size param
-  let node = new_atomic_u64_array(size);
-  let lock = new_atomic_u8_array(size);
-  let rbag = RedexBag::new();
-  let vstk = (0 .. tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
-  return Heap { node, lock, rbag, vstk };
-}
-
-pub fn new_stats() -> Box<Stats> {
-  let thread_count = available_parallelism();
-  let mut stats = vec![];
-  for tid in 0 .. thread_count {
-    stats.push(CachePadded::new(Stat {
+  let mut lvar = vec![];
+  for tid in 0 .. tids {
+    lvar.push(CachePadded::new(LocalVars {
       tid: tid,
-      aloc: vec![0; 32 * 256 * 256],
-      used: 0,
-      next: (HEAP_SIZE / thread_count * (tid + 0)) as u64,
-      amin: (HEAP_SIZE / thread_count * (tid + 0)) as u64,
-      amax: (HEAP_SIZE / thread_count * (tid + 1)) as u64,
-      dups: ((1 << 28) / thread_count * tid) as u64,
-      cost: 0,
+      used: AtomicU64::new(0),
+      next: AtomicU64::new((HEAP_SIZE / tids * (tid + 0)) as u64),
+      amin: AtomicU64::new((HEAP_SIZE / tids * (tid + 0)) as u64),
+      amax: AtomicU64::new((HEAP_SIZE / tids * (tid + 1)) as u64),
+      dups: AtomicU64::new(((1 << 28) / tids * tid) as u64),
+      cost: AtomicU64::new(0),
     }))
   }
-  return stats.into_boxed_slice();
+  let size = HEAP_SIZE; // FIXME: accept size param
+  let node = new_atomic_u64_array(size);
+  let lvar = lvar.into_boxed_slice();
+  let lock = new_atomic_u8_array(size);
+  let rbag = RedexBag::new();
+  let aloc = (0 .. tids).map(|x| new_atomic_u64_array(1 << 20)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
+  let vstk = (0 .. tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
+  return Heap { node, lvar, lock, rbag, aloc, vstk };
 }
 
-pub fn new_info() -> Info {
-  Info {
+pub fn new_tids() -> Box<[usize]> {
+  return (0 .. available_parallelism()).collect::<Vec<usize>>().into_boxed_slice();
+}
+
+pub fn new_program() -> Program {
+  Program {
     funs: vec![],
     aris: vec![],
     nams: HashMap::new(),
@@ -487,31 +484,26 @@ pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
   get_val(lnk) + arg
 }
 
-// Stats
-// -----
-
-pub fn get_cost(stats: &Stats) -> u64 {
-  stats.iter().map(|x| x.cost).sum()
+pub fn get_cost(heap: &Heap) -> u64 {
+  heap.lvar.iter().map(|x| x.cost.load(Ordering::Relaxed)).sum()
 }
 
-pub fn get_used(stats: &Stats) -> u64 {
-  stats.iter().map(|x| x.cost).sum()
+pub fn get_used(heap: &Heap) -> u64 {
+  heap.lvar.iter().map(|x| x.cost.load(Ordering::Relaxed)).sum()
 }
 
-pub fn inc_cost(stat: &mut Stat) {
-  stat.cost += 1;
+pub fn inc_cost(heap: &Heap, tid: usize) {
+  heap.lvar[tid].cost.fetch_add(1, Ordering::Relaxed);
 }
 
-pub fn gen_dup(stat: &mut Stat) -> u64 {
-  let dup = stat.dups;
-  stat.dups += 1;
-  return dup & 0xFFFFFF;
+pub fn gen_dup(heap: &Heap, tid: usize) -> u64 {
+  return heap.lvar[tid].dups.fetch_add(1, Ordering::Relaxed) & 0xFFFFFFF;
 }
 
 // Program
 // -------
 
-pub fn ask_ari(info: &Info, lnk: Ptr) -> u64 {
+pub fn ask_ari(prog: &Program, lnk: Ptr) -> u64 {
   let fid = get_ext(lnk);
   match fid {
     HVM_LOG => { return 2; }
@@ -527,7 +519,7 @@ pub fn ask_ari(info: &Info, lnk: Ptr) -> u64 {
 //GENERATED-FUN-ARI//
     _ => {
       // Dynamic functions
-      if let Some(Arity(arit)) = info.aris.get(fid as usize) {
+      if let Some(Arity(arit)) = prog.aris.get(fid as usize) {
         return *arit;
       }
       return 0;
@@ -585,41 +577,40 @@ pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
   ptr
 }
 
-pub fn owns_loc(heap: &Heap, stat: &Stat, loc: u64) -> bool {
-  return stat.amin <= loc && loc < stat.amax;
-}
-
 // Allocator
 // ---------
 
-pub fn alloc(heap: &Heap, stat: &mut Stat, arity: u64) -> u64 {
-  if arity == 0 {
-    0
-  } else {
-    let mut length = 0;
-    loop {
-      // Loads value on cursor
-      let val = unsafe { heap.node.get_unchecked(stat.next as usize) }.load(Ordering::Relaxed);
-      // If it is empty, increment length
-      if val == 0 {
-        length += 1;
-      // Otherwise, reset length
-      } else {
-        length = 0;
-      };
-      // Moves cursor right
-      stat.next += 1;
-      // If it is out of bounds, warp around
-      if stat.next >= stat.amax {
-        length = 0;
-        stat.next = stat.amin;
-        //println!("[{}] loop", stat.tid);
-      }
-      // If length equals arity, allocate that space
-      if length == arity {
-        //println!("[{}] return", stat.tid);
-        //println!("[{}] alloc {} at {}", stat.tid, arity, stat.next - length);
-        return stat.next - length;
+pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
+  unsafe {
+    let lvar = &heap.lvar[tid];
+    if arity == 0 {
+      0
+    } else {
+      let mut length = 0;
+      loop {
+        // Loads value on cursor
+        let val = heap.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
+        // If it is empty, increment length
+        if val == 0 {
+          length += 1;
+        // Otherwise, reset length
+        } else {
+          length = 0;
+        };
+        // Moves cursor right
+        *lvar.next.as_mut_ptr() += 1;
+        // If it is out of bounds, warp around
+        if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
+          length = 0;
+          *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
+          //println!("[{}] loop", lvar.tid);
+        }
+        // If length equals arity, allocate that space
+        if length == arity {
+          //println!("[{}] return", lvar.tid);
+          //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
+          return *lvar.next.as_mut_ptr() - length;
+        }
       }
     }
   }
@@ -647,7 +638,7 @@ pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, P
 }
 
 // Performs a global [x <- val] substitution atomically.
-pub fn atomic_subst(heap: &Heap, stat: &mut Stat, info: &Info, var: Ptr, val: Ptr) {
+pub fn atomic_subst(heap: &Heap, prog: &Program, var: Ptr, val: Ptr) {
   loop {
     let arg_ptr = load_ptr(heap, get_loc(var, get_tag(var) & 0x01));
     if get_tag(arg_ptr) == ARG {
@@ -657,7 +648,7 @@ pub fn atomic_subst(heap: &Heap, stat: &mut Stat, info: &Info, var: Ptr, val: Pt
       }
     }
     if get_tag(arg_ptr) == ERA {
-      collect(heap, stat, info, val); // safe, since `val` is owned by this thread
+      collect(heap, prog, val); // safe, since `val` is owned by this thread
       return;
     }
   }
@@ -666,7 +657,7 @@ pub fn atomic_subst(heap: &Heap, stat: &mut Stat, info: &Info, var: Ptr, val: Pt
 // Garbage Collection
 // ------------------
 
-pub fn collect(heap: &Heap, stat: &mut Stat, info: &Info, term: Ptr) {
+pub fn collect(heap: &Heap, prog: &Program, term: Ptr) {
   let mut stack: Vec<Ptr> = Vec::new();
   let mut next = term;
   //let mut dups : Vec<u64> = Vec::new();
@@ -675,13 +666,13 @@ pub fn collect(heap: &Heap, stat: &mut Stat, info: &Info, term: Ptr) {
     match get_tag(term) {
       DP0 => {
         link(heap, get_loc(term, 0), Era());
-        //atomic_subst(heap, stat, info, term, Era());
+        //atomic_subst(heap, lvar, prog, term, Era());
         //link(heap, get_loc(term, 0), Era());
         //dups.push(term);
       }
       DP1 => {
         link(heap, get_loc(term, 1), Era());
-        //atomic_subst(heap, stat, info, term, Era());
+        //atomic_subst(heap, lvar, prog, term, Era());
         //link(heap, get_loc(term, 1), Era());
         //dups.push(term);
       }
@@ -689,7 +680,7 @@ pub fn collect(heap: &Heap, stat: &mut Stat, info: &Info, term: Ptr) {
         link(heap, get_loc(term, 0), Era());
       }
       LAM => {
-        //atomic_subst(heap, stat, info, Var(get_loc(term,0)), Era());
+        //atomic_subst(heap, lvar, prog, Var(get_loc(term,0)), Era());
         next = take_field(heap, term, 1);
         free(heap, get_loc(term, 0), 2);
         continue;
@@ -714,7 +705,7 @@ pub fn collect(heap: &Heap, stat: &mut Stat, info: &Info, term: Ptr) {
       }
       NUM => {}
       CTR | FUN => {
-        let arity = ask_ari(info, term);
+        let arity = ask_ari(prog, term);
         for i in 0 .. arity {
           if i < arity - 1 {
             stack.push(take_field(heap, term, i));
@@ -746,10 +737,10 @@ pub fn collect(heap: &Heap, stat: &mut Stat, info: &Info, term: Ptr) {
   //}
 }
 
-pub fn alloc_body(heap: &Heap, stat: &mut Stat, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
+pub fn alloc_body(heap: &Heap, tid: usize, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
   // FIXME: verify the use of get_unchecked
   let (elem, nodes, dupk) = body;
-  fn elem_to_ptr(heap: &Heap, stat: &mut Stat, term: Ptr, vars: &[RuleVar], elem: &RuleBodyCell) -> Ptr {
+  fn elem_to_ptr(heap: &Heap, lvar: &LocalVars, aloc: &[AtomicU64], term: Ptr, vars: &[RuleVar], elem: &RuleBodyCell) -> Ptr {
     unsafe {
       match elem {
         RuleBodyCell::Val { value } => {
@@ -759,13 +750,13 @@ pub fn alloc_body(heap: &Heap, stat: &mut Stat, term: Ptr, vars: &[RuleVar], bod
           get_var(heap, term, vars.get_unchecked(*index as usize))
         },
         RuleBodyCell::Ptr { value, targ, slot } => {
-          let mut val = value + *stat.aloc.get_unchecked(*targ as usize) + slot;
+          let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
           // should be changed if the pointer format changes
           if get_tag(*value) == DP0 {
-            val += (stat.dups & 0xFFFFFFF) * EXT;
+            val += (*lvar.dups.as_mut_ptr() & 0xFFFFFFF) * EXT;
           }
           if get_tag(*value) == DP1 {
-            val += (stat.dups & 0xFFFFFFF) * EXT;
+            val += (*lvar.dups.as_mut_ptr() & 0xFFFFFFF) * EXT;
           }
           val
         }
@@ -773,25 +764,27 @@ pub fn alloc_body(heap: &Heap, stat: &mut Stat, term: Ptr, vars: &[RuleVar], bod
     }
   }
   unsafe {
+    let aloc = &heap.aloc[tid];
+    let lvar = &heap.lvar[tid];
     for i in 0 .. nodes.len() {
-      *stat.aloc.get_unchecked_mut(i) = alloc(heap, stat, (*nodes.get_unchecked(i)).len() as u64);
+      *aloc.get_unchecked(i).as_mut_ptr() = alloc(heap, tid, (*nodes.get_unchecked(i)).len() as u64);
     };
     for i in 0 .. nodes.len() {
-      let host = *stat.aloc.get_unchecked(i) as usize;
+      let host = *aloc.get_unchecked(i).as_mut_ptr() as usize;
       for j in 0 .. (*nodes.get_unchecked(i)).len() {
         let elem = (*nodes.get_unchecked(i)).get_unchecked(j);
-        let ptr = elem_to_ptr(heap, stat, term, vars, elem);
+        let ptr = elem_to_ptr(heap, lvar, aloc, term, vars, elem);
         if let RuleBodyCell::Var { .. } = elem {
           link(heap, (host + j) as u64, ptr);
         } else {
-          *(*heap.node.get_unchecked(host + j)).as_mut_ptr() = ptr;
+          *heap.node.get_unchecked(host + j).as_mut_ptr() = ptr;
         }
       };
     };
+    let done = elem_to_ptr(heap, lvar, aloc, term, vars, elem);
+    *lvar.dups.as_mut_ptr() += dupk;
+    return done;
   }
-  let done = elem_to_ptr(heap, stat, term, vars, elem);
-  stat.dups += dupk;
-  return done;
 }
 
 pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
@@ -810,10 +803,10 @@ pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
 // x <- a
 // body
 #[inline(always)]
-fn app_lam(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr) {
+fn app_lam(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr) {
   //println!("app-lam");
-  inc_cost(stat);
-  atomic_subst(heap, stat, info, Var(get_loc(arg0, 0)), take_field(heap, term, 1));
+  inc_cost(heap, tid);
+  atomic_subst(heap, prog, Var(get_loc(arg0, 0)), take_field(heap, term, 1));
   link(heap, host, take_field(heap, arg0, 1));
   free(heap, get_loc(term, 0), 2);
   free(heap, get_loc(arg0, 0), 2);
@@ -824,12 +817,12 @@ fn app_lam(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0
 // dup x0 x1 = c
 // {(a x0) (b x1)}
 #[inline(always)]
-fn app_sup(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr) {
-  inc_cost(stat);
+fn app_sup(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr) {
+  inc_cost(heap, tid);
   let app0 = get_loc(term, 0);
   let app1 = get_loc(arg0, 0);
-  let let0 = alloc(heap, stat, 3);
-  let par0 = alloc(heap, stat, 2);
+  let let0 = alloc(heap, tid, 3);
+  let par0 = alloc(heap, tid, 2);
   link(heap, let0 + 2, take_field(heap, term, 1));
   link(heap, app0 + 1, Dp0(get_ext(arg0), let0));
   link(heap, app0 + 0, take_field(heap, arg0, 0));
@@ -848,12 +841,12 @@ fn app_sup(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0
 // s <- λx1(f1)
 // x <- {x0 x1}
 #[inline(always)]
-fn dup_lam(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
-  inc_cost(stat);
-  let let0 = alloc(heap, stat, 3);
-  let par0 = alloc(heap, stat, 2);
-  let lam0 = alloc(heap, stat, 2);
-  let lam1 = alloc(heap, stat, 2);
+fn dup_lam(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
+  inc_cost(heap, tid);
+  let let0 = alloc(heap, tid, 3);
+  let par0 = alloc(heap, tid, 2);
+  let lam0 = alloc(heap, tid, 2);
+  let lam1 = alloc(heap, tid, 2);
   link(heap, let0 + 2, take_field(heap, arg0, 1));
   link(heap, par0 + 1, Var(lam1));
 
@@ -861,9 +854,9 @@ fn dup_lam(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0
   link(heap, lam0 + 1, Dp0(get_ext(term), let0));
   link(heap, lam1 + 1, Dp1(get_ext(term), let0));
 
-  atomic_subst(heap, stat, info, Var(get_loc(arg0, 0)), Par(get_ext(term), par0));
-  atomic_subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Lam(lam0));
-  atomic_subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Lam(lam1));
+  atomic_subst(heap, prog, Var(get_loc(arg0, 0)), Par(get_ext(term), par0));
+  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Lam(lam0));
+  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Lam(lam1));
 
   let done = Lam(if get_tag(term) == DP0 { lam0 } else { lam1 });
   link(heap, host, done);
@@ -877,17 +870,17 @@ fn dup_lam(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0
 // x <- a
 // y <- b
 #[inline(always)]
-fn dup_sup_0(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
-  inc_cost(stat);
+fn dup_sup_0(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
+  inc_cost(heap, tid);
   //println!("A");
-  atomic_subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), take_field(heap, arg0, 0));
+  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), take_field(heap, arg0, 0));
   //println!("B");
-  atomic_subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), take_field(heap, arg0, 1));
+  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), take_field(heap, arg0, 1));
   //println!("C");
   //link(heap, host, take_field(heap, arg0, if get_tag(term) == DP0 { 0 } else { 1 })); // <- FIXME: WTF lol
   free(heap, get_loc(term, 0), 3);
   free(heap, get_loc(arg0, 0), 2);
-  //println!("[{}] unlocks {}", stat.tid, get_loc(term, 0));
+  //println!("[{}] unlocks {}", lvar.tid, get_loc(term, 0));
 }
 
 // dup x y = {a b}
@@ -897,12 +890,12 @@ fn dup_sup_0(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, ar
 // dup xA yA = a
 // dup xB yB = b
 #[inline(always)]
-fn dup_sup_1(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
-  inc_cost(stat);
-  let par0 = alloc(heap, stat, 2);
-  let let0 = alloc(heap, stat, 3);
+fn dup_sup_1(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
+  inc_cost(heap, tid);
+  let par0 = alloc(heap, tid, 2);
+  let let0 = alloc(heap, tid, 3);
   let par1 = get_loc(arg0, 0);
-  let let1 = alloc(heap, stat, 3);
+  let let1 = alloc(heap, tid, 3);
   link(heap, let0 + 2, take_field(heap, arg0, 0));
   link(heap, let1 + 2, take_field(heap, arg0, 1));
   link(heap, par1 + 0, Dp1(tcol, let0));
@@ -910,8 +903,8 @@ fn dup_sup_1(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, ar
   link(heap, par0 + 0, Dp0(tcol, let0));
   link(heap, par0 + 1, Dp0(tcol, let1));
   //println!("A");
-  atomic_subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Par(get_ext(arg0), par0));
-  atomic_subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Par(get_ext(arg0), par1));
+  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Par(get_ext(arg0), par0));
+  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Par(get_ext(arg0), par1));
   //println!("B");
   free(heap, get_loc(term, 0), 3);
 }
@@ -922,10 +915,10 @@ fn dup_sup_1(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, ar
 // y <- N
 // ~
 #[inline(always)]
-fn dup_num(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
-  inc_cost(stat);
-  atomic_subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), arg0);
-  atomic_subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), arg0);
+fn dup_num(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
+  inc_cost(heap, tid);
+  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), arg0);
+  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), arg0);
   free(heap, get_loc(term, 0), 3);
 }
 
@@ -938,30 +931,30 @@ fn dup_num(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0
 // x <- (K a0 b0 c0 ...)
 // y <- (K a1 b1 c1 ...)
 #[inline(always)]
-fn dup_ctr(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
-  inc_cost(stat);
+fn dup_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
+  inc_cost(heap, tid);
   let fnid = get_ext(arg0);
-  let arit = ask_ari(info, arg0);
+  let arit = ask_ari(prog, arg0);
   if arit == 0 {
-    atomic_subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Ctr(0, fnid, 0));
-    atomic_subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Ctr(0, fnid, 0));
+    atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Ctr(0, fnid, 0));
+    atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Ctr(0, fnid, 0));
     link(heap, host, Ctr(0, fnid, 0));
     free(heap, get_loc(term, 0), 3);
   } else {
     let ctr0 = get_loc(arg0, 0);
-    let ctr1 = alloc(heap, stat, arit);
+    let ctr1 = alloc(heap, tid, arit);
     for i in 0 .. arit - 1 {
-      let leti = alloc(heap, stat, 3);
+      let leti = alloc(heap, tid, 3);
       link(heap, leti + 2, take_field(heap, arg0, i));
       link(heap, ctr0 + i, Dp0(get_ext(term), leti));
       link(heap, ctr1 + i, Dp1(get_ext(term), leti));
     }
-    let leti = alloc(heap, stat, 3);
+    let leti = alloc(heap, tid, 3);
     link(heap, leti + 2, take_field(heap, arg0, arit - 1));
     link(heap, ctr0 + arit - 1, Dp0(get_ext(term), leti));
     link(heap, ctr1 + arit - 1, Dp1(get_ext(term), leti));
-    atomic_subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Ctr(arit, fnid, ctr0));
-    atomic_subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Ctr(arit, fnid, ctr1));
+    atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Ctr(arit, fnid, ctr0));
+    atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Ctr(arit, fnid, ctr1));
     //let done = Ctr(arit, fnid, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
     //link(heap, host, done);
     free(heap, get_loc(term, 0), 3);
@@ -973,10 +966,10 @@ fn dup_ctr(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0
 // x <- *
 // y <- *
 #[inline(always)]
-fn dup_era(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
-  inc_cost(stat);
-  atomic_subst(heap, stat, info, Dp0(tcol, get_loc(term, 0)), Era());
-  atomic_subst(heap, stat, info, Dp1(tcol, get_loc(term, 0)), Era());
+fn dup_era(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
+  inc_cost(heap, tid);
+  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Era());
+  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Era());
   link(heap, host, Era());
   free(heap, get_loc(term, 0), 3);
 }
@@ -985,8 +978,8 @@ fn dup_era(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0
 // --------- OP2-NUM
 // add(a, b)
 #[inline(always)]
-fn op2_num(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, arg1: Ptr) {
-  inc_cost(stat);
+fn op2_num(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, arg1: Ptr) {
+  inc_cost(heap, tid);
   let a = get_num(arg0);
   let b = get_num(arg1);
   let c = match get_ext(term) {
@@ -1018,12 +1011,12 @@ fn op2_num(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0
 // dup b0 b1 = b
 // {(+ a0 b0) (+ a1 b1)}
 #[inline(always)]
-fn op2_sup_0(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, arg1: Ptr) {
-  inc_cost(stat);
+fn op2_sup_0(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, arg1: Ptr) {
+  inc_cost(heap, tid);
   let op20 = get_loc(term, 0);
   let op21 = get_loc(arg0, 0);
-  let let0 = alloc(heap, stat, 3);
-  let par0 = alloc(heap, stat, 2);
+  let let0 = alloc(heap, tid, 3);
+  let par0 = alloc(heap, tid, 2);
   link(heap, let0 + 2, arg1);
   link(heap, op20 + 1, Dp0(get_ext(arg0), let0));
   link(heap, op20 + 0, take_field(heap, arg0, 0));
@@ -1040,12 +1033,12 @@ fn op2_sup_0(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, ar
 // dup a0 a1 = a
 // {(+ a0 b0) (+ a1 b1)}
 #[inline(always)]
-fn op2_sup_1(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, arg0: Ptr, arg1: Ptr) {
-  inc_cost(stat);
+fn op2_sup_1(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, arg1: Ptr) {
+  inc_cost(heap, tid);
   let op20 = get_loc(term, 0);
   let op21 = get_loc(arg1, 0);
-  let let0 = alloc(heap, stat, 3);
-  let par0 = alloc(heap, stat, 2);
+  let let0 = alloc(heap, tid, 3);
+  let par0 = alloc(heap, tid, 2);
   link(heap, let0 + 2, arg0);
   link(heap, op20 + 0, Dp0(get_ext(arg1), let0));
   link(heap, op20 + 1, take_field(heap, arg1, 0));
@@ -1058,16 +1051,16 @@ fn op2_sup_1(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, ar
 }
 
 #[inline(always)]
-pub fn fun_sup(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr {
-  inc_cost(stat);
-  let arit = ask_ari(info, term);
+pub fn fun_sup(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr {
+  inc_cost(heap, tid);
+  let arit = ask_ari(prog, term);
   let func = get_ext(term);
   let fun0 = get_loc(term, 0);
-  let fun1 = alloc(heap, stat, arit);
+  let fun1 = alloc(heap, tid, arit);
   let par0 = get_loc(argn, 0);
   for i in 0 .. arit {
     if i != n {
-      let leti = alloc(heap, stat, 3);
+      let leti = alloc(heap, tid, 3);
       let argi = take_field(heap, term, i);
       link(heap, fun0 + i, Dp0(get_ext(argn), leti));
       link(heap, fun1 + i, Dp1(get_ext(argn), leti));
@@ -1085,14 +1078,14 @@ pub fn fun_sup(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, 
 }
 
 #[inline(always)]
-fn fun_ctr(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, fid: u64) -> bool {
+fn fun_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, fid: u64) -> bool {
 
-  if let Some(Some(function)) = &info.funs.get(fid as usize) {
+  if let Some(Some(function)) = &prog.funs.get(fid as usize) {
     // Reduces function superpositions
     for (n, is_strict) in function.is_strict.iter().enumerate() {
       let n = n as u64;
       if *is_strict && get_tag(load_field(heap, term, n)) == SUP {
-        fun_sup(heap, stat, info, host, term, load_field(heap, term, n), n);
+        fun_sup(heap, prog, tid, host, term, load_field(heap, term, n), n);
         return true;
       }
     }
@@ -1133,7 +1126,7 @@ fn fun_ctr(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, fid:
                 // Matches constructor labels
                 let is_ctr
                   =  get_tag(load_field(heap, term, i)) == CTR
-                  && ask_ari(info, load_field(heap, term, i)) == 0;
+                  && ask_ari(prog, load_field(heap, term, i)) == 0;
 
                 // Matches HOAS numbers and constructors
                 let is_hoas_ctr_num
@@ -1158,10 +1151,10 @@ fn fun_ctr(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, fid:
       // If all conditions are satisfied, the rule matched, so we must apply it
       if matched {
         // Increments the gas count
-        inc_cost(stat);
+        inc_cost(heap, tid);
 
         // Builds the right-hand side term
-        let done = alloc_body(heap, stat, term, &rule.vars, &rule.body);
+        let done = alloc_body(heap, tid, term, &rule.vars, &rule.body);
 
         // Links the host location to it
         link(heap, host, done);
@@ -1169,7 +1162,7 @@ fn fun_ctr(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, fid:
         // Collects unused variables
         for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
           if *erase {
-            collect(heap, stat, info, get_var(heap, term, var));
+            collect(heap, prog, get_var(heap, term, var));
           }
         }
 
@@ -1342,8 +1335,8 @@ impl VisitQueue {
 // Reduce
 // ------
 
-pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
-  println!("reduce root={} threads={}", root, stats.len());
+pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
+  println!("reduce root={} threads={}", root, tids.len());
 
   // Lock utils
   const LOCK_OPEN : u8 = 0xFF;
@@ -1357,20 +1350,15 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
     locker.store(LOCK_OPEN, Ordering::Release)
   }
 
-  // Thread count
-  let tids = &stats.iter().map(|stat| stat.tid).collect::<Vec<usize>>();
-
   // Halting flag
   let stop = &AtomicBool::new(false);
 
   // Spawn a thread for each worker
   std::thread::scope(|s| {
-    for stat in stats.iter_mut() {
+    for tid in tids {
+      let tid = *tid;
       s.spawn(move || {
         //assert!(thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Max).is_ok());
-        
-        // Thread id
-        let tid = stat.tid;
 
         // Visit stacks
         let redex = &heap.rbag;
@@ -1395,7 +1383,7 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
               //println!("[{}] work={} init={} cont={} host={}", tid, work, init, cont, host);
               match get_tag(term) {
                 APP => {
-                  let goup = redex.insert(stat.tid, new_redex(host, cont, 1));
+                  let goup = redex.insert(tid, new_redex(host, cont, 1));
                   work = true;
                   init = true;
                   cont = goup;
@@ -1418,7 +1406,7 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                         continue 'main;
                       }
                       //locks = locks + 1;
-                      let goup = redex.insert(stat.tid, new_redex(host, cont, 1));
+                      let goup = redex.insert(tid, new_redex(host, cont, 1));
                       work = true;
                       init = true;
                       cont = goup;
@@ -1428,7 +1416,7 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                   }
                 }
                 OP2 => {
-                  let goup = redex.insert(stat.tid, new_redex(host, cont, 2));
+                  let goup = redex.insert(tid, new_redex(host, cont, 2));
                   visit.push(new_visit(get_loc(term, 1), goup));
                   work = true;
                   init = true;
@@ -1444,14 +1432,14 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
 //GENERATED-FUN-CTR-MATCH//
                     _ => {
                       // Dynamic functions
-                      if let Some(Some(f)) = &info.funs.get(fid as usize) {
+                      if let Some(Some(f)) = &prog.funs.get(fid as usize) {
                         let len = f.stricts.len() as u64;
                         if len == 0 {
                           work = true;
                           init = false;
                           continue 'main;
                         } else {
-                          let goup = redex.insert(stat.tid, new_redex(host, cont, f.stricts.len() as u64));
+                          let goup = redex.insert(tid, new_redex(host, cont, f.stricts.len() as u64));
                           for (i, arg_idx) in f.stricts.iter().enumerate() {
                             if i < f.stricts.len() - 1 {
                               visit.push(new_visit(get_loc(term, *arg_idx), goup));
@@ -1482,22 +1470,22 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                 APP => {
                   let arg0 = load_field(heap, term, 0);
                   if get_tag(arg0) == LAM {
-                    app_lam(heap, stat, info, host, term, arg0);
+                    app_lam(heap, prog, tid, host, term, arg0);
                     work = true;
                     init = true;
                     continue 'main;
                   }
                   if get_tag(arg0) == SUP {
-                    app_sup(heap, stat, info, host, term, arg0);
+                    app_sup(heap, prog, tid, host, term, arg0);
                   }
                 }
                 DP0 | DP1 => {
                   let arg0 = load_field(heap, term, 2);
                   let tcol = get_ext(term);
-                  //println!("[{}] dups {}", stat.tid, get_loc(term, 0));
+                  //println!("[{}] dups {}", lvar.tid, get_loc(term, 0));
                   if get_tag(arg0) == LAM {
                     //println!("dup-lam");
-                    dup_lam(heap, stat, info, host, term, arg0, tcol);
+                    dup_lam(heap, prog, tid, host, term, arg0, tcol);
                     //locks = locks - 1;
                     release_lock(get_locker(heap, term, tid));
                     work = true;
@@ -1506,14 +1494,14 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                   } else if get_tag(arg0) == SUP {
                     //println!("dup-sup {}", tcol == get_ext(arg0));
                     if tcol == get_ext(arg0) {
-                      dup_sup_0(heap, stat, info, host, term, arg0, tcol);
+                      dup_sup_0(heap, prog, tid, host, term, arg0, tcol);
                       //locks = locks - 1;
                       release_lock(get_locker(heap, term, tid));
                       work = true;
                       init = true;
                       continue 'main;
                     } else {
-                      dup_sup_1(heap, stat, info, host, term, arg0, tcol);
+                      dup_sup_1(heap, prog, tid, host, term, arg0, tcol);
                       //locks = locks - 1;
                       release_lock(get_locker(heap, term, tid));
                       work = true;
@@ -1521,21 +1509,21 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                       continue 'main;
                     }
                   } else if get_tag(arg0) == NUM {
-                    dup_num(heap, stat, info, host, term, arg0, tcol);
+                    dup_num(heap, prog, tid, host, term, arg0, tcol);
                     //locks = locks - 1;
                     release_lock(get_locker(heap, term, tid));
                     work = true;
                     init = true;
                     continue 'main;
                   } else if get_tag(arg0) == CTR {
-                    dup_ctr(heap, stat, info, host, term, arg0, tcol);
+                    dup_ctr(heap, prog, tid, host, term, arg0, tcol);
                     //locks = locks - 1;
                     release_lock(get_locker(heap, term, tid));
                     work = true;
                     init = true;
                     continue 'main;
                   } else if get_tag(arg0) == ERA {
-                    dup_era(heap, stat, info, host, term, arg0, tcol);
+                    dup_era(heap, prog, tid, host, term, arg0, tcol);
                     //locks = locks - 1;
                     release_lock(get_locker(heap, term, tid));
                     work = true;
@@ -1550,11 +1538,11 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                   let arg0 = load_field(heap, term, 0);
                   let arg1 = load_field(heap, term, 1);
                   if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
-                    op2_num(heap, stat, info, host, term, arg0, arg1);
+                    op2_num(heap, prog, tid, host, term, arg0, arg1);
                   } else if get_tag(arg0) == SUP {
-                    op2_sup_0(heap, stat, info, host, term, arg0, arg1);
+                    op2_sup_0(heap, prog, tid, host, term, arg0, arg1);
                   } else if get_tag(arg1) == SUP {
-                    op2_sup_1(heap ,stat, info, host, term, arg0, arg1);
+                    op2_sup_1(heap, prog, tid, host, term, arg0, arg1);
                   }
                 }
                 FUN => {
@@ -1562,18 +1550,18 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                   match fid {
                     //HVM_LOG => {
                       //let msge = get_loc(term,0);
-                      //normalize(heap, stats, info, msge);
-                      //println!("{}", crate::readback::as_code(heap, stats, info, msge));
+                      //normalize(heap, lvars, prog, msge);
+                      //println!("{}", crate::readback::as_code(heap, lvars, prog, msge));
                       //link(heap, host, load_field(heap, term, 1));
                       //free(heap, get_loc(term, 0), 2);
-                      //collect(heap, stat, info, ask_lnk(heap, msge));
+                      //collect(heap, lvar, prog, ask_lnk(heap, msge));
                       //init = true;
                       //continue;
                     //}
                     //HVM_PUT => {
                       //let msge = get_loc(term,0);
-                      //normalize(heap, stats, info, msge);
-                      //let code = crate::readback::as_code(heap, stats, info, msge);
+                      //normalize(heap, lvars, prog, msge);
+                      //let code = crate::readback::as_code(heap, lvars, prog, msge);
                       //if code.chars().nth(0) == Some('"') {
                         //println!("{}", &code[1 .. code.len() - 1]);
                       //} else {
@@ -1581,14 +1569,14 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                       //}
                       //link(heap, host, load_field(heap, term, 1));
                       //free(heap, get_loc(term, 0), 2);
-                      //collect(heap, stat, info, ask_lnk(heap, msge));
+                      //collect(heap, lvar, prog, ask_lnk(heap, msge));
                       //init = true;
                       //continue;
                     //}
 //GENERATED-FUN-CTR-RULES//
                     _ => {
                       // Dynamic functions
-                      if fun_ctr(heap, stat, info, host, term, fid) {
+                      if fun_ctr(heap, prog, tid, host, term, fid) {
                         work = true;
                         init = true;
                         continue 'main;
@@ -1598,8 +1586,6 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
                 }
                 _ => {}
               }
-
-              //println!("[{}] whnf {}\n{}\n\n", tid, max_depth(heap, stat, info, 0, 0), show_term(heap, info, load_ptr(heap, 0), load_ptr(heap, host)));
 
               // If root is on WHNF, halt
               if cont == REDEX_CONT_RET {
@@ -1678,8 +1664,8 @@ pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
 // Normal
 // ------
 
-pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &Box<[AtomicU64]>) -> Ptr {
-  //println!("normal host={} threads={}\n{}\n\n", host, stats.len(), show_term(heap, info, ask_lnk(heap,host), host));
+pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &Box<[AtomicU64]>) -> Ptr {
+  //println!("normal host={} threads={}\n{}\n\n", host, lvars.len(), show_term(heap, prog, ask_lnk(heap,host), host));
   pub fn set_visited(visited: &Box<[AtomicU64]>, bit: u64) {
     let val = &visited[bit as usize >> 6];
     val.store(val.load(Ordering::Relaxed) | (1 << (bit & 0x3f)), Ordering::Relaxed);
@@ -1692,8 +1678,8 @@ pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &
   if was_visited(visited, host) {
     term
   } else {
-    //let term = reduce2(heap, stats, info, host);
-    let term = reduce(heap, stats, info, host);
+    //let term = reduce2(heap, lvars, prog, host);
+    let term = reduce(heap, prog, tids, host);
     set_visited(visited, host);
     let mut rec_locs = vec![];
     match get_tag(term) {
@@ -1715,7 +1701,7 @@ pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &
         rec_locs.push(get_loc(term, 2));
       }
       CTR | FUN => {
-        let arity = ask_ari(info, term);
+        let arity = ask_ari(prog, term);
         for i in 0 .. arity {
           rec_locs.push(get_loc(term, i));
         }
@@ -1723,46 +1709,46 @@ pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &
       _ => {}
     }
     let rec_len = rec_locs.len(); // locations where we must recurse
-    let thd_len = stats.len(); // number of available threads
+    let thd_len = tids.len(); // number of available threads
     let rec_loc = &rec_locs;
-    //println!("~ rec_len={} thd_len={} {}", rec_len, thd_len, show_term(heap, info, ask_lnk(heap,host), host));
+    //println!("~ rec_len={} thd_len={} {}", rec_len, thd_len, show_term(heap, prog, ask_lnk(heap,host), host));
     if rec_len > 0 {
       std::thread::scope(|s| {
         // If there are more threads than rec_locs, splits threads for each rec_loc
         if thd_len >= rec_len {
           //panic!("b");
           let spt_len = thd_len / rec_len;
-          let mut stats = stats;
+          let mut tids = tids;
           for (rec_num, rec_loc) in rec_loc.iter().enumerate() {
-            let (rec_stats, new_stats) = stats.split_at_mut(if rec_num == rec_len - 1 { stats.len() } else { spt_len });
-            //println!("~ rec_loc {} gets {} threads", rec_loc, rec_stats.len());
+            let (rec_tids, new_tids) = tids.split_at(if rec_num == rec_len - 1 { tids.len() } else { spt_len });
+            //println!("~ rec_loc {} gets {} threads", rec_loc, rec_lvars.len());
             let new_loc;
             if thd_len == rec_len {
-              new_loc = alloc(heap, &mut rec_stats[0], 1);
+              new_loc = alloc(heap, rec_tids[0], 1);
               move_ptr(heap, *rec_loc, new_loc);
             } else {
               new_loc = *rec_loc;
             }
             s.spawn(move || {
-              let ptr = normal(heap, rec_stats, info, new_loc, visited);
+              let ptr = normal(heap, prog, rec_tids, new_loc, visited);
               if thd_len == rec_len {
                 move_ptr(heap, new_loc, *rec_loc);
               }
               link(heap, *rec_loc, ptr);
             });
-            stats = new_stats;
+            tids = new_tids;
           }
         // Otherwise, splits rec_locs for each thread
         } else {
           //panic!("c");
-          for (thd_num, stat) in stats.iter_mut().enumerate() {
+          for (thd_num, tid) in tids.iter().enumerate() {
             let min_idx = thd_num * rec_len / thd_len;
             let max_idx = if thd_num < thd_len - 1 { (thd_num + 1) * rec_len / thd_len } else { rec_len };
             //println!("~ thread {} gets rec_locs {} to {}", thd_num, min_idx, max_idx);
             s.spawn(move || {
               for idx in min_idx .. max_idx {
                 let loc = rec_loc[idx];
-                let lnk = normal(heap, std::slice::from_mut(stat), info, loc, visited);
+                let lnk = normal(heap, prog, std::slice::from_ref(tid), loc, visited);
                 link(heap, loc, lnk);
               }
             });
@@ -1774,59 +1760,27 @@ pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &
   }
 }
 
-pub fn normalize(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, run_io: bool) -> Ptr {
-  // TODO: rt::run_io(&mut heap, &mut stat, &mut info, host);
+pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, run_io: bool) -> Ptr {
+  // TODO: rt::run_io(&mut heap, &mut lvar, &mut prog, host);
   // FIXME: reuse `visited`
-  let mut cost = get_cost(stats);
+  let mut cost = get_cost(heap);
   let visited = new_atomic_u64_array(heap.node.len() / 64);
   loop {
     let visited = new_atomic_u64_array(heap.node.len() / 64);
-    normal(&heap, stats, info, host, &visited);
-    let new_cost = get_cost(stats);
+    normal(&heap, prog, tids, host, &visited);
+    let new_cost = get_cost(heap);
     if new_cost != cost {
       cost = new_cost;
     } else {
       break;
     }
   }
-  println!("normalize cost: {}", get_cost(stats));
-  //normal(heap, &mut stats[0 .. 1], info, host, &visited);
+  println!("normalize cost: {}", get_cost(heap));
   load_ptr(heap, host)
-
-  //println!("normalize");
-  //std::thread::scope(|s| {
-    //for stat in stats {
-      //let new_heap = new_heap();
-      //for i in 0 .. 16 {
-        //new_heap.node[i].store(heap.node[i].load(Ordering::Relaxed), Ordering::Relaxed);
-      //}
-      //s.spawn(move || {
-        //assert!(thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Max).is_ok());
-        //// TODO: rt::run_io(&mut heap, &mut stat, &mut info, host);
-        //// FIXME: reuse `visited`
-        //let mut cost = stat.cost;
-        //let visited = new_atomic_u64_array(new_heap.node.len() / 64);
-        //loop {
-          //let visited = new_atomic_u64_array(new_heap.node.len() / 64);
-          //normal(&new_heap, std::slice::from_mut(stat), info, host, &visited);
-          //let new_cost = stat.cost;
-          //if new_cost != cost {
-            //cost = new_cost;
-          //} else {
-            //break;
-          //}
-        //}
-        //println!("[{}] cost: {}", stat.tid, stat.cost);
-      //});
-    //}
-  //});
-  ////normal(heap, &mut stats[0 .. 1], info, host, &visited);
-  //load_ptr(heap, host)
-
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn run_io(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) {
+pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
   fn read_input() -> String {
     let mut input = String::new();
     stdin().read_line(&mut input).expect("string");
@@ -1836,8 +1790,7 @@ pub fn run_io(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) {
   }
   use std::io::{stdin,stdout,Write};
   loop {
-    println!("??? {}", stats.len());
-    let term = reduce(heap, stats, info, host); // FIXME: add parallelism
+    let term = reduce(heap, prog, tids, host); // FIXME: add parallelism
     match get_tag(term) {
       CTR => {
         match get_ext(term) {
@@ -1853,8 +1806,8 @@ pub fn run_io(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) {
           // IO.do_input (String -> IO a) : (IO a)
           IO_DO_INPUT => {
             let cont = ask_arg(heap, term, 0);
-            let text = make_string(heap, &mut stats[0], &read_input());
-            let app0 = alloc(heap, &mut stats[0], 2);
+            let text = make_string(heap, tids[0], &read_input());
+            let app0 = alloc(heap, tids[0], 2);
             link(heap, app0 + 0, cont);
             link(heap, app0 + 1, text);
             free(heap, get_loc(term, 0), 1);
@@ -1863,80 +1816,80 @@ pub fn run_io(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) {
           }
           // IO.do_output String (Num -> IO a) : (IO a)
           IO_DO_OUTPUT => {
-            if let Some(show) = readback_string(heap, stats, info, get_loc(term, 0)) {
+            if let Some(show) = readback_string(heap, prog, tids, get_loc(term, 0)) {
               print!("{}", show);
               stdout().flush().ok();
               let cont = ask_arg(heap, term, 1);
-              let app0 = alloc(heap, &mut stats[0], 2);
+              let app0 = alloc(heap, tids[0], 2);
               link(heap, app0 + 0, cont);
               link(heap, app0 + 1, Num(0));
               free(heap, get_loc(term, 0), 2);
               let text = ask_arg(heap, term, 0);
-              collect(heap, &mut stats[0], info, text);
+              collect(heap, prog, text);
               let done = App(app0);
               link(heap, host, done);
             } else {
               println!("Runtime type error: attempted to print a non-string.");
-              println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 0)));
+              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
               std::process::exit(0);
             }
           }
           // IO.do_fetch String (String -> IO a) : (IO a)
           IO_DO_FETCH => {
-            if let Some(url) = readback_string(heap, stats, info, get_loc(term, 0)) {
+            if let Some(url) = readback_string(heap, prog, tids, get_loc(term, 0)) {
               let body = reqwest::blocking::get(url).unwrap().text().unwrap(); // FIXME: treat
               let cont = ask_arg(heap, term, 2);
-              let app0 = alloc(heap, &mut stats[0], 2);
-              let text = make_string(heap, &mut stats[0], &body);
+              let app0 = alloc(heap, tids[0], 2);
+              let text = make_string(heap, tids[0], &body);
               link(heap, app0 + 0, cont);
               link(heap, app0 + 1, text);
               free(heap, get_loc(term, 0), 3);
               let opts = ask_arg(heap, term, 1); // FIXME: use options
-              collect(heap, &mut stats[0], info, opts);
+              collect(heap, prog, opts);
               let done = App(app0);
               link(heap, host, done);
             } else {
               println!("Runtime type error: attempted to print a non-string.");
-              println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 0)));
+              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
               std::process::exit(0);
             }
           }
           // IO.do_store String String (Num -> IO a) : (IO a)
           IO_DO_STORE => {
-            if let Some(key) = readback_string(heap, stats, info, get_loc(term, 0)) {
-              if let Some(val) = readback_string(heap, stats, info, get_loc(term, 1)) {
+            if let Some(key) = readback_string(heap, prog, tids, get_loc(term, 0)) {
+              if let Some(val) = readback_string(heap, prog, tids, get_loc(term, 1)) {
                 std::fs::write(key, val).ok(); // TODO: Handle errors
                 let cont = ask_arg(heap, term, 2);
-                let app0 = alloc(heap, &mut stats[0], 2);
+                let app0 = alloc(heap, tids[0], 2);
                 link(heap, app0 + 0, cont);
                 link(heap, app0 + 1, Num(0));
                 free(heap, get_loc(term, 0), 2);
                 let key = ask_arg(heap, term, 0);
-                collect(heap, &mut stats[0], info, key);
+                collect(heap, prog, key);
                 free(heap, get_loc(term, 1), 2);
                 let val = ask_arg(heap, term, 1);
-                collect(heap, &mut stats[0], info, val);
+                collect(heap, prog, val);
                 let done = App(app0);
                 link(heap, host, done);
               } else {
                 println!("Runtime type error: attempted to store a non-string.");
-                println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 1)));
+                println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 1)));
                 std::process::exit(0);
               }
             } else {
               println!("Runtime type error: attempted to store to a non-string key.");
-              println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 0)));
+              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
               std::process::exit(0);
             }
           }
           // IO.do_load String (String -> IO a) : (IO a)
           IO_DO_LOAD => {
-            if let Some(key) = readback_string(heap, stats, info, get_loc(term, 0)) {
+            if let Some(key) = readback_string(heap, prog, tids, get_loc(term, 0)) {
               let file = std::fs::read(key).unwrap(); // TODO: Handle errors
               let file = std::str::from_utf8(&file).unwrap();
               let cont = ask_arg(heap, term, 1); 
-              let text = make_string(heap, &mut stats[0], file);
-              let app0 = alloc(heap, &mut stats[0], 2);
+              let text = make_string(heap, tids[0], file);
+              let app0 = alloc(heap, tids[0], 2);
               link(heap, app0 + 0, cont);
               link(heap, app0 + 1, text);
               free(heap, get_loc(term, 0), 2);
@@ -1944,7 +1897,7 @@ pub fn run_io(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) {
               link(heap, host, done);
             } else {
               println!("Runtime type error: attempted to read from a non-string key.");
-              println!("{}", crate::readback::as_code(heap, stats, info, get_loc(term, 0)));
+              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
               std::process::exit(0);
             }
           }
@@ -1956,10 +1909,10 @@ pub fn run_io(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) {
   }
 }
 
-pub fn make_string(heap: &Heap, stat: &mut Stat, text: &str) -> Ptr {
+pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
   let mut term = Ctr(0, STRING_NIL, 0);
   for chr in text.chars().rev() { // TODO: reverse
-    let ctr0 = alloc(heap, stat, 2);
+    let ctr0 = alloc(heap, tid, 2);
     link(heap, ctr0 + 0, Num(chr as u64));
     link(heap, ctr0 + 1, term);
     term = Ctr(2, STRING_CONS, ctr0);
@@ -1968,11 +1921,11 @@ pub fn make_string(heap: &Heap, stat: &mut Stat, text: &str) -> Ptr {
 }
 
 // TODO: finish this
-pub fn readback_string(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) -> Option<String> {
+pub fn readback_string(heap: &Heap, prog: &Program, tids: &[usize], host: u64) -> Option<String> {
   let mut host = host;
   let mut text = String::new();
   loop {
-    let term = reduce(heap, stats, info, host);
+    let term = reduce(heap, prog, tids, host);
     match get_tag(term) {
       CTR => {
         match get_ext(term) {
@@ -1980,7 +1933,7 @@ pub fn readback_string(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) -
             break;
           }
           STRING_CONS => {
-            let chr = reduce(heap, stats, info, get_loc(term, 0));
+            let chr = reduce(heap, prog, tids, get_loc(term, 0));
             if get_tag(chr) == NUM {
               text.push(std::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
               host = get_loc(term, 1);
@@ -2044,14 +1997,14 @@ pub fn show_heap(heap: &Heap) -> String {
   text
 }
 
-pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
+pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
   let mut lets: HashMap<u64, u64> = HashMap::new();
   let mut kinds: HashMap<u64, u64> = HashMap::new();
   let mut names: HashMap<u64, String> = HashMap::new();
   let mut count: u64 = 0;
   fn find_lets(
     heap: &Heap,
-    info: &Info,
+    prog: &Program,
     term: Ptr,
     lets: &mut HashMap<u64, u64>,
     kinds: &mut HashMap<u64, u64>,
@@ -2065,15 +2018,15 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
       LAM => {
         names.insert(get_loc(term, 0), format!("{}", count));
         *count += 1;
-        find_lets(heap, info, load_field(heap, term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, load_field(heap, term, 1), lets, kinds, names, count);
       }
       APP => {
-        find_lets(heap, info, load_field(heap, term, 0), lets, kinds, names, count);
-        find_lets(heap, info, load_field(heap, term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, load_field(heap, term, 0), lets, kinds, names, count);
+        find_lets(heap, prog, load_field(heap, term, 1), lets, kinds, names, count);
       }
       SUP => {
-        find_lets(heap, info, load_field(heap, term, 0), lets, kinds, names, count);
-        find_lets(heap, info, load_field(heap, term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, load_field(heap, term, 0), lets, kinds, names, count);
+        find_lets(heap, prog, load_field(heap, term, 1), lets, kinds, names, count);
       }
       DP0 => {
         if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
@@ -2081,7 +2034,7 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
           *count += 1;
           kinds.insert(get_loc(term, 0), get_ext(term));
           e.insert(get_loc(term, 0));
-          find_lets(heap, info, load_field(heap, term, 2), lets, kinds, names, count);
+          find_lets(heap, prog, load_field(heap, term, 2), lets, kinds, names, count);
         }
       }
       DP1 => {
@@ -2090,17 +2043,17 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
           *count += 1;
           kinds.insert(get_loc(term, 0), get_ext(term));
           e.insert(get_loc(term, 0));
-          find_lets(heap, info, load_field(heap, term, 2), lets, kinds, names, count);
+          find_lets(heap, prog, load_field(heap, term, 2), lets, kinds, names, count);
         }
       }
       OP2 => {
-        find_lets(heap, info, load_field(heap, term, 0), lets, kinds, names, count);
-        find_lets(heap, info, load_field(heap, term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, load_field(heap, term, 0), lets, kinds, names, count);
+        find_lets(heap, prog, load_field(heap, term, 1), lets, kinds, names, count);
       }
       CTR | FUN => {
-        let arity = ask_ari(info, term);
+        let arity = ask_ari(prog, term);
         for i in 0..arity {
-          find_lets(heap, info, load_field(heap, term, i), lets, kinds, names, count);
+          find_lets(heap, prog, load_field(heap, term, i), lets, kinds, names, count);
         }
       }
       _ => {}
@@ -2108,7 +2061,7 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
   }
   fn go(
     heap: &Heap,
-    info: &Info,
+    prog: &Program,
     term: Ptr,
     names: &HashMap<u64, String>,
     focus: u64,
@@ -2128,23 +2081,23 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
       }
       LAM => {
         let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("<lam>")));
-        format!("λ{} {}", name, go(heap, info, load_field(heap, term, 1), names, focus))
+        format!("λ{} {}", name, go(heap, prog, load_field(heap, term, 1), names, focus))
       }
       APP => {
-        let func = go(heap, info, load_field(heap, term, 0), names, focus);
-        let argm = go(heap, info, load_field(heap, term, 1), names, focus);
+        let func = go(heap, prog, load_field(heap, term, 0), names, focus);
+        let argm = go(heap, prog, load_field(heap, term, 1), names, focus);
         format!("({} {})", func, argm)
       }
       SUP => {
         let kind = get_ext(term);
-        let func = go(heap, info, load_field(heap, term, 0), names, focus);
-        let argm = go(heap, info, load_field(heap, term, 1), names, focus);
+        let func = go(heap, prog, load_field(heap, term, 0), names, focus);
+        let argm = go(heap, prog, load_field(heap, term, 1), names, focus);
         format!("#{}{{{} {}}}", kind, func, argm)
       }
       OP2 => {
         let oper = get_ext(term);
-        let val0 = go(heap, info, load_field(heap, term, 0), names, focus);
-        let val1 = go(heap, info, load_field(heap, term, 1), names, focus);
+        let val0 = go(heap, prog, load_field(heap, term, 0), names, focus);
+        let val1 = go(heap, prog, load_field(heap, term, 1), names, focus);
         let symb = match oper {
           0x0 => "+",
           0x1 => "-",
@@ -2171,9 +2124,9 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
       }
       CTR | FUN => {
         let func = get_ext(term);
-        let arit = ask_ari(info, term);
-        let args: Vec<String> = (0..arit).map(|i| go(heap, info, load_field(heap, term, i), names, focus)).collect();
-        let name = &info.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
+        let arit = ask_ari(prog, term);
+        let args: Vec<String> = (0..arit).map(|i| go(heap, prog, load_field(heap, term, i), names, focus)).collect();
+        let name = &prog.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
         format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
       ERA => "*".to_string(),
@@ -2185,8 +2138,8 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
       done
     }
   }
-  find_lets(heap, info, term, &mut lets, &mut kinds, &mut names, &mut count);
-  let mut text = go(heap, info, term, &names, focus);
+  find_lets(heap, prog, term, &mut lets, &mut kinds, &mut names, &mut count);
+  let mut text = go(heap, prog, term, &names, focus);
   for (_key, pos) in lets {
     // todo: reverse
     let what = String::from("?h");
@@ -2194,33 +2147,9 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
     let name = names.get(&pos).unwrap_or(&what);
     let nam0 = if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
     let nam1 = if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
-    text.push_str(&format!("\ndup#{}[{:x}] {} {} = {};", pos, kind, nam0, nam1, go(heap, info, load_ptr(heap, pos + 2), &names, focus)));
+    text.push_str(&format!("\ndup#{}[{:x}] {} {} = {};", pos, kind, nam0, nam1, go(heap, prog, load_ptr(heap, pos + 2), &names, focus)));
   }
   text
-}
-
-pub fn debug_max_depth(heap: &Heap, stat: &Stat, info: &Info, host: u64, depth: u64) -> u64 {
-  if depth > 32 {
-    return 32;
-  }
-  let term = load_ptr(heap, host);
-  //println!("[{}] debug_max_depth {} {}", stat.tid, show_ptr(term), depth);
-  let next = match get_tag(term) {
-    CTR => 0 .. ask_ari(info, term),
-    FUN => 0 .. ask_ari(info, term),
-    //SUP => 0 .. 2,
-    OP2 => 0 .. 2,
-    DP0 => 2 .. 3,
-    DP1 => 2 .. 3,
-    _   => 0 .. 0,
-  };
-  let mut max = depth;
-  for i in next {
-    //println!("[{}] A {}/{}", stat.tid, i, arit);
-    max = std::cmp::max(debug_max_depth(heap, stat, info, get_loc(term, i), depth + 1), max);
-    //println!("[{}] B {}/{}", stat.tid, i, arit);
-  }
-  return max;
 }
 
 pub fn debug_validate_heap(heap: &Heap) {
