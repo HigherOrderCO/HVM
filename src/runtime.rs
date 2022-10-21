@@ -151,7 +151,7 @@
 //     0x00 | Ptr(ARG, 0x0000000, 0x00000004) // the lambda's argument
 //     0x01 | Ptr(OP2, 0x0000002, 0x00000005) // the lambda's body
 //     0x02 | Ptr(ARG, 0x0000000, 0x00000005) // the duplication's 1st argument
-//     0x03 | Ptr(ARG, 0x000000, 0x00000006) // the duplication's 2nd argument
+//     0x03 | Ptr(ARG, 0x0000000, 0x00000006) // the duplication's 2nd argument
 //     0x04 | Ptr(VAR, 0x0000000, 0x00000000) // the duplicated expression
 //     0x05 | Ptr(DP0, 0xa31fb21, 0x00000002) // the operator's 1st operand
 //     0x06 | Ptr(DP1, 0xa31fb21, 0x00000002) // the operator's 2st operand
@@ -340,6 +340,8 @@ pub struct Info {
 pub struct Heap {
   node: Box<[AtomicPtr]>,
   lock: Box<[AtomicU8]>,
+  vstk: Box<[VisitQueue]>,
+  rbag: RedexBag,
 }
 
 // Thread local data and stats
@@ -358,7 +360,6 @@ pub struct Stat {
 pub type Stats = [CachePadded<Stat>];
 
 fn available_parallelism() -> usize {
-  //return 8;
   return std::thread::available_parallelism().unwrap().get();
 }
 
@@ -376,10 +377,13 @@ pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
 }
 
 pub fn new_heap() -> Heap {
+  let tids = available_parallelism();
   let size = HEAP_SIZE; // FIXME: accept size param
   let node = new_atomic_u64_array(size);
   let lock = new_atomic_u8_array(size);
-  return Heap { node, lock };
+  let rbag = RedexBag::new();
+  let vstk = (0 .. tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
+  return Heap { node, lock, rbag, vstk };
 }
 
 pub fn new_stats() -> Box<Stats> {
@@ -572,7 +576,6 @@ pub fn take_field(heap: &Heap, term: Ptr, field: u64) -> Ptr {
 // Writes a ptr to memory. Updates binders.
 pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
   unsafe {
-    //*(*heap.node.get_unchecked(loc as usize)).as_mut_ptr() = ptr; // FIXME: safe?
     heap.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
     if get_tag(ptr) <= VAR {
       let arg_loc = get_loc(ptr, get_tag(ptr) & 0x01);
@@ -759,10 +762,10 @@ pub fn alloc_body(heap: &Heap, stat: &mut Stat, term: Ptr, vars: &[RuleVar], bod
           let mut val = value + *stat.aloc.get_unchecked(*targ as usize) + slot;
           // should be changed if the pointer format changes
           if get_tag(*value) == DP0 {
-            val += (stat.dups & 0xFFFFFF) * EXT;
+            val += (stat.dups & 0xFFFFFFF) * EXT;
           }
           if get_tag(*value) == DP1 {
-            val += (stat.dups & 0xFFFFFF) * EXT;
+            val += (stat.dups & 0xFFFFFFF) * EXT;
           }
           val
         }
@@ -1183,502 +1186,497 @@ fn fun_ctr(heap: &Heap, stat: &mut Stat, info: &Info, host: u64, term: Ptr, fid:
   return false;
 }
 
-// Tasks
-// -----
+// Redex Bag
+// ---------
+// Concurrent bag featuring insert, read and modify. No pop.
 
-const TASK_NONE : u64 = 0; // none      : not a task
-const TASK_INIT : u64 = 1; // init(loc) : initializer task, gets a node's children
-const TASK_WORK : u64 = 2; // comp(loc) : computer task, applies rewrite rules
-const TASK_WAIT : u64 = 3; // wait(bid) : stolen task. must wait for its completion
-const TASK_BACK : u64 = 4; // back(bid) : gives a task back to its owner once complete
+const REDEX_BAG_SIZE : usize = 1 << 24;
+const REDEX_CONT_RET : u64 = 0xFFFFFF; // signals to return
 
-fn show_task(task: u64) -> String {
-  let tag = get_task_tag(task);
-  let val = get_task_val(task);
-  match tag {
-    TASK_NONE => format!("none"),
-    TASK_INIT => format!("init({})", val),
-    TASK_WORK => format!("comp({})", val),
-    TASK_WAIT => format!("wait({})", val),
-    TASK_BACK => format!("back({})", val),
-    _         => panic!("task?({:x})", task),
-  }
+// - 32 bits: host
+// - 24 bits: cont
+// -  8 bits: left
+type Redex = u64;
+
+struct RedexBag {
+  tids: usize,
+  next: Box<[CachePadded<AtomicUsize>]>,
+  data: Box<[AtomicU64]>,
 }
 
-fn new_task(tag: u64, val: u64) -> u64 {
-  return (tag << 32) | val;
+fn new_redex(host: u64, cont: u64, left: u64) -> Redex {
+  return (host << 32) | (cont << 8) | left;
 }
 
-fn get_task_tag(task: u64) -> u64 {
-  return task >> 32;
+fn get_redex_host(redex: Redex) -> u64 {
+  return redex >> 32;
 }
 
-fn get_task_val(task: u64) -> u64 {
-  return task & 0xFFFF_FFFF;
+fn get_redex_cont(redex: Redex) -> u64 {
+  return (redex >> 8) & 0xFFFFFF;
 }
 
-// Buckets
-// -------
-
-const BUCKET_EMPTY  : u64 = 0; // empty bucket
-const BUCKET_FILLED : u64 = 1; // bucket with a task to steal; holds task loc
-const BUCKET_STOLEN : u64 = 2; // bucket task has been stolen
-const BUCKET_RETURN : u64 = 3; // bucket tas was completed
-
-const BUCKET_COUNT : usize = 65536; // total amount of buckets
-
-fn new_bucket(tag: u64, val: u64) -> u64 {
-  return (tag << 60) | val;
+fn get_redex_left(redex: Redex) -> u64 {
+  return redex & 0xF;
 }
 
-fn get_bucket_tag(bucket: u64) -> u64 {
-  return bucket >> 60;
-}
-
-fn get_bucket_val(bucket: u64) -> u64 {
-  return bucket & 0xFFF_FFFF_FFFF_FFFF;
-}
-
-pub fn reducer<const STEALING: bool>(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
-  //println!("[{}] reducer {} stealing={} threads={}", stats[0].tid, root, STEALING, stats.len());
-
-  //println!("{}", show_term(heap, info, load_ptr(heap, 0), load_ptr(heap, root)));
-
-  #[derive(PartialEq, Clone, Copy, Debug)]
-  enum Mode {
-    Working,
-    Getting,
-    Sharing,
-    Robbing,
+impl RedexBag {
+  fn new() -> RedexBag {
+    let tids = available_parallelism();
+    let mut next = vec![];
+    for _ in 0 .. tids {
+      next.push(CachePadded::new(AtomicUsize::new(0)));
+    }
+    let next = next.into_boxed_slice();
+    let data = new_atomic_u64_array(REDEX_BAG_SIZE);
+    return RedexBag { tids, next, data };
   }
 
-  fn share_task(buckets: &[AtomicU64], task: u64) -> Option<usize> {
-    let bid = fastrand::usize(..) % BUCKET_COUNT;
-    let old = new_bucket(BUCKET_EMPTY, 0);
-    let neo = new_bucket(BUCKET_FILLED, task);
-    if let Ok(old) = buckets[bid].compare_exchange(old, neo, Ordering::Relaxed, Ordering::Relaxed) {
-      return Some(bid);
+  fn min_index(&self, tid: usize) -> usize {
+    return REDEX_BAG_SIZE / self.tids * (tid + 0);
+  }
+
+  fn max_index(&self, tid: usize) -> usize {
+    return std::cmp::min(REDEX_BAG_SIZE / self.tids * (tid + 1), REDEX_CONT_RET as usize - 1);
+  }
+
+  fn insert(&self, tid: usize, task: u64) -> u64 {
+    loop {
+      let index = self.next[tid].fetch_add(1, Ordering::Relaxed);
+      if index + 1 >= self.max_index(tid) { 
+        self.next[tid].store(self.min_index(tid), Ordering::Relaxed);
+      }
+      if self.data[index].compare_exchange_weak(0, task, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+        //println!("insert {}", index);
+        return index as u64;
+      }
+    }
+  }
+
+  fn complete(&self, index: u64) -> Option<(u64,u64)> {
+    let task = self.data[index as usize].fetch_sub(1, Ordering::Relaxed);
+    //println!("complete {} {}", index, get_redex_left(task) - 1);
+    //println!("completing {}, left={}", index, get_redex_left(task) - 1);
+    if get_redex_left(task) == 1 {
+      self.data[index as usize].store(0, Ordering::Relaxed);
+      return Some((get_redex_host(task), get_redex_cont(task)));
     } else {
       return None;
     }
   }
+}
 
-  fn get_locker(heap: &Heap, term: Ptr, tid: usize) -> &AtomicU8 {
-    unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) }
-  }
+// Visit Queue
+// -----------
+// A concurrent task-stealing queue featuring push, pop and steal.
 
-  fn acquire_lock(locker: &AtomicU8, tid: usize) -> Result<u8, u8> {
-    locker.compare_exchange_weak(OPEN_LOCK, tid as u8, Ordering::Acquire, Ordering::Relaxed)
-  }
+const VISIT_QUEUE_SIZE : usize = 1 << 24;
 
-  fn release_lock(locker: &AtomicU8) {
-    locker.store(OPEN_LOCK, Ordering::Release)
-  }
+// - 32 bits: host
+// - 32 bits: cont
+type Visit = u64;
 
-  const OPEN_LOCK : u8 = 0xFF;
+struct VisitQueue {
+  init: CachePadded<AtomicUsize>,
+  last: CachePadded<AtomicUsize>,
+  data: Box<[AtomicU64]>,
+}
 
-  let threads = stats.len();
-  let buckets = &new_atomic_u64_array(if STEALING { BUCKET_COUNT } else { 0 });
-  let halters = &AtomicU64::new(0);
-  let fst_tid = stats[0].tid;
+fn new_visit(host: u64, cont: u64) -> Visit {
+  return (host << 32) | cont;
+}
 
-  let is_local = &new_atomic_u8_array(if STEALING { 256 } else { 0 });
-  if STEALING {
-    for stat in stats.into_iter() {
-      is_local[stat.tid].store(1, Ordering::Relaxed);
+fn get_visit_host(task: Visit) -> u64 {
+  return task >> 32;
+}
+
+fn get_visit_cont(task: Visit) -> u64 {
+  return task & 0xFFFFFFFF;
+}
+
+impl VisitQueue {
+  fn new() -> VisitQueue {
+    return VisitQueue {
+      init: CachePadded::new(AtomicUsize::new(0)),
+      last: CachePadded::new(AtomicUsize::new(0)),
+      data: new_atomic_u64_array(VISIT_QUEUE_SIZE),
     }
   }
 
+  fn push(&self, value: u64) {
+    let index = self.last.fetch_add(1, Ordering::Relaxed);
+    self.data[index].store(value, Ordering::Relaxed);
+  }
+
+  fn pop(&self) -> Option<(u64, u64)> {
+    loop {
+      let last = self.last.load(Ordering::Relaxed);
+      if last > 0 {
+        self.last.fetch_sub(1, Ordering::Relaxed);
+        self.init.fetch_min(last - 1, Ordering::Relaxed);
+        let task = self.data[last - 1].swap(0, Ordering::Relaxed);
+        if task == 0 {
+          continue;
+        } else {
+          return Some((get_visit_host(task), get_visit_cont(task)));
+        }
+      } else {
+        return None;
+      }
+    }
+  }
+
+  fn steal(&self) -> Option<(u64, u64)> {
+    let index = self.init.load(Ordering::Relaxed);
+    let task = self.data[index].load(Ordering::Relaxed);
+    if task != 0 {
+      if let Ok(task) = self.data[index].compare_exchange(task, 0, Ordering::Relaxed, Ordering::Relaxed) {
+        self.init.fetch_add(1, Ordering::Relaxed);
+        return Some((get_visit_host(task), get_visit_cont(task)));
+      }
+    }
+    return None;
+  }
+}
+
+// Reduce
+// ------
+
+pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
+  println!("reduce root={} threads={}", root, stats.len());
+
+  // Lock utils
+  const LOCK_OPEN : u8 = 0xFF;
+  fn get_locker(heap: &Heap, term: Ptr, tid: usize) -> &AtomicU8 {
+    unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) }
+  }
+  fn acquire_lock(locker: &AtomicU8, tid: usize) -> Result<u8, u8> {
+    locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
+  }
+  fn release_lock(locker: &AtomicU8) {
+    locker.store(LOCK_OPEN, Ordering::Release)
+  }
+
+  // Thread count
+  let tids = &stats.iter().map(|stat| stat.tid).collect::<Vec<usize>>();
+
+  // Halting flag
+  let stop = &AtomicBool::new(false);
+
+  // Spawn a thread for each worker
   std::thread::scope(|s| {
-
     for stat in stats.iter_mut() {
-
       s.spawn(move || {
         //assert!(thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Max).is_ok());
-
-        const SHARE_TICK : u64 = 65536;
-
-        let backoff = Backoff::new();
-
+        
+        // Thread id
         let tid = stat.tid;
 
-        let mut stack = vec![];
+        // Visit stacks
+        let redex = &heap.rbag;
+        let visit = &heap.vstk[tid];
+        let mut delay = vec![];
         //let mut locks = 0;
 
-        let mut init = true;
-        let mut host = if tid == fst_tid { root } else { 0 };
-        let mut mode = if tid == fst_tid { Mode::Working } else { Mode::Robbing };
-        let mut tick = 0;
-        let mut sidx = 0;
-        //let mut slim = usize::MAX;
-        let mut halt = false;
+        // Backoff
+        let backoff = &Backoff::new();
 
-        //let mut count = 0;
+        // State variables
+        let mut work = if tid == tids[0] { true } else { false };
+        let mut init = if tid == tids[0] { true } else { false };
+        let mut cont = if tid == tids[0] { REDEX_CONT_RET } else { 0 };
+        let mut host = if tid == tids[0] { root } else { 0 };
 
         'main: loop {
-
-          //count = count + 1;
-          //if count > 2000000000 {
-            //let mut busy = 0;
-            //for i in 0 .. BUCKET_COUNT {
-              //if buckets[i].load(Ordering::Relaxed) != BUCKET_EMPTY {
-                //busy += 1;
-              //}
-            //}
-            //println!("[{}] hmm count={} busy={} mode={:?} stack.len()={}", stat.tid, count, busy, mode, stack.len());
-          //}
-
-          // FIXME: improve halting condition logic / ugly code
-          if STEALING {
-            if !halt && mode == Mode::Robbing && stack.len() == 0 {
-              halt = true;
-              halters.fetch_add(1, Ordering::Relaxed);
-            }
-            if halt && mode == Mode::Working {
-              halt = false;
-              halters.fetch_sub(1, Ordering::Relaxed);
-            }
-            if halt && halters.load(Ordering::Relaxed) == threads as u64 {
-              break;
-            }
-          }
-
-          match mode {
-            Mode::Working => {
-              if STEALING {
-                tick += 1;
-                if tick >= SHARE_TICK {
-                  mode = Mode::Sharing;
-                  tick = 0;
-                  continue;
-                }
-              }
-
+          //println!("[{}] loop work={} init={} cont={} host={} visit={} delay={} stop={} count={} | {}", tid, work, init, cont, host, visit.len(), delay.len(), stop.load(Ordering::Relaxed), count, show_ptr(load_ptr(heap, host)));
+          if work {
+            if init {
               let term = load_ptr(heap, host);
-
-              if term == 0 {
-                println!("[{}] found 0", stat.tid);
-                mode = Mode::Getting;
-                continue;
-              }
-
-              //println!("[{}] reduce {}:\n{}\n", tid, host, show_term(heap, info, load_ptr(heap, 0), term));
-              //validate_heap(heap);
-
-              if init {
-                match get_tag(term) {
-                  APP => {
-                    stack.push(new_task(TASK_WORK, host));
-                    init = true;
-                    host = get_loc(term, 0);
-                    continue;
-                  }
-                  DP0 | DP1 => {
-                    // Attempts to lock the DUP node
-                    let locker = get_locker(heap, term, tid);
-                    match acquire_lock(locker, tid) {
-                      Err(locker_tid) => {
-                        //mode = Mode::Getting;
-                        //continue 'main;
-                        //println!("[{}] vish {}", stat.tid, locks);
-                        if locker_tid == stat.tid as u8 {
-                          mode = Mode::Getting;
-                          continue 'main;
-                        } else {
-                          backoff.snooze();
-                          continue 'main;
-                        }
-                        // If the DUP node is locked by another thread...
-                        //if locker_tid != stat.tid as u8 {
-                          //// If the locker is in the same task-stealing group, share the task and enter steal mode
-                          //if STEALING && is_local[locker_tid as usize].load(Ordering::Relaxed) == 1 {
-                            ////println!("[{}] vish", stat.tid);
-                            ////let mut attempts = 0;
-                            //while share_task(buckets, new_task(TASK_INIT, host)).is_none() {
-                              ////attempts = attempts + 1;
-                              ////if attempts > 100000000 * 16 {
-                                ////println!("[{}] fu {}", stat.tid, attempts);
-                              ////}
-                            //};
-                            //mode = Mode::Robbing;
-                            //continue 'main;
-                          //// If the locker isn't in the same task-stealing group, try again (spin)
-                          //} else {
-                            //backoff.snooze();
-                            ////println!("[{}] waits for {}", tid, get_loc(term, 0));
-                            //continue 'main;
-                          //}
-                        //}
+              //println!("[{}] work={} init={} cont={} host={}", tid, work, init, cont, host);
+              match get_tag(term) {
+                APP => {
+                  let goup = redex.insert(stat.tid, new_redex(host, cont, 1));
+                  work = true;
+                  init = true;
+                  cont = goup;
+                  host = get_loc(term, 0);
+                  continue 'main;
+                }
+                DP0 | DP1 => {
+                  let locker = get_locker(heap, term, tid);
+                  match acquire_lock(locker, tid) {
+                    Err(locker_tid) => {
+                      delay.push(new_visit(host, cont));
+                      work = false;
+                      init = true;
+                      continue 'main;
+                    }
+                    Ok(_) => {
+                      // If the term changed, release lock and try again
+                      if term != load_ptr(heap, host) {
+                        release_lock(locker);
+                        continue 'main;
                       }
-                      Ok(_) => {
-                        // If the term changed, release lock and try again
-                        if term != load_ptr(heap, host) {
-                          //locks = locks - 1;
-                          release_lock(locker);
-                          continue 'main;
-                        }
-                        //locks = locks + 1;
-                        // Otherwise, push the dup and reduce the expression
-                        //slim = std::cmp::min(stack.len(), slim);
-                        //println!("[{}] slim {}/{}", stat.tid, sidx, slim.unwrap());
-                        stack.push(new_task(TASK_WORK, host));
-                        host = get_loc(term, 2);
-                        continue;
-                      }
+                      //locks = locks + 1;
+                      let goup = redex.insert(stat.tid, new_redex(host, cont, 1));
+                      work = true;
+                      init = true;
+                      cont = goup;
+                      host = get_loc(term, 2);
+                      continue 'main;
                     }
                   }
-                  OP2 => {
-                    stack.push(new_task(TASK_WORK, host));
-                    stack.push(new_task(TASK_INIT, get_loc(term, 1)));
-                    host = get_loc(term, 0);
-                    continue;
-                  }
-                  FUN => {
-                    let fid = get_ext(term);
-                    match fid {
-                      HVM_LOG => {
-                        init = false;
-                        continue;
-                      }
-                      HVM_PUT => {
-                        init = false;
-                        continue;
-                      }
+                }
+                OP2 => {
+                  let goup = redex.insert(stat.tid, new_redex(host, cont, 2));
+                  visit.push(new_visit(get_loc(term, 1), goup));
+                  work = true;
+                  init = true;
+                  cont = goup;
+                  host = get_loc(term, 0);
+                  continue 'main;
+                }
+                FUN => {
+                  let fid = get_ext(term);
+                  match fid {
+                    HVM_LOG => { todo!() }
+                    HVM_PUT => { todo!() }
 //GENERATED-FUN-CTR-MATCH//
-                      _ => {
-                        // Dynamic functions
-                        if let Some(Some(f)) = &info.funs.get(fid as usize) {
-                          let len = f.stricts.len() as u64;
-                          if len == 0 {
-                            init = false;
-                            continue;
-                          } else {
-                            stack.push(new_task(TASK_WORK, host));
-                            for (i, strict) in f.stricts.iter().enumerate() {
-                              if i < f.stricts.len() - 1 {
-                                stack.push(new_task(TASK_INIT, get_loc(term, *strict)));
-                              } else {
-                                host = get_loc(term, *strict);
-                              }
+                    _ => {
+                      // Dynamic functions
+                      if let Some(Some(f)) = &info.funs.get(fid as usize) {
+                        let len = f.stricts.len() as u64;
+                        if len == 0 {
+                          work = true;
+                          init = false;
+                          continue 'main;
+                        } else {
+                          let goup = redex.insert(stat.tid, new_redex(host, cont, f.stricts.len() as u64));
+                          for (i, arg_idx) in f.stricts.iter().enumerate() {
+                            if i < f.stricts.len() - 1 {
+                              visit.push(new_visit(get_loc(term, *arg_idx), goup));
+                            } else {
+                              work = true;
+                              init = true;
+                              cont = goup;
+                              host = get_loc(term, *arg_idx);
+                              continue 'main;
                             }
-                            continue;
                           }
                         }
                       }
                     }
                   }
-                  _ => {}
                 }
-              } else {
-                match get_tag(term) {
-                  APP => {
-                    let arg0 = load_field(heap, term, 0);
-                    if get_tag(arg0) == LAM {
-                      app_lam(heap, stat, info, host, term, arg0);
-                      init = true;
-                      continue;
-                    }
-                    if get_tag(arg0) == SUP {
-                      app_sup(heap, stat, info, host, term, arg0);
-                    }
-                  }
-                  DP0 | DP1 => {
-                    let arg0 = load_field(heap, term, 2);
-                    let tcol = get_ext(term);
-                    //println!("[{}] dups {}", stat.tid, get_loc(term, 0));
-                    if get_tag(arg0) == LAM {
-                      //println!("dup-lam");
-                      dup_lam(heap, stat, info, host, term, arg0, tcol);
-                      //locks = locks - 1;
-                      release_lock(get_locker(heap, term, tid));
-                      init = true;
-                      continue;
-                    } else if get_tag(arg0) == SUP {
-                      //println!("dup-sup {}", tcol == get_ext(arg0));
-                      if tcol == get_ext(arg0) {
-                        dup_sup_0(heap, stat, info, host, term, arg0, tcol);
-                        //locks = locks - 1;
-                        release_lock(get_locker(heap, term, tid));
-                        init = true;
-                        continue;
-                      } else {
-                        dup_sup_1(heap, stat, info, host, term, arg0, tcol);
-                        //locks = locks - 1;
-                        release_lock(get_locker(heap, term, tid));
-                        init = true;
-                        continue;
-                      }
-                    } else if get_tag(arg0) == NUM {
-                      dup_num(heap, stat, info, host, term, arg0, tcol);
-                      //locks = locks - 1;
-                      release_lock(get_locker(heap, term, tid));
-                      init = true;
-                      continue;
-                    } else if get_tag(arg0) == CTR {
-                      dup_ctr(heap, stat, info, host, term, arg0, tcol);
-                      //locks = locks - 1;
-                      release_lock(get_locker(heap, term, tid));
-                      init = true;
-                      continue;
-                    } else if get_tag(arg0) == ERA {
-                      dup_era(heap, stat, info, host, term, arg0, tcol);
-                      //locks = locks - 1;
-                      release_lock(get_locker(heap, term, tid));
-                      init = true;
-                      continue;
-                    } else {
-                      //locks = locks - 1;
-                      release_lock(get_locker(heap, term, tid));
-                    }
-                  }
-                  OP2 => {
-                    let arg0 = load_field(heap, term, 0);
-                    let arg1 = load_field(heap, term, 1);
-                    if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
-                      op2_num(heap, stat, info, host, term, arg0, arg1);
-                    } else if get_tag(arg0) == SUP {
-                      op2_sup_0(heap, stat, info, host, term, arg0, arg1);
-                    } else if get_tag(arg1) == SUP {
-                      op2_sup_1(heap ,stat, info, host, term, arg0, arg1);
-                    }
-                  }
-                  FUN => {
-                    let fid = get_ext(term);
-                    match fid {
-                      //HVM_LOG => {
-                        //let msge = get_loc(term,0);
-                        //normalize(heap, stats, info, msge);
-                        //println!("{}", crate::readback::as_code(heap, stats, info, msge));
-                        //link(heap, host, load_field(heap, term, 1));
-                        //free(heap, get_loc(term, 0), 2);
-                        //collect(heap, stat, info, ask_lnk(heap, msge));
-                        //init = true;
-                        //continue;
-                      //}
-                      //HVM_PUT => {
-                        //let msge = get_loc(term,0);
-                        //normalize(heap, stats, info, msge);
-                        //let code = crate::readback::as_code(heap, stats, info, msge);
-                        //if code.chars().nth(0) == Some('"') {
-                          //println!("{}", &code[1 .. code.len() - 1]);
-                        //} else {
-                          //println!("{}", code);
-                        //}
-                        //link(heap, host, load_field(heap, term, 1));
-                        //free(heap, get_loc(term, 0), 2);
-                        //collect(heap, stat, info, ask_lnk(heap, msge));
-                        //init = true;
-                        //continue;
-                      //}
-//GENERATED-FUN-CTR-RULES//
-                      _ => {
-                        // Dynamic functions
-                        if fun_ctr(heap, stat, info, host, term, fid) {
-                          init = true;
-                          continue;
-                        }
-                      }
-                    }
-                  }
-                  _ => {}
-                }
+                _ => {}
               }
-
-              mode = Mode::Getting;
-              continue;
-            }
-            Mode::Getting => {
-              if let Some(task) = stack.pop() {
-                let task_tag = get_task_tag(task);
-                let task_val = get_task_val(task);
-                if STEALING && task_tag == TASK_WAIT {
-                  // If the task was completed, pop it and get another task
-                  if let Ok(old) = buckets[task_val as usize].compare_exchange(new_bucket(BUCKET_RETURN,0), new_bucket(BUCKET_EMPTY,0), Ordering::Relaxed, Ordering::Relaxed) {
-                    //println!("[{}] received a stolen task on bucket {} (cost {})", tid, task_val, stat.cost);
-                    continue;
-                  // Otherwise, put it back and enter steal mode
-                  } else {
-                    stack.push(task);
-                    mode = Mode::Robbing;
-                    continue;
-                  }
-                } else if STEALING && task_tag == TASK_BACK {
-                  //println!("[{}] completed a stolen task on bucket {} (cost {})", tid, task_val, stat.cost);
-                  match buckets[task_val as usize].compare_exchange(new_bucket(BUCKET_STOLEN,0), new_bucket(BUCKET_RETURN,0), Ordering::Relaxed, Ordering::Relaxed) {
-                    Ok(old) => {
-                      continue;
-                    }
-                    Err(old) => {
-                      panic!("[{}] failed to return task on bucket {}. Found: {}.", tid, task_val, old >> 60);
-                    }
-                  }
-                } else {
-                  init = task_tag == TASK_INIT;
-                  host = task_val;
-                  sidx = std::cmp::min(sidx, stack.len());
-                  //slim = if slim == stack.len() { usize::MAX } else { slim };
-                  mode = Mode::Working;
-                  continue;
-                }
-              } else {
-                if STEALING {
-                  mode = Mode::Robbing;
-                  continue;
-                } else {
-                  break;
-                }
-              }
-            }
-            Mode::Sharing => {
-              //println!("[{}] sharing {} {}", tid, sidx, stack.len());
-              while sidx < stack.len() {
-                let task = unsafe { *stack.get_unchecked_mut(sidx) };
-                if get_task_tag(task) == TASK_INIT {
-                  //println!("[{}] share {}/{}", stat.tid, sidx, stack.len());
-                  if let Some(bid) = share_task(buckets, task) {
-                    stack[sidx] = new_task(TASK_WAIT, bid as u64);
-                  }
-                  break;
-                }
-                sidx = sidx + 1;
-              }
-              mode = Mode::Working;
-              continue;
-            }
-            Mode::Robbing => {
-              // Try to steal a task from another thread
-              for _ in 0 .. BUCKET_COUNT {
-                let bid = fastrand::usize(..) % BUCKET_COUNT;
-                let buc = buckets[bid].load(Ordering::Relaxed);
-                if get_bucket_tag(buc) == BUCKET_FILLED {
-                  if let Ok(old) = buckets[bid].compare_exchange(buc, new_bucket(BUCKET_STOLEN,0), Ordering::Relaxed, Ordering::Relaxed) {
-                    //println!("[{}] stolen task on bucket {} (cost {})", tid, bid, stat.cost);
-                    stack.push(new_task(TASK_BACK, bid as u64));
-                    let task = get_bucket_val(buc);
-                    init = get_task_tag(task) == TASK_INIT;
-                    host = get_task_val(task);
-                    mode = Mode::Working;
+              work = true;
+              init = false;
+              continue 'main;
+            } else {
+              let term = load_ptr(heap, host);
+              //println!("[{}] reduce {} | {}", tid, host, show_ptr(term));
+              
+              // Apply rewrite rules
+              match get_tag(term) {
+                APP => {
+                  let arg0 = load_field(heap, term, 0);
+                  if get_tag(arg0) == LAM {
+                    app_lam(heap, stat, info, host, term, arg0);
+                    work = true;
+                    init = true;
                     continue 'main;
                   }
+                  if get_tag(arg0) == SUP {
+                    app_sup(heap, stat, info, host, term, arg0);
+                  }
                 }
+                DP0 | DP1 => {
+                  let arg0 = load_field(heap, term, 2);
+                  let tcol = get_ext(term);
+                  //println!("[{}] dups {}", stat.tid, get_loc(term, 0));
+                  if get_tag(arg0) == LAM {
+                    //println!("dup-lam");
+                    dup_lam(heap, stat, info, host, term, arg0, tcol);
+                    //locks = locks - 1;
+                    release_lock(get_locker(heap, term, tid));
+                    work = true;
+                    init = true;
+                    continue 'main;
+                  } else if get_tag(arg0) == SUP {
+                    //println!("dup-sup {}", tcol == get_ext(arg0));
+                    if tcol == get_ext(arg0) {
+                      dup_sup_0(heap, stat, info, host, term, arg0, tcol);
+                      //locks = locks - 1;
+                      release_lock(get_locker(heap, term, tid));
+                      work = true;
+                      init = true;
+                      continue 'main;
+                    } else {
+                      dup_sup_1(heap, stat, info, host, term, arg0, tcol);
+                      //locks = locks - 1;
+                      release_lock(get_locker(heap, term, tid));
+                      work = true;
+                      init = true;
+                      continue 'main;
+                    }
+                  } else if get_tag(arg0) == NUM {
+                    dup_num(heap, stat, info, host, term, arg0, tcol);
+                    //locks = locks - 1;
+                    release_lock(get_locker(heap, term, tid));
+                    work = true;
+                    init = true;
+                    continue 'main;
+                  } else if get_tag(arg0) == CTR {
+                    dup_ctr(heap, stat, info, host, term, arg0, tcol);
+                    //locks = locks - 1;
+                    release_lock(get_locker(heap, term, tid));
+                    work = true;
+                    init = true;
+                    continue 'main;
+                  } else if get_tag(arg0) == ERA {
+                    dup_era(heap, stat, info, host, term, arg0, tcol);
+                    //locks = locks - 1;
+                    release_lock(get_locker(heap, term, tid));
+                    work = true;
+                    init = true;
+                    continue 'main;
+                  } else {
+                    //locks = locks - 1;
+                    release_lock(get_locker(heap, term, tid));
+                  }
+                }
+                OP2 => {
+                  let arg0 = load_field(heap, term, 0);
+                  let arg1 = load_field(heap, term, 1);
+                  if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
+                    op2_num(heap, stat, info, host, term, arg0, arg1);
+                  } else if get_tag(arg0) == SUP {
+                    op2_sup_0(heap, stat, info, host, term, arg0, arg1);
+                  } else if get_tag(arg1) == SUP {
+                    op2_sup_1(heap ,stat, info, host, term, arg0, arg1);
+                  }
+                }
+                FUN => {
+                  let fid = get_ext(term);
+                  match fid {
+                    //HVM_LOG => {
+                      //let msge = get_loc(term,0);
+                      //normalize(heap, stats, info, msge);
+                      //println!("{}", crate::readback::as_code(heap, stats, info, msge));
+                      //link(heap, host, load_field(heap, term, 1));
+                      //free(heap, get_loc(term, 0), 2);
+                      //collect(heap, stat, info, ask_lnk(heap, msge));
+                      //init = true;
+                      //continue;
+                    //}
+                    //HVM_PUT => {
+                      //let msge = get_loc(term,0);
+                      //normalize(heap, stats, info, msge);
+                      //let code = crate::readback::as_code(heap, stats, info, msge);
+                      //if code.chars().nth(0) == Some('"') {
+                        //println!("{}", &code[1 .. code.len() - 1]);
+                      //} else {
+                        //println!("{}", code);
+                      //}
+                      //link(heap, host, load_field(heap, term, 1));
+                      //free(heap, get_loc(term, 0), 2);
+                      //collect(heap, stat, info, ask_lnk(heap, msge));
+                      //init = true;
+                      //continue;
+                    //}
+//GENERATED-FUN-CTR-RULES//
+                    _ => {
+                      // Dynamic functions
+                      if fun_ctr(heap, stat, info, host, term, fid) {
+                        work = true;
+                        init = true;
+                        continue 'main;
+                      }
+                    }
+                  }
+                }
+                _ => {}
               }
-              mode = Mode::Getting;
-              continue;
+
+              //println!("[{}] whnf {}\n{}\n\n", tid, max_depth(heap, stat, info, 0, 0), show_term(heap, info, load_ptr(heap, 0), load_ptr(heap, host)));
+
+              // If root is on WHNF, halt
+              if cont == REDEX_CONT_RET {
+                stop.store(true, Ordering::Relaxed);
+                break;
+              }
+
+              // Otherwise, try reducing the parent redex
+              if let Some((new_host, new_cont)) = redex.complete(cont) {
+                work = true;
+                init = false;
+                host = new_host;
+                cont = new_cont;
+                continue 'main;
+              }
+
+              // Otherwise, visit next pointer
+              work = false;
+              init = true;
+              continue 'main;
+            }
+          } else {
+            if init {
+              // If available, visit a new location
+              if let Some((new_host, new_cont)) = visit.pop() {
+                work = true;
+                init = true;
+                host = new_host;
+                cont = new_cont;
+                continue 'main;
+              }
+              // If available, visit a delayed location
+              if delay.len() > 0 {
+                for next in delay.drain(0..).rev() {
+                  visit.push(next);
+                }
+                work = false;
+                init = true;
+                continue 'main;
+              }
+              // Otherwise, we have nothing to do
+              work = false;
+              init = false;
+              continue 'main;
+            } else {
+              //println!("[{}] idle locks={}", tid, locks);
+              //println!("[{}] will try to steal...", tid);
+              if stop.load(Ordering::Relaxed) {
+                break;
+              } else {
+                for victim_tid in tids {
+                  if *victim_tid != tid {
+                    if let Some((new_host, new_cont)) = heap.vstk[*victim_tid].steal() {
+                      //println!("[{}] stole {} {} from {}", tid, new_host, new_cont, victim_tid);
+                      work = true;
+                      init = true;
+                      host = new_host;
+                      cont = new_cont;
+                      continue 'main;
+                    }
+                  }
+                }
+                backoff.snooze();
+                continue 'main;
+              }
             }
           }
         }
-        //println!("[{}] halt (cost: {}, locks: {}, stack: {})", stat.tid, stat.cost, locks, stack.len());
       });
     }
-
   });
 
-  load_ptr(heap, root)
+  return load_ptr(heap, root);
 }
 
-pub fn reduce(heap: &Heap, stats: &mut Stats, info: &Info, root: u64) -> Ptr {
-  reducer::<true>(heap, stats, info, root)
-}
+// Normal
+// ------
 
 pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &Box<[AtomicU64]>) -> Ptr {
   //println!("normal host={} threads={}\n{}\n\n", host, stats.len(), show_term(heap, info, ask_lnk(heap,host), host));
@@ -1695,10 +1693,7 @@ pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &
     term
   } else {
     //let term = reduce2(heap, stats, info, host);
-    let term = match stats.len() > 1 {
-      false => { reducer::<false>(heap, stats, info, host) }
-      true  => { reducer::<true>(heap, stats, info, host) }
-    };
+    let term = reduce(heap, stats, info, host);
     set_visited(visited, host);
     let mut rec_locs = vec![];
     match get_tag(term) {
@@ -1780,7 +1775,6 @@ pub fn normal(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, visited: &
 }
 
 pub fn normalize(heap: &Heap, stats: &mut Stats, info: &Info, host: u64, run_io: bool) -> Ptr {
-
   // TODO: rt::run_io(&mut heap, &mut stat, &mut info, host);
   // FIXME: reuse `visited`
   let mut cost = get_cost(stats);
@@ -2008,7 +2002,6 @@ pub fn readback_string(heap: &Heap, stats: &mut Stats, info: &Info, host: u64) -
   return Some(text);
 }
 
-
 // Debug
 // -----
 
@@ -2035,26 +2028,6 @@ pub fn show_ptr(x: Ptr) -> String {
       _ => "?",
     };
     format!("{}({:07x}, {:08x})", tgs, ext, val)
-  }
-}
-
-
-pub fn validate_heap(heap: &Heap) {
-  for idx in 0 .. HEAP_SIZE {
-    // If it is an ARG, it must be pointing to a VAR/DP0/DP1 that points to it
-    let arg = heap.node[idx].load(Ordering::Relaxed);
-    if get_tag(arg) == ARG {
-      let var = load_ptr(heap, get_loc(arg, 0));
-      let oks = match get_tag(var) {
-        VAR => { get_loc(var, 0) == idx as u64 }
-        DP0 => { get_loc(var, 0) == idx as u64 }
-        DP1 => { get_loc(var, 0) == idx as u64 - 1 }
-        _   => { false }
-      };
-      if !oks {
-        panic!("Invalid heap state, due to arg at '{:04x}' of:\n{}", idx, show_heap(heap));
-      }
-    }
   }
 }
 
@@ -2163,10 +2136,10 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
         format!("({} {})", func, argm)
       }
       SUP => {
-        //let kind = get_ext(term);
+        let kind = get_ext(term);
         let func = go(heap, info, load_field(heap, term, 0), names, focus);
         let argm = go(heap, info, load_field(heap, term, 1), names, focus);
-        format!("{{{} {}}}", func, argm)
+        format!("#{}{{{} {}}}", kind, func, argm)
       }
       OP2 => {
         let oper = get_ext(term);
@@ -2217,11 +2190,54 @@ pub fn show_term(heap: &Heap, info: &Info, term: Ptr, focus: u64) -> String {
   for (_key, pos) in lets {
     // todo: reverse
     let what = String::from("?h");
-    //let kind = kinds.get(&pos).unwrap_or(&0);
+    let kind = kinds.get(&pos).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
     let nam0 = if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
     let nam1 = if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
-    text.push_str(&format!("\ndup[{:x}] {} {} = {};", pos, nam0, nam1, go(heap, info, load_ptr(heap, pos + 2), &names, focus)));
+    text.push_str(&format!("\ndup#{}[{:x}] {} {} = {};", pos, kind, nam0, nam1, go(heap, info, load_ptr(heap, pos + 2), &names, focus)));
   }
   text
+}
+
+pub fn debug_max_depth(heap: &Heap, stat: &Stat, info: &Info, host: u64, depth: u64) -> u64 {
+  if depth > 32 {
+    return 32;
+  }
+  let term = load_ptr(heap, host);
+  //println!("[{}] debug_max_depth {} {}", stat.tid, show_ptr(term), depth);
+  let next = match get_tag(term) {
+    CTR => 0 .. ask_ari(info, term),
+    FUN => 0 .. ask_ari(info, term),
+    //SUP => 0 .. 2,
+    OP2 => 0 .. 2,
+    DP0 => 2 .. 3,
+    DP1 => 2 .. 3,
+    _   => 0 .. 0,
+  };
+  let mut max = depth;
+  for i in next {
+    //println!("[{}] A {}/{}", stat.tid, i, arit);
+    max = std::cmp::max(debug_max_depth(heap, stat, info, get_loc(term, i), depth + 1), max);
+    //println!("[{}] B {}/{}", stat.tid, i, arit);
+  }
+  return max;
+}
+
+pub fn debug_validate_heap(heap: &Heap) {
+  for idx in 0 .. HEAP_SIZE {
+    // If it is an ARG, it must be pointing to a VAR/DP0/DP1 that points to it
+    let arg = heap.node[idx].load(Ordering::Relaxed);
+    if get_tag(arg) == ARG {
+      let var = load_ptr(heap, get_loc(arg, 0));
+      let oks = match get_tag(var) {
+        VAR => { get_loc(var, 0) == idx as u64 }
+        DP0 => { get_loc(var, 0) == idx as u64 }
+        DP1 => { get_loc(var, 0) == idx as u64 - 1 }
+        _   => { false }
+      };
+      if !oks {
+        panic!("Invalid heap state, due to arg at '{:04x}' of:\n{}", idx, show_heap(heap));
+      }
+    }
+  }
 }

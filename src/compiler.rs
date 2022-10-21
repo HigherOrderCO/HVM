@@ -47,7 +47,7 @@ instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
   let main = r#"
 #![feature(atomic_from_mut)]
 #![feature(atomic_mut_ptr)]
-
+#![allow(non_upper_case_globals)]
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
@@ -123,15 +123,15 @@ fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> (Strin
   let mut fun_rules = String::new();
 
   for (name, (arity, rules)) in &comp.rule_group {
-    let (init, func) = compile_func(comp, &name, rules, 12);
+    let (init, func) = compile_func(comp, &name, rules, 11);
 
-    line(&mut fun_match, 11, &format!("{} => {{", &compile_name(name)));
+    line(&mut fun_match, 10, &format!("{} => {{", &compile_name(name)));
     fun_match.push_str(&init);
-    line(&mut fun_match, 11, &format!("}}"));
+    line(&mut fun_match, 10, &format!("}}"));
 
-    line(&mut fun_rules, 11, &format!("{} => {{", &compile_name(name)));
+    line(&mut fun_rules, 10, &format!("{} => {{", &compile_name(name)));
     fun_rules.push_str(&func);
-    line(&mut fun_rules, 11, &format!("}}"));
+    line(&mut fun_rules, 10, &format!("}}"));
   }
 
   // Constructor and function ids and arities
@@ -218,11 +218,14 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
   if function.stricts.is_empty() {
     line(&mut init, tab + 0, "init = false;");
   } else {
-    line(&mut init, tab + 0, "stack.push(new_task(TASK_WORK, host));");
+    line(&mut init, tab + 0, &format!("let goup = redex.insert(stat.tid, new_redex(host, cont, {}));", function.stricts.len()));
     for (i, strict) in function.stricts.iter().enumerate() {
       if i < function.stricts.len() - 1 {
-        line(&mut init, tab + 0, &format!("stack.push(new_task(TASK_INIT, get_loc(term, {})));", strict));
+        line(&mut init, tab + 0, &format!("visit.push(new_visit(get_loc(term, {}), goup));", strict));
       } else {
+        line(&mut init, tab + 0, &format!("work = true;"));
+        line(&mut init, tab + 0, &format!("init = true;"));
+        line(&mut init, tab + 0, &format!("cont = goup;"));
         line(&mut init, tab + 0, &format!("host = get_loc(term, {});", strict));
       }
     }
