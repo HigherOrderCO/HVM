@@ -392,8 +392,8 @@ impl Runtime {
     return runtime::App(pos);
   }
 
-  pub fn Par(col: u64, pos: u64) -> Ptr {
-    return runtime::Par(col, pos);
+  pub fn Sup(col: u64, pos: u64) -> Ptr {
+    return runtime::Sup(col, pos);
   }
 
   pub fn Op2(ope: u64, pos: u64) -> Ptr {
@@ -405,11 +405,11 @@ impl Runtime {
   }
 
   pub fn Ctr(fun: u64, pos: u64) -> Ptr {
-    return runtime::Ctr(0, fun, pos);
+    return runtime::Ctr(fun, pos);
   }
 
   pub fn Fun(fun: u64, pos: u64) -> Ptr {
-    return runtime::Fun(0, fun, pos);
+    return runtime::Fun(fun, pos);
   }
 
   pub fn link(&mut self, loc: u64, lnk: Ptr) -> Ptr {

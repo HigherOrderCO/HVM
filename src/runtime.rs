@@ -357,8 +357,7 @@ pub struct Heap {
 }
 
 fn available_parallelism() -> usize {
-  return 1;
-  //return std::thread::available_parallelism().unwrap().get();
+  return std::thread::available_parallelism().unwrap().get();
 }
 
 // Initializers
@@ -441,7 +440,7 @@ pub fn App(pos: u64) -> Ptr {
   (APP * TAG) | pos
 }
 
-pub fn Par(col: u64, pos: u64) -> Ptr {
+pub fn Sup(col: u64, pos: u64) -> Ptr {
   (SUP * TAG) | (col * EXT) | pos
 }
 
@@ -453,12 +452,12 @@ pub fn Num(val: u64) -> Ptr {
   (NUM * TAG) | (val & NUM_MASK)
 }
 
-pub fn Ctr(_ari: u64, fun: u64, pos: u64) -> Ptr {
+pub fn Ctr(fun: u64, pos: u64) -> Ptr {
   (CTR * TAG) | (fun * EXT) | pos
 }
 
 // FIXME: update name to Fun
-pub fn Fun(_ari: u64, fun: u64, pos: u64) -> Ptr {
+pub fn Fun(fun: u64, pos: u64) -> Ptr {
   (FUN * TAG) | (fun * EXT) | pos
 }
 
@@ -831,7 +830,7 @@ fn app_sup(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
   link(heap, app1 + 1, Dp1(get_ext(arg0), let0));
   link(heap, par0 + 0, App(app0));
   link(heap, par0 + 1, App(app1));
-  let done = Par(get_ext(arg0), par0);
+  let done = Sup(get_ext(arg0), par0);
   link(heap, host, done);
 }
 
@@ -855,7 +854,7 @@ fn dup_lam(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
   link(heap, lam0 + 1, Dp0(get_ext(term), let0));
   link(heap, lam1 + 1, Dp1(get_ext(term), let0));
 
-  atomic_subst(heap, prog, Var(get_loc(arg0, 0)), Par(get_ext(term), par0));
+  atomic_subst(heap, prog, Var(get_loc(arg0, 0)), Sup(get_ext(term), par0));
   atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Lam(lam0));
   atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Lam(lam1));
 
@@ -904,8 +903,8 @@ fn dup_sup_1(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0
   link(heap, par0 + 0, Dp0(tcol, let0));
   link(heap, par0 + 1, Dp0(tcol, let1));
   //println!("A");
-  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Par(get_ext(arg0), par0));
-  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Par(get_ext(arg0), par1));
+  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Sup(get_ext(arg0), par0));
+  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Sup(get_ext(arg0), par1));
   //println!("B");
   free(heap, get_loc(term, 0), 3);
 }
@@ -937,9 +936,9 @@ fn dup_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
   let fnid = get_ext(arg0);
   let arit = ask_ari(prog, arg0);
   if arit == 0 {
-    atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Ctr(0, fnid, 0));
-    atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Ctr(0, fnid, 0));
-    link(heap, host, Ctr(0, fnid, 0));
+    atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Ctr(fnid, 0));
+    atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Ctr(fnid, 0));
+    link(heap, host, Ctr(fnid, 0));
     free(heap, get_loc(term, 0), 3);
   } else {
     let ctr0 = get_loc(arg0, 0);
@@ -954,9 +953,9 @@ fn dup_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
     link(heap, leti + 2, take_arg(heap, arg0, arit - 1));
     link(heap, ctr0 + arit - 1, Dp0(get_ext(term), leti));
     link(heap, ctr1 + arit - 1, Dp1(get_ext(term), leti));
-    atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Ctr(arit, fnid, ctr0));
-    atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Ctr(arit, fnid, ctr1));
-    //let done = Ctr(arit, fnid, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
+    atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Ctr(fnid, ctr0));
+    atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Ctr(fnid, ctr1));
+    //let done = Ctr(fnid, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
     //link(heap, host, done);
     free(heap, get_loc(term, 0), 3);
   }
@@ -1025,7 +1024,7 @@ fn op2_sup_0(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0
   link(heap, op21 + 1, Dp1(get_ext(arg0), let0));
   link(heap, par0 + 0, Op2(get_ext(term), op20));
   link(heap, par0 + 1, Op2(get_ext(term), op21));
-  let done = Par(get_ext(arg0), par0);
+  let done = Sup(get_ext(arg0), par0);
   link(heap, host, done);
 }
 
@@ -1047,7 +1046,7 @@ fn op2_sup_1(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0
   link(heap, op21 + 0, Dp1(get_ext(arg1), let0));
   link(heap, par0 + 0, Op2(get_ext(term), op20));
   link(heap, par0 + 1, Op2(get_ext(term), op21));
-  let done = Par(get_ext(arg1), par0);
+  let done = Sup(get_ext(arg1), par0);
   link(heap, host, done);
 }
 
@@ -1071,9 +1070,9 @@ pub fn fun_sup(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, ar
       link(heap, fun1 + i, take_arg(heap, argn, 1));
     }
   }
-  link(heap, par0 + 0, Fun(arit, func, fun0));
-  link(heap, par0 + 1, Fun(arit, func, fun1));
-  let done = Par(get_ext(argn), par0);
+  link(heap, par0 + 0, Fun(func, fun0));
+  link(heap, par0 + 1, Fun(func, fun1));
+  let done = Sup(get_ext(argn), par0);
   link(heap, host, done);
   done
 }
@@ -1211,7 +1210,7 @@ fn get_redex_cont(redex: Redex) -> u64 {
 }
 
 fn get_redex_left(redex: Redex) -> u64 {
-  return redex & 0xF;
+  return redex & 0xFF;
 }
 
 impl RedexBag {
@@ -1234,13 +1233,13 @@ impl RedexBag {
     return std::cmp::min(REDEX_BAG_SIZE / self.tids * (tid + 1), REDEX_CONT_RET as usize - 1);
   }
 
-  fn insert(&self, tid: usize, task: u64) -> u64 {
+  fn insert(&self, tid: usize, redex: u64) -> u64 {
     loop {
       let index = self.next[tid].fetch_add(1, Ordering::Relaxed);
       if index + 1 >= self.max_index(tid) { 
         self.next[tid].store(self.min_index(tid), Ordering::Relaxed);
       }
-      if self.data[index].compare_exchange_weak(0, task, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+      if self.data[index].compare_exchange_weak(0, redex, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
         //println!("insert {}", index);
         return index as u64;
       }
@@ -1248,12 +1247,12 @@ impl RedexBag {
   }
 
   fn complete(&self, index: u64) -> Option<(u64,u64)> {
-    let task = self.data[index as usize].fetch_sub(1, Ordering::Relaxed);
-    //println!("complete {} {}", index, get_redex_left(task) - 1);
-    //println!("completing {}, left={}", index, get_redex_left(task) - 1);
-    if get_redex_left(task) == 1 {
+    let redex = self.data[index as usize].fetch_sub(1, Ordering::Relaxed);
+    //println!("complete {} {}", index, get_redex_left(redex) - 1);
+    //println!("completing {}, left={}", index, get_redex_left(redex) - 1);
+    if get_redex_left(redex) == 1 {
       self.data[index as usize].store(0, Ordering::Relaxed);
-      return Some((get_redex_host(task), get_redex_cont(task)));
+      return Some((get_redex_host(redex), get_redex_cont(redex)));
     } else {
       return None;
     }
@@ -1280,12 +1279,12 @@ fn new_visit(host: u64, cont: u64) -> Visit {
   return (host << 32) | cont;
 }
 
-fn get_visit_host(task: Visit) -> u64 {
-  return task >> 32;
+fn get_visit_host(visit: Visit) -> u64 {
+  return visit >> 32;
 }
 
-fn get_visit_cont(task: Visit) -> u64 {
-  return task & 0xFFFFFFFF;
+fn get_visit_cont(visit: Visit) -> u64 {
+  return visit & 0xFFFFFFFF;
 }
 
 impl VisitQueue {
@@ -1308,11 +1307,11 @@ impl VisitQueue {
       if last > 0 {
         self.last.fetch_sub(1, Ordering::Relaxed);
         self.init.fetch_min(last - 1, Ordering::Relaxed);
-        let task = self.data[last - 1].swap(0, Ordering::Relaxed);
-        if task == 0 {
+        let visit = self.data[last - 1].swap(0, Ordering::Relaxed);
+        if visit == 0 {
           continue;
         } else {
-          return Some((get_visit_host(task), get_visit_cont(task)));
+          return Some((get_visit_host(visit), get_visit_cont(visit)));
         }
       } else {
         return None;
@@ -1322,11 +1321,11 @@ impl VisitQueue {
 
   fn steal(&self) -> Option<(u64, u64)> {
     let index = self.init.load(Ordering::Relaxed);
-    let task = self.data[index].load(Ordering::Relaxed);
-    if task != 0 {
-      if let Ok(task) = self.data[index].compare_exchange(task, 0, Ordering::Relaxed, Ordering::Relaxed) {
+    let visit = self.data[index].load(Ordering::Relaxed);
+    if visit != 0 {
+      if let Ok(visit) = self.data[index].compare_exchange(visit, 0, Ordering::Relaxed, Ordering::Relaxed) {
         self.init.fetch_add(1, Ordering::Relaxed);
-        return Some((get_visit_host(task), get_visit_cont(task)));
+        return Some((get_visit_host(visit), get_visit_cont(visit)));
       }
     }
     return None;
@@ -1377,7 +1376,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
         let mut host = if tid == tids[0] { root } else { 0 };
 
         'main: loop {
-          println!("[{}] loop {:?}", tid, &heap.node[0 .. 256]);
+          //println!("[{}] loop {:?}", tid, &heap.node[0 .. 256]);
           //println!("[{}] loop work={} init={} cont={} host={} visit={} delay={} stop={} count={} | {}", tid, work, init, cont, host, visit.len(), delay.len(), stop.load(Ordering::Relaxed), count, show_ptr(load_ptr(heap, host)));
           if work {
             if init {
@@ -1912,12 +1911,12 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
 }
 
 pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
-  let mut term = Ctr(0, STRING_NIL, 0);
+  let mut term = Ctr(STRING_NIL, 0);
   for chr in text.chars().rev() { // TODO: reverse
     let ctr0 = alloc(heap, tid, 2);
     link(heap, ctr0 + 0, Num(chr as u64));
     link(heap, ctr0 + 1, term);
-    term = Ctr(2, STRING_CONS, ctr0);
+    term = Ctr(STRING_CONS, ctr0);
   }
   return term;
 }

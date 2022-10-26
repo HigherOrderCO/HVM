@@ -963,7 +963,7 @@ pub fn build_function(book: &RuleBook, fn_name: &str, rules: &[lang::Rule]) -> r
         match &**arg {
           lang::Term::Ctr { name, args } => {
             *is_strict = true;
-            cond.push(rt::Ctr(args.len() as u64, *book.name_to_id.get(&*name).unwrap_or(&0), 0));
+            cond.push(rt::Ctr(*book.name_to_id.get(&*name).unwrap_or(&0), 0));
             free.push((i as u64, args.len() as u64));
             for (j, arg) in args.iter().enumerate() {
               if let lang::Term::Var { ref name } = **arg {
@@ -1259,9 +1259,9 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
             let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
             links.push((targ, i as u64, arg));
           }
-          rt::RuleBodyCell::Ptr { value: rt::Fun(args.len() as u64, *func, 0), targ, slot: 0 }
+          rt::RuleBodyCell::Ptr { value: rt::Fun(*func, 0), targ, slot: 0 }
         } else {
-          rt::RuleBodyCell::Val { value: rt::Fun(0, *func, 0) }
+          rt::RuleBodyCell::Val { value: rt::Fun(*func, 0) }
         }
       }
       rt::Term::Ctr { func, args } => {
@@ -1272,9 +1272,9 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
             let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
             links.push((targ, i as u64, arg));
           }
-          rt::RuleBodyCell::Ptr { value: rt::Ctr(args.len() as u64, *func, 0), targ, slot: 0 }
+          rt::RuleBodyCell::Ptr { value: rt::Ctr(*func, 0), targ, slot: 0 }
         } else {
-          rt::RuleBodyCell::Val { value: rt::Ctr(0, *func, 0) }
+          rt::RuleBodyCell::Val { value: rt::Ctr(*func, 0) }
         }
       }
       rt::Term::Num { numb } => rt::RuleBodyCell::Val { value: rt::Num(*numb as u64) },

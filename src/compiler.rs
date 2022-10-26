@@ -465,7 +465,7 @@ fn compile_func_rule_term(
         for (i, arg) in ctr_args.iter().enumerate() {
           line(code, tab, &format!("link(heap, {} + {}, {});", name, i, arg));
         }
-        format!("Ctr({}, {}, {})", ctr_args.len(), func, name)
+        format!("Ctr({}, {})", func, name)
       }
       rt::Term::Fun { func, args } => {
         let cal_args: Vec<String> =
@@ -475,7 +475,7 @@ fn compile_func_rule_term(
         for (i, arg) in cal_args.iter().enumerate() {
           line(code, tab, &format!("link(heap, {} + {}, {});", name, i, arg));
         }
-        format!("Fun({}, {}, {})", cal_args.len(), func, name)
+        format!("Fun({}, {})", func, name)
       }
       rt::Term::Num { numb } => {
         format!("Num({})", numb)
