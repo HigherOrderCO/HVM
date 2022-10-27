@@ -964,7 +964,7 @@ these by keeping your programs linear. For example, instead of:
 ```javascript
 Add = λa λb
   let case_zero = b
-  let case_succ = λa_pred (Add a_pred b)
+  let case_succ = λa_pred (Succ (Add a_pred b))
   (a case_succ case_zero)
 ```
 
@@ -973,7 +973,7 @@ Write:
 ```javascript
 Add = λa
   let case_zero = λb b
-  let case_succ = λa_pred λb (Add a_pred b)
+  let case_succ = λa_pred λb (Succ (Add a_pred b))
   (a case_succ case_zero b)
 ```
 
