@@ -11,7 +11,7 @@
 //
 // Where:
 //
-//   T : u8  is the pointer tag 
+//   T : u4  is the pointer tag 
 //   A : u30 is the 1st value
 //   B : u30 is the 2nd value
 //
@@ -22,7 +22,7 @@
 //   DP0 |   0 | a variable, bound to the 1st argument of a duplication
 //   DP1 |   1 | a variable, bound to the 2nd argument of a duplication
 //   VAR |   2 | a variable, bound to the one argument of a lambda
-//   ARG |   3 | an used argument of a lambda or duplication
+//   ARG |   3 | a used argument of a lambda or duplication
 //   ERA |   4 | an erased argument of a lambda or duplication
 //   LAM |   5 | a lambda
 //   APP |   6 | an application
