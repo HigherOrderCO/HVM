@@ -268,8 +268,8 @@ pub type AtomicPtr = AtomicU64;
 #[derive(Clone, Debug)]
 pub enum Term {
   Var { bidx: u64 },
-  Glo { glob: u64 },
-  Dup { eras: (bool, bool), expr: Box<Term>, body: Box<Term> },
+  Glo { glob: u64, misc: u64 },
+  Dup { eras: (bool, bool), glob: u64, expr: Box<Term>, body: Box<Term> },
   Let { expr: Box<Term>, body: Box<Term> },
   Lam { eras: bool, glob: u64, body: Box<Term> },
   App { func: Box<Term>, argm: Box<Term> },
@@ -357,8 +357,8 @@ pub struct Heap {
 }
 
 fn available_parallelism() -> usize {
-  //return 1;
-  return std::thread::available_parallelism().unwrap().get();
+  return 1;
+  //return std::thread::available_parallelism().unwrap().get();
 }
 
 // Initializers
@@ -1451,7 +1451,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
           //if count > 100 {
             //std::process::exit(1);
           //}
-          //println!("[{}] reduce {}\n{}\n\n", tid, count, show_term(heap, prog, load_ptr(heap, root), load_ptr(heap, host)));
+          println!("[{}] reduce\n{}\n", tid, show_term(heap, prog, load_ptr(heap, root), load_ptr(heap, host)));
           //println!("[{}] loop {:?}", tid, &heap.node[0 .. 256]);
           //println!("[{}] loop work={} init={} cont={} host={} visit={} delay={} stop={} count={} | {}", tid, work, init, cont, host, visit.len(), delay.len(), stop.load(Ordering::Relaxed), count, show_ptr(load_ptr(heap, host)));
           if work {

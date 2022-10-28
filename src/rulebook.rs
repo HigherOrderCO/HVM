@@ -190,8 +190,17 @@ pub fn group_rules(rules: &[lang::Rule]) -> HashMap<String, RuleGroup> {
   groups
 }
 
-pub fn is_global_name(name: &str) -> bool {
-  !name.is_empty() && name.starts_with(&"$")
+pub fn get_global_name_misc(name: &str) -> Option<u64> {
+  if !name.is_empty() && name.starts_with(&"$") {
+    if name.starts_with(&"$0") {
+      return Some(rt::DP0);
+    } else if name.starts_with(&"$1") {
+      return Some(rt::DP1);
+    } else {
+      return Some(rt::VAR);
+    }
+  }
+  return None;
 }
 
 // Sanitize
@@ -268,7 +277,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
     ctx: &mut CtxSanitizeTerm,
   ) -> Result<Box<lang::Term>, String> {
     fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
-      if !is_global_name(name) && uses.get(name).copied() <= Some(0) {
+      if !get_global_name_misc(name).is_some() && uses.get(name).copied() <= Some(0) {
         *name = "*".to_string();
       }
     }
@@ -278,7 +287,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
           let mut name = tbl.get(name).unwrap_or(name).clone();
           rename_erased(&mut name, ctx.uses);
           Box::new(lang::Term::Var { name })
-        } else if is_global_name(name) {
+        } else if get_global_name_misc(name).is_some() {
           if tbl.get(name).is_some() {
             panic!("Using a global variable more than once isn't supported yet. Use an explicit 'let' to clone it. {} {:?}", name, tbl.get(name));
           } else {
@@ -292,7 +301,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
             let used = { *ctx.uses.entry(name.clone()).and_modify(|x| *x += 1).or_insert(1) };
             let name = format!("{}.{}", name, used - 1);
             Box::new(lang::Term::Var { name })
-          //} else if is_global_name(&name) {
+          //} else if get_global_name_misc(&name) {
           // println!("Allowed unbound variable: {}", name);
           // Box::new(lang::Term::Var { name: name.clone() })
           } else {
@@ -301,8 +310,20 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         }
       }
       lang::Term::Dup { expr, body, nam0, nam1 } => {
-        let is_global_0 = is_global_name(nam0);
-        let is_global_1 = is_global_name(nam1);
+        let is_global_0 = get_global_name_misc(nam0).is_some();
+        let is_global_1 = get_global_name_misc(nam1).is_some();
+        if is_global_0 && get_global_name_misc(nam0) != Some(rt::DP0) {
+          panic!("The name of the global dup var '{}' must start with '$0'.", nam0);
+        }
+        if is_global_1 && get_global_name_misc(nam1) != Some(rt::DP1) {
+          panic!("The name of the global dup var '{}' must start with '$1'.", nam1);
+        }
+        if is_global_0 != is_global_1 {
+          panic!("Both variables must be global: '{}' and '{}'.", nam0, nam1);
+        }
+        if is_global_0 && &nam0[2..] != &nam1[2..] {
+          panic!("Global dup names must be identical: '{}' and '{}'.", nam0, nam1);
+        }
         let new_nam0 = if is_global_0 { nam0.clone() } else { (ctx.fresh)() };
         let new_nam1 = if is_global_1 { nam1.clone() } else { (ctx.fresh)() };
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
@@ -333,7 +354,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         Box::new(term)
       }
       lang::Term::Let { name, expr, body } => {
-        if is_global_name(name) {
+        if get_global_name_misc(name).is_some() {
           panic!("Global variable '{}' not allowed on let. Use dup instead.", name);
         }
         let new_name = (ctx.fresh)();
@@ -348,7 +369,7 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         duplicator(&new_name, expr, body, ctx.uses)
       }
       lang::Term::Lam { name, body } => {
-        let is_global = is_global_name(name);
+        let is_global = get_global_name_misc(name).is_some();
         let mut new_name = if is_global { name.clone() } else { (ctx.fresh)() };
         let got_name = tbl.remove(name);
         if !is_global {
@@ -1128,21 +1149,27 @@ pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> r
         if let Some((idx, _)) = vars.iter().enumerate().rev().find(|(_, var)| var == &name) {
           rt::Term::Var { bidx: idx as u64 }
         } else {
-          rt::Term::Glo { glob: hash(name) }
+          match get_global_name_misc(name) {
+            Some(rt::VAR) => rt::Term::Glo { glob: hash(name), misc: rt::VAR },
+            Some(rt::DP0) => rt::Term::Glo { glob: hash(&name[2..].to_string()), misc: rt::DP0 },
+            Some(rt::DP1) => rt::Term::Glo { glob: hash(&name[2..].to_string()), misc: rt::DP1 },
+            _ => panic!("Unexpected error."),
+          }
         }
       }
       lang::Term::Dup { nam0, nam1, expr, body } => {
         let eras = (nam0 == "*", nam1 == "*");
+        let glob = if get_global_name_misc(nam0).is_some() { hash(&nam0[2..].to_string()) } else { 0 };
         let expr = Box::new(convert_term(expr, book, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
         let body = Box::new(convert_term(body, book, depth + 2, vars));
         vars.pop();
         vars.pop();
-        rt::Term::Dup { eras, expr, body }
+        rt::Term::Dup { eras, glob, expr, body }
       }
       lang::Term::Lam { name, body } => {
-        let glob = if is_global_name(name) { hash(name) } else { 0 };
+        let glob = if get_global_name_misc(name).is_some() { hash(name) } else { 0 };
         let eras = name == "*";
         vars.push(name.clone());
         let body = Box::new(convert_term(body, book, depth + 1, vars));
@@ -1190,29 +1217,45 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
     if let rt::RuleBodyCell::Ptr { value, targ: var_targ, slot: var_slot } = elem {
       let tag = rt::get_tag(value);
       if tag <= rt::VAR {
-        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] =
-          rt::RuleBodyCell::Ptr { value: rt::Arg(0), targ, slot };
+        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] = rt::RuleBodyCell::Ptr { value: rt::Arg(0), targ, slot };
       }
     }
   }
-  fn alloc_lam(globs: &mut HashMap<u64, u64>, nodes: &mut Vec<rt::RuleBodyNode>, glob: u64) -> u64 {
-    if let Some(targ) = globs.get(&glob) {
+  fn alloc_lam(lams: &mut HashMap<u64, u64>, nodes: &mut Vec<rt::RuleBodyNode>, glob: u64) -> u64 {
+    if let Some(targ) = lams.get(&glob) {
       *targ
     } else {
       let targ = nodes.len() as u64;
       nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 2]);
       link(nodes, targ, 0, rt::RuleBodyCell::Val { value: rt::Era() });
       if glob != 0 {
-        globs.insert(glob, targ);
+        lams.insert(glob, targ);
       }
-      targ
+      return targ;
+    }
+  }
+  fn alloc_dup(dups: &mut HashMap<u64, (u64,u64)>, nodes: &mut Vec<rt::RuleBodyNode>, links: &mut Vec<(u64, u64, rt::RuleBodyCell)>, dupk: &mut u64, glob: u64) -> (u64, u64) {
+    if let Some(got) = dups.get(&glob) {
+      return got.clone();
+    } else {
+      let dupc = *dupk;
+      let targ = nodes.len() as u64;
+      *dupk += 1;
+      nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 3]);
+      if glob != 0 {
+        links.push((targ, 0, rt::RuleBodyCell::Val { value: rt::Era() }));
+        links.push((targ, 1, rt::RuleBodyCell::Val { value: rt::Era() }));
+        dups.insert(glob, (targ, dupc));
+      }
+      return (targ, dupc);
     }
   }
   fn gen_elems(
     term: &rt::Term,
     dupk: &mut u64,
     vars: &mut Vec<rt::RuleBodyCell>,
-    globs: &mut HashMap<u64, u64>,
+    lams: &mut HashMap<u64, u64>,
+    dups: &mut HashMap<u64, (u64,u64)>,
     nodes: &mut Vec<rt::RuleBodyNode>,
     links: &mut Vec<(u64, u64, rt::RuleBodyCell)>,
   ) -> rt::RuleBodyCell {
@@ -1224,38 +1267,48 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
           panic!("unbound variable.");
         }
       }
-      rt::Term::Glo { glob } => {
-        let targ = alloc_lam(globs, nodes, *glob);
-        rt::RuleBodyCell::Ptr { value: rt::Var(0), targ, slot: 0 }
+      rt::Term::Glo { glob, misc } => {
+        match *misc {
+          rt::VAR => {
+            let targ = alloc_lam(lams, nodes, *glob);
+            return rt::RuleBodyCell::Ptr { value: rt::Var(0), targ, slot: 0 };
+          }
+          rt::DP0 => {
+            let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
+            return rt::RuleBodyCell::Ptr { value: rt::Dp0(dupc, 0), targ, slot: 0 };
+          }
+          rt::DP1 => {
+            let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
+            return rt::RuleBodyCell::Ptr { value: rt::Dp1(dupc, 0), targ, slot: 0 };
+          }
+          _ => {
+            panic!("Unexpected error.");
+          }
+        }
       }
-      rt::Term::Dup { eras: _, expr, body } => {
-        let targ = nodes.len() as u64;
-        nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 3]);
-        //let dupk = dups_count.next();
-        links.push((targ, 0, rt::RuleBodyCell::Val { value: rt::Era() }));
-        links.push((targ, 1, rt::RuleBodyCell::Val { value: rt::Era() }));
-        let expr = gen_elems(expr, dupk, vars, globs, nodes, links);
+      rt::Term::Dup { eras: _, glob, expr, body } => {
+        let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
+        let expr = gen_elems(expr, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 2, expr));
-        vars.push(rt::RuleBodyCell::Ptr { value: rt::Dp0(*dupk, 0), targ, slot: 0 });
-        vars.push(rt::RuleBodyCell::Ptr { value: rt::Dp1(*dupk, 0), targ, slot: 0 });
-        *dupk = *dupk + 1;
-        let body = gen_elems(body, dupk, vars, globs, nodes, links);
+        vars.push(rt::RuleBodyCell::Ptr { value: rt::Dp0(dupc, 0), targ, slot: 0 });
+        vars.push(rt::RuleBodyCell::Ptr { value: rt::Dp1(dupc, 0), targ, slot: 0 });
+        let body = gen_elems(body, dupk, vars, lams, dups, nodes, links);
         vars.pop();
         vars.pop();
         body
       }
       rt::Term::Let { expr, body } => {
-        let expr = gen_elems(expr, dupk, vars, globs, nodes, links);
+        let expr = gen_elems(expr, dupk, vars, lams, dups, nodes, links);
         vars.push(expr);
-        let body = gen_elems(body, dupk, vars, globs, nodes, links);
+        let body = gen_elems(body, dupk, vars, lams, dups, nodes, links);
         vars.pop();
         body
       }
       rt::Term::Lam { eras: _, glob, body } => {
-        let targ = alloc_lam(globs, nodes, *glob);
+        let targ = alloc_lam(lams, nodes, *glob);
         let var = rt::RuleBodyCell::Ptr { value: rt::Var(0), targ, slot: 0 };
         vars.push(var);
-        let body = gen_elems(body, dupk, vars, globs, nodes, links);
+        let body = gen_elems(body, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 1, body));
         vars.pop();
         rt::RuleBodyCell::Ptr { value: rt::Lam(0), targ, slot: 0 }
@@ -1263,9 +1316,9 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
       rt::Term::App { func, argm } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 2]);
-        let func = gen_elems(func, dupk, vars, globs, nodes, links);
+        let func = gen_elems(func, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 0, func));
-        let argm = gen_elems(argm, dupk, vars, globs, nodes, links);
+        let argm = gen_elems(argm, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 1, argm));
         rt::RuleBodyCell::Ptr { value: rt::App(0), targ, slot: 0 }
       }
@@ -1274,7 +1327,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
           let targ = nodes.len() as u64;
           nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
-            let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
+            let arg = gen_elems(arg, dupk, vars, lams, dups, nodes, links);
             links.push((targ, i as u64, arg));
           }
           rt::RuleBodyCell::Ptr { value: rt::Fun(*func, 0), targ, slot: 0 }
@@ -1287,7 +1340,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
           let targ = nodes.len() as u64;
           nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; args.len() as usize]);
           for (i, arg) in args.iter().enumerate() {
-            let arg = gen_elems(arg, dupk, vars, globs, nodes, links);
+            let arg = gen_elems(arg, dupk, vars, lams, dups, nodes, links);
             links.push((targ, i as u64, arg));
           }
           rt::RuleBodyCell::Ptr { value: rt::Ctr(*func, 0), targ, slot: 0 }
@@ -1299,9 +1352,9 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
       rt::Term::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 2]);
-        let val0 = gen_elems(val0, dupk, vars, globs, nodes, links);
+        let val0 = gen_elems(val0, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 0, val0));
-        let val1 = gen_elems(val1, dupk, vars, globs, nodes, links);
+        let val1 = gen_elems(val1, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 1, val1));
         rt::RuleBodyCell::Ptr { value: rt::Op2(*oper, 0), targ, slot: 0 }
       }
@@ -1310,11 +1363,12 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
 
   let mut links: Vec<(u64, u64, rt::RuleBodyCell)> = Vec::new();
   let mut nodes: Vec<rt::RuleBodyNode> = Vec::new();
-  let mut globs: HashMap<u64, u64> = HashMap::new();
+  let mut lams: HashMap<u64, u64> = HashMap::new();
+  let mut dups: HashMap<u64, (u64,u64)> = HashMap::new();
   let mut vars: Vec<rt::RuleBodyCell> = (0..free_vars).map(|i| rt::RuleBodyCell::Var { index: i }).collect();
   let mut dupk: u64 = 0;
 
-  let elem = gen_elems(term, &mut dupk, &mut vars, &mut globs, &mut nodes, &mut links);
+  let elem = gen_elems(term, &mut dupk, &mut vars, &mut lams, &mut dups, &mut nodes, &mut links);
   for (targ, slot, elem) in links {
     link(&mut nodes, targ, slot, elem);
   }

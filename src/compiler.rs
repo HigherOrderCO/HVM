@@ -344,14 +344,8 @@ fn compile_func_rule_term(
   term: &rt::Term,
   vars: &[rt::RuleVar],
 ) -> String {
-  fn alloc_lam(
-    code: &mut String,
-    tab: u64,
-    nams: &mut u64,
-    globs: &mut HashMap<u64, String>,
-    glob: u64,
-  ) -> String {
-    if let Some(got) = globs.get(&glob) {
+  fn alloc_lam(code: &mut String, tab: u64, nams: &mut u64, lams: &mut HashMap<u64, String>, glob: u64) -> String {
+    if let Some(got) = lams.get(&glob) {
       got.clone()
     } else {
       let name = fresh(nams, "lam");
@@ -360,9 +354,25 @@ fn compile_func_rule_term(
         // FIXME: sanitizer still can't detect if a scopeless lambda doesn't use its bound
         // variable, so we must write an Era() here. When it does, we can remove this line.
         line(code, tab, &format!("link(heap, {} + 0, Era());", name));
-        globs.insert(glob, name.clone());
+        lams.insert(glob, name.clone());
       }
       name
+    }
+  }
+  fn alloc_dup(code: &mut String, tab: u64, nams: &mut u64, dups: &mut HashMap<u64, (String,String)>, glob: u64) -> (String, String) {
+    if let Some(got) = dups.get(&glob) {
+      return got.clone();
+    } else {
+      let coln = fresh(nams, "col");
+      let name = fresh(nams, "dup");
+      line(code, tab + 1, &format!("let {} = gen_dup(heap, tid);", coln));
+      line(code, tab + 1, &format!("let {} = alloc(heap, tid, 3);", name));
+      if glob != 0 {
+        line(code, tab, &format!("link(heap, {} + 0, Era());", name)); // FIXME: remove when possible (same as above)
+        line(code, tab, &format!("link(heap, {} + 1, Era());", name)); // FIXME: remove when possible (same as above)
+        dups.insert(glob, (coln.clone(), name.clone()));
+      }
+      return (coln, name);
     }
   }
   fn compile_term(
@@ -370,7 +380,8 @@ fn compile_func_rule_term(
     tab: u64,
     vars: &mut Vec<String>,
     nams: &mut u64,
-    globs: &mut HashMap<u64, String>,
+    lams: &mut HashMap<u64, String>,
+    dups: &mut HashMap<u64, (String,String)>,
     term: &rt::Term,
   ) -> String {
     const INLINE_NUMBERS: bool = true;
@@ -384,18 +395,29 @@ fn compile_func_rule_term(
           panic!("Unbound variable.");
         }
       }
-      rt::Term::Glo { glob } => {
-        format!("Var({})", alloc_lam(code, tab, nams, globs, *glob))
+      rt::Term::Glo { glob, misc } => {
+        match *misc {
+          rt::VAR => {
+            return format!("Var({})", alloc_lam(code, tab, nams, lams, *glob));
+          }
+          rt::DP0 => {
+            let (coln, name) = alloc_dup(code, tab, nams, dups, *glob);
+            return format!("Dp0({}, {})", coln, name);
+          }
+          rt::DP1 => {
+            let (coln, name) = alloc_dup(code, tab, nams, dups, *glob);
+            return format!("Dp1({}, {})", coln, name);
+          }
+          _ => {
+            panic!("Unexpected error.");
+          }
+        }
       }
-      rt::Term::Dup { eras, expr, body } => {
-        //if INLINE_NUMBERS {
-        //line(code, tab + 0, &format!("if (get_tag({}) == NUM && get_tag({}) == NUM) {{", val0, val1));
-        //}
-
+      rt::Term::Dup { eras, glob, expr, body } => {
         let copy = fresh(nams, "cpy");
         let dup0 = fresh(nams, "dp0");
         let dup1 = fresh(nams, "dp1");
-        let expr = compile_term(code, tab, vars, nams, globs, expr);
+        let expr = compile_term(code, tab, vars, nams, lams, dups, expr);
         line(code, tab, &format!("let {} = {};", copy, expr));
         line(code, tab, &format!("let {};", dup0));
         line(code, tab, &format!("let {};", dup1));
@@ -406,12 +428,7 @@ fn compile_func_rule_term(
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
           line(code, tab + 0, "} else {");
         }
-        let name = fresh(nams, "dup");
-        let coln = fresh(nams, "col");
-        //let colx = *dups;
-        //*dups += 1;
-        line(code, tab + 1, &format!("let {} = alloc(heap, tid, 3);", name));
-        line(code, tab + 1, &format!("let {} = gen_dup(heap, tid);", coln));
+        let (coln, name) = alloc_dup(code, tab, nams, dups, *glob);
         if eras.0 {
           line(code, tab + 1, &format!("link(heap, {} + 0, Era());", name));
         }
@@ -426,22 +443,22 @@ fn compile_func_rule_term(
         }
         vars.push(dup0);
         vars.push(dup1);
-        let body = compile_term(code, tab + 0, vars, nams, globs, body);
+        let body = compile_term(code, tab + 0, vars, nams, lams, dups, body);
         vars.pop();
         vars.pop();
         body
       }
       rt::Term::Let { expr, body } => {
-        let expr = compile_term(code, tab, vars, nams, globs, expr);
+        let expr = compile_term(code, tab, vars, nams, lams, dups, expr);
         vars.push(expr);
-        let body = compile_term(code, tab, vars, nams, globs, body);
+        let body = compile_term(code, tab, vars, nams, lams, dups, body);
         vars.pop();
         body
       }
       rt::Term::Lam { eras, glob, body } => {
-        let name = alloc_lam(code, tab, nams, globs, *glob);
+        let name = alloc_lam(code, tab, nams, lams, *glob);
         vars.push(format!("Var({})", name));
-        let body = compile_term(code, tab, vars, nams, globs, body);
+        let body = compile_term(code, tab, vars, nams, lams, dups, body);
         vars.pop();
         if *eras {
           line(code, tab, &format!("link(heap, {} + 0, Era());", name));
@@ -451,15 +468,15 @@ fn compile_func_rule_term(
       }
       rt::Term::App { func, argm } => {
         let name = fresh(nams, "app");
-        let func = compile_term(code, tab, vars, nams, globs, func);
-        let argm = compile_term(code, tab, vars, nams, globs, argm);
+        let func = compile_term(code, tab, vars, nams, lams, dups, func);
+        let argm = compile_term(code, tab, vars, nams, lams, dups, argm);
         line(code, tab, &format!("let {} = alloc(heap, tid, 2);", name));
         line(code, tab, &format!("link(heap, {} + 0, {});", name, func));
         line(code, tab, &format!("link(heap, {} + 1, {});", name, argm));
         format!("App({})", name)
       }
       rt::Term::Ctr { func, args } => {
-        let ctr_args: Vec<String> = args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
+        let ctr_args: Vec<String> = args.iter().map(|arg| compile_term(code, tab, vars, nams, lams, dups, arg)).collect();
         let name = fresh(nams, "ctr");
         line(code, tab, &format!("let {} = alloc(heap, tid, {});", name, ctr_args.len()));
         for (i, arg) in ctr_args.iter().enumerate() {
@@ -469,7 +486,7 @@ fn compile_func_rule_term(
       }
       rt::Term::Fun { func, args } => {
         let cal_args: Vec<String> =
-          args.iter().map(|arg| compile_term(code, tab, vars, nams, globs, arg)).collect();
+          args.iter().map(|arg| compile_term(code, tab, vars, nams, lams, dups, arg)).collect();
         let name = fresh(nams, "cal");
         line(code, tab, &format!("let {} = alloc(heap, tid, {});", name, cal_args.len()));
         for (i, arg) in cal_args.iter().enumerate() {
@@ -483,8 +500,8 @@ fn compile_func_rule_term(
       rt::Term::Op2 { oper, val0, val1 } => {
         let retx = fresh(nams, "ret");
         let name = fresh(nams, "op2");
-        let val0 = compile_term(code, tab, vars, nams, globs, val0);
-        let val1 = compile_term(code, tab, vars, nams, globs, val1);
+        let val0 = compile_term(code, tab, vars, nams, lams, dups, val0);
+        let val1 = compile_term(code, tab, vars, nams, lams, dups, val1);
         line(code, tab + 0, &format!("let {};", retx));
         // Optimization: do inline operation, avoiding Op2 allocation, when operands are already number
         if INLINE_NUMBERS {
@@ -564,8 +581,9 @@ fn compile_func_rule_term(
       }
     })
     .collect();
-  let mut globs: HashMap<u64, String> = HashMap::new();
-  compile_term(code, tab, &mut vars, &mut nams, &mut globs, term)
+  let mut lams: HashMap<u64, String> = HashMap::new();
+  let mut dups: HashMap<u64, (String,String)> = HashMap::new();
+  compile_term(code, tab, &mut vars, &mut nams, &mut lams, &mut dups, term)
 }
 
 fn get_var(var: &rt::RuleVar) -> String {
