@@ -421,11 +421,11 @@ impl Runtime {
   }
 
   pub fn free(&mut self, loc: u64, size: u64) {
-    return runtime::free(&self.heap, loc, size); // FIXME tid?
+    return runtime::free(&self.heap, 0, loc, size); // FIXME tid?
   }
 
   pub fn collect(&mut self, term: Ptr) {
-    return runtime::collect(&self.heap, &self.prog, term); // FIXME tid?
+    return runtime::collect(&self.heap, &self.prog, 0, term); // FIXME tid?
   }
 
 }

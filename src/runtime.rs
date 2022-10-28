@@ -175,7 +175,7 @@
 
 use std::borrow::Cow;
 use std::collections::{hash_map, HashMap};
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicI64, AtomicUsize, Ordering};
 use crossbeam::utils::{CachePadded, Backoff};
 
 // Constants
@@ -338,7 +338,7 @@ pub struct Program {
 #[derive(Debug)]
 pub struct LocalVars {
   pub tid: usize,
-  pub used: AtomicU64, // number of used memory cells
+  pub used: AtomicI64, // number of used memory cells
   pub next: AtomicU64, // next alloc index
   pub amin: AtomicU64, // min alloc index
   pub amax: AtomicU64, // max alloc index
@@ -357,6 +357,7 @@ pub struct Heap {
 }
 
 fn available_parallelism() -> usize {
+  //return 1;
   return std::thread::available_parallelism().unwrap().get();
 }
 
@@ -364,6 +365,7 @@ fn available_parallelism() -> usize {
 // ------------
 
 const HEAP_SIZE : usize = 4 * CELLS_PER_GB;
+//const HEAP_SIZE : usize = 65536;
 
 pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
   return unsafe { Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice()))) }
@@ -379,7 +381,7 @@ pub fn new_heap() -> Heap {
   for tid in 0 .. tids {
     lvar.push(CachePadded::new(LocalVars {
       tid: tid,
-      used: AtomicU64::new(0),
+      used: AtomicI64::new(0),
       next: AtomicU64::new((HEAP_SIZE / tids * (tid + 0)) as u64),
       amin: AtomicU64::new((HEAP_SIZE / tids * (tid + 0)) as u64),
       amax: AtomicU64::new((HEAP_SIZE / tids * (tid + 1)) as u64),
@@ -488,8 +490,8 @@ pub fn get_cost(heap: &Heap) -> u64 {
   heap.lvar.iter().map(|x| x.cost.load(Ordering::Relaxed)).sum()
 }
 
-pub fn get_used(heap: &Heap) -> u64 {
-  heap.lvar.iter().map(|x| x.cost.load(Ordering::Relaxed)).sum()
+pub fn get_used(heap: &Heap) -> i64 {
+  heap.lvar.iter().map(|x| x.used.load(Ordering::Relaxed)).sum()
 }
 
 pub fn inc_cost(heap: &Heap, tid: usize) {
@@ -609,6 +611,7 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
         if length == arity {
           //println!("[{}] return", lvar.tid);
           //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
+          lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
           return *lvar.next.as_mut_ptr() - length;
         }
       }
@@ -616,7 +619,8 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
   }
 }
 
-pub fn free(heap: &Heap, loc: u64, arity: u64) {
+pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
+  heap.lvar[tid].used.fetch_sub(arity as i64, Ordering::Relaxed);
   for i in 0 .. arity {
     unsafe { heap.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
   }
@@ -638,7 +642,7 @@ pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, P
 }
 
 // Performs a global [x <- val] substitution atomically.
-pub fn atomic_subst(heap: &Heap, prog: &Program, var: Ptr, val: Ptr) {
+pub fn atomic_subst(heap: &Heap, prog: &Program, tid: usize, var: Ptr, val: Ptr) {
   loop {
     let arg_ptr = load_ptr(heap, get_loc(var, get_tag(var) & 0x01));
     if get_tag(arg_ptr) == ARG {
@@ -648,7 +652,7 @@ pub fn atomic_subst(heap: &Heap, prog: &Program, var: Ptr, val: Ptr) {
       }
     }
     if get_tag(arg_ptr) == ERA {
-      collect(heap, prog, val); // safe, since `val` is owned by this thread
+      collect(heap, prog, tid, val); // safe, since `val` is owned by this thread
       return;
     }
   }
@@ -657,50 +661,121 @@ pub fn atomic_subst(heap: &Heap, prog: &Program, var: Ptr, val: Ptr) {
 // Garbage Collection
 // ------------------
 
-pub fn collect(heap: &Heap, prog: &Program, term: Ptr) {
-  let mut stack: Vec<Ptr> = Vec::new();
+// As soon as we detect an expression is unreachable, i.e., when it is applied to a lambda or
+// function that doesn't use its argument, we call `collect()` on it. Since the expression is now
+// implicitly "owned" by this thread, we're allowed to traverse the structure and fully free its
+// memory. There are some complications, though: lambdas, duplications, and their respective
+// variables. When a lam is collected, we must first substitute its bound variable by `Era()`, and
+// then recurse. When a lam-bound variable is collected, we just link its argument to `Era()`. This
+// will allow lams to be collected properly in all scenarios.
+//
+// A. When the lam is collected before the var. Ex: λx (Pair 42 x)
+//    1. We substitute [x <- Era()] and recurse into the lam's body.
+//    2. When we reach x, it will be Era(), so there is nothing to do.
+//    3. All memory related to this lambda is freed.
+//    This is safe, because both are owned by this thread
+//
+// B. When the var is collected before the lam. Ex: (Pair x λx(42))
+//    1. We reach x and link the lam's argument to Era().
+//    2. When we reach the lam, its var will be Era(), so [Era() <- Era()] will do nothing.
+//    3. All memory related to this lambda is freed.
+//    This is safe, because both are owned by this thread.
+//
+// C. When the var is collected, but the lam isn't. Ex: (Pair x 42)
+//    1. We reach x and link the lam's argument to Era().
+//    2. The owner of the lam can still use it, and applying it will trigger collect().
+//    This is safe, because the lam arg field is owned by the thread that owns the var (this one).
+//
+// D. When the lam is collected, but the var isn't. Ex: (Pair λx(42) 777)
+//    1. We reach the lam and substitute [x <- Era()].
+//    2. The owner of var will now have an Era(), rather than an unbound variable.
+//    This is safe because, subst is atomic.
+//
+// As for dup nodes, the same idea applies. When a dup-bound variable is collected, we just link
+// its argument to Era(). The problem is, it is impossible to reach a dup node directly. Because
+// of that, if two threads collected the same dup, we'd have a memory leak: the dup node wouldn't
+// be freed, and the dup expression wouldn't be collected. As such, when we reach a dup-bound
+// variable, we also visit the dup node. Visiting dup nodes doesn't imply ownership, since a dup
+// node can be accessed through two different dup-bound variables. As such, we attempt to lock it.
+// If we can't have the lock, that means another thread is handling that dup, so we let it decide
+// what to do with it, and return. If we get the lock, then we now have ownership, so we check the
+// other argument. If it is Era(), that means this dup node was collected twice, so, we clear it
+// and collect its expression. Otherwise, we release the lock and let the owner of the other
+// variable decide what to do with it in a future. This covers most cases, but the is still a
+// problem: what if the other variable is contained inside the duplicated expression? For example,
+// the normal form of `(λf λx (f (f x)) λf λx (f (f x)))` is:
+//
+// λf λx b0
+// dup f0 f1 = f
+// dup b0 b1 = (f0 (f1 {b1 x}))
+// 
+// If we attempt to collect it with the algorithm above, we'll have:
+//
+// dup f0 f1 = ~
+// dup ~  b1 = (f0 (f1 {b1 ~}))
+//
+// That's because, once we reached `b0`, we replaced its respective arg by `Era()`, then locked its
+// dup node and checked the other arg, `b1`; since it isn't `Era()`, we released the lock and let
+// the owner of `b1` decide what to do. But `b1` is contained inside the expression, so it has no
+// owner anymore; it forms a cycle, and no other part of the program will access it! This will not
+// be handled by HVM's automatic collector and will be left as a memory leak. Under normal
+// circumstances, the leak is too minimal to be a problem. It could be eliminated by enabling an
+// external garbage collector (which would rarely need to be triggered), or avoided altogether by
+// not allowing inputs that can result in self-referential clones on the input language's type
+// system. Sadly, it is an issue that exists, and, for the time being, I'm not aware of a good
+// solution that maintains HVM philosophy of only including constant-time compute primitives.
+
+pub fn collect(heap: &Heap, prog: &Program, tid: usize, term: Ptr) {
+  let mut coll = Vec::new();
   let mut next = term;
-  //let mut dups : Vec<u64> = Vec::new();
   loop {
     let term = next;
     match get_tag(term) {
       DP0 => {
         link(heap, get_loc(term, 0), Era());
-        //atomic_subst(heap, lvar, prog, term, Era());
-        //link(heap, get_loc(term, 0), Era());
-        //dups.push(term);
+        if acquire_lock(heap, tid, term).is_ok() {
+          if get_tag(load_arg(heap, term, 1)) == ERA {
+            collect(heap, prog, tid, load_arg(heap, term, 2));
+            free(heap, tid, get_loc(term, 0), 3);
+          }
+          release_lock(heap, tid, term);
+        }
       }
       DP1 => {
         link(heap, get_loc(term, 1), Era());
-        //atomic_subst(heap, lvar, prog, term, Era());
-        //link(heap, get_loc(term, 1), Era());
-        //dups.push(term);
+        if acquire_lock(heap, tid, term).is_ok() {
+          if get_tag(load_arg(heap, term, 0)) == ERA {
+            collect(heap, prog, tid, load_arg(heap, term, 2));
+            free(heap, tid, get_loc(term, 0), 3);
+          }
+          release_lock(heap, tid, term);
+        }
       }
       VAR => {
         link(heap, get_loc(term, 0), Era());
       }
       LAM => {
-        //atomic_subst(heap, lvar, prog, Var(get_loc(term,0)), Era());
+        atomic_subst(heap, prog, tid, Var(get_loc(term,0)), Era());
         next = take_arg(heap, term, 1);
-        free(heap, get_loc(term, 0), 2);
+        free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
       APP => {
-        stack.push(take_arg(heap, term, 0));
+        coll.push(take_arg(heap, term, 0));
         next = take_arg(heap, term, 1);
-        free(heap, get_loc(term, 0), 2);
+        free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
       SUP => {
-        stack.push(take_arg(heap, term, 0));
+        coll.push(take_arg(heap, term, 0));
         next = take_arg(heap, term, 1);
-        free(heap, get_loc(term, 0), 2);
+        free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
       OP2 => {
-        stack.push(take_arg(heap, term, 0));
+        coll.push(take_arg(heap, term, 0));
         next = take_arg(heap, term, 1);
-        free(heap, get_loc(term, 0), 2);
+        free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
       NUM => {}
@@ -708,33 +783,24 @@ pub fn collect(heap: &Heap, prog: &Program, term: Ptr) {
         let arity = ask_ari(prog, term);
         for i in 0 .. arity {
           if i < arity - 1 {
-            stack.push(take_arg(heap, term, i));
+            coll.push(take_arg(heap, term, i));
           } else {
             next = take_arg(heap, term, i);
           }
         }
-        free(heap, get_loc(term, 0), arity);
+        free(heap, tid, get_loc(term, 0), arity);
         if arity > 0 {
           continue;
         }
       }
       _ => {}
     }
-    if let Some(got) = stack.pop() {
+    if let Some(got) = coll.pop() {
       next = got;
     } else {
       break;
     }
   }
-  // TODO: add this to the C version
-  //for dup in dups {
-    //let fst = ask_arg(rt, dup, 0);
-    //let snd = ask_arg(rt, dup, 1);
-    //if get_tag(fst) == ERA && get_tag(snd) == ERA {
-      //collect(rt, ask_arg(rt, dup, 2));
-      //free(heap, get_loc(dup, 0), 3);
-    //}
-  //}
 }
 
 pub fn alloc_body(heap: &Heap, tid: usize, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
@@ -806,10 +872,10 @@ pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
 fn app_lam(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr) {
   //println!("app-lam");
   inc_cost(heap, tid);
-  atomic_subst(heap, prog, Var(get_loc(arg0, 0)), take_arg(heap, term, 1));
+  atomic_subst(heap, prog, tid, Var(get_loc(arg0, 0)), take_arg(heap, term, 1));
   link(heap, host, take_arg(heap, arg0, 1));
-  free(heap, get_loc(term, 0), 2);
-  free(heap, get_loc(arg0, 0), 2);
+  free(heap, tid, get_loc(term, 0), 2);
+  free(heap, tid, get_loc(arg0, 0), 2);
 }
 
 // ({a b} c)
@@ -854,15 +920,15 @@ fn dup_lam(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
   link(heap, lam0 + 1, Dp0(get_ext(term), let0));
   link(heap, lam1 + 1, Dp1(get_ext(term), let0));
 
-  atomic_subst(heap, prog, Var(get_loc(arg0, 0)), Sup(get_ext(term), par0));
-  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Lam(lam0));
-  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Lam(lam1));
+  atomic_subst(heap, prog, tid, Var(get_loc(arg0, 0)), Sup(get_ext(term), par0));
+  atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), Lam(lam0));
+  atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), Lam(lam1));
 
   let done = Lam(if get_tag(term) == DP0 { lam0 } else { lam1 });
   link(heap, host, done);
 
-  free(heap, get_loc(term, 0), 3);
-  free(heap, get_loc(arg0, 0), 2);
+  free(heap, tid, get_loc(term, 0), 3);
+  free(heap, tid, get_loc(arg0, 0), 2);
 }
 
 // dup x y = {a b}
@@ -873,13 +939,13 @@ fn dup_lam(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
 fn dup_sup_0(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
   inc_cost(heap, tid);
   //println!("A");
-  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), take_arg(heap, arg0, 0));
+  atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), take_arg(heap, arg0, 0));
   //println!("B");
-  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), take_arg(heap, arg0, 1));
+  atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), take_arg(heap, arg0, 1));
   //println!("C");
   //link(heap, host, take_arg(heap, arg0, if get_tag(term) == DP0 { 0 } else { 1 })); // <- FIXME: WTF lol
-  free(heap, get_loc(term, 0), 3);
-  free(heap, get_loc(arg0, 0), 2);
+  free(heap, tid, get_loc(term, 0), 3);
+  free(heap, tid, get_loc(arg0, 0), 2);
   //println!("[{}] unlocks {}", lvar.tid, get_loc(term, 0));
 }
 
@@ -903,10 +969,10 @@ fn dup_sup_1(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0
   link(heap, par0 + 0, Dp0(tcol, let0));
   link(heap, par0 + 1, Dp0(tcol, let1));
   //println!("A");
-  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Sup(get_ext(arg0), par0));
-  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Sup(get_ext(arg0), par1));
+  atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), Sup(get_ext(arg0), par0));
+  atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), Sup(get_ext(arg0), par1));
   //println!("B");
-  free(heap, get_loc(term, 0), 3);
+  free(heap, tid, get_loc(term, 0), 3);
 }
 
 // dup x y = N
@@ -917,9 +983,9 @@ fn dup_sup_1(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0
 #[inline(always)]
 fn dup_num(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
   inc_cost(heap, tid);
-  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), arg0);
-  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), arg0);
-  free(heap, get_loc(term, 0), 3);
+  atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), arg0);
+  atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), arg0);
+  free(heap, tid, get_loc(term, 0), 3);
 }
 
 // dup x y = (K a b c ...)
@@ -936,10 +1002,10 @@ fn dup_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
   let fnid = get_ext(arg0);
   let arit = ask_ari(prog, arg0);
   if arit == 0 {
-    atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Ctr(fnid, 0));
-    atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Ctr(fnid, 0));
+    atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), Ctr(fnid, 0));
+    atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), Ctr(fnid, 0));
     link(heap, host, Ctr(fnid, 0));
-    free(heap, get_loc(term, 0), 3);
+    free(heap, tid, get_loc(term, 0), 3);
   } else {
     let ctr0 = get_loc(arg0, 0);
     let ctr1 = alloc(heap, tid, arit);
@@ -953,11 +1019,11 @@ fn dup_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
     link(heap, leti + 2, take_arg(heap, arg0, arit - 1));
     link(heap, ctr0 + arit - 1, Dp0(get_ext(term), leti));
     link(heap, ctr1 + arit - 1, Dp1(get_ext(term), leti));
-    atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Ctr(fnid, ctr0));
-    atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Ctr(fnid, ctr1));
+    atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), Ctr(fnid, ctr0));
+    atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), Ctr(fnid, ctr1));
     //let done = Ctr(fnid, if get_tag(term) == DP0 { ctr0 } else { ctr1 });
     //link(heap, host, done);
-    free(heap, get_loc(term, 0), 3);
+    free(heap, tid, get_loc(term, 0), 3);
   }
 }
 
@@ -968,10 +1034,10 @@ fn dup_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
 #[inline(always)]
 fn dup_era(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
   inc_cost(heap, tid);
-  atomic_subst(heap, prog, Dp0(tcol, get_loc(term, 0)), Era());
-  atomic_subst(heap, prog, Dp1(tcol, get_loc(term, 0)), Era());
+  atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), Era());
+  atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), Era());
   link(heap, host, Era());
-  free(heap, get_loc(term, 0), 3);
+  free(heap, tid, get_loc(term, 0), 3);
 }
 
 // (+ a b)
@@ -1003,7 +1069,7 @@ fn op2_num(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
   };
   let done = Num(c);
   link(heap, host, done);
-  free(heap, get_loc(term, 0), 2);
+  free(heap, tid, get_loc(term, 0), 2);
 }
 
 // (+ {a0 a1} b)
@@ -1162,15 +1228,15 @@ fn fun_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, fid: u
         // Collects unused variables
         for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
           if *erase {
-            collect(heap, prog, get_var(heap, term, var));
+            collect(heap, prog, tid, get_var(heap, term, var));
           }
         }
 
         // free the matched ctrs
         for (i, arity) in &rule.free {
-          free(heap, get_loc(load_arg(heap, term, *i as u64), 0), *arity);
+          free(heap, tid, get_loc(load_arg(heap, term, *i as u64), 0), *arity);
         }
-        free(heap, get_loc(term, 0), function.arity);
+        free(heap, tid, get_loc(term, 0), function.arity);
 
         return true;
       }
@@ -1332,23 +1398,26 @@ impl VisitQueue {
   }
 }
 
+// Locks
+// -----
+
+const LOCK_OPEN : u8 = 0xFF;
+
+fn acquire_lock(heap: &Heap, tid: usize, term: Ptr) -> Result<u8, u8> {
+  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
+  locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
+}
+
+fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
+  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
+  locker.store(LOCK_OPEN, Ordering::Release)
+}
+
 // Reduce
 // ------
 
 pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
-  println!("reduce root={} threads={}", root, tids.len());
-
-  // Lock utils
-  const LOCK_OPEN : u8 = 0xFF;
-  fn get_locker(heap: &Heap, term: Ptr, tid: usize) -> &AtomicU8 {
-    unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) }
-  }
-  fn acquire_lock(locker: &AtomicU8, tid: usize) -> Result<u8, u8> {
-    locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
-  }
-  fn release_lock(locker: &AtomicU8) {
-    locker.store(LOCK_OPEN, Ordering::Release)
-  }
+  //println!("reduce root={} threads={}", root, tids.len());
 
   // Halting flag
   let stop = &AtomicBool::new(false);
@@ -1375,7 +1444,14 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
         let mut cont = if tid == tids[0] { REDEX_CONT_RET } else { 0 };
         let mut host = if tid == tids[0] { root } else { 0 };
 
+        //let mut count = 0;
+
         'main: loop {
+          //count += 1;
+          //if count > 100 {
+            //std::process::exit(1);
+          //}
+          //println!("[{}] reduce {}\n{}\n\n", tid, count, show_term(heap, prog, load_ptr(heap, root), load_ptr(heap, host)));
           //println!("[{}] loop {:?}", tid, &heap.node[0 .. 256]);
           //println!("[{}] loop work={} init={} cont={} host={} visit={} delay={} stop={} count={} | {}", tid, work, init, cont, host, visit.len(), delay.len(), stop.load(Ordering::Relaxed), count, show_ptr(load_ptr(heap, host)));
           if work {
@@ -1392,8 +1468,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                   continue 'main;
                 }
                 DP0 | DP1 => {
-                  let locker = get_locker(heap, term, tid);
-                  match acquire_lock(locker, tid) {
+                  match acquire_lock(heap, tid, term) {
                     Err(locker_tid) => {
                       delay.push(new_visit(host, cont));
                       work = false;
@@ -1403,7 +1478,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                     Ok(_) => {
                       // If the term changed, release lock and try again
                       if term != load_ptr(heap, host) {
-                        release_lock(locker);
+                        release_lock(heap, tid, term);
                         continue 'main;
                       }
                       //locks = locks + 1;
@@ -1488,7 +1563,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                     //println!("dup-lam");
                     dup_lam(heap, prog, tid, host, term, arg0, tcol);
                     //locks = locks - 1;
-                    release_lock(get_locker(heap, term, tid));
+                    release_lock(heap, tid, term);
                     work = true;
                     init = true;
                     continue 'main;
@@ -1497,14 +1572,14 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                     if tcol == get_ext(arg0) {
                       dup_sup_0(heap, prog, tid, host, term, arg0, tcol);
                       //locks = locks - 1;
-                      release_lock(get_locker(heap, term, tid));
+                      release_lock(heap, tid, term);
                       work = true;
                       init = true;
                       continue 'main;
                     } else {
                       dup_sup_1(heap, prog, tid, host, term, arg0, tcol);
                       //locks = locks - 1;
-                      release_lock(get_locker(heap, term, tid));
+                      release_lock(heap, tid, term);
                       work = true;
                       init = true;
                       continue 'main;
@@ -1512,27 +1587,27 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                   } else if get_tag(arg0) == NUM {
                     dup_num(heap, prog, tid, host, term, arg0, tcol);
                     //locks = locks - 1;
-                    release_lock(get_locker(heap, term, tid));
+                    release_lock(heap, tid, term);
                     work = true;
                     init = true;
                     continue 'main;
                   } else if get_tag(arg0) == CTR {
                     dup_ctr(heap, prog, tid, host, term, arg0, tcol);
                     //locks = locks - 1;
-                    release_lock(get_locker(heap, term, tid));
+                    release_lock(heap, tid, term);
                     work = true;
                     init = true;
                     continue 'main;
                   } else if get_tag(arg0) == ERA {
                     dup_era(heap, prog, tid, host, term, arg0, tcol);
                     //locks = locks - 1;
-                    release_lock(get_locker(heap, term, tid));
+                    release_lock(heap, tid, term);
                     work = true;
                     init = true;
                     continue 'main;
                   } else {
                     //locks = locks - 1;
-                    release_lock(get_locker(heap, term, tid));
+                    release_lock(heap, tid, term);
                   }
                 }
                 OP2 => {
@@ -1554,8 +1629,8 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                       //normalize(heap, lvars, prog, msge);
                       //println!("{}", crate::readback::as_code(heap, lvars, prog, msge));
                       //link(heap, host, load_arg(heap, term, 1));
-                      //free(heap, get_loc(term, 0), 2);
-                      //collect(heap, lvar, prog, ask_lnk(heap, msge));
+                      //free(heap, tid, get_loc(term, 0), 2);
+                      //collect(heap, lvar, tid, prog, ask_lnk(heap, msge));
                       //init = true;
                       //continue;
                     //}
@@ -1569,8 +1644,8 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                         //println!("{}", code);
                       //}
                       //link(heap, host, load_arg(heap, term, 1));
-                      //free(heap, get_loc(term, 0), 2);
-                      //collect(heap, lvar, prog, ask_lnk(heap, msge));
+                      //free(heap, tid, get_loc(term, 0), 2);
+                      //collect(heap, lvar, tid, prog, ask_lnk(heap, msge));
                       //init = true;
                       //continue;
                     //}
@@ -1723,18 +1798,19 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &
           for (rec_num, rec_loc) in rec_loc.iter().enumerate() {
             let (rec_tids, new_tids) = tids.split_at(if rec_num == rec_len - 1 { tids.len() } else { spt_len });
             //println!("~ rec_loc {} gets {} threads", rec_loc, rec_lvars.len());
-            let new_loc;
-            if thd_len == rec_len {
-              new_loc = alloc(heap, rec_tids[0], 1);
-              move_ptr(heap, *rec_loc, new_loc);
-            } else {
-              new_loc = *rec_loc;
-            }
+            //let new_loc;
+            //if thd_len == rec_len {
+              //new_loc = alloc(heap, rec_tids[0], 1);
+              //move_ptr(heap, *rec_loc, new_loc);
+            //} else {
+              //new_loc = *rec_loc;
+            //}
+            let new_loc = *rec_loc;
             s.spawn(move || {
               let ptr = normal(heap, prog, rec_tids, new_loc, visited);
-              if thd_len == rec_len {
-                move_ptr(heap, new_loc, *rec_loc);
-              }
+              //if thd_len == rec_len {
+                //move_ptr(heap, new_loc, *rec_loc);
+              //}
               link(heap, *rec_loc, ptr);
             });
             tids = new_tids;
@@ -1798,7 +1874,7 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
           // IO.done a : (IO a)
           IO_DONE => {
             let done = ask_arg(heap, term, 0);
-            free(heap, get_loc(term, 0), 1);
+            free(heap, 0, get_loc(term, 0), 1);
             link(heap, host, done);
             println!("");
             println!("");
@@ -1811,7 +1887,7 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
             let app0 = alloc(heap, tids[0], 2);
             link(heap, app0 + 0, cont);
             link(heap, app0 + 1, text);
-            free(heap, get_loc(term, 0), 1);
+            free(heap, 0, get_loc(term, 0), 1);
             let done = App(app0);
             link(heap, host, done);
           }
@@ -1824,9 +1900,9 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
               let app0 = alloc(heap, tids[0], 2);
               link(heap, app0 + 0, cont);
               link(heap, app0 + 1, Num(0));
-              free(heap, get_loc(term, 0), 2);
+              free(heap, 0, get_loc(term, 0), 2);
               let text = ask_arg(heap, term, 0);
-              collect(heap, prog, text);
+              collect(heap, prog, 0, text);
               let done = App(app0);
               link(heap, host, done);
             } else {
@@ -1844,9 +1920,9 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
               let text = make_string(heap, tids[0], &body);
               link(heap, app0 + 0, cont);
               link(heap, app0 + 1, text);
-              free(heap, get_loc(term, 0), 3);
+              free(heap, 0, get_loc(term, 0), 3);
               let opts = ask_arg(heap, term, 1); // FIXME: use options
-              collect(heap, prog, opts);
+              collect(heap, prog, 0, opts);
               let done = App(app0);
               link(heap, host, done);
             } else {
@@ -1864,12 +1940,12 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
                 let app0 = alloc(heap, tids[0], 2);
                 link(heap, app0 + 0, cont);
                 link(heap, app0 + 1, Num(0));
-                free(heap, get_loc(term, 0), 2);
+                free(heap, 0, get_loc(term, 0), 2);
                 let key = ask_arg(heap, term, 0);
-                collect(heap, prog, key);
-                free(heap, get_loc(term, 1), 2);
+                collect(heap, prog, 0, key);
+                free(heap, 0, get_loc(term, 1), 2);
                 let val = ask_arg(heap, term, 1);
-                collect(heap, prog, val);
+                collect(heap, prog, 0, val);
                 let done = App(app0);
                 link(heap, host, done);
               } else {
@@ -1893,7 +1969,7 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
               let app0 = alloc(heap, tids[0], 2);
               link(heap, app0 + 0, cont);
               link(heap, app0 + 1, text);
-              free(heap, get_loc(term, 0), 2);
+              free(heap, 0, get_loc(term, 0), 2);
               let done = App(app0);
               link(heap, host, done);
             } else {
@@ -2072,13 +2148,25 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
     }
     let done = match get_tag(term) {
       DP0 => {
-        format!("a{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("<dp0>")))
+        if let Some(name) = names.get(&get_loc(term, 0)) {
+          return format!("a{}", name);
+        } else {
+          return format!("a^{}", get_loc(term, 0));
+        }
       }
       DP1 => {
-        format!("b{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("<dp1>")))
+        if let Some(name) = names.get(&get_loc(term, 0)) {
+          return format!("b{}", name);
+        } else {
+          return format!("b^{}", get_loc(term, 0));
+        }
       }
       VAR => {
-        format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("<var>")))
+        if let Some(name) = names.get(&get_loc(term, 0)) {
+          return format!("x{}", name);
+        } else {
+          return format!("x^{}", get_loc(term, 0));
+        }
       }
       LAM => {
         let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("<lam>")));
@@ -2141,14 +2229,14 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
   }
   find_lets(heap, prog, term, &mut lets, &mut kinds, &mut names, &mut count);
   let mut text = go(heap, prog, term, &names, focus);
-  for (_key, pos) in lets {
+  for (_key, pos) in itertools::sorted(lets.iter()) {
     // todo: reverse
     let what = String::from("?h");
     let kind = kinds.get(&pos).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
     let nam0 = if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
     let nam1 = if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
-    text.push_str(&format!("\ndup#{}[{:x}] {} {} = {};", pos, kind, nam0, nam1, go(heap, prog, load_ptr(heap, pos + 2), &names, focus)));
+    text.push_str(&format!("\ndup#{}[{:x}] {} {} = {};", kind, pos, nam0, nam1, go(heap, prog, load_ptr(heap, pos + 2), &names, focus)));
   }
   text
 }

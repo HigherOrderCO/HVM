@@ -1322,7 +1322,7 @@ pub fn eval_code(
   code: &str,
   debug: bool,
   size: usize,
-) -> Result<(String, u64, u64, u64), String> {
+) -> Result<(String, u64, i64, u64), String> {
   let mut prog = rt::new_program();
 
   // Parses and reads the input file
@@ -1355,8 +1355,23 @@ pub fn eval_code(
   // Reads it back to a string
   let code = format!("{}", crate::readback::as_term(&heap, &prog, host));
 
-  // Returns the normal form and the gas cost
+  // Collects the result expression
+  rt::collect(&heap, &prog, tids[0], rt::load_ptr(&heap, host));
+
+  // Frees the memory used by the main node
+  // TODO: must get the arity
+
+  // Returns the result, the rewrite cost, used memory and time elapsed
   Ok((code, rt::get_cost(&heap), rt::get_used(&heap), time))
+
+  //println!("before collect:\n{}", rt::show_heap(&heap));
+  //println!("{}", rt::show_term(&heap, &prog, rt::load_ptr(&heap, host), rt::load_ptr(&heap, host)));
+  //rt::collect(&heap, &prog, tids[0], rt::load_ptr(&heap, host));
+  //rt::free(&heap, 0, 0, 2); // FIXME: remove this (just clearing main)
+
+  //println!("after collect:\n{}", rt::show_heap(&heap));
+  //println!("{}", rt::show_term(&heap, &prog, rt::load_ptr(&heap, host), rt::load_ptr(&heap, host)));
+
 }
 
 // notes
