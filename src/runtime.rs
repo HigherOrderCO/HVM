@@ -1852,7 +1852,7 @@ pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, run_io:
       break;
     }
   }
-  println!("normalize cost: {}", get_cost(heap));
+  //println!("normalize cost: {}", get_cost(heap));
   load_ptr(heap, host)
 }
 

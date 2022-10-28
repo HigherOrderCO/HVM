@@ -301,28 +301,41 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         }
       }
       lang::Term::Dup { expr, body, nam0, nam1 } => {
-        let new_nam0 = (ctx.fresh)();
-        let new_nam1 = (ctx.fresh)();
+        let is_global_0 = is_global_name(nam0);
+        let is_global_1 = is_global_name(nam1);
+        let new_nam0 = if is_global_0 { nam0.clone() } else { (ctx.fresh)() };
+        let new_nam1 = if is_global_1 { nam1.clone() } else { (ctx.fresh)() };
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
         let got_nam0 = tbl.remove(nam0);
         let got_nam1 = tbl.remove(nam1);
-        tbl.insert(nam0.clone(), new_nam0.clone());
-        tbl.insert(nam1.clone(), new_nam1.clone());
+        if !is_global_0 {
+          tbl.insert(nam0.clone(), new_nam0.clone());
+        }
+        if !is_global_1 {
+          tbl.insert(nam1.clone(), new_nam1.clone());
+        }
         let body = sanitize_term(body, lhs, tbl, ctx)?;
-        tbl.remove(nam0);
+        if !is_global_0 {
+          tbl.remove(nam0);
+        }
         if let Some(x) = got_nam0 {
           tbl.insert(nam0.clone(), x);
         }
-        tbl.remove(nam1);
+        if !is_global_1 {
+          tbl.remove(nam1);
+        }
         if let Some(x) = got_nam1 {
           tbl.insert(nam1.clone(), x);
         }
-        let nam0 = format!("{}.0", new_nam0);
-        let nam1 = format!("{}.0", new_nam1);
+        let nam0 = format!("{}{}", new_nam0, if !is_global_0 { ".0" } else { "" });
+        let nam1 = format!("{}{}", new_nam1, if !is_global_0 { ".0" } else { "" });
         let term = lang::Term::Dup { nam0, nam1, expr, body };
         Box::new(term)
       }
       lang::Term::Let { name, expr, body } => {
+        if is_global_name(name) {
+          panic!("Global variable '{}' not allowed on let. Use dup instead.", name);
+        }
         let new_name = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
         let got_name = tbl.remove(name);
@@ -335,11 +348,16 @@ pub fn sanitize_rule(rule: &lang::Rule) -> Result<lang::Rule, String> {
         duplicator(&new_name, expr, body, ctx.uses)
       }
       lang::Term::Lam { name, body } => {
-        let mut new_name = if is_global_name(name) { name.clone() } else { (ctx.fresh)() };
+        let is_global = is_global_name(name);
+        let mut new_name = if is_global { name.clone() } else { (ctx.fresh)() };
         let got_name = tbl.remove(name);
-        tbl.insert(name.clone(), new_name.clone());
+        if !is_global {
+          tbl.insert(name.clone(), new_name.clone());
+        }
         let body = sanitize_term(body, lhs, tbl, ctx)?;
-        tbl.remove(name);
+        if !is_global {
+          tbl.remove(name);
+        }
         if let Some(x) = got_name {
           tbl.insert(name.clone(), x);
         }
