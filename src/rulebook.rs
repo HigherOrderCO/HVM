@@ -1028,10 +1028,10 @@ pub fn build_function(book: &RuleBook, fn_name: &str, rules: &[lang::Rule]) -> r
         }
       }
 
-      let term = term_to_dynterm(book, &rule.rhs, &inps);
-      let body = build_body(&term, vars.len() as u64);
+      let core = term_to_core(book, &rule.rhs, &inps);
+      let body = build_body(&core, vars.len() as u64);
 
-      Some(rt::Rule { hoas, cond, vars, term, body, free })
+      Some(rt::Rule { hoas, cond, vars, core, body, free })
     } else {
       None
     }
@@ -1115,7 +1115,7 @@ pub fn build_dynamic_functions(book: &RuleBook) -> Vec<Option<rt::Function>> {
 }
 
 /// converts a language term to a runtime term
-pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> rt::Term {
+pub fn term_to_core(book: &RuleBook, term: &lang::Term, inps: &[String]) -> rt::Core {
   fn convert_oper(oper: &lang::Oper) -> u64 {
     match oper {
       lang::Oper::Add => rt::ADD,
@@ -1143,16 +1143,16 @@ pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> r
     book: &RuleBook,
     depth: u64,
     vars: &mut Vec<String>,
-  ) -> rt::Term {
+  ) -> rt::Core {
     match term {
       lang::Term::Var { name } => {
         if let Some((idx, _)) = vars.iter().enumerate().rev().find(|(_, var)| var == &name) {
-          rt::Term::Var { bidx: idx as u64 }
+          rt::Core::Var { bidx: idx as u64 }
         } else {
           match get_global_name_misc(name) {
-            Some(rt::VAR) => rt::Term::Glo { glob: hash(name), misc: rt::VAR },
-            Some(rt::DP0) => rt::Term::Glo { glob: hash(&name[2..].to_string()), misc: rt::DP0 },
-            Some(rt::DP1) => rt::Term::Glo { glob: hash(&name[2..].to_string()), misc: rt::DP1 },
+            Some(rt::VAR) => rt::Core::Glo { glob: hash(name), misc: rt::VAR },
+            Some(rt::DP0) => rt::Core::Glo { glob: hash(&name[2..].to_string()), misc: rt::DP0 },
+            Some(rt::DP1) => rt::Core::Glo { glob: hash(&name[2..].to_string()), misc: rt::DP1 },
             _ => panic!("Unexpected error."),
           }
         }
@@ -1166,7 +1166,7 @@ pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> r
         let body = Box::new(convert_term(body, book, depth + 2, vars));
         vars.pop();
         vars.pop();
-        rt::Term::Dup { eras, glob, expr, body }
+        rt::Core::Dup { eras, glob, expr, body }
       }
       lang::Term::Lam { name, body } => {
         let glob = if get_global_name_misc(name).is_some() { hash(name) } else { 0 };
@@ -1174,35 +1174,35 @@ pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> r
         vars.push(name.clone());
         let body = Box::new(convert_term(body, book, depth + 1, vars));
         vars.pop();
-        rt::Term::Lam { eras, glob, body }
+        rt::Core::Lam { eras, glob, body }
       }
       lang::Term::Let { name, expr, body } => {
         let expr = Box::new(convert_term(expr, book, depth + 0, vars));
         vars.push(name.clone());
         let body = Box::new(convert_term(body, book, depth + 1, vars));
         vars.pop();
-        rt::Term::Let { expr, body }
+        rt::Core::Let { expr, body }
       }
       lang::Term::App { func, argm } => {
         let func = Box::new(convert_term(func, book, depth + 0, vars));
         let argm = Box::new(convert_term(argm, book, depth + 0, vars));
-        rt::Term::App { func, argm }
+        rt::Core::App { func, argm }
       }
       lang::Term::Ctr { name, args } => {
         let term_func = *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
         let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
         if *book.ctr_is_cal.get(name).unwrap_or(&false) {
-          rt::Term::Fun { func: term_func, args: term_args }
+          rt::Core::Fun { func: term_func, args: term_args }
         } else {
-          rt::Term::Ctr { func: term_func, args: term_args }
+          rt::Core::Ctr { func: term_func, args: term_args }
         }
       }
-      lang::Term::Num { numb } => rt::Term::Num { numb: *numb },
+      lang::Term::Num { numb } => rt::Core::Num { numb: *numb },
       lang::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
         let val1 = Box::new(convert_term(val1, book, depth + 1, vars));
-        rt::Term::Op2 { oper, val0, val1 }
+        rt::Core::Op2 { oper, val0, val1 }
       }
     }
   }
@@ -1211,7 +1211,7 @@ pub fn term_to_dynterm(book: &RuleBook, term: &lang::Term, inps: &[String]) -> r
   convert_term(term, book, 0, &mut vars)
 }
 
-pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
+pub fn build_body(term: &rt::Core, free_vars: u64) -> rt::RuleBody {
   fn link(nodes: &mut [rt::RuleBodyNode], targ: u64, slot: u64, elem: rt::RuleBodyCell) {
     nodes[targ as usize][slot as usize] = elem;
     if let rt::RuleBodyCell::Ptr { value, targ: var_targ, slot: var_slot } = elem {
@@ -1251,7 +1251,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
     }
   }
   fn gen_elems(
-    term: &rt::Term,
+    term: &rt::Core,
     dupk: &mut u64,
     vars: &mut Vec<rt::RuleBodyCell>,
     lams: &mut HashMap<u64, u64>,
@@ -1260,14 +1260,14 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
     links: &mut Vec<(u64, u64, rt::RuleBodyCell)>,
   ) -> rt::RuleBodyCell {
     match term {
-      rt::Term::Var { bidx } => {
+      rt::Core::Var { bidx } => {
         if *bidx < vars.len() as u64 {
           vars[*bidx as usize]
         } else {
           panic!("unbound variable.");
         }
       }
-      rt::Term::Glo { glob, misc } => {
+      rt::Core::Glo { glob, misc } => {
         match *misc {
           rt::VAR => {
             let targ = alloc_lam(lams, nodes, *glob);
@@ -1286,7 +1286,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
           }
         }
       }
-      rt::Term::Dup { eras: _, glob, expr, body } => {
+      rt::Core::Dup { eras: _, glob, expr, body } => {
         let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
         let expr = gen_elems(expr, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 2, expr));
@@ -1297,14 +1297,14 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
         vars.pop();
         body
       }
-      rt::Term::Let { expr, body } => {
+      rt::Core::Let { expr, body } => {
         let expr = gen_elems(expr, dupk, vars, lams, dups, nodes, links);
         vars.push(expr);
         let body = gen_elems(body, dupk, vars, lams, dups, nodes, links);
         vars.pop();
         body
       }
-      rt::Term::Lam { eras: _, glob, body } => {
+      rt::Core::Lam { eras: _, glob, body } => {
         let targ = alloc_lam(lams, nodes, *glob);
         let var = rt::RuleBodyCell::Ptr { value: rt::Var(0), targ, slot: 0 };
         vars.push(var);
@@ -1313,7 +1313,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
         vars.pop();
         rt::RuleBodyCell::Ptr { value: rt::Lam(0), targ, slot: 0 }
       }
-      rt::Term::App { func, argm } => {
+      rt::Core::App { func, argm } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 2]);
         let func = gen_elems(func, dupk, vars, lams, dups, nodes, links);
@@ -1322,7 +1322,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
         links.push((targ, 1, argm));
         rt::RuleBodyCell::Ptr { value: rt::App(0), targ, slot: 0 }
       }
-      rt::Term::Fun { func, args } => {
+      rt::Core::Fun { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
           nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; args.len() as usize]);
@@ -1335,7 +1335,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
           rt::RuleBodyCell::Val { value: rt::Fun(*func, 0) }
         }
       }
-      rt::Term::Ctr { func, args } => {
+      rt::Core::Ctr { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
           nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; args.len() as usize]);
@@ -1348,8 +1348,8 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
           rt::RuleBodyCell::Val { value: rt::Ctr(*func, 0) }
         }
       }
-      rt::Term::Num { numb } => rt::RuleBodyCell::Val { value: rt::Num(*numb as u64) },
-      rt::Term::Op2 { oper, val0, val1 } => {
+      rt::Core::Num { numb } => rt::RuleBodyCell::Val { value: rt::Num(*numb as u64) },
+      rt::Core::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![rt::RuleBodyCell::Val { value: 0 }; 2]);
         let val0 = gen_elems(val0, dupk, vars, lams, dups, nodes, links);
@@ -1376,7 +1376,7 @@ pub fn build_body(term: &rt::Term, free_vars: u64) -> rt::RuleBody {
   (elem, nodes, dupk)
 }
 
-pub fn alloc_closed_dynterm(heap: &rt::Heap, tid: usize, term: &rt::Term) -> u64 {
+pub fn alloc_closed_core(heap: &rt::Heap, tid: usize, term: &rt::Core) -> u64 {
   let host = rt::alloc(heap, tid, 1);
   let body = build_body(term, 0);
   let term = rt::alloc_body(heap, tid, 0, &[], &body);
@@ -1385,7 +1385,7 @@ pub fn alloc_closed_dynterm(heap: &rt::Heap, tid: usize, term: &rt::Term) -> u64
 }
 
 pub fn alloc_term(heap: &rt::Heap, tid: usize, book: &RuleBook, term: &lang::Term) -> u64 {
-  alloc_closed_dynterm(heap, tid, &term_to_dynterm(book, term, &vec![]))
+  alloc_closed_core(heap, tid, &term_to_core(book, term, &vec![]))
 }
 
 // Evaluates a HVM term to normal form

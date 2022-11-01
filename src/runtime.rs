@@ -101,7 +101,7 @@
 //
 // Example 0:
 // 
-//   Term:
+//   Core:
 //
 //    {Tuple2 #7 #8}
 //
@@ -120,7 +120,7 @@
 //
 // Example 1:
 //
-//   Term:
+//   Core:
 //
 //     λ~ λb b
 //
@@ -141,7 +141,7 @@
 //     
 // Example 2:
 //
-//   Term:
+//   Core:
 //     
 //     λx dup x0 x1 = x; (* x0 x1)
 //
@@ -173,7 +173,6 @@
 #![allow(unused_attributes)]
 #![allow(unused_imports)]
 
-use std::borrow::Cow;
 use std::collections::{hash_map, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicI64, AtomicUsize, Ordering};
 use crossbeam::utils::{CachePadded, Backoff};
@@ -266,17 +265,17 @@ pub type AtomicPtr = AtomicU64;
 
 // A runtime term
 #[derive(Clone, Debug)]
-pub enum Term {
+pub enum Core {
   Var { bidx: u64 },
   Glo { glob: u64, misc: u64 },
-  Dup { eras: (bool, bool), glob: u64, expr: Box<Term>, body: Box<Term> },
-  Let { expr: Box<Term>, body: Box<Term> },
-  Lam { eras: bool, glob: u64, body: Box<Term> },
-  App { func: Box<Term>, argm: Box<Term> },
-  Fun { func: u64, args: Vec<Term> },
-  Ctr { func: u64, args: Vec<Term> },
+  Dup { eras: (bool, bool), glob: u64, expr: Box<Core>, body: Box<Core> },
+  Let { expr: Box<Core>, body: Box<Core> },
+  Lam { eras: bool, glob: u64, body: Box<Core> },
+  App { func: Box<Core>, argm: Box<Core> },
+  Fun { func: u64, args: Vec<Core> },
+  Ctr { func: u64, args: Vec<Core> },
   Num { numb: u64 },
-  Op2 { oper: u64, val0: Box<Term>, val1: Box<Term> },
+  Op2 { oper: u64, val0: Box<Core>, val1: Box<Core> },
 }
 
 // A runtime rule
@@ -285,7 +284,7 @@ pub struct Rule {
   pub hoas: bool,
   pub cond: Vec<Ptr>,
   pub vars: Vec<RuleVar>,
-  pub term: Term,
+  pub core: Core,
   pub body: RuleBody,
   pub free: Vec<(u64, u64)>,
 }
@@ -357,15 +356,13 @@ pub struct Heap {
 }
 
 fn available_parallelism() -> usize {
-  return 1;
-  //return std::thread::available_parallelism().unwrap().get();
+  return std::thread::available_parallelism().unwrap().get();
 }
 
 // Initializers
 // ------------
 
 const HEAP_SIZE : usize = 4 * CELLS_PER_GB;
-//const HEAP_SIZE : usize = 65536;
 
 pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
   return unsafe { Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice()))) }
@@ -611,7 +608,7 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
         if length == arity {
           //println!("[{}] return", lvar.tid);
           //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
-          lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
+          //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
           return *lvar.next.as_mut_ptr() - length;
         }
       }
@@ -620,7 +617,7 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
 }
 
 pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
-  heap.lvar[tid].used.fetch_sub(arity as i64, Ordering::Relaxed);
+  //heap.lvar[tid].used.fetch_sub(arity as i64, Ordering::Relaxed);
   for i in 0 .. arity {
     unsafe { heap.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
   }
@@ -915,18 +912,14 @@ fn dup_lam(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
   let lam1 = alloc(heap, tid, 2);
   link(heap, let0 + 2, take_arg(heap, arg0, 1));
   link(heap, par0 + 1, Var(lam1));
-
   link(heap, par0 + 0, Var(lam0));
   link(heap, lam0 + 1, Dp0(get_ext(term), let0));
   link(heap, lam1 + 1, Dp1(get_ext(term), let0));
-
   atomic_subst(heap, prog, tid, Var(get_loc(arg0, 0)), Sup(get_ext(term), par0));
   atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), Lam(lam0));
   atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), Lam(lam1));
-
   let done = Lam(if get_tag(term) == DP0 { lam0 } else { lam1 });
   link(heap, host, done);
-
   free(heap, tid, get_loc(term, 0), 3);
   free(heap, tid, get_loc(arg0, 0), 2);
 }
@@ -938,15 +931,10 @@ fn dup_lam(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: 
 #[inline(always)]
 fn dup_sup_0(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0: Ptr, tcol: u64) {
   inc_cost(heap, tid);
-  //println!("A");
   atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), take_arg(heap, arg0, 0));
-  //println!("B");
   atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), take_arg(heap, arg0, 1));
-  //println!("C");
-  //link(heap, host, take_arg(heap, arg0, if get_tag(term) == DP0 { 0 } else { 1 })); // <- FIXME: WTF lol
   free(heap, tid, get_loc(term, 0), 3);
   free(heap, tid, get_loc(arg0, 0), 2);
-  //println!("[{}] unlocks {}", lvar.tid, get_loc(term, 0));
 }
 
 // dup x y = {a b}
@@ -968,10 +956,8 @@ fn dup_sup_1(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, arg0
   link(heap, par1 + 1, Dp1(tcol, let1));
   link(heap, par0 + 0, Dp0(tcol, let0));
   link(heap, par0 + 1, Dp0(tcol, let1));
-  //println!("A");
   atomic_subst(heap, prog, tid, Dp0(tcol, get_loc(term, 0)), Sup(get_ext(arg0), par0));
   atomic_subst(heap, prog, tid, Dp1(tcol, get_loc(term, 0)), Sup(get_ext(arg0), par1));
-  //println!("B");
   free(heap, tid, get_loc(term, 0), 3);
 }
 
@@ -1167,13 +1153,11 @@ fn fun_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, fid: u
         let i = i as u64;
         match get_tag(*cond) {
           NUM => {
-            //println!("Didn't match because of NUM. i={} {} {}", i, get_num(ask_arg(heap, term, i)), get_num(*cond));
             let same_tag = get_tag(load_arg(heap, term, i)) == NUM;
             let same_val = get_num(load_arg(heap, term, i)) == get_num(*cond);
             matched = matched && same_tag && same_val;
           }
           CTR => {
-            //println!("Didn't match because of CTR. i={} {} {}", i, get_tag(ask_arg(heap, term, i)), get_ext(*cond));
             let same_tag = get_tag(load_arg(heap, term, i)) == CTR;
             let same_ext = get_ext(load_arg(heap, term, i)) == get_ext(*cond);
             matched = matched && same_tag && same_ext;
@@ -1306,7 +1290,6 @@ impl RedexBag {
         self.next[tid].store(self.min_index(tid), Ordering::Relaxed);
       }
       if self.data[index].compare_exchange_weak(0, redex, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
-        //println!("insert {}", index);
         return index as u64;
       }
     }
@@ -1314,8 +1297,6 @@ impl RedexBag {
 
   fn complete(&self, index: u64) -> Option<(u64,u64)> {
     let redex = self.data[index as usize].fetch_sub(1, Ordering::Relaxed);
-    //println!("complete {} {}", index, get_redex_left(redex) - 1);
-    //println!("completing {}, left={}", index, get_redex_left(redex) - 1);
     if get_redex_left(redex) == 1 {
       self.data[index as usize].store(0, Ordering::Relaxed);
       return Some((get_redex_host(redex), get_redex_cont(redex)));
@@ -1417,8 +1398,6 @@ fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
 // ------
 
 pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
-  //println!("reduce root={} threads={}", root, tids.len());
-
   // Halting flag
   let stop = &AtomicBool::new(false);
 
@@ -1427,13 +1406,10 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
     for tid in tids {
       let tid = *tid;
       s.spawn(move || {
-        //assert!(thread_priority::set_current_thread_priority(thread_priority::ThreadPriority::Max).is_ok());
-
         // Visit stacks
         let redex = &heap.rbag;
         let visit = &heap.vstk[tid];
         let mut delay = vec![];
-        //let mut locks = 0;
 
         // Backoff
         let backoff = &Backoff::new();
@@ -1445,13 +1421,12 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
         let mut host = if tid == tids[0] { root } else { 0 };
 
         //let mut count = 0;
-
         'main: loop {
           //count += 1;
           //if count > 100 {
             //std::process::exit(1);
           //}
-          println!("[{}] reduce\n{}\n", tid, show_term(heap, prog, load_ptr(heap, root), load_ptr(heap, host)));
+          //println!("[{}] reduce\n{}\n", tid, show_term(heap, prog, load_ptr(heap, root), load_ptr(heap, host)));
           //println!("[{}] loop {:?}", tid, &heap.node[0 .. 256]);
           //println!("[{}] loop work={} init={} cont={} host={} visit={} delay={} stop={} count={} | {}", tid, work, init, cont, host, visit.len(), delay.len(), stop.load(Ordering::Relaxed), count, show_ptr(load_ptr(heap, host)));
           if work {
@@ -1481,7 +1456,6 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                         release_lock(heap, tid, term);
                         continue 'main;
                       }
-                      //locks = locks + 1;
                       let goup = redex.insert(tid, new_redex(host, cont, 1));
                       work = true;
                       init = true;
@@ -1560,9 +1534,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                   let tcol = get_ext(term);
                   //println!("[{}] dups {}", lvar.tid, get_loc(term, 0));
                   if get_tag(arg0) == LAM {
-                    //println!("dup-lam");
                     dup_lam(heap, prog, tid, host, term, arg0, tcol);
-                    //locks = locks - 1;
                     release_lock(heap, tid, term);
                     work = true;
                     init = true;
@@ -1571,14 +1543,12 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                     //println!("dup-sup {}", tcol == get_ext(arg0));
                     if tcol == get_ext(arg0) {
                       dup_sup_0(heap, prog, tid, host, term, arg0, tcol);
-                      //locks = locks - 1;
                       release_lock(heap, tid, term);
                       work = true;
                       init = true;
                       continue 'main;
                     } else {
                       dup_sup_1(heap, prog, tid, host, term, arg0, tcol);
-                      //locks = locks - 1;
                       release_lock(heap, tid, term);
                       work = true;
                       init = true;
@@ -1586,27 +1556,23 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                     }
                   } else if get_tag(arg0) == NUM {
                     dup_num(heap, prog, tid, host, term, arg0, tcol);
-                    //locks = locks - 1;
                     release_lock(heap, tid, term);
                     work = true;
                     init = true;
                     continue 'main;
                   } else if get_tag(arg0) == CTR {
                     dup_ctr(heap, prog, tid, host, term, arg0, tcol);
-                    //locks = locks - 1;
                     release_lock(heap, tid, term);
                     work = true;
                     init = true;
                     continue 'main;
                   } else if get_tag(arg0) == ERA {
                     dup_era(heap, prog, tid, host, term, arg0, tcol);
-                    //locks = locks - 1;
                     release_lock(heap, tid, term);
                     work = true;
                     init = true;
                     continue 'main;
                   } else {
-                    //locks = locks - 1;
                     release_lock(heap, tid, term);
                   }
                 }
@@ -1707,8 +1673,6 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
               init = false;
               continue 'main;
             } else {
-              //println!("[{}] idle locks={}", tid, locks);
-              //println!("[{}] will try to steal...", tid);
               if stop.load(Ordering::Relaxed) {
                 break;
               } else {
@@ -1741,7 +1705,6 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
 // ------
 
 pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &Box<[AtomicU64]>) -> Ptr {
-  //println!("normal host={} threads={}\n{}\n\n", host, lvars.len(), show_term(heap, prog, ask_lnk(heap,host), host));
   pub fn set_visited(visited: &Box<[AtomicU64]>, bit: u64) {
     let val = &visited[bit as usize >> 6];
     val.store(val.load(Ordering::Relaxed) | (1 << (bit & 0x3f)), Ordering::Relaxed);

@@ -1,8 +1,6 @@
 #![allow(clippy::identity_op)]
 
-//use regex::Regex;
 use std::collections::HashMap;
-//use std::io::Write;
 
 use crate::language as lang;
 use crate::rulebook as rb;
@@ -305,28 +303,28 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
 
     // Builds the right-hand side term (ex: `(Succ (Add a b))`)
     //let done = compile_func_rule_body(&mut code, tab + 1, &dynrule.body, &dynrule.vars);
-    let done = compile_func_rule_term(&mut code, tab + 1, &dynrule.term, &dynrule.vars);
+    let done = compile_func_rule_term(&mut code, tab + 1, &dynrule.core, &dynrule.vars);
     line(&mut code, tab + 1, &format!("let done = {};", done));
 
     // Links the host location to it
     line(&mut code, tab + 1, "link(heap, host, done);");
 
+    // Collects unused variables (none in this example)
+    for dynvar @ rt::RuleVar { param: _, field: _, erase } in dynrule.vars.iter() {
+      if *erase {
+        line(&mut code, tab + 1, &format!("collect(heap, prog, tid, {});", get_var(dynvar)));
+      }
+    }
+
     // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-    line(&mut code, tab + 1, &format!("free(heap, get_loc(term, 0), {});", function.is_strict.len()));
+    line(&mut code, tab + 1, &format!("free(heap, tid, get_loc(term, 0), {});", function.is_strict.len()));
     for (i, arity) in &dynrule.free {
       let i = *i as u64;
       line(
         &mut code,
         tab + 1,
-        &format!("free(heap, get_loc(ask_arg(heap, term, {}), 0), {});", i, arity),
+        &format!("free(heap, tid, get_loc(ask_arg(heap, term, {}), 0), {});", i, arity),
       );
-    }
-
-    // Collects unused variables (none in this example)
-    for dynvar @ rt::RuleVar { param: _, field: _, erase } in dynrule.vars.iter() {
-      if *erase {
-        line(&mut code, tab + 1, &format!("collect(heap, prog, {});", get_var(dynvar)));
-      }
     }
 
     line(&mut code, tab + 1, "init = true;");
@@ -341,7 +339,7 @@ fn compile_func(comp: &rb::RuleBook, fn_name: &str, rules: &[lang::Rule], tab: u
 fn compile_func_rule_term(
   code: &mut String,
   tab: u64,
-  term: &rt::Term,
+  term: &rt::Core,
   vars: &[rt::RuleVar],
 ) -> String {
   fn alloc_lam(code: &mut String, tab: u64, nams: &mut u64, lams: &mut HashMap<u64, String>, glob: u64) -> String {
@@ -382,20 +380,20 @@ fn compile_func_rule_term(
     nams: &mut u64,
     lams: &mut HashMap<u64, String>,
     dups: &mut HashMap<u64, (String,String)>,
-    term: &rt::Term,
+    term: &rt::Core,
   ) -> String {
     const INLINE_NUMBERS: bool = true;
     //println!("compile {:?}", term);
     //println!("- vars: {:?}", vars);
     match term {
-      rt::Term::Var { bidx } => {
+      rt::Core::Var { bidx } => {
         if *bidx < vars.len() as u64 {
           vars[*bidx as usize].clone()
         } else {
           panic!("Unbound variable.");
         }
       }
-      rt::Term::Glo { glob, misc } => {
+      rt::Core::Glo { glob, misc } => {
         match *misc {
           rt::VAR => {
             return format!("Var({})", alloc_lam(code, tab, nams, lams, *glob));
@@ -413,7 +411,7 @@ fn compile_func_rule_term(
           }
         }
       }
-      rt::Term::Dup { eras, glob, expr, body } => {
+      rt::Core::Dup { eras, glob, expr, body } => {
         let copy = fresh(nams, "cpy");
         let dup0 = fresh(nams, "dp0");
         let dup1 = fresh(nams, "dp1");
@@ -448,14 +446,14 @@ fn compile_func_rule_term(
         vars.pop();
         body
       }
-      rt::Term::Let { expr, body } => {
+      rt::Core::Let { expr, body } => {
         let expr = compile_term(code, tab, vars, nams, lams, dups, expr);
         vars.push(expr);
         let body = compile_term(code, tab, vars, nams, lams, dups, body);
         vars.pop();
         body
       }
-      rt::Term::Lam { eras, glob, body } => {
+      rt::Core::Lam { eras, glob, body } => {
         let name = alloc_lam(code, tab, nams, lams, *glob);
         vars.push(format!("Var({})", name));
         let body = compile_term(code, tab, vars, nams, lams, dups, body);
@@ -466,7 +464,7 @@ fn compile_func_rule_term(
         line(code, tab, &format!("link(heap, {} + 1, {});", name, body));
         format!("Lam({})", name)
       }
-      rt::Term::App { func, argm } => {
+      rt::Core::App { func, argm } => {
         let name = fresh(nams, "app");
         let func = compile_term(code, tab, vars, nams, lams, dups, func);
         let argm = compile_term(code, tab, vars, nams, lams, dups, argm);
@@ -475,7 +473,7 @@ fn compile_func_rule_term(
         line(code, tab, &format!("link(heap, {} + 1, {});", name, argm));
         format!("App({})", name)
       }
-      rt::Term::Ctr { func, args } => {
+      rt::Core::Ctr { func, args } => {
         let ctr_args: Vec<String> = args.iter().map(|arg| compile_term(code, tab, vars, nams, lams, dups, arg)).collect();
         let name = fresh(nams, "ctr");
         line(code, tab, &format!("let {} = alloc(heap, tid, {});", name, ctr_args.len()));
@@ -484,7 +482,7 @@ fn compile_func_rule_term(
         }
         format!("Ctr({}, {})", func, name)
       }
-      rt::Term::Fun { func, args } => {
+      rt::Core::Fun { func, args } => {
         let cal_args: Vec<String> =
           args.iter().map(|arg| compile_term(code, tab, vars, nams, lams, dups, arg)).collect();
         let name = fresh(nams, "cal");
@@ -494,10 +492,10 @@ fn compile_func_rule_term(
         }
         format!("Fun({}, {})", func, name)
       }
-      rt::Term::Num { numb } => {
+      rt::Core::Num { numb } => {
         format!("Num({})", numb)
       }
-      rt::Term::Op2 { oper, val0, val1 } => {
+      rt::Core::Op2 { oper, val0, val1 } => {
         let retx = fresh(nams, "ret");
         let name = fresh(nams, "op2");
         let val0 = compile_term(code, tab, vars, nams, lams, dups, val0);

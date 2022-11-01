@@ -11,16 +11,14 @@ use std::hash::Hasher;
 #[derive(Clone, Debug)]
 pub enum Term {
   Var { name: String }, // TODO: add `global: bool`
-  Dup { nam0: String, nam1: String, expr: BTerm, body: BTerm },
-  Let { name: String, expr: BTerm, body: BTerm },
-  Lam { name: String, body: BTerm },
-  App { func: BTerm, argm: BTerm },
-  Ctr { name: String, args: Vec<BTerm> },
+  Dup { nam0: String, nam1: String, expr: Box<Term>, body: Box<Term> },
+  Let { name: String, expr: Box<Term>, body: Box<Term> },
+  Lam { name: String, body: Box<Term> },
+  App { func: Box<Term>, argm: Box<Term> },
+  Ctr { name: String, args: Vec<Box<Term>> },
   Num { numb: u64 },
-  Op2 { oper: Oper, val0: BTerm, val1: BTerm },
+  Op2 { oper: Oper, val0: Box<Term>, val1: Box<Term> },
 }
-
-pub type BTerm = Box<Term>;
 
 #[derive(Clone, Copy, Debug)]
 pub enum Oper {
@@ -35,8 +33,8 @@ pub enum Oper {
 
 #[derive(Clone, Debug)]
 pub struct Rule {
-  pub lhs: BTerm,
-  pub rhs: BTerm,
+  pub lhs: Box<Term>,
+  pub rhs: Box<Term>,
 }
 
 // File
@@ -54,28 +52,24 @@ pub struct File {
 
 impl fmt::Display for Oper {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(
-      f,
-      "{}",
-      match self {
-        Self::Add => "+",
-        Self::Sub => "-",
-        Self::Mul => "*",
-        Self::Div => "/",
-        Self::Mod => "%",
-        Self::And => "&",
-        Self::Or => "|",
-        Self::Xor => "^",
-        Self::Shl => "<<",
-        Self::Shr => ">>",
-        Self::Lte => "<=",
-        Self::Ltn => "<",
-        Self::Eql => "==",
-        Self::Gte => ">=",
-        Self::Gtn => ">",
-        Self::Neq => "!=",
-      }
-    )
+    write!(f, "{}", match self {
+      Self::Add => "+",
+      Self::Sub => "-",
+      Self::Mul => "*",
+      Self::Div => "/",
+      Self::Mod => "%",
+      Self::And => "&",
+      Self::Or  => "|",
+      Self::Xor => "^",
+      Self::Shl => "<<",
+      Self::Shr => ">>",
+      Self::Lte => "<=",
+      Self::Ltn => "<",
+      Self::Eql => "==",
+      Self::Gte => ">=",
+      Self::Gtn => ">",
+      Self::Neq => "!=",
+    })
   }
 }
 
@@ -177,18 +171,14 @@ impl fmt::Display for Rule {
 
 impl fmt::Display for File {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(
-      f,
-      "{}",
-      self.rules.iter().map(|rule| format!("{}", rule)).collect::<Vec<String>>().join("\n")
-    )
+    write!(f, "{}", self.rules.iter().map(|rule| format!("{}", rule)).collect::<Vec<String>>().join("\n"))
   }
 }
 
 // Parser
 // ======
 
-pub fn parse_let(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_let(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   return parser::guard(
     parser::text_parser("let "),
     Box::new(|state| {
@@ -204,7 +194,7 @@ pub fn parse_let(state: parser::State) -> parser::Answer<Option<BTerm>> {
   );
 }
 
-pub fn parse_dup(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_dup(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   return parser::guard(
     parser::text_parser("dup "),
     Box::new(|state| {
@@ -221,7 +211,7 @@ pub fn parse_dup(state: parser::State) -> parser::Answer<Option<BTerm>> {
   );
 }
 
-pub fn parse_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_lam(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   let parse_symbol =
     |x| parser::parser_or(&[parser::text_parser("λ"), parser::text_parser("@")], x);
   parser::guard(
@@ -236,7 +226,7 @@ pub fn parse_lam(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-pub fn parse_app(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_app(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   return parser::guard(
     parser::text_parser("("),
     Box::new(|state| {
@@ -259,7 +249,7 @@ pub fn parse_app(state: parser::State) -> parser::Answer<Option<BTerm>> {
   );
 }
 
-pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, _) = parser::text("(", state)?;
@@ -280,7 +270,7 @@ pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-pub fn parse_u60(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_u60(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
@@ -298,7 +288,7 @@ pub fn parse_u60(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-pub fn parse_op2(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_op2(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   fn is_op_char(chr: char) -> bool {
     matches!(chr, '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<' | '>' | '=' | '!')
   }
@@ -350,7 +340,7 @@ pub fn parse_op2(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-pub fn parse_var(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_var(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
@@ -364,7 +354,7 @@ pub fn parse_var(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     parser::text_parser("%"),
     Box::new(|state| {
@@ -384,7 +374,7 @@ pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
 // ask x = fn; body
 // ----------------
 // (fn λx body)
-pub fn parse_ask_sugar_named(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_ask_sugar_named(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   return parser::guard(
     Box::new(|state| {
       let (state, asks) = parser::text("ask ", state)?;
@@ -405,7 +395,7 @@ pub fn parse_ask_sugar_named(state: parser::State) -> parser::Answer<Option<BTer
   );
 }
 
-pub fn parse_ask_sugar_anon(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_ask_sugar_anon(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   return parser::guard(
     parser::text_parser("ask "),
     Box::new(|state| {
@@ -419,7 +409,7 @@ pub fn parse_ask_sugar_anon(state: parser::State) -> parser::Answer<Option<BTerm
   );
 }
 
-pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
@@ -440,7 +430,7 @@ pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
 }
 
 // TODO: parse escape sequences
-pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
@@ -473,7 +463,7 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
+pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
@@ -503,7 +493,7 @@ pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<BTerm>> {
   )
 }
 
-pub fn parse_term(state: parser::State) -> parser::Answer<BTerm> {
+pub fn parse_term(state: parser::State) -> parser::Answer<Box<Term>> {
   parser::grammar(
     "Term",
     &[
