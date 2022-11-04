@@ -64,7 +64,6 @@ pub fn make_call(func: &str, args: &[&str]) -> Result<language::Term, String> {
   Ok(language::Term::Ctr { name, args })
 }
 
-
 #[wasm_bindgen]
 #[derive(Clone, Debug)]
 pub struct Reduced {

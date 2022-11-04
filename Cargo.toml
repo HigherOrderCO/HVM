@@ -22,6 +22,9 @@ test = false
 inherits = "dev"
 opt-level = 3
 
+[build-dependencies]
+lalrpop = "0.19.7"
+
 [dependencies]
 itertools = "0.10"
 num_cpus = "1.13"
@@ -32,6 +35,7 @@ wasm-bindgen = "0.2.82"
 reqwest = { version = "0.11.11", features = ["blocking"] }
 web-sys = { version = "0.3", features = ["console"] }
 instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
+lalrpop-util = {version = "0.19.7", features = ["lexer"]}
 
 [dev-dependencies]
 proptest = "1.0"

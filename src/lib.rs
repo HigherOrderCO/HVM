@@ -7,7 +7,6 @@
 pub mod builder;
 pub mod compiler;
 pub mod language;
-pub mod parser;
 pub mod readback;
 pub mod rulebook;
 pub mod runtime;
