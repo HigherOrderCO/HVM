@@ -347,7 +347,8 @@ pub struct LocalVars {
 
 // Global memory buffer
 pub struct Heap {
-  node: Box<[AtomicPtr]>,
+  node: Memory,
+  //node: Box<[AtomicPtr]>,
   lvar: Box<[CachePadded<LocalVars>]>,
   lock: Box<[AtomicU8]>,
   vstk: Box<[VisitQueue]>,
@@ -356,6 +357,7 @@ pub struct Heap {
 }
 
 fn available_parallelism() -> usize {
+  //return 1;
   return std::thread::available_parallelism().unwrap().get();
 }
 
@@ -387,7 +389,8 @@ pub fn new_heap() -> Heap {
     }))
   }
   let size = HEAP_SIZE; // FIXME: accept size param
-  let node = new_atomic_u64_array(size);
+  //let node = new_atomic_u64_array(size);
+  let node = Memory::new();
   let lvar = lvar.into_boxed_slice();
   let lock = new_atomic_u8_array(size);
   let rbag = RedexBag::new();
@@ -531,7 +534,7 @@ pub fn ask_ari(prog: &Program, lnk: Ptr) -> u64 {
 
 // DEPRECATED
 pub fn ask_lnk(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { *(*heap.node.get_unchecked(loc as usize)).as_mut_ptr() }
+  unsafe { *(*heap.node.data.get_unchecked(loc as usize)).as_mut_ptr() }
 }
 
 // DEPRECATED
@@ -541,7 +544,7 @@ pub fn ask_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
 
 // Given a location, loads the ptr stored on it
 pub fn load_ptr(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { heap.node.get_unchecked(loc as usize).load(Ordering::Relaxed) }
+  unsafe { heap.node.data.get_unchecked(loc as usize).load(Ordering::Relaxed) }
 }
 
 // Moves a pointer to another location
@@ -556,7 +559,7 @@ pub fn load_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
 
 // Given a location, takes the ptr stored on it
 pub fn take_ptr(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { heap.node.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
+  unsafe { heap.node.data.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
 }
 
 // Given a pointer to a node, takes its nth arg
@@ -567,10 +570,10 @@ pub fn take_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
 // Writes a ptr to memory. Updates binders.
 pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
   unsafe {
-    heap.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
+    heap.node.data.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
     if get_tag(ptr) <= VAR {
       let arg_loc = get_loc(ptr, get_tag(ptr) & 0x01);
-      heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+      heap.node.data.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
     }
   }
   ptr
@@ -580,47 +583,49 @@ pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
 // ---------
 
 pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
-  unsafe {
-    let lvar = &heap.lvar[tid];
-    if arity == 0 {
-      0
-    } else {
-      let mut length = 0;
-      loop {
-        // Loads value on cursor
-        let val = heap.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
-        // If it is empty, increment length
-        if val == 0 {
-          length += 1;
-        // Otherwise, reset length
-        } else {
-          length = 0;
-        };
-        // Moves cursor right
-        *lvar.next.as_mut_ptr() += 1;
-        // If it is out of bounds, warp around
-        if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
-          length = 0;
-          *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
-          //println!("[{}] loop", lvar.tid);
-        }
-        // If length equals arity, allocate that space
-        if length == arity {
-          //println!("[{}] return", lvar.tid);
-          //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
-          //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
-          return *lvar.next.as_mut_ptr() - length;
-        }
-      }
-    }
-  }
+  heap.node.alloc(tid, arity)
+  //unsafe {
+    //let lvar = &heap.lvar[tid];
+    //if arity == 0 {
+      //0
+    //} else {
+      //let mut length = 0;
+      //loop {
+        //// Loads value on cursor
+        //let val = heap.node.data.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
+        //// If it is empty, increment length
+        //if val == 0 {
+          //length += 1;
+        //// Otherwise, reset length
+        //} else {
+          //length = 0;
+        //};
+        //// Moves cursor right
+        //*lvar.next.as_mut_ptr() += 1;
+        //// If it is out of bounds, warp around
+        //if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
+          //length = 0;
+          //*lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
+          ////println!("[{}] loop", lvar.tid);
+        //}
+        //// If length equals arity, allocate that space
+        //if length == arity {
+          ////println!("[{}] return", lvar.tid);
+          ////println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
+          ////lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
+          //return *lvar.next.as_mut_ptr() - length;
+        //}
+      //}
+    //}
+  //}
 }
 
 pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
+  heap.node.free(tid, loc, arity)
   //heap.lvar[tid].used.fetch_sub(arity as i64, Ordering::Relaxed);
-  for i in 0 .. arity {
-    unsafe { heap.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
-  }
+  //for i in 0 .. arity {
+    //unsafe { heap.node.data.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
+  //}
 }
 
 // Substitution
@@ -629,10 +634,10 @@ pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
 // Atomically replaces a ptr by another. Updates binders.
 pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, Ptr> {
   unsafe {
-    let got = heap.node.get_unchecked(loc as usize).compare_exchange_weak(old, neo, Ordering::Relaxed, Ordering::Relaxed)?;
+    let got = heap.node.data.get_unchecked(loc as usize).compare_exchange_weak(old, neo, Ordering::Relaxed, Ordering::Relaxed)?;
     if get_tag(neo) <= VAR {
       let arg_loc = get_loc(neo, get_tag(neo) & 0x01);
-      heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+      heap.node.data.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
     }
     return Ok(got);
   }
@@ -840,7 +845,7 @@ pub fn alloc_body(heap: &Heap, tid: usize, term: Ptr, vars: &[RuleVar], body: &R
         if let RuleBodyCell::Var { .. } = elem {
           link(heap, (host + j) as u64, ptr);
         } else {
-          *heap.node.get_unchecked(host + j).as_mut_ptr() = ptr;
+          *heap.node.data.get_unchecked(host + j).as_mut_ptr() = ptr;
         }
       };
     };
@@ -1227,6 +1232,73 @@ fn fun_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, fid: u
     }
   }
   return false;
+}
+
+// Allocator
+// ---------
+
+struct MemoryNext {
+  cell: AtomicU64,
+  area: AtomicU64,
+}
+
+struct Memory {
+  tids: usize,
+  data: Box<[AtomicU64]>,
+  used: Box<[AtomicU64]>,
+  next: Box<[CachePadded<MemoryNext>]>,
+}
+
+const PAGE_SIZE : usize = 4096;
+
+impl Memory {
+
+  pub fn new() -> Memory {
+    let tids = available_parallelism();
+    let mut next = vec![];
+    for i in 0 .. tids {
+      let cell = AtomicU64::new(u64::MAX);
+      let area = AtomicU64::new((HEAP_SIZE / PAGE_SIZE / tids * i) as u64);
+      next.push(CachePadded::new(MemoryNext { cell, area }));
+    }
+    let data = new_atomic_u64_array(HEAP_SIZE);
+    let used = new_atomic_u64_array(HEAP_SIZE / PAGE_SIZE);
+    let next = next.into_boxed_slice();
+    Memory { tids, data, used, next }
+  }
+
+  pub fn alloc(&self, tid: usize, arity: u64) -> u64 {
+    let next = unsafe { self.next.get_unchecked(tid) };
+    // Attempts to allocate on this thread's owned area
+    let aloc = next.cell.fetch_add(arity, Ordering::Relaxed);
+    let area = aloc / PAGE_SIZE as u64;
+    if aloc != u64::MAX && (aloc + arity) / PAGE_SIZE as u64 == area {
+      unsafe { self.used.get_unchecked(area as usize) }.fetch_add(arity, Ordering::Relaxed);
+      //println!("[{}] old_alloc {} at {}, used={} ({} {})", tid, arity, aloc, self.used[area as usize].load(Ordering::Relaxed), area, (aloc + arity) / PAGE_SIZE as u64);
+      return aloc;
+    }
+    // If we can't, attempt to allocate on a new area
+    let mut area = next.area.load(Ordering::Relaxed)  % ((HEAP_SIZE / PAGE_SIZE) as u64);
+    loop {
+      if unsafe { self.used.get_unchecked(area as usize) }.compare_exchange_weak(0, arity, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+        let aloc = area * PAGE_SIZE as u64;
+        next.cell.store(aloc + arity, Ordering::Relaxed);
+        next.area.store((area + 1) % ((HEAP_SIZE / PAGE_SIZE) as u64), Ordering::Relaxed);
+        //println!("[{}] new_alloc {} at {}, used={}", tid, arity, aloc, self.used[area as usize].load(Ordering::Relaxed));
+        return aloc;
+      } else {
+        area = (area + 1) % ((HEAP_SIZE / PAGE_SIZE) as u64);
+      }
+    }
+  }
+
+  pub fn free(&self, tid: usize, loc: u64, arity: u64) {
+    //for i in 0 .. arity { unsafe { self.data.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed); }
+    let area = loc / PAGE_SIZE as u64;
+    let used = unsafe { self.used.get_unchecked(area as usize) }.fetch_sub(arity, Ordering::Relaxed);
+    //println!("[{}] free {} at {}, used={}", tid, arity, loc, self.used[area as usize].load(Ordering::Relaxed));
+  }
+
 }
 
 // Redex Bag
@@ -1804,9 +1876,9 @@ pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, run_io:
   // TODO: rt::run_io(&mut heap, &mut lvar, &mut prog, host);
   // FIXME: reuse `visited`
   let mut cost = get_cost(heap);
-  let visited = new_atomic_u64_array(heap.node.len() / 64);
+  let visited = new_atomic_u64_array(HEAP_SIZE / 64);
   loop {
-    let visited = new_atomic_u64_array(heap.node.len() / 64);
+    let visited = new_atomic_u64_array(HEAP_SIZE / 64);
     normal(&heap, prog, tids, host, &visited);
     let new_cost = get_cost(heap);
     if new_cost != cost {
@@ -2027,7 +2099,7 @@ pub fn show_ptr(x: Ptr) -> String {
 pub fn show_heap(heap: &Heap) -> String {
   let mut text: String = String::new();
   for idx in 0 .. HEAP_SIZE {
-    let ptr = heap.node[idx].load(Ordering::Relaxed);
+    let ptr = heap.node.data[idx].load(Ordering::Relaxed);
     if ptr != 0 {
       text.push_str(&format!("{:04x} | ", idx));
       text.push_str(&show_ptr(ptr));
@@ -2207,7 +2279,7 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
 pub fn debug_validate_heap(heap: &Heap) {
   for idx in 0 .. HEAP_SIZE {
     // If it is an ARG, it must be pointing to a VAR/DP0/DP1 that points to it
-    let arg = heap.node[idx].load(Ordering::Relaxed);
+    let arg = heap.node.data[idx].load(Ordering::Relaxed);
     if get_tag(arg) == ARG {
       let var = load_ptr(heap, get_loc(arg, 0));
       let oks = match get_tag(var) {
