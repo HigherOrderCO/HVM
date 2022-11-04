@@ -66,6 +66,11 @@ runtime. And that's just the tip of iceberg!
 
 [See also HVM-JS, a WASM wrapper for HVM on JavaScript.](https://github.com/kindelia/hvm-js)
 
+Note: HVM's upcoming version will bring massive simplifications to the codebase,
+as well as a greatly improved task scheduler that will generalize to vastly more
+programs than currently. It will be released this month (November 2022), but if
+you want to have a sneak peek, feel free to check the V2 branch here.
+
 Benchmarks
 ==========
 
