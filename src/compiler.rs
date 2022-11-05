@@ -134,25 +134,31 @@ fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> (Strin
 
   // Constructor and function ids and arities
 
-  let mut ctr_ids = String::new();
-  let mut ctr_ari = String::new();
+  let mut res_fns = String::new();
+  let mut res_ids = String::new();
 
-  for (id, arity) in &comp.id_to_arit {
-    if id > &rt::HVM_MAX_RESERVED_ID {
+  for (id, arity) in comp.id_to_arit.iter() {
+    if id > &rt::MAX_RESERVED_ID {
       let name = comp.id_to_name.get(id).unwrap();
-      line(&mut ctr_ari, 2, &format!(r#"{} => {{ return {}; }}"#, &compile_name(&name), arity));
+      println!("compile {} {}", name, &compile_name(&name));
+      line(&mut res_fns, 0, &format!(r#"  EntryInfo {{"#));
+      line(&mut res_fns, 0, &format!(r#"    id    : {},"#, id));
+      line(&mut res_fns, 0, &format!(r#"    name  : "{}","#, &name));
+      line(&mut res_fns, 0, &format!(r#"    arity : {},"#, arity));
+      line(&mut res_fns, 0, &format!(r#"    is_fn : {},"#, &comp.ctr_is_cal.get(name).unwrap_or(&false)));
+      line(&mut res_fns, 0, &format!(r#"  }},"#));
     }
   }
 
-  for (name, id) in &comp.name_to_id {
-    if id > &rt::HVM_MAX_RESERVED_ID {
-      line(&mut ctr_ids, 0, &format!("pub const {} : u64 = {};", &compile_name(name), id));
+  for (name, id) in comp.name_to_id.iter() {
+    if id > &rt::MAX_RESERVED_ID {
+      line(&mut res_ids, 0, &format!("const {} : u64 = {};", &compile_name(name), id));
     }
   }
 
   let runtime = include_str!("runtime.rs");
-  let runtime = runtime.replace("//GENERATED-FUN-IDS//", &ctr_ids);
-  let runtime = runtime.replace("//GENERATED-FUN-ARI//", &ctr_ari);
+  let runtime = runtime.replace("//GENERATED-ENTRY-INFOS//", &res_fns);
+  let runtime = runtime.replace("//GENERATED-ENTRY-IDS//", &res_ids);
   let runtime = runtime.replace("//GENERATED-FUN-CTR-MATCH//", &fun_match);
   let runtime = runtime.replace("//GENERATED-FUN-CTR-RULES//", &fun_rules);
 
@@ -161,7 +167,7 @@ fn compile_book(comp: &rb::RuleBook, heap_size: usize, parallel: bool) -> (Strin
   let mut book_entries = String::new();
 
   for (name, id) in &comp.name_to_id {
-    if id > &rt::HVM_MAX_RESERVED_ID {
+    if id > &rt::MAX_RESERVED_ID {
       let arity = comp.id_to_arit.get(id).unwrap_or(&0);
       let isfun = comp.ctr_is_cal.get(name).unwrap_or(&false);
       line(&mut book_entries, 1, &format!("register(&mut book, \"{}\" , rt::{}, {}, {});", name, &compile_name(name), arity, isfun));

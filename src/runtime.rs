@@ -174,7 +174,7 @@
 #![allow(unused_imports)]
 
 use std::collections::{hash_map, HashMap};
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, AtomicI64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicI64, AtomicUsize, Ordering};
 use crossbeam::utils::{CachePadded, Backoff};
 
 // Constants
@@ -221,41 +221,221 @@ pub const GTE: u64 = 0xD;
 pub const GTN: u64 = 0xE;
 pub const NEQ: u64 = 0xF;
 
-// Reserved ids
-pub const HVM_LOG      : u64 = 0;
-pub const HVM_PUT      : u64 = 1;
-pub const STRING_NIL   : u64 = 2;
-pub const STRING_CONS  : u64 = 3;
-pub const IO_DONE      : u64 = 4;
-pub const IO_DO_INPUT  : u64 = 5;
-pub const IO_DO_OUTPUT : u64 = 6;
-pub const IO_DO_FETCH  : u64 = 7;
-pub const IO_DO_STORE  : u64 = 8;
-pub const IO_DO_LOAD   : u64 = 9;
+// Reserved Names
+// --------------
 
-// This is a Kind2-specific optimization. Check 'HOAS_OPT'.
-pub const HOAS_CT0 : u64 = 10;
-pub const HOAS_CT1 : u64 = 11;
-pub const HOAS_CT2 : u64 = 12;
-pub const HOAS_CT3 : u64 = 13;
-pub const HOAS_CT4 : u64 = 14;
-pub const HOAS_CT5 : u64 = 15;
-pub const HOAS_CT6 : u64 = 16;
-pub const HOAS_CT7 : u64 = 17;
-pub const HOAS_CT8 : u64 = 18;
-pub const HOAS_CT9 : u64 = 19;
-pub const HOAS_CTA : u64 = 20;
-pub const HOAS_CTB : u64 = 21;
-pub const HOAS_CTC : u64 = 22;
-pub const HOAS_CTD : u64 = 23;
-pub const HOAS_CTE : u64 = 24;
-pub const HOAS_CTF : u64 = 25;
-pub const HOAS_CTG : u64 = 26;
-pub const HOAS_NUM : u64 = 27;
+pub struct EntryInfo {
+  pub id    : u64,
+  pub name  : &'static str,
+  pub arity : usize,
+  pub is_fn : bool,
+}
 
-//GENERATED-FUN-IDS//
+pub const ENTRY_INFO : &[EntryInfo] = &[
+  EntryInfo {
+    id    : 0,
+    name  : "HVM.log",
+    arity : 2,
+    is_fn : true,
+  },
+  EntryInfo {
+    id    : 1,
+    name  : "HVM.put",
+    arity : 2,
+    is_fn : true,
+  },
+  EntryInfo {
+    id    : 2,
+    name  : "String.nil",
+    arity : 0,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 3,
+    name  : "String.cons",
+    arity : 2,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 4,
+    name  : "IO.done",
+    arity : 1,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 5,
+    name  : "IO.do_input",
+    arity : 1,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 6,
+    name  : "IO.do_output",
+    arity : 2,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 7,
+    name  : "IO.do_fetch",
+    arity : 3,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 8,
+    name  : "IO.do_store",
+    arity : 3,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 9,
+    name  : "IO.do_load",
+    arity : 2,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 10,
+    name  : "Kind.Term.ct0",
+    arity : 2,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 11,
+    name  : "Kind.Term.ct1",
+    arity : 3,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 12,
+    name  : "Kind.Term.ct2",
+    arity : 4,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 13,
+    name  : "Kind.Term.ct3",
+    arity : 5,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 14,
+    name  : "Kind.Term.ct4",
+    arity : 6,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 15,
+    name  : "Kind.Term.ct5",
+    arity : 7,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 16,
+    name  : "Kind.Term.ct6",
+    arity : 8,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 17,
+    name  : "Kind.Term.ct7",
+    arity : 9,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 18,
+    name  : "Kind.Term.ct8",
+    arity : 10,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 19,
+    name  : "Kind.Term.ct9",
+    arity : 11,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 20,
+    name  : "Kind.Term.ctA",
+    arity : 12,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 21,
+    name  : "Kind.Term.ctB",
+    arity : 13,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 22,
+    name  : "Kind.Term.ctC",
+    arity : 14,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 23,
+    name  : "Kind.Term.ctD",
+    arity : 15,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 24,
+    name  : "Kind.Term.ctE",
+    arity : 16,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 25,
+    name  : "Kind.Term.ctF",
+    arity : 17,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 26,
+    name  : "Kind.Term.ctG",
+    arity : 18,
+    is_fn : false,
+  },
+  EntryInfo {
+    id    : 27,
+    name  : "Kind.Term.num",
+    arity : 2,
+    is_fn : false,
+  },
+//GENERATED-ENTRY-INFOS//
+];
 
-pub const HVM_MAX_RESERVED_ID : u64 = HOAS_NUM;
+const HVM_LOG : u64 = 0;
+const HVM_PUT : u64 = 1;
+const STRING_NIL : u64 = 2;
+const STRING_CONS : u64 = 3;
+const IO_DONE : u64 = 4;
+const IO_DO_INPUT : u64 = 5;
+const IO_DO_OUTPUT : u64 = 6;
+const IO_DO_FETCH : u64 = 7;
+const IO_DO_STORE : u64 = 8;
+const IO_DO_LOAD : u64 = 9;
+const KIND_TERM_CT0 : u64 = 10;
+const KIND_TERM_CT1 : u64 = 11;
+const KIND_TERM_CT2 : u64 = 12;
+const KIND_TERM_CT3 : u64 = 13;
+const KIND_TERM_CT4 : u64 = 14;
+const KIND_TERM_CT5 : u64 = 15;
+const KIND_TERM_CT6 : u64 = 16;
+const KIND_TERM_CT7 : u64 = 17;
+const KIND_TERM_CT8 : u64 = 18;
+const KIND_TERM_CT9 : u64 = 19;
+const KIND_TERM_CTA : u64 = 20;
+const KIND_TERM_CTB : u64 = 21;
+const KIND_TERM_CTC : u64 = 22;
+const KIND_TERM_CTD : u64 = 23;
+const KIND_TERM_CTE : u64 = 24;
+const KIND_TERM_CTF : u64 = 25;
+const KIND_TERM_CTG : u64 = 26;
+const KIND_TERM_NUM : u64 = 27;
+//GENERATED-ENTRY-IDS//
+
+pub const MAX_RESERVED_ID : u64 = KIND_TERM_NUM;
+
+pub const HEAP_SIZE : usize = 4 * CELLS_PER_GB;
 
 // Types
 // -----
@@ -356,15 +536,13 @@ pub struct Heap {
   rbag: RedexBag,
 }
 
+// Initializers
+// ------------
+
 fn available_parallelism() -> usize {
   //return 1;
   return std::thread::available_parallelism().unwrap().get();
 }
-
-// Initializers
-// ------------
-
-const HEAP_SIZE : usize = 4 * CELLS_PER_GB;
 
 pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
   return unsafe { Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice()))) }
@@ -507,26 +685,13 @@ pub fn gen_dup(heap: &Heap, tid: usize) -> u64 {
 
 pub fn ask_ari(prog: &Program, lnk: Ptr) -> u64 {
   let fid = get_ext(lnk);
-  match fid {
-    HVM_LOG => { return 2; }
-    HVM_PUT => { return 2; }
-    STRING_NIL => { return 0; }
-    STRING_CONS => { return 2; }
-    IO_DONE => { return 1; }
-    IO_DO_INPUT => { return 1; }
-    IO_DO_OUTPUT => { return 2; }
-    IO_DO_FETCH => { return 3; }
-    IO_DO_STORE => { return 3; }
-    IO_DO_LOAD => { return 2; }
-//GENERATED-FUN-ARI//
-    _ => {
-      // Dynamic functions
-      if let Some(Arity(arit)) = prog.aris.get(fid as usize) {
-        return *arit;
-      }
-      return 0;
-    }
+  if let Some(node_info) = ENTRY_INFO.get(fid as usize) {
+    return node_info.arity as u64;
   }
+  if let Some(Arity(arit)) = prog.aris.get(fid as usize) {
+    return *arit;
+  }
+  return 0;
 }
 
 // Pointers
@@ -1171,7 +1336,7 @@ fn fun_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, fid: u
             // If this is a strict argument, then we're in a default variable
             if unsafe { *function.is_strict.get_unchecked(i as usize) } {
 
-              // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
+              // This is a Kind2-specific optimization. Check 'KIND_TERM_OPT'.
               if rule.hoas && r != function.rules.len() - 1 {
 
                 // Matches number literals
@@ -1183,11 +1348,11 @@ fn fun_ctr(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, fid: u
                   =  get_tag(load_arg(heap, term, i)) == CTR
                   && ask_ari(prog, load_arg(heap, term, i)) == 0;
 
-                // Matches HOAS numbers and constructors
+                // Matches KIND_TERM numbers and constructors
                 let is_hoas_ctr_num
                   =  get_tag(load_arg(heap, term, i)) == CTR
-                  && get_ext(load_arg(heap, term, i)) >= HOAS_CT0
-                  && get_ext(load_arg(heap, term, i)) <= HOAS_NUM;
+                  && get_ext(load_arg(heap, term, i)) >= KIND_TERM_CT0
+                  && get_ext(load_arg(heap, term, i)) <= KIND_TERM_NUM;
 
                 matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
 
@@ -1466,6 +1631,7 @@ fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
   locker.store(LOCK_OPEN, Ordering::Release)
 }
 
+
 // Reduce
 // ------
 
@@ -1492,12 +1658,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
         let mut cont = if tid == tids[0] { REDEX_CONT_RET } else { 0 };
         let mut host = if tid == tids[0] { root } else { 0 };
 
-        //let mut count = 0;
         'main: loop {
-          //count += 1;
-          //if count > 100 {
-            //std::process::exit(1);
-          //}
           //println!("[{}] reduce\n{}\n", tid, show_term(heap, prog, load_ptr(heap, root), load_ptr(heap, host)));
           //println!("[{}] loop {:?}", tid, &heap.node[0 .. 256]);
           //println!("[{}] loop work={} init={} cont={} host={} visit={} delay={} stop={} count={} | {}", tid, work, init, cont, host, visit.len(), delay.len(), stop.load(Ordering::Relaxed), count, show_ptr(load_ptr(heap, host)));
@@ -1548,9 +1709,12 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                 }
                 FUN => {
                   let fid = get_ext(term);
+                  if fid == HVM_LOG || fid == HVM_PUT {
+                    work = true;
+                    init = false;
+                    continue 'main;
+                  }
                   match fid {
-                    HVM_LOG => { todo!() }
-                    HVM_PUT => { todo!() }
 //GENERATED-FUN-CTR-MATCH//
                     _ => {
                       // Dynamic functions
@@ -1661,32 +1825,21 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
                 }
                 FUN => {
                   let fid = get_ext(term);
+                  if fid == HVM_LOG || fid == HVM_PUT {
+                    normalize(heap, prog, &[tid], get_loc(term, 0), false);
+                    let code = crate::readback::as_code(heap, prog, get_loc(term, 0));
+                    if fid == HVM_PUT && code.chars().nth(0) == Some('"') {
+                      println!("{}", &code[1 .. code.len() - 1]);
+                    } else {
+                      println!("{}", code);
+                    }
+                    collect(heap, prog, tid, load_ptr(heap, get_loc(term, 0)));
+                    free(heap, tids[0], get_loc(term, 0), 2);
+                    link(heap, host, load_arg(heap, term, 1));
+                    init = true;
+                    continue;
+                  }
                   match fid {
-                    //HVM_LOG => {
-                      //let msge = get_loc(term,0);
-                      //normalize(heap, lvars, prog, msge);
-                      //println!("{}", crate::readback::as_code(heap, lvars, prog, msge));
-                      //link(heap, host, load_arg(heap, term, 1));
-                      //free(heap, tid, get_loc(term, 0), 2);
-                      //collect(heap, lvar, tid, prog, ask_lnk(heap, msge));
-                      //init = true;
-                      //continue;
-                    //}
-                    //HVM_PUT => {
-                      //let msge = get_loc(term,0);
-                      //normalize(heap, lvars, prog, msge);
-                      //let code = crate::readback::as_code(heap, lvars, prog, msge);
-                      //if code.chars().nth(0) == Some('"') {
-                        //println!("{}", &code[1 .. code.len() - 1]);
-                      //} else {
-                        //println!("{}", code);
-                      //}
-                      //link(heap, host, load_arg(heap, term, 1));
-                      //free(heap, tid, get_loc(term, 0), 2);
-                      //collect(heap, lvar, tid, prog, ask_lnk(heap, msge));
-                      //init = true;
-                      //continue;
-                    //}
 //GENERATED-FUN-CTR-RULES//
                     _ => {
                       // Dynamic functions
@@ -1905,118 +2058,119 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
     let term = reduce(heap, prog, tids, host); // FIXME: add parallelism
     match get_tag(term) {
       CTR => {
-        match get_ext(term) {
-          // IO.done a : (IO a)
-          IO_DONE => {
-            let done = ask_arg(heap, term, 0);
-            free(heap, 0, get_loc(term, 0), 1);
-            link(heap, host, done);
-            println!("");
-            println!("");
-            break;
-          }
-          // IO.do_input (String -> IO a) : (IO a)
-          IO_DO_INPUT => {
-            let cont = ask_arg(heap, term, 0);
-            let text = make_string(heap, tids[0], &read_input());
+        let fid = get_ext(term);
+        // IO.done a : (IO a)
+        if fid == IO_DONE {
+          let done = ask_arg(heap, term, 0);
+          free(heap, 0, get_loc(term, 0), 1);
+          link(heap, host, done);
+          println!("");
+          println!("");
+          break;
+        }
+        // IO.do_input (String -> IO a) : (IO a)
+        if fid == IO_DO_INPUT {
+          let cont = ask_arg(heap, term, 0);
+          let text = make_string(heap, tids[0], &read_input());
+          let app0 = alloc(heap, tids[0], 2);
+          link(heap, app0 + 0, cont);
+          link(heap, app0 + 1, text);
+          free(heap, 0, get_loc(term, 0), 1);
+          let done = App(app0);
+          link(heap, host, done);
+        }
+        // IO.do_output String (Num -> IO a) : (IO a)
+        if fid == IO_DO_OUTPUT {
+          if let Some(show) = readback_string(heap, prog, tids, get_loc(term, 0)) {
+            print!("{}", show);
+            stdout().flush().ok();
+            let cont = ask_arg(heap, term, 1);
             let app0 = alloc(heap, tids[0], 2);
             link(heap, app0 + 0, cont);
-            link(heap, app0 + 1, text);
-            free(heap, 0, get_loc(term, 0), 1);
+            link(heap, app0 + 1, Num(0));
+            free(heap, 0, get_loc(term, 0), 2);
+            let text = ask_arg(heap, term, 0);
+            collect(heap, prog, 0, text);
             let done = App(app0);
             link(heap, host, done);
+          } else {
+            println!("Runtime type error: attempted to print a non-string.");
+            println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
+            std::process::exit(0);
           }
-          // IO.do_output String (Num -> IO a) : (IO a)
-          IO_DO_OUTPUT => {
-            if let Some(show) = readback_string(heap, prog, tids, get_loc(term, 0)) {
-              print!("{}", show);
-              stdout().flush().ok();
-              let cont = ask_arg(heap, term, 1);
+        }
+        // IO.do_fetch String (String -> IO a) : (IO a)
+        if fid == IO_DO_FETCH {
+          if let Some(url) = readback_string(heap, prog, tids, get_loc(term, 0)) {
+            let body = reqwest::blocking::get(url).unwrap().text().unwrap(); // FIXME: treat
+            let cont = ask_arg(heap, term, 2);
+            let app0 = alloc(heap, tids[0], 2);
+            let text = make_string(heap, tids[0], &body);
+            link(heap, app0 + 0, cont);
+            link(heap, app0 + 1, text);
+            free(heap, 0, get_loc(term, 0), 3);
+            let opts = ask_arg(heap, term, 1); // FIXME: use options
+            collect(heap, prog, 0, opts);
+            let done = App(app0);
+            link(heap, host, done);
+          } else {
+            println!("Runtime type error: attempted to print a non-string.");
+            println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
+            std::process::exit(0);
+          }
+        }
+        // IO.do_store String String (Num -> IO a) : (IO a)
+        if fid == IO_DO_STORE {
+          if let Some(key) = readback_string(heap, prog, tids, get_loc(term, 0)) {
+            if let Some(val) = readback_string(heap, prog, tids, get_loc(term, 1)) {
+              std::fs::write(key, val).ok(); // TODO: Handle errors
+              let cont = ask_arg(heap, term, 2);
               let app0 = alloc(heap, tids[0], 2);
               link(heap, app0 + 0, cont);
               link(heap, app0 + 1, Num(0));
               free(heap, 0, get_loc(term, 0), 2);
-              let text = ask_arg(heap, term, 0);
-              collect(heap, prog, 0, text);
+              let key = ask_arg(heap, term, 0);
+              collect(heap, prog, 0, key);
+              free(heap, 0, get_loc(term, 1), 2);
+              let val = ask_arg(heap, term, 1);
+              collect(heap, prog, 0, val);
               let done = App(app0);
               link(heap, host, done);
             } else {
-              println!("Runtime type error: attempted to print a non-string.");
-              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
+              println!("Runtime type error: attempted to store a non-string.");
+              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 1)));
               std::process::exit(0);
             }
+          } else {
+            println!("Runtime type error: attempted to store to a non-string key.");
+            println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
+            std::process::exit(0);
           }
-          // IO.do_fetch String (String -> IO a) : (IO a)
-          IO_DO_FETCH => {
-            if let Some(url) = readback_string(heap, prog, tids, get_loc(term, 0)) {
-              let body = reqwest::blocking::get(url).unwrap().text().unwrap(); // FIXME: treat
-              let cont = ask_arg(heap, term, 2);
-              let app0 = alloc(heap, tids[0], 2);
-              let text = make_string(heap, tids[0], &body);
-              link(heap, app0 + 0, cont);
-              link(heap, app0 + 1, text);
-              free(heap, 0, get_loc(term, 0), 3);
-              let opts = ask_arg(heap, term, 1); // FIXME: use options
-              collect(heap, prog, 0, opts);
-              let done = App(app0);
-              link(heap, host, done);
-            } else {
-              println!("Runtime type error: attempted to print a non-string.");
-              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
-              std::process::exit(0);
-            }
-          }
-          // IO.do_store String String (Num -> IO a) : (IO a)
-          IO_DO_STORE => {
-            if let Some(key) = readback_string(heap, prog, tids, get_loc(term, 0)) {
-              if let Some(val) = readback_string(heap, prog, tids, get_loc(term, 1)) {
-                std::fs::write(key, val).ok(); // TODO: Handle errors
-                let cont = ask_arg(heap, term, 2);
-                let app0 = alloc(heap, tids[0], 2);
-                link(heap, app0 + 0, cont);
-                link(heap, app0 + 1, Num(0));
-                free(heap, 0, get_loc(term, 0), 2);
-                let key = ask_arg(heap, term, 0);
-                collect(heap, prog, 0, key);
-                free(heap, 0, get_loc(term, 1), 2);
-                let val = ask_arg(heap, term, 1);
-                collect(heap, prog, 0, val);
-                let done = App(app0);
-                link(heap, host, done);
-              } else {
-                println!("Runtime type error: attempted to store a non-string.");
-                println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 1)));
-                std::process::exit(0);
-              }
-            } else {
-              println!("Runtime type error: attempted to store to a non-string key.");
-              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
-              std::process::exit(0);
-            }
-          }
-          // IO.do_load String (String -> IO a) : (IO a)
-          IO_DO_LOAD => {
-            if let Some(key) = readback_string(heap, prog, tids, get_loc(term, 0)) {
-              let file = std::fs::read(key).unwrap(); // TODO: Handle errors
-              let file = std::str::from_utf8(&file).unwrap();
-              let cont = ask_arg(heap, term, 1); 
-              let text = make_string(heap, tids[0], file);
-              let app0 = alloc(heap, tids[0], 2);
-              link(heap, app0 + 0, cont);
-              link(heap, app0 + 1, text);
-              free(heap, 0, get_loc(term, 0), 2);
-              let done = App(app0);
-              link(heap, host, done);
-            } else {
-              println!("Runtime type error: attempted to read from a non-string key.");
-              println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
-              std::process::exit(0);
-            }
-          }
-          _ => { break; }
         }
+        // IO.do_load String (String -> IO a) : (IO a)
+        if fid == IO_DO_LOAD {
+          if let Some(key) = readback_string(heap, prog, tids, get_loc(term, 0)) {
+            let file = std::fs::read(key).unwrap(); // TODO: Handle errors
+            let file = std::str::from_utf8(&file).unwrap();
+            let cont = ask_arg(heap, term, 1); 
+            let text = make_string(heap, tids[0], file);
+            let app0 = alloc(heap, tids[0], 2);
+            link(heap, app0 + 0, cont);
+            link(heap, app0 + 1, text);
+            free(heap, 0, get_loc(term, 0), 2);
+            let done = App(app0);
+            link(heap, host, done);
+          } else {
+            println!("Runtime type error: attempted to read from a non-string key.");
+            println!("{}", crate::readback::as_code(heap, prog, get_loc(term, 0)));
+            std::process::exit(0);
+          }
+        }
+        break;
       }
-      _ => { break; }
+      _ => {
+        break;
+      }
     }
   }
 }
@@ -2038,30 +2192,24 @@ pub fn readback_string(heap: &Heap, prog: &Program, tids: &[usize], host: u64) -
   let mut text = String::new();
   loop {
     let term = reduce(heap, prog, tids, host);
-    match get_tag(term) {
-      CTR => {
-        match get_ext(term) {
-          STRING_NIL => {
-            break;
-          }
-          STRING_CONS => {
-            let chr = reduce(heap, prog, tids, get_loc(term, 0));
-            if get_tag(chr) == NUM {
-              text.push(std::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
-              host = get_loc(term, 1);
-              continue;
-            } else {
-              return None;
-            }
-          }
-          _ => {
-            return None;
-          }
+    if get_tag(term) == CTR {
+      let fid = get_ext(term);
+      if fid == STRING_NIL {
+        break;
+      }
+      if fid == STRING_CONS {
+        let chr = reduce(heap, prog, tids, get_loc(term, 0));
+        if get_tag(chr) == NUM {
+          text.push(std::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
+          host = get_loc(term, 1);
+          continue;
+        } else {
+          return None;
         }
       }
-      _ => {
-        return None;
-      }
+      return None;
+    } else {
+      return None;
     }
   }
   return Some(text);

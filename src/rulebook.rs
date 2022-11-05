@@ -30,7 +30,6 @@ pub type RuleGroup = (usize, Vec<lang::Rule>);
 
 // Creates an empty rulebook
 pub fn new_rulebook() -> RuleBook {
-  // Creates an empty book
   let mut book = RuleBook {
     rule_group: HashMap::new(),
     name_count: 0,
@@ -39,47 +38,13 @@ pub fn new_rulebook() -> RuleBook {
     id_to_arit: HashMap::new(),
     ctr_is_cal: HashMap::new(),
   };
-  fn register_name(book: &mut RuleBook, name: &str, ctid: u64) {
-    let name = name.to_string();
+  for entry_info in rt::ENTRY_INFO {
     book.name_count = book.name_count + 1;
-    book.name_to_id.insert(name.clone(), ctid);
-    book.id_to_name.insert(ctid, name.clone());
+    book.name_to_id.insert(entry_info.name.to_string(), entry_info.id);
+    book.id_to_name.insert(entry_info.id, entry_info.name.to_string());
+    book.id_to_arit.insert(entry_info.id, entry_info.arity as u64);
+    book.ctr_is_cal.insert(entry_info.name.to_string(), entry_info.is_fn);
   }
-  fn register(book: &mut RuleBook, name: &str, ctid: u64, arity: u64, is_fun: bool) {
-    register_name(book, name, ctid);
-    let name = name.to_string();
-    book.id_to_arit.insert(ctid, arity);
-    book.ctr_is_cal.insert(name.clone(), is_fun);
-  }
-  register(&mut book, "HVM.log", rt::HVM_LOG, 2, true); // HVM.log a b : b
-  register(&mut book, "HVM.put", rt::HVM_PUT, 2, true); // HVM.put a b : b
-  register(&mut book, "String.nil", rt::STRING_NIL, 0, false); // String.nil : String
-  register(&mut book, "String.cons", rt::STRING_CONS, 2, false); // String.cons (head: U60) (tail: String) : String
-  register(&mut book, "IO.done", rt::IO_DONE, 1, false); // IO.done a : (IO a)
-  register(&mut book, "IO.do_input", rt::IO_DO_INPUT, 1, false); // IO.do_input (String -> IO a) : (IO a)
-  register(&mut book, "IO.do_output", rt::IO_DO_OUTPUT, 2, false); // IO.do_output String (Num -> IO a) : (IO a)
-  register(&mut book, "IO.do_fetch", rt::IO_DO_FETCH, 3, false); // IO.do_fetch String Options (String -> IO a) : (IO a)
-  register(&mut book, "IO.do_store", rt::IO_DO_STORE, 3, false); // IO.do_store String String (Num -> IO a) : (IO a)
-  register(&mut book, "IO.do_load", rt::IO_DO_LOAD, 2, false); // IO.do_load String (String -> IO a) : (IO a)
-//GENERATED-BOOK-ENTRIES//
-  register_name(&mut book, "Kind.Term.ct0", rt::HOAS_CT0);
-  register_name(&mut book, "Kind.Term.ct1", rt::HOAS_CT1);
-  register_name(&mut book, "Kind.Term.ct2", rt::HOAS_CT2);
-  register_name(&mut book, "Kind.Term.ct3", rt::HOAS_CT3);
-  register_name(&mut book, "Kind.Term.ct4", rt::HOAS_CT4);
-  register_name(&mut book, "Kind.Term.ct5", rt::HOAS_CT5);
-  register_name(&mut book, "Kind.Term.ct6", rt::HOAS_CT6);
-  register_name(&mut book, "Kind.Term.ct7", rt::HOAS_CT7);
-  register_name(&mut book, "Kind.Term.ct8", rt::HOAS_CT8);
-  register_name(&mut book, "Kind.Term.ct9", rt::HOAS_CT9);
-  register_name(&mut book, "Kind.Term.ctA", rt::HOAS_CTA);
-  register_name(&mut book, "Kind.Term.ctB", rt::HOAS_CTB);
-  register_name(&mut book, "Kind.Term.ctC", rt::HOAS_CTC);
-  register_name(&mut book, "Kind.Term.ctD", rt::HOAS_CTD);
-  register_name(&mut book, "Kind.Term.ctE", rt::HOAS_CTE);
-  register_name(&mut book, "Kind.Term.ctF", rt::HOAS_CTF);
-  register_name(&mut book, "Kind.Term.ctG", rt::HOAS_CTG);
-  register_name(&mut book, "Kind.Term.num", rt::HOAS_NUM);
   return book;
 }
 
