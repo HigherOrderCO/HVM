@@ -1,17 +1,17 @@
 Usage (Nix)
 -----------
 
-#### 1. Build and install HVM
+#### 1. Access/install HVM
 
-[Install Nix](https://nixos.org/manual/nix/stable/installation/installation.html) and [Nix Flakes](https://nixos.wiki/wiki/Flakes#Installing_flakes) then, in a shell, run:
+[Install Nix](https://nixos.org/manual/nix/stable/installation/installation.html) and enable [Flakes](https://nixos.wiki/wiki/Flakes#Enable_flakes) then, in a shell, run:
 
 ```sh
 git clone https://github.com/Kindelia/HVM.git
 cd HVM
-# Build HVM
-nix build
-# Install it to your Nix profile
-nix profile install
+# Start a shell that has the `hvm` command without installing it.
+nix shell .#hvm
+# Or install it to your Nix profile.
+nix profile install .#hvm
 ```
 
 #### 2. Create an HVM file
@@ -21,14 +21,15 @@ nix profile install
 #### 3. Run/compile it
 
 ```sh
-# Interpret the main.hvm file, passing 10 as an argument
-hvm run main.hvm 10
-# Compile it to C
+# Interpret the main.hvm file, passing "(Main 25)" as an argument.
+hvm run -f main.hvm "(Main 25)"
+# Compile it to Rust.
 hvm compile main.hvm
-# Initialise the Nix development shell
-nix develop
-# Compile the resulting C code
-clang -O2 main.c -o main -lpthread
-# Run the resulting binary, passing 30 as an argument
-./main 30
+cd main
+# Initialise the Nix development shell.
+nix develop .#hvm
+# Compile the resulting Rust code.
+cargo build --release
+# Run the resulting binary.
+./target/release/main run "(Main 25)"
 ```
