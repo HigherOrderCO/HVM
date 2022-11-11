@@ -2,17 +2,296 @@ pub use crate::runtime::{*};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use crossbeam::utils::{Backoff};
 
-pub struct ReduceCtx<'a> {
-  pub heap  : &'a Heap,
-  pub prog  : &'a Program,
-  pub tid   : usize,
-  pub host  : &'a mut u64,
-  pub term  : Ptr,
-  pub visit : &'a VisitQueue,
-  pub redex : &'a RedexBag,
-  pub work  : &'a mut bool,
-  pub init  : &'a mut bool,
-  pub cont  : &'a mut u64,
+#[inline(never)]
+pub fn reduce_body(
+  heap: &Heap,
+  prog: &Program,
+  tids: &[usize],
+  root: u64,
+  stop: &AtomicBool,
+  tid: usize,
+) {
+  // Visit stacks
+  let redex = &heap.rbag;
+  let visit = &heap.vstk[tid];
+  let mut delay = vec![];
+
+  // Backoff
+  let backoff = &Backoff::new();
+
+  // State variables
+  let mut work = if tid == tids[0] { true } else { false };
+  let mut init = if tid == tids[0] { true } else { false };
+  let mut cont = if tid == tids[0] { REDEX_CONT_RET } else { 0 };
+  let mut host = if tid == tids[0] { root } else { 0 };
+
+  //let mut tick = 0;
+  'main: loop {
+    //tick = tick + 1;
+    //let debug = tid == 9 && heap.lvar[tid].cost.load(Ordering::Relaxed) > 140000000 && heap.lvar[tid].cost.load(Ordering::Relaxed) % 10000 == 0;
+    //if tick % 1000000 == 0 { println!("[{}] tick={} cost={}", tid, tick / 1000000, heap.lvar[tid].cost.load(Ordering::Relaxed)); }
+    //println!("[{}] reduce\n{}\n", tid, show_term(heap, prog, load_ptr(heap, root), load_ptr(heap, host)));
+    //println!("[{}] loop {:?}", tid, &heap.node[0 .. 256]);
+    
+    //if debug {
+      //println!("[{}] loop tick={} cost={} work={} init={} cont={} host={} | {}", tid, tick / 100000000, heap.lvar[tid].cost.load(Ordering::Relaxed), work, init, cont, host, show_ptr(load_ptr(heap, host)));
+    //}
+    
+    if work {
+      //println!("[{}] reduce {}", tid, crate::runtime::debug::show_ptr(load_ptr(heap, host)));
+      //for (i,name) in prog.nams.data.iter().enumerate() {
+        //println!("- {} {:?}", i, name);
+      //}
+      if init {
+        let term = load_ptr(heap, host);
+        //println!("[{}] work={} init={} cont={} host={}", tid, work, init, cont, host);
+        match get_tag(term) {
+          APP => {
+            let goup = redex.insert(tid, new_redex(host, cont, 1));
+            work = true;
+            init = true;
+            cont = goup;
+            host = get_loc(term, 0);
+            continue 'main;
+          }
+          DP0 | DP1 => {
+            match acquire_lock(heap, tid, term) {
+              Err(locker_tid) => {
+                delay.push(new_visit(host, cont));
+                work = false;
+                init = true;
+                continue 'main;
+              }
+              Ok(_) => {
+                // If the term changed, release lock and try again
+                if term != load_ptr(heap, host) {
+                  release_lock(heap, tid, term);
+                  continue 'main;
+                }
+                let goup = redex.insert(tid, new_redex(host, cont, 1));
+                work = true;
+                init = true;
+                cont = goup;
+                host = get_loc(term, 2);
+                continue 'main;
+              }
+            }
+          }
+          OP2 => {
+            let goup = redex.insert(tid, new_redex(host, cont, 2));
+            visit.push(new_visit(get_loc(term, 1), goup));
+            work = true;
+            init = true;
+            cont = goup;
+            host = get_loc(term, 0);
+            continue 'main;
+          }
+          FUN => {
+            let fid = get_ext(term);
+            match &prog.funs.get(&fid) {
+              Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                let len = fn_visit.strict_idx.len() as u64;
+                if len == 0 {
+                  work = true;
+                  init = false;
+                  continue 'main;
+                } else {
+                  let goup = redex.insert(tid, new_redex(host, cont, fn_visit.strict_idx.len() as u64));
+                  for (i, arg_idx) in fn_visit.strict_idx.iter().enumerate() {
+                    if i < fn_visit.strict_idx.len() - 1 {
+                      visit.push(new_visit(get_loc(term, *arg_idx), goup));
+                    } else {
+                      work = true;
+                      init = true;
+                      cont = goup;
+                      host = get_loc(term, *arg_idx);
+                      continue 'main;
+                    }
+                  }
+                }
+              }
+              Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                let host = &mut host;
+                let work = &mut work;
+                let init = &mut init;
+                let cont = &mut cont;
+                fn_visit(ReduceCtx { heap, prog, tid, host, term, visit, redex, work, init, cont });
+                continue 'main;
+              }
+              None => {}
+            }
+          }
+          _ => {}
+        }
+        work = true;
+        init = false;
+        continue 'main;
+      } else {
+        let term = load_ptr(heap, host);
+        //println!("[{}] reduce {} | {}", tid, host, show_ptr(term));
+        
+        // Apply rewrite rules
+        match get_tag(term) {
+          APP => {
+            let arg0 = load_arg(heap, term, 0);
+            if get_tag(arg0) == LAM {
+              app_lam::apply(heap, &prog.arit, tid, host, term, arg0);
+              work = true;
+              init = true;
+              continue 'main;
+            }
+            if get_tag(arg0) == SUP {
+              app_sup::apply(heap, &prog.arit, tid, host, term, arg0);
+            }
+          }
+          DP0 | DP1 => {
+            let arg0 = load_arg(heap, term, 2);
+            let tcol = get_ext(term);
+            //println!("[{}] dups {}", lvar.tid, get_loc(term, 0));
+            if get_tag(arg0) == LAM {
+              dup_lam::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
+              release_lock(heap, tid, term);
+              work = true;
+              init = true;
+              continue 'main;
+            } else if get_tag(arg0) == SUP {
+              //println!("dup-sup {}", tcol == get_ext(arg0));
+              if tcol == get_ext(arg0) {
+                dup_dup::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
+                release_lock(heap, tid, term);
+                work = true;
+                init = true;
+                continue 'main;
+              } else {
+                dup_sup::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
+                release_lock(heap, tid, term);
+                work = true;
+                init = true;
+                continue 'main;
+              }
+            } else if get_tag(arg0) == NUM {
+              dup_num::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
+              release_lock(heap, tid, term);
+              work = true;
+              init = true;
+              continue 'main;
+            } else if get_tag(arg0) == CTR {
+              dup_ctr::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
+              release_lock(heap, tid, term);
+              work = true;
+              init = true;
+              continue 'main;
+            } else if get_tag(arg0) == ERA {
+              dup_era::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
+              release_lock(heap, tid, term);
+              work = true;
+              init = true;
+              continue 'main;
+            } else {
+              release_lock(heap, tid, term);
+            }
+          }
+          OP2 => {
+            let arg0 = load_arg(heap, term, 0);
+            let arg1 = load_arg(heap, term, 1);
+            if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
+              op2_num::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
+            } else if get_tag(arg0) == SUP {
+              op2_sup_0::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
+            } else if get_tag(arg1) == SUP {
+              op2_sup_1::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
+            }
+          }
+          FUN => {
+            let fid = get_ext(term);
+            match &prog.funs.get(&fid) {
+              Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                if fun_ctr::apply(heap, prog, tid, host, term, fid, *fn_arity, fn_visit, fn_apply) {
+                  work = true;
+                  init = true;
+                  continue 'main;
+                }
+              }
+              Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                let host = &mut host;
+                let work = &mut work;
+                let init = &mut init;
+                let cont = &mut cont;
+                if fn_apply(ReduceCtx { heap, prog, tid, host, term, visit, redex, work, init, cont }) {
+                  continue 'main;
+                }
+              }
+              None => {}
+            }
+          }
+          _ => {}
+        }
+
+        // If root is on WHNF, halt
+        if cont == REDEX_CONT_RET {
+          stop.store(true, Ordering::Relaxed);
+          break;
+        }
+
+        // Otherwise, try reducing the parent redex
+        if let Some((new_host, new_cont)) = redex.complete(cont) {
+          work = true;
+          init = false;
+          host = new_host;
+          cont = new_cont;
+          continue 'main;
+        }
+
+        // Otherwise, visit next pointer
+        work = false;
+        init = true;
+        continue 'main;
+      }
+    } else {
+      if init {
+        // If available, visit a new location
+        if let Some((new_host, new_cont)) = visit.pop() {
+          work = true;
+          init = true;
+          host = new_host;
+          cont = new_cont;
+          continue 'main;
+        }
+        // If available, visit a delayed location
+        if delay.len() > 0 {
+          for next in delay.drain(0..).rev() {
+            visit.push(next);
+          }
+          work = false;
+          init = true;
+          continue 'main;
+        }
+        // Otherwise, we have nothing to do
+        work = false;
+        init = false;
+        continue 'main;
+      } else {
+        if stop.load(Ordering::Relaxed) {
+          break;
+        } else {
+          for victim_tid in tids {
+            if *victim_tid != tid {
+              if let Some((new_host, new_cont)) = heap.vstk[*victim_tid].steal() {
+                //println!("[{}] stole {} {} from {}", tid, new_host, new_cont, victim_tid);
+                work = true;
+                init = true;
+                host = new_host;
+                cont = new_cont;
+                continue 'main;
+              }
+            }
+          }
+          backoff.snooze();
+          continue 'main;
+        }
+      }
+    }
+  }
 }
 
 pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
@@ -22,289 +301,8 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
   // Spawn a thread for each worker
   std::thread::scope(|s| {
     for tid in tids {
-      let tid = *tid;
       s.spawn(move || {
-        // Visit stacks
-        let redex = &heap.rbag;
-        let visit = &heap.vstk[tid];
-        let mut delay = vec![];
-
-        // Backoff
-        let backoff = &Backoff::new();
-
-        // State variables
-        let mut work = if tid == tids[0] { true } else { false };
-        let mut init = if tid == tids[0] { true } else { false };
-        let mut cont = if tid == tids[0] { REDEX_CONT_RET } else { 0 };
-        let mut host = if tid == tids[0] { root } else { 0 };
-
-        //let mut tick = 0;
-        'main: loop {
-          //tick = tick + 1;
-          //let debug = tid == 9 && heap.lvar[tid].cost.load(Ordering::Relaxed) > 140000000 && heap.lvar[tid].cost.load(Ordering::Relaxed) % 10000 == 0;
-          //if tick % 1000000 == 0 { println!("[{}] tick={} cost={}", tid, tick / 1000000, heap.lvar[tid].cost.load(Ordering::Relaxed)); }
-          //println!("[{}] reduce\n{}\n", tid, show_term(heap, prog, load_ptr(heap, root), load_ptr(heap, host)));
-          //println!("[{}] loop {:?}", tid, &heap.node[0 .. 256]);
-          
-          //if debug {
-            //println!("[{}] loop tick={} cost={} work={} init={} cont={} host={} | {}", tid, tick / 100000000, heap.lvar[tid].cost.load(Ordering::Relaxed), work, init, cont, host, show_ptr(load_ptr(heap, host)));
-          //}
-          
-          if work {
-            //println!("[{}] reduce {}", tid, crate::runtime::debug::show_ptr(load_ptr(heap, host)));
-            //for (i,name) in prog.nams.data.iter().enumerate() {
-              //println!("- {} {:?}", i, name);
-            //}
-            if init {
-              let term = load_ptr(heap, host);
-              //println!("[{}] work={} init={} cont={} host={}", tid, work, init, cont, host);
-              match get_tag(term) {
-                APP => {
-                  let goup = redex.insert(tid, new_redex(host, cont, 1));
-                  work = true;
-                  init = true;
-                  cont = goup;
-                  host = get_loc(term, 0);
-                  continue 'main;
-                }
-                DP0 | DP1 => {
-                  match acquire_lock(heap, tid, term) {
-                    Err(locker_tid) => {
-                      delay.push(new_visit(host, cont));
-                      work = false;
-                      init = true;
-                      continue 'main;
-                    }
-                    Ok(_) => {
-                      // If the term changed, release lock and try again
-                      if term != load_ptr(heap, host) {
-                        release_lock(heap, tid, term);
-                        continue 'main;
-                      }
-                      let goup = redex.insert(tid, new_redex(host, cont, 1));
-                      work = true;
-                      init = true;
-                      cont = goup;
-                      host = get_loc(term, 2);
-                      continue 'main;
-                    }
-                  }
-                }
-                OP2 => {
-                  let goup = redex.insert(tid, new_redex(host, cont, 2));
-                  visit.push(new_visit(get_loc(term, 1), goup));
-                  work = true;
-                  init = true;
-                  cont = goup;
-                  host = get_loc(term, 0);
-                  continue 'main;
-                }
-                FUN => {
-                  let fid = get_ext(term);
-                  match &prog.funs.get(&fid) {
-                    Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                      let len = fn_visit.strict_idx.len() as u64;
-                      if len == 0 {
-                        work = true;
-                        init = false;
-                        continue 'main;
-                      } else {
-                        let goup = redex.insert(tid, new_redex(host, cont, fn_visit.strict_idx.len() as u64));
-                        for (i, arg_idx) in fn_visit.strict_idx.iter().enumerate() {
-                          if i < fn_visit.strict_idx.len() - 1 {
-                            visit.push(new_visit(get_loc(term, *arg_idx), goup));
-                          } else {
-                            work = true;
-                            init = true;
-                            cont = goup;
-                            host = get_loc(term, *arg_idx);
-                            continue 'main;
-                          }
-                        }
-                      }
-                    }
-                    Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                      let host = &mut host;
-                      let work = &mut work;
-                      let init = &mut init;
-                      let cont = &mut cont;
-                      fn_visit(ReduceCtx { heap, prog, tid, host, term, visit, redex, work, init, cont });
-                      continue 'main;
-                    }
-                    None => {}
-                  }
-                }
-                _ => {}
-              }
-              work = true;
-              init = false;
-              continue 'main;
-            } else {
-              let term = load_ptr(heap, host);
-              //println!("[{}] reduce {} | {}", tid, host, show_ptr(term));
-              
-              // Apply rewrite rules
-              match get_tag(term) {
-                APP => {
-                  let arg0 = load_arg(heap, term, 0);
-                  if get_tag(arg0) == LAM {
-                    app_lam::apply(heap, &prog.arit, tid, host, term, arg0);
-                    work = true;
-                    init = true;
-                    continue 'main;
-                  }
-                  if get_tag(arg0) == SUP {
-                    app_sup::apply(heap, &prog.arit, tid, host, term, arg0);
-                  }
-                }
-                DP0 | DP1 => {
-                  let arg0 = load_arg(heap, term, 2);
-                  let tcol = get_ext(term);
-                  //println!("[{}] dups {}", lvar.tid, get_loc(term, 0));
-                  if get_tag(arg0) == LAM {
-                    dup_lam::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                    release_lock(heap, tid, term);
-                    work = true;
-                    init = true;
-                    continue 'main;
-                  } else if get_tag(arg0) == SUP {
-                    //println!("dup-sup {}", tcol == get_ext(arg0));
-                    if tcol == get_ext(arg0) {
-                      dup_dup::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                      release_lock(heap, tid, term);
-                      work = true;
-                      init = true;
-                      continue 'main;
-                    } else {
-                      dup_sup::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                      release_lock(heap, tid, term);
-                      work = true;
-                      init = true;
-                      continue 'main;
-                    }
-                  } else if get_tag(arg0) == NUM {
-                    dup_num::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                    release_lock(heap, tid, term);
-                    work = true;
-                    init = true;
-                    continue 'main;
-                  } else if get_tag(arg0) == CTR {
-                    dup_ctr::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                    release_lock(heap, tid, term);
-                    work = true;
-                    init = true;
-                    continue 'main;
-                  } else if get_tag(arg0) == ERA {
-                    dup_era::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                    release_lock(heap, tid, term);
-                    work = true;
-                    init = true;
-                    continue 'main;
-                  } else {
-                    release_lock(heap, tid, term);
-                  }
-                }
-                OP2 => {
-                  let arg0 = load_arg(heap, term, 0);
-                  let arg1 = load_arg(heap, term, 1);
-                  if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
-                    op2_num::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
-                  } else if get_tag(arg0) == SUP {
-                    op2_sup_0::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
-                  } else if get_tag(arg1) == SUP {
-                    op2_sup_1::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
-                  }
-                }
-                FUN => {
-                  let fid = get_ext(term);
-                  match &prog.funs.get(&fid) {
-                    Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                      if fun_ctr::apply(heap, prog, tid, host, term, fid, *fn_arity, fn_visit, fn_apply) {
-                        work = true;
-                        init = true;
-                        continue 'main;
-                      }
-                    }
-                    Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                      let host = &mut host;
-                      let work = &mut work;
-                      let init = &mut init;
-                      let cont = &mut cont;
-                      if fn_apply(ReduceCtx { heap, prog, tid, host, term, visit, redex, work, init, cont }) {
-                        continue 'main;
-                      }
-                    }
-                    None => {}
-                  }
-                }
-                _ => {}
-              }
-
-              // If root is on WHNF, halt
-              if cont == REDEX_CONT_RET {
-                stop.store(true, Ordering::Relaxed);
-                break;
-              }
-
-              // Otherwise, try reducing the parent redex
-              if let Some((new_host, new_cont)) = redex.complete(cont) {
-                work = true;
-                init = false;
-                host = new_host;
-                cont = new_cont;
-                continue 'main;
-              }
-
-              // Otherwise, visit next pointer
-              work = false;
-              init = true;
-              continue 'main;
-            }
-          } else {
-            if init {
-              // If available, visit a new location
-              if let Some((new_host, new_cont)) = visit.pop() {
-                work = true;
-                init = true;
-                host = new_host;
-                cont = new_cont;
-                continue 'main;
-              }
-              // If available, visit a delayed location
-              if delay.len() > 0 {
-                for next in delay.drain(0..).rev() {
-                  visit.push(next);
-                }
-                work = false;
-                init = true;
-                continue 'main;
-              }
-              // Otherwise, we have nothing to do
-              work = false;
-              init = false;
-              continue 'main;
-            } else {
-              if stop.load(Ordering::Relaxed) {
-                break;
-              } else {
-                for victim_tid in tids {
-                  if *victim_tid != tid {
-                    if let Some((new_host, new_cont)) = heap.vstk[*victim_tid].steal() {
-                      //println!("[{}] stole {} {} from {}", tid, new_host, new_cont, victim_tid);
-                      work = true;
-                      init = true;
-                      host = new_host;
-                      cont = new_cont;
-                      continue 'main;
-                    }
-                  }
-                }
-                backoff.snooze();
-                continue 'main;
-              }
-            }
-          }
-        }
+        reduce_body(heap, prog, tids, root, stop, *tid);
       });
     }
   });

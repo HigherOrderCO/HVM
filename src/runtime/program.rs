@@ -52,6 +52,18 @@ pub enum RuleBodyCell {
   Ptr { value: u64, targ: u64, slot: u64 }, // Local link, requires adjustment
 }
 
+pub struct ReduceCtx<'a> {
+  pub heap  : &'a Heap,
+  pub prog  : &'a Program,
+  pub tid   : usize,
+  pub host  : &'a mut u64,
+  pub term  : Ptr,
+  pub visit : &'a VisitQueue,
+  pub redex : &'a RedexBag,
+  pub work  : &'a mut bool,
+  pub init  : &'a mut bool,
+  pub cont  : &'a mut u64,
+}
 pub type VisitFun = fn(ReduceCtx) -> ();
 pub type ApplyFun = fn(ReduceCtx) -> bool;
 
