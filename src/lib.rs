@@ -6,11 +6,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_macros)]
 
-pub mod compiler;
 pub mod language;
-pub mod parser;
-pub mod readback;
-pub mod rulebook;
 pub mod runtime;
 
 //use crate::language as language;
@@ -42,7 +38,7 @@ pub use runtime::{Ptr,
   CELLS_PER_GB,
 };
 
-pub use language::{
+pub use language::syntax::{
   Term,
   Term::Var, // TODO: add `global: bool`
   Term::Dup,
@@ -65,34 +61,34 @@ macro_rules! log {
 pub struct Runtime {
   heap: runtime::Heap,
   prog: runtime::Program,
-  book: rulebook::RuleBook,
+  book: language::rulebook::RuleBook,
 }
 
-pub fn make_call(func: &str, args: &[&str]) -> Result<language::Term, String> {
+pub fn make_call(func: &str, args: &[&str]) -> Result<language::syntax::Term, String> {
   // TODO: redundant with `make_main_call`
-  let args = args.iter().map(|par| language::read_term(par).unwrap()).collect();
+  let args = args.iter().map(|par| language::syntax::read_term(par).unwrap()).collect();
   let name = func.to_string();
-  Ok(language::Term::Ctr { name, args })
+  Ok(language::syntax::Term::Ctr { name, args })
 }
 
-#[cfg(test)]
-mod tests {
-  use crate::eval_code;
-  use crate::make_call;
+//#[cfg(test)]
+//mod tests {
+  //use crate::eval_code;
+  //use crate::make_call;
 
-  #[test]
-  fn test() {
-    let code = "
-    (Fn 0) = 0
-    (Fn 1) = 1
-    (Fn n) = (+ (Fn (- n 1)) (Fn (- n 2)))
-    (Main) = (Fn 20)
-    ";
+  //#[test]
+  //fn test() {
+    //let code = "
+    //(Fn 0) = 0
+    //(Fn 1) = 1
+    //(Fn n) = (+ (Fn (- n 1)) (Fn (- n 2)))
+    //(Main) = (Fn 20)
+    //";
 
-    let (norm, _cost, _size, _time) = eval_code(&make_call("Main", &[]).unwrap(), code, false, 4 << 30).unwrap();
-    assert_eq!(norm, "6765");
-  }
-}
+    //let (norm, _cost, _size, _time) = eval_code(&make_call("Main", &[]).unwrap(), code, false, 4 << 30).unwrap();
+    //assert_eq!(norm, "6765");
+  //}
+//}
 
 #[wasm_bindgen]
 #[derive(Clone, Debug)]
@@ -128,18 +124,18 @@ impl Runtime {
   /// Creates a new, empty runtime
   pub fn new(size: usize) -> Runtime {
     Runtime {
-      heap: runtime::new_heap(),
+      heap: runtime::new_heap(size, runtime::available_parallelism()),
       prog: runtime::new_program(),
-      book: rulebook::new_rulebook(),
+      book: language::rulebook::new_rulebook(),
     }
   }
 
   /// Creates a runtime from source code, given a max number of nodes
   pub fn from_code_with_size(code: &str, size: usize) -> Result<Runtime, String> {
-    let file = language::read_file(code)?;
-    let heap = runtime::new_heap();
+    let file = language::syntax::read_file(code)?;
+    let heap = runtime::new_heap(size, runtime::available_parallelism());
     let prog = runtime::new_program();
-    let book = rulebook::gen_rulebook(&file);
+    let book = language::rulebook::gen_rulebook(&file);
     return Ok(Runtime { heap, prog, book });
   }
 
@@ -165,12 +161,12 @@ impl Runtime {
 
   /// Allocates a new term, returns its location
   pub fn alloc_code(&mut self, code: &str) -> Result<u64, String> {
-    Ok(self.alloc_term(&*language::read_term(code)?))
+    Ok(self.alloc_term(&*language::syntax::read_term(code)?))
   }
 
   /// Given a location, returns the pointer stored on it
-  pub fn at(&self, host: u64) -> Ptr {
-    runtime::ask_lnk(&self.heap, host)
+  pub fn load_ptr(&self, host: u64) -> Ptr {
+    runtime::load_ptr(&self.heap, host)
   }
 
   /// Given a location, evaluates a term to head normal form
@@ -201,20 +197,20 @@ impl Runtime {
     return self.show(host);
   }
 
-  /// Given a location, runs side-effective actions
-  #[cfg(not(target_arch = "wasm32"))]
-  pub fn run_io(&mut self, host: u64) {
-    runtime::run_io(&mut self.heap, &self.prog, &[0], host)
-  }
+  // /// Given a location, runs side-effective actions
+  //#[cfg(not(target_arch = "wasm32"))]
+  //pub fn run_io(&mut self, host: u64) {
+    //runtime::run_io(&mut self.heap, &self.prog, &[0], host)
+  //}
 
   /// Given a location, recovers the lambda Term stored on it, as code
   pub fn show(&self, host: u64) -> String {
-    readback::as_code(&self.heap, &self.prog, host)
+    language::readback::as_code(&self.heap, &self.prog, host)
   }
 
   /// Given a location, recovers the linear Term stored on it, as code
   pub fn show_linear(&self, host: u64) -> String {
-    readback::as_linear_code(&self.heap, &self.prog, host)
+    language::readback::as_linear_code(&self.heap, &self.prog, host)
   }
 
   /// Return the total number of graph rewrites computed
@@ -444,7 +440,7 @@ impl Runtime {
   }
 
   pub fn collect(&mut self, term: Ptr) {
-    return runtime::collect(&self.heap, &self.prog, 0, term); // FIXME tid?
+    return runtime::collect(&self.heap, &self.prog.arit, 0, term); // FIXME tid?
   }
 
 }
@@ -452,18 +448,18 @@ impl Runtime {
 // Methods that aren't compiled to JS
 impl Runtime {
   /// Allocates a new term, returns its location
-  pub fn alloc_term(&mut self, term: &language::Term) -> u64 {
-    rulebook::alloc_term(&self.heap, 0, &self.book, term) // FIXME tid?
+  pub fn alloc_term(&mut self, term: &language::syntax::Term) -> u64 {
+    runtime::alloc_term(&self.heap, 0, &self.book, term) // FIXME tid?
   }
 
   /// Given a location, recovers the Term stored on it
   pub fn readback(&self, host: u64) -> Box<Term> {
-    readback::as_term(&self.heap, &self.prog, host)
+    language::readback::as_term(&self.heap, &self.prog, host)
   }
 
   /// Given a location, recovers the Term stored on it
   pub fn linear_readback(&self, host: u64) -> Box<Term> {
-    readback::as_linear_term(&self.heap, &self.prog, host)
+    language::readback::as_linear_term(&self.heap, &self.prog, host)
   }
 }
 
@@ -477,21 +473,21 @@ pub fn example() -> Result<(), String> {
   return Ok(());
 }
 
-#[cfg(test)]
-mod tests {
-  use crate::eval_code;
-  use crate::make_call;
+//#[cfg(test)]
+//mod tests {
+  //use crate::eval_code;
+  //use crate::make_call;
 
-  #[test]
-  fn test() {
-    let code = "
-    (Fn 0) = 0
-    (Fn 1) = 1
-    (Fn n) = (+ (Fn (- n 1)) (Fn (- n 2)))
-    (Main) = (Fn 20)
-    ";
+  //#[test]
+  //fn test() {
+    //let code = "
+    //(Fn 0) = 0
+    //(Fn 1) = 1
+    //(Fn n) = (+ (Fn (- n 1)) (Fn (- n 2)))
+    //(Main) = (Fn 20)
+    //";
 
-    let (norm, _cost, _size, _time) = rulebook::eval_code(&make_call("Main", &[]).unwrap(), code, false, 32 << 20).unwrap();
-    assert_eq!(norm, "6765");
-  }
-}
+    //let (norm, _cost, _size, _time) = language::rulebook::eval_code(&make_call("Main", &[]).unwrap(), code, false, 32 << 20).unwrap();
+    //assert_eq!(norm, "6765");
+  //}
+//}

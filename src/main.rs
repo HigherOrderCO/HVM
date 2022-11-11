@@ -7,12 +7,9 @@
 #![allow(unused_macros)]
 #![allow(unused_parens)]
 
-mod compiler;
 mod language;
-mod parser;
-mod readback;
-mod rulebook;
 mod runtime;
+mod compiler;
 
 pub use clap::{Parser, Subcommand};
 use regex::RegexBuilder;
@@ -22,7 +19,7 @@ use regex::RegexBuilder;
 #[clap(propagate_version = true)]
 pub struct Cli {
   /// Set quantity of allocated memory
-  #[clap(short = 'M', long, default_value = "4G", parse(try_from_str=parse_mem_size))]
+  #[clap(short = 'M', long, default_value = "", parse(try_from_str=parse_mem_size))]
   pub memory_size: usize,
 
   #[clap(subcommand)]
@@ -49,39 +46,9 @@ pub enum Command {
   },
 }
 
-fn get_unit_ratio(unit: &str) -> Option<usize> {
-  match unit.to_lowercase().as_str() {
-    "k" => Some(1 << 10),
-    "m" => Some(1 << 20),
-    "g" => Some(1 << 30),
-    _ => None,
-  }
-}
-
-fn parse_mem_size(raw: &str) -> Result<usize, String> {
-  let re = RegexBuilder::new(r"^(\d+)([KMG])i?B?$").case_insensitive(true).build().unwrap();
-
-  if let Some(caps) = re.captures(raw) {
-    let size = caps.get(1).unwrap().as_str().parse::<usize>();
-    let unit = caps.get(2).unwrap().as_str();
-
-    if let Ok(size) = size {
-      if let Some(unit) = get_unit_ratio(unit) {
-        return Ok(size * unit);
-      }
-    }
-  }
-
-  Err(format!("'{}' is not a valid memory size", raw))
-}
-
-
 fn main() {
-  match run_cli() {
-    Ok(..) => {}
-    Err(err) => {
-      eprintln!("{}", err);
-    }
+  if let Err(err) = run_cli() {
+    eprintln!("{}", err);
   };
 }
 
@@ -100,7 +67,7 @@ fn run_cli() -> Result<(), String> {
     Command::Compile { file, single_thread } => {
       let file = &hvm(&file);
       let code = load_file_code(file)?;
-      compile_code(&code, file, cli_matches.memory_size, !single_thread)?;
+      compile_code(&code, file)?;
       Ok(())
     }
     Command::Run { file, params } => {
@@ -119,27 +86,55 @@ fn run_cli() -> Result<(), String> {
   }
 }
 
-fn make_main_call(params: &Vec<String>) -> Result<language::Term, String> {
+
+fn get_unit_ratio(unit: &str) -> Option<usize> {
+  match unit.to_lowercase().as_str() {
+    "k" => Some(1 << 10),
+    "m" => Some(1 << 20),
+    "g" => Some(1 << 30),
+    _ => None,
+  }
+}
+
+fn parse_mem_size(raw: &str) -> Result<usize, String> {
+  if raw.is_empty() {
+    return Ok(runtime::HEAP_SIZE * 64 / 8);
+  } else {
+    let re = RegexBuilder::new(r"^(\d+)([KMG])i?B?$").case_insensitive(true).build().unwrap();
+    if let Some(caps) = re.captures(raw) {
+      let size = caps.get(1).unwrap().as_str().parse::<usize>();
+      let unit = caps.get(2).unwrap().as_str();
+      if let Ok(size) = size {
+        if let Some(unit) = get_unit_ratio(unit) {
+          return Ok(size * unit);
+        }
+      }
+    }
+    Err(format!("'{}' is not a valid memory size", raw))
+  }
+}
+
+fn make_main_call(params: &Vec<String>) -> Result<language::syntax::Term, String> {
   let name = "Main".to_string();
   let mut args = Vec::new();
   for param in params {
-    let term = language::read_term(param)?;
+    let term = language::syntax::read_term(param)?;
     args.push(term);
   }
-  Ok(language::Term::Ctr { name, args })
+  Ok(language::syntax::Term::Ctr { name, args })
 }
 
 fn run_code(code: &str, debug: bool, params: Vec<String>, memory: usize) -> Result<(), String> {
   let call = make_main_call(&params)?;
   //FIXME: remove below (parallel debug)
-  //let call = language::Term::Ctr {
+  //let call = language::syntax::Term::Ctr {
     //name: "Pair".to_string(),
     //args: vec![
-      //Box::new(language::Term::Ctr { name: "Main0".to_string(), args: vec![] }),
-      //Box::new(language::Term::Ctr { name: "Main1".to_string(), args: vec![] }),
+      //Box::new(language::syntax::Term::Ctr { name: "Main0".to_string(), args: vec![] }),
+      //Box::new(language::syntax::Term::Ctr { name: "Main1".to_string(), args: vec![] }),
     //]
   //};
-  let (norm, cost, used, time) = rulebook::eval_code(&call, code, debug, memory)?;
+  let (norm, cost, used, time) = runtime::eval_code(&call, code, debug, memory)?;
   println!("{}", norm);
   eprintln!();
   eprintln!("rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
@@ -147,12 +142,12 @@ fn run_code(code: &str, debug: bool, params: Vec<String>, memory: usize) -> Resu
   Ok(())
 }
 
-fn compile_code(code: &str, name: &str, heap_size: usize, parallel: bool) -> Result<(), String> {
+fn compile_code(code: &str, name: &str) -> Result<(), String> {
   if !name.ends_with(".hvm") {
     return Err("Input file must end with .hvm.".to_string());
   }
   let name = format!("{}.c", &name[0..name.len() - 4]);
-  match compiler::compile(code, &name, heap_size, parallel) {
+  match compiler::compile(code, &name) {
     Err(er) => {
       println!("{}", er);
     }
