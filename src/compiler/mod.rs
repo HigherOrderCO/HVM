@@ -6,53 +6,53 @@ use std::collections::HashMap;
 use crate::language as language;
 use crate::runtime as runtime;
 
-pub fn compile(code: &str, file_name: &str) -> std::io::Result<()> {
+pub fn compile(code: &str, name: &str) -> std::io::Result<()> {
 
   // hvm
-  std::fs::create_dir("./_hvm_").ok();
-  std::fs::write("./_hvm_/Cargo.toml", CARGO_TOML)?;
+  std::fs::create_dir(format!("./{}",name)).ok();
+  std::fs::write(format!("./{}/Cargo.toml",name), CARGO_TOML)?;
 
   // hvm/src
-  std::fs::create_dir("./_hvm_/src").ok();
-  std::fs::write("./_hvm_/src/main.rs", MAIN_RS)?;
+  std::fs::create_dir(format!("./{}/src",name)).ok();
+  std::fs::write(format!("./{}/src/main.rs",name), MAIN_RS)?;
 
   // hvm/src/language
-  std::fs::create_dir("./_hvm_/src/language").ok();
-  std::fs::write("./_hvm_/src/language/mod.rs"      , include_str!("./../language/mod.rs"))?;
-  std::fs::write("./_hvm_/src/language/parser.rs"   , include_str!("./../language/parser.rs"))?;
-  std::fs::write("./_hvm_/src/language/readback.rs" , include_str!("./../language/readback.rs"))?;
-  std::fs::write("./_hvm_/src/language/rulebook.rs" , include_str!("./../language/rulebook.rs"))?;
-  std::fs::write("./_hvm_/src/language/syntax.rs"   , include_str!("./../language/syntax.rs"))?;
+  std::fs::create_dir(format!("./{}/src/language",name)).ok();
+  std::fs::write(format!("./{}/src/language/mod.rs",name)      , include_str!("./../language/mod.rs"))?;
+  std::fs::write(format!("./{}/src/language/parser.rs",name)   , include_str!("./../language/parser.rs"))?;
+  std::fs::write(format!("./{}/src/language/readback.rs",name) , include_str!("./../language/readback.rs"))?;
+  std::fs::write(format!("./{}/src/language/rulebook.rs",name) , include_str!("./../language/rulebook.rs"))?;
+  std::fs::write(format!("./{}/src/language/syntax.rs",name)   , include_str!("./../language/syntax.rs"))?;
 
   // hvm/src/runtime
-  std::fs::create_dir("./_hvm_/src/runtime").ok();
-  std::fs::write("./_hvm_/src/runtime/mod.rs", include_str!("./../runtime/mod.rs"))?;
+  std::fs::create_dir(format!("./{}/src/runtime",name)).ok();
+  std::fs::write(format!("./{}/src/runtime/mod.rs",name), include_str!("./../runtime/mod.rs"))?;
 
   // hvm/src/runtime/base
   let (precomp_rs, reducer_rs) = compile_code(code).unwrap();
-  std::fs::create_dir("./_hvm_/src/runtime/base").ok();
-  std::fs::write("./_hvm_/src/runtime/base/mod.rs"     , include_str!("./../runtime/base/mod.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/base/debug.rs"   , include_str!("./../runtime/base/debug.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/base/memory.rs"  , include_str!("./../runtime/base/memory.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/base/precomp.rs" , precomp_rs)?;
-  std::fs::write("./_hvm_/src/runtime/base/program.rs" , include_str!("./../runtime/base/program.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/base/reducer.rs" , reducer_rs)?;
+  std::fs::create_dir(format!("./{}/src/runtime/base",name)).ok();
+  std::fs::write(format!("./{}/src/runtime/base/mod.rs",name)     , include_str!("./../runtime/base/mod.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/base/debug.rs",name)   , include_str!("./../runtime/base/debug.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/base/memory.rs",name)  , include_str!("./../runtime/base/memory.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/base/precomp.rs",name) , precomp_rs)?;
+  std::fs::write(format!("./{}/src/runtime/base/program.rs",name) , include_str!("./../runtime/base/program.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/base/reducer.rs",name) , reducer_rs)?;
 
   // hvm/src/runtime/data
-  std::fs::create_dir("./_hvm_/src/runtime/data").ok();
-  std::fs::write("./_hvm_/src/runtime/data/mod.rs"         , include_str!("./../runtime/data/mod.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/data/allocator.rs"   , include_str!("./../runtime/data/allocator.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/data/redex_bag.rs"   , include_str!("./../runtime/data/redex_bag.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/data/u64_map.rs"     , include_str!("./../runtime/data/u64_map.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/data/visit_queue.rs" , include_str!("./../runtime/data/visit_queue.rs"))?;
+  std::fs::create_dir(format!("./{}/src/runtime/data",name)).ok();
+  std::fs::write(format!("./{}/src/runtime/data/mod.rs",name)         , include_str!("./../runtime/data/mod.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/data/allocator.rs",name)   , include_str!("./../runtime/data/allocator.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/data/redex_bag.rs",name)   , include_str!("./../runtime/data/redex_bag.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/data/u64_map.rs",name)     , include_str!("./../runtime/data/u64_map.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/data/visit_queue.rs",name) , include_str!("./../runtime/data/visit_queue.rs"))?;
 
   // hvm/src/runtime/rule
-  std::fs::create_dir("./_hvm_/src/runtime/rule").ok();
-  std::fs::write("./_hvm_/src/runtime/rule/mod.rs" , include_str!("./../runtime/rule/mod.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rule/app.rs" , include_str!("./../runtime/rule/app.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rule/dup.rs" , include_str!("./../runtime/rule/dup.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rule/fun.rs" , include_str!("./../runtime/rule/fun.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rule/op2.rs" , include_str!("./../runtime/rule/op2.rs"))?;
+  std::fs::create_dir(format!("./{}/src/runtime/rule",name)).ok();
+  std::fs::write(format!("./{}/src/runtime/rule/mod.rs",name) , include_str!("./../runtime/rule/mod.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/rule/app.rs",name) , include_str!("./../runtime/rule/app.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/rule/dup.rs",name) , include_str!("./../runtime/rule/dup.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/rule/fun.rs",name) , include_str!("./../runtime/rule/fun.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/rule/op2.rs",name) , include_str!("./../runtime/rule/op2.rs"))?;
 
   return Ok(());
 }
@@ -644,6 +644,9 @@ repository = "https://github.com/Kindelia/HVM"
 license = "MIT"
 keywords = ["functional", "language", "runtime", "compiler", "target"]
 categories = ["compilers"]
+
+[profile.release]
+opt-level = 3
 
 [[bin]]
 name = "hvm-app"

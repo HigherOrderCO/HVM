@@ -16,7 +16,7 @@ pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
 pub const CELLS_PER_GB: usize = 0x8000000;
 
-pub const HEAP_SIZE: usize = 16 * CELLS_PER_GB;
+pub const HEAP_SIZE: usize = 8 * CELLS_PER_GB;
 
 pub fn available_parallelism() -> usize {
   return std::thread::available_parallelism().unwrap().get();

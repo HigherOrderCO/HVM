@@ -147,15 +147,17 @@ fn compile_code(code: &str, name: &str) -> Result<(), String> {
   if !name.ends_with(".hvm") {
     return Err("Input file must end with .hvm.".to_string());
   }
-  let name = format!("{}.c", &name[0..name.len() - 4]);
-  match compiler::compile(code, &name) {
+  //let name = &format!("{}", &name[0..name.len() - 4]);
+  let name = &format!("hvm_app");
+  match compiler::compile(code, name) {
     Err(er) => {
       println!("{}", er);
     }
     Ok(res) => {}
   }
-  //compiler::compile_code_and_save(code, &name, heap_size, parallel)?;
-  println!("Compiled to '{}'.", name);
+  println!("Created the 'hvm_app' directory.");
+  println!("You must compile it using rustc.");
+  println!("Run the executable to call Main.");
   Ok(())
 }
 
