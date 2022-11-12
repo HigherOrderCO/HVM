@@ -41,8 +41,10 @@ pub fn compile(code: &str, name: &str) -> std::io::Result<()> {
   // hvm/src/runtime/data
   std::fs::create_dir(format!("./{}/src/runtime/data",name)).ok();
   std::fs::write(format!("./{}/src/runtime/data/mod.rs",name)         , include_str!("./../runtime/data/mod.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/data/f60.rs",name)         , include_str!("./../runtime/data/f60.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/allocator.rs",name)   , include_str!("./../runtime/data/allocator.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/redex_bag.rs",name)   , include_str!("./../runtime/data/redex_bag.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/data/u60.rs",name)         , include_str!("./../runtime/data/u60.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/u64_map.rs",name)     , include_str!("./../runtime/data/u64_map.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/visit_queue.rs",name) , include_str!("./../runtime/data/visit_queue.rs"))?;
 
@@ -77,9 +79,9 @@ fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   // precomp ids
   let mut precomp_ids = String::new();
   for (id, name) in itertools::sorted(book.id_to_name.iter()) {
-    if id >= &runtime::PRECOMP_COUNT {
-      line(&mut precomp_ids, 0, &format!("pub const {} : u64 = {};", &compile_name(name), id));
-    }
+    //if id >= &runtime::PRECOMP_COUNT {
+    line(&mut precomp_ids, 0, &format!("pub const {} : u64 = {};", &compile_name(name), id));
+    //}
   }
 
   // precomp els
@@ -268,8 +270,13 @@ fn compile_function(
       // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
       for (i, cond) in rule.cond.iter().enumerate() {
         let i = i as u64;
-        if runtime::get_tag(*cond) == runtime::NUM {
-          let same_tag = format!("get_tag(arg{}) == NUM", i);
+        if runtime::get_tag(*cond) == runtime::U60 {
+          let same_tag = format!("get_tag(arg{}) == U60", i);
+          let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
+          matched.push(format!("({} && {})", same_tag, same_val));
+        }
+        if runtime::get_tag(*cond) == runtime::F60 {
+          let same_tag = format!("get_tag(arg{}) == F60", i);
           let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
           matched.push(format!("({} && {})", same_tag, same_val));
         }
@@ -285,8 +292,9 @@ fn compile_function(
           if rule.hoas && r != fn_apply.rules.len() - 1 {
 
             // Matches number literals
-            let is_num
-              = format!("get_tag(arg{}) == NUM", i);
+            let is_num = format!("({} || {})",
+              format!("get_tag(arg{}) == U60", i),
+              format!("get_tag(arg{}) == F60", i));
 
             // Matches constructor labels
             let is_ctr = format!("({} && {})",
@@ -297,15 +305,16 @@ fn compile_function(
             let is_hoas_ctr_num = format!("({} && {} && {})",
               format!("get_tag(arg{}) == CTR", i),
               format!("get_ext(arg{}) >= HOAS_CT0", i),
-              format!("get_ext(arg{}) <= HOAS_NUM", i));
+              format!("get_ext(arg{}) <= HOAS_F60", i));
 
             matched.push(format!("({} || {} || {})", is_num, is_ctr, is_hoas_ctr_num));
 
-          // Only match default variables on CTRs and NUMs
+          // Only match default variables on CTRs, U60s, F60s
           } else {
             let is_ctr = format!("get_tag(arg{}) == CTR", i);
-            let is_num = format!("get_tag(arg{}) == NUM", i);
-            matched.push(format!("({} || {})", is_ctr, is_num));
+            let is_u60 = format!("get_tag(arg{}) == U60", i);
+            let is_f60 = format!("get_tag(arg{}) == F60", i);
+            matched.push(format!("({} || {} || {})", is_ctr, is_u60, is_f60));
           }
 
         }
@@ -438,7 +447,7 @@ fn compile_function_rule_rhs(
         line(code, tab, &format!("let {};", dup0));
         line(code, tab, &format!("let {};", dup1));
         if INLINE_NUMBERS {
-          line(code, tab + 0, &format!("if get_tag({}) == NUM {{", copy));
+          line(code, tab + 0, &format!("if get_tag({}) == U60 || get_tag({}) == F60 {{", copy, copy));
           line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
           line(code, tab + 1, &format!("{} = {};", dup0, copy));
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
@@ -522,8 +531,11 @@ fn compile_function_rule_rhs(
         let fnam = compile_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
         format!("Fun({}, {})", fnam, name)
       }
-      runtime::Core::Num { numb } => {
-        format!("Num({})", numb)
+      runtime::Core::U6O { numb } => {
+        format!("U6O({})", numb)
+      }
+      runtime::Core::F6O { numb } => {
+        format!("F6O({})", numb)
       }
       runtime::Core::Op2 { oper, val0, val1 } => {
         let retx = fresh(nams, "ret");
@@ -533,31 +545,50 @@ fn compile_function_rule_rhs(
         line(code, tab + 0, &format!("let {};", retx));
         // Optimization: do inline operation, avoiding Op2 allocation, when operands are already number
         if INLINE_NUMBERS {
-          line(
-            code,
-            tab + 0,
-            &format!("if get_tag({}) == NUM && get_tag({}) == NUM {{", val0, val1),
-          );
+          line(code, tab + 0, &format!("if get_tag({}) == U60 && get_tag({}) == U60 {{", val0, val1));
           let a = format!("get_num({})", val0);
           let b = format!("get_num({})", val1);
           match *oper {
-            runtime::ADD => line(code, tab + 1, &format!("{} = Num({} + {});", retx, a, b)),
-            runtime::SUB => line(code, tab + 1, &format!("{} = Num({} - {});", retx, a, b)),
-            runtime::MUL => line(code, tab + 1, &format!("{} = Num({} * {});", retx, a, b)),
-            runtime::DIV => line(code, tab + 1, &format!("{} = Num({} / {});", retx, a, b)),
-            runtime::MOD => line(code, tab + 1, &format!("{} = Num({} % {});", retx, a, b)),
-            runtime::AND => line(code, tab + 1, &format!("{} = Num({} & {});", retx, a, b)),
-            runtime::OR  => line(code, tab + 1, &format!("{} = Num({} | {});", retx, a, b)),
-            runtime::XOR => line(code, tab + 1, &format!("{} = Num({} ^ {});", retx, a, b)),
-            runtime::SHL => line(code, tab + 1, &format!("{} = Num({} << {});", retx, a, b)),
-            runtime::SHR => line(code, tab + 1, &format!("{} = Num({} >> {});", retx, a, b)),
-            runtime::LTN => line(code, tab + 1, &format!("{} = Num(if {} < {} {{ 1 }} else {{ 0 }});", retx, a, b)),
-            runtime::LTE => line(code, tab + 1, &format!("{} = Num(if {} <= {} {{ 1 }} else {{ 0 }});", retx, a, b)),
-            runtime::EQL => line(code, tab + 1, &format!("{} = Num(if {} == {} {{ 1 }} else {{ 0 }});", retx, a, b)),
-            runtime::GTE => line(code, tab + 1, &format!("{} = Num(if {} >= {} {{ 1 }} else {{ 0 }});", retx, a, b)),
-            runtime::GTN => line(code, tab + 1, &format!("{} = Num(if {} >  {} {{ 1 }} else {{ 0 }});", retx, a, b)),
-            runtime::NEQ => line(code, tab + 1, &format!("{} = Num(if {} != {} {{ 1 }} else {{ 0 }});", retx, a, b)),
-            _ => line(code, tab + 1, &format!("{} = ?;", retx)),
+            runtime::ADD => line(code, tab + 1, &format!("{} = U6O(u60::add({}, {}));", retx, a, b)),
+            runtime::SUB => line(code, tab + 1, &format!("{} = U6O(u60::sub({}, {}));", retx, a, b)),
+            runtime::MUL => line(code, tab + 1, &format!("{} = U6O(u60::mul({}, {}));", retx, a, b)),
+            runtime::DIV => line(code, tab + 1, &format!("{} = U6O(u60::div({}, {}));", retx, a, b)),
+            runtime::MOD => line(code, tab + 1, &format!("{} = U6O(u60::mod({}, {}));", retx, a, b)),
+            runtime::AND => line(code, tab + 1, &format!("{} = U6O(u60::and({}, {}));", retx, a, b)),
+            runtime::OR  => line(code, tab + 1, &format!("{} = U6O(u60::or({}, {})));", retx, a, b)),
+            runtime::XOR => line(code, tab + 1, &format!("{} = U6O(u60::xor({}, {}));", retx, a, b)),
+            runtime::SHL => line(code, tab + 1, &format!("{} = U6O(u60::shl({}, {}));", retx, a, b)),
+            runtime::SHR => line(code, tab + 1, &format!("{} = U6O(u60::shr({}, {}));", retx, a, b)),
+            runtime::LTN => line(code, tab + 1, &format!("{} = U6O(u60::ltn({}, {}));", retx, a, b)),
+            runtime::LTE => line(code, tab + 1, &format!("{} = U6O(u60::lte({}, {}));", retx, a, b)),
+            runtime::EQL => line(code, tab + 1, &format!("{} = U6O(u60::eql({}, {}));", retx, a, b)),
+            runtime::GTE => line(code, tab + 1, &format!("{} = U6O(u60::gte({}, {}));", retx, a, b)),
+            runtime::GTN => line(code, tab + 1, &format!("{} = U6O(u60::gtn({}, {}));", retx, a, b)),
+            runtime::NEQ => line(code, tab + 1, &format!("{} = U6O(u60::neq({}, {}));", retx, a, b)),
+            _            => line(code, tab + 1, &format!("{} = 0;", retx)),
+          }
+          line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
+          line(code, tab + 0, &format!("}} else if get_tag({}) == F60 && get_tag({}) == F60 {{", val0, val1));
+          let a = format!("get_num({})", val0);
+          let b = format!("get_num({})", val1);
+          match *oper {
+            runtime::ADD => line(code, tab + 1, &format!("{} = F6O(f60::add({}, {}));", retx, a, b)),
+            runtime::SUB => line(code, tab + 1, &format!("{} = F6O(f60::sub({}, {}));", retx, a, b)),
+            runtime::MUL => line(code, tab + 1, &format!("{} = F6O(f60::mul({}, {}));", retx, a, b)),
+            runtime::DIV => line(code, tab + 1, &format!("{} = F6O(f60::div({}, {}));", retx, a, b)),
+            runtime::MOD => line(code, tab + 1, &format!("{} = F6O(f60::mod({}, {}));", retx, a, b)),
+            runtime::AND => line(code, tab + 1, &format!("{} = F6O(f60::and({}, {}));", retx, a, b)),
+            runtime::OR  => line(code, tab + 1, &format!("{} = F6O(f60::or({}, {})));", retx, a, b)),
+            runtime::XOR => line(code, tab + 1, &format!("{} = F6O(f60::xor({}, {}));", retx, a, b)),
+            runtime::SHL => line(code, tab + 1, &format!("{} = F6O(f60::shl({}, {}));", retx, a, b)),
+            runtime::SHR => line(code, tab + 1, &format!("{} = F6O(f60::shr({}, {}));", retx, a, b)),
+            runtime::LTN => line(code, tab + 1, &format!("{} = F6O(f60::ltn({}, {}));", retx, a, b)),
+            runtime::LTE => line(code, tab + 1, &format!("{} = F6O(f60::lte({}, {}));", retx, a, b)),
+            runtime::EQL => line(code, tab + 1, &format!("{} = F6O(f60::eql({}, {}));", retx, a, b)),
+            runtime::GTE => line(code, tab + 1, &format!("{} = F6O(f60::gte({}, {}));", retx, a, b)),
+            runtime::GTN => line(code, tab + 1, &format!("{} = F6O(f60::gtn({}, {}));", retx, a, b)),
+            runtime::NEQ => line(code, tab + 1, &format!("{} = F6O(f60::neq({}, {}));", retx, a, b)),
+            _            => line(code, tab + 1, &format!("{} = 0;", retx)),
           }
           line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
           line(code, tab + 0, "} else {");

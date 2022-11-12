@@ -15,7 +15,8 @@ pub enum Core {
   App { func: Box<Core>, argm: Box<Core> },
   Fun { func: u64, args: Vec<Core> },
   Ctr { func: u64, args: Vec<Core> },
-  Num { numb: u64 },
+  U6O { numb: u64 },
+  F6O { numb: u64 },
   Op2 { oper: u64, val0: Box<Core>, val1: Box<Core> },
 }
 
@@ -248,9 +249,13 @@ pub fn build_function(book: &language::rulebook::RuleBook, fn_name: &str, rules:
               }
             }
           }
-          language::syntax::Term::Num { numb } => {
+          language::syntax::Term::U6O { numb } => {
             *is_strict = true;
-            cond.push(Num(*numb as u64));
+            cond.push(U6O(*numb as u64));
+          }
+          language::syntax::Term::F6O { numb } => {
+            *is_strict = true;
+            cond.push(F6O(*numb as u64));
           }
           language::syntax::Term::Var { name } => {
             cond.push(Var(0));
@@ -326,7 +331,8 @@ pub fn gen_arities(rb: &language::rulebook::RuleBook) -> U64Map<u64> {
           }
         }
       }
-      language::syntax::Term::Num { .. } => {}
+      language::syntax::Term::U6O { .. } => {}
+      language::syntax::Term::F6O { .. } => {}
       language::syntax::Term::Op2 { val0, val1, .. } => {
         find_arities(rb, arit, val0);
         find_arities(rb, arit, val1);
@@ -445,7 +451,8 @@ pub fn term_to_core(book: &language::rulebook::RuleBook, term: &language::syntax
           Core::Ctr { func: term_func, args: term_args }
         }
       }
-      language::syntax::Term::Num { numb } => Core::Num { numb: *numb },
+      language::syntax::Term::U6O { numb } => Core::U6O { numb: *numb },
+      language::syntax::Term::F6O { numb } => Core::F6O { numb: *numb },
       language::syntax::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
         let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
@@ -609,7 +616,8 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
           RuleBodyCell::Val { value: Ctr(*func, 0) }
         }
       }
-      Core::Num { numb } => RuleBodyCell::Val { value: Num(*numb as u64) },
+      Core::U6O { numb } => RuleBodyCell::Val { value: U6O(*numb as u64) },
+      Core::F6O { numb } => RuleBodyCell::Val { value: F6O(*numb as u64) },
       Core::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);

@@ -24,8 +24,9 @@ pub fn show_ptr(x: Ptr) -> String {
       CTR => "Ctr",
       FUN => "Fun",
       OP2 => "Op2",
-      NUM => "Num",
-      _ => "?",
+      U60 => "U60",
+      F60 => "F60",
+      _   => "?",
     };
     format!("{}({:07x}, {:08x})", tgs, ext, val)
   }
@@ -178,8 +179,11 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
         };
         format!("({} {} {})", symb, val0, val1)
       }
-      NUM => {
-        format!("{}", get_val(term))
+      U60 => {
+        format!("{}", u60::val(get_val(term)))
+      }
+      F60 => {
+        format!("{}", f60::val(get_val(term)))
       }
       CTR | FUN => {
         let func = get_ext(term);

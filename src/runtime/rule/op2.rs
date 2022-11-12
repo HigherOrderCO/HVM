@@ -14,35 +14,70 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   let arg0 = load_arg(ctx.heap, ctx.term, 0);
   let arg1 = load_arg(ctx.heap, ctx.term, 1);
 
-  // (+ a b)
-  // --------- OP2-NUM
-  // add(a, b)
-  if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
+  // (OP a b)
+  // -------- OP2-U60
+  // op(a, b)
+  if get_tag(arg0) == U60 && get_tag(arg1) == U60 {
     //operate(ctx.heap, ctx.tid, ctx.term, arg0, arg1, *ctx.host);
 
     inc_cost(ctx.heap, ctx.tid);
     let a = get_num(arg0);
     let b = get_num(arg1);
     let c = match get_ext(ctx.term) {
-      ADD => a.wrapping_add(b) & NUM_MASK,
-      SUB => a.wrapping_sub(b) & NUM_MASK,
-      MUL => a.wrapping_mul(b) & NUM_MASK,
-      DIV => a.wrapping_div(b) & NUM_MASK,
-      MOD => a.wrapping_rem(b) & NUM_MASK,
-      AND => (a & b) & NUM_MASK,
-      OR  => (a | b) & NUM_MASK,
-      XOR => (a ^ b) & NUM_MASK,
-      SHL => a.wrapping_shl(b as u32) & NUM_MASK,
-      SHR => a.wrapping_shr(b as u32) & NUM_MASK,
-      LTN => u64::from(a <  b),
-      LTE => u64::from(a <= b),
-      EQL => u64::from(a == b),
-      GTE => u64::from(a >= b),
-      GTN => u64::from(a >  b),
-      NEQ => u64::from(a != b),
-      _   => panic!("Invalid operation!"),
+      ADD => u60::add(a, b),
+      SUB => u60::sub(a, b),
+      MUL => u60::mul(a, b),
+      DIV => u60::div(a, b),
+      MOD => u60::mdl(a, b),
+      AND => u60::and(a, b),
+      OR  => u60::or(a, b),
+      XOR => u60::xor(a, b),
+      SHL => u60::shl(a, b),
+      SHR => u60::shr(a, b),
+      LTN => u60::ltn(a, b),
+      LTE => u60::lte(a, b),
+      EQL => u60::eql(a, b),
+      GTE => u60::gte(a, b),
+      GTN => u60::gtn(a, b),
+      NEQ => u60::neq(a, b),
+      _   => 0,
     };
-    let done = Num(c);
+    let done = U6O(c);
+    link(ctx.heap, *ctx.host, done);
+    free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
+
+    return false;
+  }
+
+  // (OP a b)
+  // -------- OP2-F60
+  // op(a, b)
+  else if get_tag(arg0) == F60 && get_tag(arg1) == F60 {
+    //operate(ctx.heap, ctx.tid, ctx.term, arg0, arg1, *ctx.host);
+
+    inc_cost(ctx.heap, ctx.tid);
+    let a = get_num(arg0);
+    let b = get_num(arg1);
+    let c = match get_ext(ctx.term) {
+      ADD => f60::add(a, b),
+      SUB => f60::sub(a, b),
+      MUL => f60::mul(a, b),
+      DIV => f60::div(a, b),
+      MOD => f60::mdl(a, b),
+      AND => f60::and(a, b),
+      OR  => f60::or(a, b),
+      XOR => f60::xor(a, b),
+      SHL => f60::shl(a, b),
+      SHR => f60::shr(a, b),
+      LTN => f60::ltn(a, b),
+      LTE => f60::lte(a, b),
+      EQL => f60::eql(a, b),
+      GTE => f60::gte(a, b),
+      GTN => f60::gtn(a, b),
+      NEQ => f60::neq(a, b),
+      _   => 0,
+    };
+    let done = F6O(c);
     link(ctx.heap, *ctx.host, done);
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
 

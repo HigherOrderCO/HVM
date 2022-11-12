@@ -35,9 +35,10 @@ pub const KIND_TERM_CTD : u64 = 15;
 pub const KIND_TERM_CTE : u64 = 16;
 pub const KIND_TERM_CTF : u64 = 17;
 pub const KIND_TERM_CTG : u64 = 18;
-pub const KIND_TERM_NUM : u64 = 19;
-pub const HVM_LOG : u64 = 20;
-pub const HVM_PUT : u64 = 21;
+pub const KIND_TERM_U60 : u64 = 19;
+pub const KIND_TERM_F60 : u64 = 20;
+pub const HVM_LOG : u64 = 21;
+pub const HVM_PUT : u64 = 22;
 //[[CODEGEN:PRECOMP-IDS]]//
 
 pub const PRECOMP : &[Precomp] = &[
@@ -156,8 +157,14 @@ pub const PRECOMP : &[Precomp] = &[
     funcs: None,
   },
   Precomp {
-    id: KIND_TERM_NUM,
-    name: "Kind.Term.num",
+    id: KIND_TERM_U60,
+    name: "Kind.Term.u60",
+    arity: 2,
+    funcs: None,
+  },
+  Precomp {
+    id: KIND_TERM_F60,
+    name: "Kind.Term.f60",
     arity: 2,
     funcs: None,
   },

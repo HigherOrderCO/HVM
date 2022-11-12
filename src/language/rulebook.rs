@@ -203,7 +203,8 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
               }
             }
           }
-          language::syntax::Term::Num { .. } => {}
+          language::syntax::Term::U6O { .. } => {}
+          language::syntax::Term::F6O { .. } => {}
           _ => {
             return Err("Invalid left-hand side".to_owned());
           }
@@ -367,8 +368,12 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
         let term = language::syntax::Term::Op2 { oper: *oper, val0, val1 };
         Box::new(term)
       }
-      language::syntax::Term::Num { numb } => {
-        let term = language::syntax::Term::Num { numb: *numb };
+      language::syntax::Term::U6O { numb } => {
+        let term = language::syntax::Term::U6O { numb: *numb };
+        Box::new(term)
+      }
+      language::syntax::Term::F6O { numb } => {
+        let term = language::syntax::Term::F6O { numb: *numb };
         Box::new(term)
       }
     };
@@ -659,7 +664,8 @@ pub fn subst(term: &mut language::syntax::Term, sub_name: &str, value: &language
         subst(&mut *arg, sub_name, value);
       }
     }
-    language::syntax::Term::Num { .. } => {}
+    language::syntax::Term::U6O { .. } => {}
+    language::syntax::Term::F6O { .. } => {}
     language::syntax::Term::Op2 { val0, val1, .. } => {
       subst(&mut *val0, sub_name, value);
       subst(&mut *val1, sub_name, value);
@@ -710,7 +716,10 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
   //}
 
   fn is_matchable(term: &language::syntax::Term) -> bool {
-    matches!(term, language::syntax::Term::Ctr { .. } | language::syntax::Term::Num { .. })
+    matches!(term,
+        language::syntax::Term::Ctr { .. }
+      | language::syntax::Term::U6O { .. }
+      | language::syntax::Term::F6O { .. })
   }
 
   //fn is_variable(term: &language::syntax::Term) -> bool {
@@ -733,7 +742,10 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                 return (false, false);
               }
             }
-            language::syntax::Term::Num { .. } => {
+            language::syntax::Term::U6O { .. } => {
+              return (false, false);
+            }
+            language::syntax::Term::F6O { .. } => {
               return (false, false);
             }
             language::syntax::Term::Var { .. } => {
@@ -741,8 +753,22 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
             }
             _ => {}
           },
-          language::syntax::Term::Num { numb: a_arg_numb } => match **b_arg {
-            language::syntax::Term::Num { numb: b_arg_numb } => {
+          language::syntax::Term::U6O { numb: a_arg_numb } => match **b_arg {
+            language::syntax::Term::U6O { numb: b_arg_numb } => {
+              if a_arg_numb != b_arg_numb {
+                return (false, false);
+              }
+            }
+            language::syntax::Term::Ctr { .. } => {
+              return (false, false);
+            }
+            language::syntax::Term::Var { .. } => {
+              same_shape = false;
+            }
+            _ => {}
+          },
+          language::syntax::Term::F6O { numb: a_arg_numb } => match **b_arg {
+            language::syntax::Term::F6O { numb: b_arg_numb } => {
               if a_arg_numb != b_arg_numb {
                 return (false, false);
               }
@@ -791,7 +817,12 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                         new_arg_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
                       }
-                      language::syntax::Term::Num { .. } => {
+                      language::syntax::Term::U6O { .. } => {
+                        let var_name = format!(".{}", fresh(name_count));
+                        new_arg_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
+                        new_rhs_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
+                      }
+                      language::syntax::Term::F6O { .. } => {
                         let var_name = format!(".{}", fresh(name_count));
                         new_arg_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
                         new_rhs_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
@@ -870,9 +901,26 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                       language::syntax::Term::Var { .. } => {
                         other_new_lhs_args.push(other_arg.clone());
                       }
-                      language::syntax::Term::Num { numb: rule_arg_numb } => {
+                      language::syntax::Term::U6O { numb: rule_arg_numb } => {
                         match &**other_arg {
-                          language::syntax::Term::Num { numb: other_arg_numb } => {
+                          language::syntax::Term::U6O { numb: other_arg_numb } => {
+                            if rule_arg_numb == other_arg_numb {
+                              other_new_lhs_args.push(Box::new(*other_arg.clone()));
+                            } else {
+                              panic!("Internal error. Please report."); // not possible since it matches
+                            }
+                          }
+                          language::syntax::Term::Var { name: ref other_arg_name } => {
+                            subst(&mut other_new_rhs, other_arg_name, &rule_arg);
+                          }
+                          _ => {
+                            panic!("Internal error. Please report."); // not possible since it matches
+                          }
+                        }
+                      }
+                      language::syntax::Term::F6O { numb: rule_arg_numb } => {
+                        match &**other_arg {
+                          language::syntax::Term::F6O { numb: other_arg_numb } => {
                             if rule_arg_numb == other_arg_numb {
                               other_new_lhs_args.push(Box::new(*other_arg.clone()));
                             } else {

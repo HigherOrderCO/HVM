@@ -30,7 +30,8 @@
 //   CTR |   8 | a constructor
 //   FUN |   9 | a function
 //   OP2 |  10 | a numeric operation
-//   NUM |  11 | a 60-bit number
+//   U60 |  11 | a 60-bit unsigned integer
+//   F60 |  12 | a 60-bit floating point
 //
 // The semantics of the 1st and 2nd values depend on the pointer tag. 
 //
@@ -47,13 +48,14 @@
 //   CTR | the constructor name         | points to the constructor node
 //   FUN | the function name            | points to the function node
 //   OP2 | the operation name           | points to the operation node
-//   NUM | the most significant 28 bits | the least significant 32 bits
+//   U60 | the most significant 28 bits | the least significant 32 bits
+//   F60 | the most significant 28 bits | the least significant 32 bits
 //
 // Notes:
 //
 //   1. The duplication label is an internal value used on the DUP-SUP rule.
 //   2. The operation name only uses 4 of the 28 bits, as there are only 16 ops.
-//   3. NUM pointers don't point anywhere, they just store the number directly.
+//   3. U60 and F60 pointers don't point anywhere, they just store the number directly.
 //
 // A node is a tuple of N pointers stored on sequential memory indices.
 // The meaning of each index depends on the node. There are 7 types:
@@ -96,7 +98,7 @@
 //   1. Duplication nodes DON'T have a body. They "float" on the global scope.
 //   2. Lambdas and Duplications point to their variables, and vice-versa.
 //   3. ARG pointers can only show up inside Lambdas and Duplications.
-//   4. Nums and vars don't require a node type, because they're unboxed.
+//   4. Nums and Vars don't require a node type, because they're unboxed.
 //   5. Function and Constructor arities depends on the user-provided definition.
 //
 // Example 0:
@@ -108,8 +110,8 @@
 //   Memory:
 //
 //     Root : Ptr(CTR, 0x0000001, 0x00000000)
-//     0x00 | Ptr(NUM, 0x0000000, 0x00000007) // the tuple's 1st field
-//     0x01 | Ptr(NUM, 0x0000000, 0x00000008) // the tuple's 2nd field
+//     0x00 | Ptr(U60, 0x0000000, 0x00000007) // the tuple's 1st field
+//     0x01 | Ptr(U60, 0x0000000, 0x00000008) // the tuple's 2nd field
 //
 //   Notes:
 //     
@@ -224,7 +226,8 @@ pub const SUP: u64 = 0x7;
 pub const CTR: u64 = 0x8;
 pub const FUN: u64 = 0x9;
 pub const OP2: u64 = 0xA;
-pub const NUM: u64 = 0xB;
+pub const U60: u64 = 0xB;
+pub const F60: u64 = 0xC;
 pub const NIL: u64 = 0xF;
 
 pub const ADD: u64 = 0x0;
@@ -243,8 +246,6 @@ pub const EQL: u64 = 0xC;
 pub const GTE: u64 = 0xD;
 pub const GTN: u64 = 0xE;
 pub const NEQ: u64 = 0xF;
-
-pub const NUM_MASK: u64 = 0xFFF_FFFF_FFFF_FFFF;
 
 // Pointer Constructors
 // --------------------
@@ -285,8 +286,12 @@ pub fn Op2(ope: u64, pos: u64) -> Ptr {
   (OP2 * TAG) | (ope * EXT) | pos
 }
 
-pub fn Num(val: u64) -> Ptr {
-  (NUM * TAG) | (val & NUM_MASK)
+pub fn U6O(val: u64) -> Ptr {
+  (U60 * TAG) | val
+}
+
+pub fn F6O(val: u64) -> Ptr {
+  (F60 * TAG) | val
 }
 
 pub fn Ctr(fun: u64, pos: u64) -> Ptr {
@@ -637,7 +642,8 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
-      NUM => {}
+      U60 => {}
+      F60 => {}
       CTR | FUN => {
         let arity = arity_of(arit, term);
         for i in 0 .. arity {

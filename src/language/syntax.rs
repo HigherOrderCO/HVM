@@ -1,4 +1,6 @@
 use crate::language::parser;
+use crate::runtime::data::u60;
+use crate::runtime::data::f60;
 
 // Types
 // =====
@@ -15,7 +17,8 @@ pub enum Term {
   Lam { name: String, body: Box<Term> },
   App { func: Box<Term>, argm: Box<Term> },
   Ctr { name: String, args: Vec<Box<Term>> },
-  Num { numb: u64 },
+  U6O { numb: u64 },
+  F6O { numb: u64 },
   Op2 { oper: Oper, val0: Box<Term>, val1: Box<Term> },
 }
 
@@ -104,7 +107,7 @@ impl std::fmt::Display for Term {
       fn go(term: &Term, text: &mut String) -> Option<()> {
         if let Term::Ctr { name, args } = term {
           if name == "String.cons" && args.len() == 2 {
-            if let Term::Num { numb } = *args[0] {
+            if let Term::U6O { numb } = *args[0] {
               text.push(std::char::from_u32(numb as u32)?);
               go(&args[1], text)?;
             }
@@ -149,7 +152,8 @@ impl std::fmt::Display for Term {
 
         write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
       }
-      Self::Num { numb } => write!(f, "{}", numb),
+      Self::U6O { numb } => write!(f, "{}", &u60::show(*numb)),
+      Self::F6O { numb } => write!(f, "{}", &f60::show(*numb)),
       Self::Op2 { oper, val0, val1 } => write!(f, "({} {} {})", oper, val0, val1),
     }
   }
@@ -251,7 +255,7 @@ pub fn parse_app(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
           if !args.is_empty() {
             args.into_iter().reduce(|a, b| Box::new(Term::App { func: a, argm: b })).unwrap()
           } else {
-            Box::new(Term::Num { numb: 0 })
+            Box::new(Term::U6O { numb: 0 })
           }
         }),
         state,
@@ -282,18 +286,26 @@ pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   )
 }
 
-pub fn parse_u60(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
+pub fn parse_num(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
       Ok((state, ('0'..='9').contains(&head)))
     }),
     Box::new(|state| {
-      let (state, numb) = parser::name1(state)?;
-      if !numb.is_empty() {
-        Ok((state, Box::new(Term::Num { numb: numb.parse::<u64>().unwrap() })))
+      let (state, text) = parser::name1(state)?;
+      if !text.is_empty() {
+        if text.starts_with("0x") {
+          return Ok((state, Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(&text[2..], 16).unwrap()) })));
+        } else {
+          if text.find(".").is_some() {
+            return Ok((state, Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) })));
+          } else {
+            return Ok((state, Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) })));
+          }
+        }
       } else {
-        Ok((state, Box::new(Term::Num { numb: 0 })))
+        Ok((state, Box::new(Term::U6O { numb: 0 })))
       }
     }),
     state,
@@ -378,7 +390,7 @@ pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
         hasher.write(name.as_bytes());
         hasher.finish()
       };
-      Ok((state, Box::new(Term::Num { numb: hash })))
+      Ok((state, Box::new(Term::U6O { numb: hash })))
     }),
     state,
   )
@@ -433,7 +445,7 @@ pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
       if let Some(c) = parser::head(state) {
         let state = parser::tail(state);
         let (state, _) = parser::text("'", state)?;
-        Ok((state, Box::new(Term::Num { numb: c as u64 })))
+        Ok((state, Box::new(Term::U6O { numb: c as u64 })))
       } else {
         parser::expected("character", 1, state)
       }
@@ -468,7 +480,7 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
       let empty = Term::Ctr { name: "String.nil".to_string(), args: Vec::new() };
       let list = Box::new(chars.iter().rfold(empty, |t, h| Term::Ctr {
         name: "String.cons".to_string(),
-        args: vec![Box::new(Term::Num { numb: *h as u64 }), Box::new(t)],
+        args: vec![Box::new(Term::U6O { numb: *h as u64 }), Box::new(t)],
       }));
       Ok((state, list))
     }),
@@ -517,7 +529,7 @@ pub fn parse_term(state: parser::State) -> parser::Answer<Box<Term>> {
       Box::new(parse_op2),
       Box::new(parse_app),
       Box::new(parse_sup),
-      Box::new(parse_u60),
+      Box::new(parse_num),
       Box::new(parse_sym_sugar),
       Box::new(parse_chr_sugar),
       Box::new(parse_str_sugar),

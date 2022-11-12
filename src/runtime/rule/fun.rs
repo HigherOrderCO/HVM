@@ -67,8 +67,13 @@ pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &App
     for (i, cond) in rule.cond.iter().enumerate() {
       let i = i as u64;
       match get_tag(*cond) {
-        NUM => {
-          let same_tag = get_tag(load_arg(ctx.heap, ctx.term, i)) == NUM;
+        U60 => {
+          let same_tag = get_tag(load_arg(ctx.heap, ctx.term, i)) == U60;
+          let same_val = get_num(load_arg(ctx.heap, ctx.term, i)) == get_num(*cond);
+          matched = matched && same_tag && same_val;
+        }
+        F60 => {
+          let same_tag = get_tag(load_arg(ctx.heap, ctx.term, i)) == F60;
           let same_val = get_num(load_arg(ctx.heap, ctx.term, i)) == get_num(*cond);
           matched = matched && same_tag && same_val;
         }
@@ -81,12 +86,13 @@ pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &App
           // If this is a strict argument, then we're in a default variable
           if unsafe { *visit.strict_map.get_unchecked(i as usize) } {
 
-            // This is a Kind2-specific optimization. Check 'KIND_ctx.term_OPT'.
+            // This is a Kind2-specific optimization.
             if rule.hoas && r != apply.rules.len() - 1 {
 
               // Matches number literals
               let is_num
-                = get_tag(load_arg(ctx.heap, ctx.term, i)) == NUM;
+                =  get_tag(load_arg(ctx.heap, ctx.term, i)) == U60
+                || get_tag(load_arg(ctx.heap, ctx.term, i)) == F60;
 
               // Matches constructor labels
               let is_ctr
@@ -97,15 +103,16 @@ pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &App
               let is_hoas_ctr_num
                 =  get_tag(load_arg(ctx.heap, ctx.term, i)) == CTR
                 && get_ext(load_arg(ctx.heap, ctx.term, i)) >= KIND_TERM_CT0
-                && get_ext(load_arg(ctx.heap, ctx.term, i)) <= KIND_TERM_NUM;
+                && get_ext(load_arg(ctx.heap, ctx.term, i)) <= KIND_TERM_F60;
 
               matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
 
             // Only match default variables on CTRs and NUMs
             } else {
               let is_ctr = get_tag(load_arg(ctx.heap, ctx.term, i)) == CTR;
-              let is_num = get_tag(load_arg(ctx.heap, ctx.term, i)) == NUM;
-              matched = matched && (is_ctr || is_num);
+              let is_u60 = get_tag(load_arg(ctx.heap, ctx.term, i)) == U60;
+              let is_f60 = get_tag(load_arg(ctx.heap, ctx.term, i)) == F60;
+              matched = matched && (is_ctr || is_u60 || is_f60);
             }
           }
         }

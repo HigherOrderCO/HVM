@@ -78,11 +78,24 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   }
 
   // dup x y = N
-  // ----------- DUP-NUM
+  // ----------- DUP-U60
   // x <- N
   // y <- N
   // ~
-  else if get_tag(arg0) == NUM {
+  else if get_tag(arg0) == U60 {
+    inc_cost(ctx.heap, ctx.tid);
+    atomic_subst(ctx.heap, &ctx.prog.arit, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), arg0);
+    atomic_subst(ctx.heap, &ctx.prog.arit, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), arg0);
+    free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
+    return true;
+  }
+
+  // dup x y = N
+  // ----------- DUP-F60
+  // x <- N
+  // y <- N
+  // ~
+  else if get_tag(arg0) == F60 {
     inc_cost(ctx.heap, ctx.tid);
     atomic_subst(ctx.heap, &ctx.prog.arit, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), arg0);
     atomic_subst(ctx.heap, &ctx.prog.arit, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), arg0);

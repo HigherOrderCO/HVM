@@ -33,7 +33,7 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
           let done = App(app0);
           link(heap, host, done);
         }
-        // IO.do_output String (Num -> IO a) : (IO a)
+        // IO.do_output String (Wrd -> IO a) : (IO a)
         if fid == IO_DO_OUTPUT {
           if let Some(show) = readback_string(heap, prog, tids, get_loc(term, 0)) {
             print!("{}", show);
@@ -41,7 +41,7 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
             let cont = load_arg(heap, term, 1);
             let app0 = alloc(heap, tids[0], 2);
             link(heap, app0 + 0, cont);
-            link(heap, app0 + 1, Num(0));
+            link(heap, app0 + 1, Wrd(0));
             free(heap, 0, get_loc(term, 0), 2);
             let text = load_arg(heap, term, 0);
             collect(heap, prog, 0, text);
@@ -73,7 +73,7 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
             std::process::exit(0);
           }
         }
-        // IO.do_store String String (Num -> IO a) : (IO a)
+        // IO.do_store String String (Wrd -> IO a) : (IO a)
         if fid == IO_DO_STORE {
           if let Some(key) = readback_string(heap, prog, tids, get_loc(term, 0)) {
             if let Some(val) = readback_string(heap, prog, tids, get_loc(term, 1)) {
@@ -81,7 +81,7 @@ pub fn run_io(heap: &Heap, prog: &Program, tids: &[usize], host: u64) {
               let cont = load_arg(heap, term, 2);
               let app0 = alloc(heap, tids[0], 2);
               link(heap, app0 + 0, cont);
-              link(heap, app0 + 1, Num(0));
+              link(heap, app0 + 1, Wrd(0));
               free(heap, 0, get_loc(term, 0), 2);
               let key = load_arg(heap, term, 0);
               collect(heap, prog, 0, key);
@@ -133,7 +133,7 @@ pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
   let mut term = Ctr(STRING_NIL, 0);
   for chr in text.chars().rev() { // TODO: reverse
     let ctr0 = alloc(heap, tid, 2);
-    link(heap, ctr0 + 0, Num(chr as u64));
+    link(heap, ctr0 + 0, Wrd(chr as u64));
     link(heap, ctr0 + 1, term);
     term = Ctr(STRING_CONS, ctr0);
   }

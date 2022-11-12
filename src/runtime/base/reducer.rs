@@ -25,7 +25,8 @@ pub fn is_whnf(term: Ptr) -> bool {
     LAM => true,
     SUP => true,
     CTR => true,
-    NUM => true,
+    U60 => true,
+    F60 => true,
     _   => false,
   }
 }

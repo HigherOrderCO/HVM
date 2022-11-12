@@ -65,7 +65,8 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         gen_var_names(heap, prog, ctx, arg0, depth + 1);
         gen_var_names(heap, prog, ctx, arg1, depth + 1);
       }
-      runtime::NUM => {}
+      runtime::U60 => {}
+      runtime::F60 => {}
       runtime::CTR | runtime::FUN => {
         let arity = runtime::arity_of(&ctx.prog.arit, term);
         for i in 0..arity {
@@ -188,9 +189,13 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
         return Box::new(language::syntax::Term::Op2 { oper, val0, val1 });
       }
-      runtime::NUM => {
+      runtime::U60 => {
         let numb = runtime::get_num(term);
-        return Box::new(language::syntax::Term::Num { numb });
+        return Box::new(language::syntax::Term::U6O { numb });
+      }
+      runtime::F60 => {
+        let numb = runtime::get_num(term);
+        return Box::new(language::syntax::Term::F6O { numb });
       }
       runtime::CTR | runtime::FUN => {
         let func = runtime::get_ext(term);
@@ -413,9 +418,13 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
               stack.push(StackItem::Term(runtime::load_arg(heap, term, 1)));
               stack.push(StackItem::Term(runtime::load_arg(heap, term, 0)));
             }
-            runtime::NUM => {
+            runtime::U60 => {
               let numb = runtime::get_num(term);
-              output.push(language::syntax::Term::Num { numb });
+              output.push(language::syntax::Term::U6O { numb });
+            }
+            runtime::F60 => {
+              let numb = runtime::get_num(term);
+              output.push(language::syntax::Term::F6O { numb });
             }
             runtime::CTR => {
               let arit = runtime::arity_of(&prog.arit, term);
