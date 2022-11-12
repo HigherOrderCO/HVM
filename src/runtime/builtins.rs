@@ -1,4 +1,5 @@
 use crate::runtime::{*};
+use std::sync::atomic::{AtomicBool};
 
 // Builtins
 // --------
@@ -37,7 +38,7 @@ pub const KIND_TERM_CTG : u64 = 18;
 pub const KIND_TERM_NUM : u64 = 19;
 pub const HVM_LOG : u64 = 20;
 pub const HVM_PUT : u64 = 21;
-//GENERATED-BUILTIN-IDS//
+//[[CODEGEN:BUILTIN-IDS]]//
 
 pub const BUILTINS : &[Builtin] = &[
   Builtin {
@@ -178,50 +179,13 @@ pub const BUILTINS : &[Builtin] = &[
       apply: hvm_put_apply,
     }),
   },
-  //Builtin {
-    //id    : IO.DONE,
-    //name  : "IO.done",
-    //arity : 1,
-    //funcs : None,
-  //},
-  //Builtin {
-    //id    : IO.DO_INPUT,
-    //name  : "IO.do_input",
-    //arity : 1,
-    //funcs : None,
-  //},
-  //Builtin {
-    //id    : IO.DO_OUTPUT,
-    //name  : "IO.do_output",
-    //arity : 2,
-    //funcs : None,
-  //},
-  //Builtin {
-    //id    : IO.DO_FETCH,
-    //name  : "IO.do_fetch",
-    //arity : 3,
-    //funcs : None,
-  //},
-  //Builtin {
-    //id    : IO.DO_STORE,
-    //name  : "IO.do_store",
-    //arity : 3,
-    //funcs : None,
-  //},
-  //Builtin {
-    //id    : IO.DO_LOAD,
-    //name  : "IO.do_load",
-    //arity : 2,
-    //funcs : None,
-  //},
-//GENERATED-BUILTIN-ELS//
+//[[CODEGEN:BUILTIN-ELS]]//
 ];
 
 pub const BUILTIN_COUNT : u64 = BUILTINS.len() as u64;
 
-fn hvm_log_visit(ctx: ReduceCtx) {
-  *ctx.work = true;
-  *ctx.init = false;
+fn hvm_log_visit(ctx: ReduceCtx) -> bool {
+  return false;
 }
 
 fn hvm_log_apply(ctx: ReduceCtx) -> bool {
@@ -231,13 +195,11 @@ fn hvm_log_apply(ctx: ReduceCtx) -> bool {
   link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 1));
   collect(ctx.heap, &ctx.prog.arit, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
-  *ctx.init = true;
   return true;
 }
 
-fn hvm_put_visit(ctx: ReduceCtx) {
-  *ctx.work = true;
-  *ctx.init = false;
+fn hvm_put_visit(ctx: ReduceCtx) -> bool {
+  return false;
 }
 
 fn hvm_put_apply(ctx: ReduceCtx) -> bool {
@@ -251,8 +213,7 @@ fn hvm_put_apply(ctx: ReduceCtx) -> bool {
   link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 1));
   collect(ctx.heap, &ctx.prog.arit, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
-  *ctx.init = true;
   return true;
 }
 
-//GENERATED-BUILTIN-FNS//
+//[[CODEGEN:BUILTIN-FNS]]//

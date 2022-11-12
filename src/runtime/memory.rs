@@ -483,19 +483,13 @@ pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, P
 
 // Performs a global [x <- val] substitution atomically.
 pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
-  //let mut count = 0;
   loop {
     let arg_ptr = load_ptr(heap, get_loc(var, get_tag(var) & 0x01));
-    //count = count + 1;
-    //if count > 100000 {
-      //println!("[{}] aaaa {} | {} {}", tid, count, crate::runtime::show_ptr(var), crate::runtime::show_ptr(val));
-      //link(heap, get_loc(arg_ptr, 0), val);
-      //return;
-    //}
     if get_tag(arg_ptr) == ARG {
-      match atomic_relink(heap, get_loc(arg_ptr, 0), var, val) {
-        Ok(_) => { return; }
-        Err(_) => { continue; }
+      if atomic_relink(heap, get_loc(arg_ptr, 0), var, val).is_ok() {
+        return;
+      } else {
+        continue;
       }
     }
     if get_tag(arg_ptr) == ERA {

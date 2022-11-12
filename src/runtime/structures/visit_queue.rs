@@ -54,7 +54,7 @@ impl VisitQueue {
         if visit == 0 {
           continue;
         } else {
-          return Some((get_visit_host(visit), get_visit_cont(visit)));
+          return Some((get_visit_cont(visit), get_visit_host(visit)));
         }
       } else {
         return None;
@@ -68,7 +68,7 @@ impl VisitQueue {
     if visit != 0 {
       if let Ok(visit) = self.data[index].compare_exchange(visit, 0, Ordering::Relaxed, Ordering::Relaxed) {
         self.init.fetch_add(1, Ordering::Relaxed);
-        return Some((get_visit_host(visit), get_visit_cont(visit)));
+        return Some((get_visit_cont(visit), get_visit_host(visit)));
       }
     }
     return None;

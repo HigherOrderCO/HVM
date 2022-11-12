@@ -1,7 +1,7 @@
 use crate::runtime::{*};
 use crate::language;
 use std::collections::{hash_map, HashMap};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 // A runtime term
 #[derive(Clone, Debug)]
@@ -56,15 +56,14 @@ pub struct ReduceCtx<'a> {
   pub heap  : &'a Heap,
   pub prog  : &'a Program,
   pub tid   : usize,
-  pub host  : &'a mut u64,
   pub term  : Ptr,
   pub visit : &'a VisitQueue,
   pub redex : &'a RedexBag,
-  pub work  : &'a mut bool,
-  pub init  : &'a mut bool,
   pub cont  : &'a mut u64,
+  pub host  : &'a mut u64,
 }
-pub type VisitFun = fn(ReduceCtx) -> ();
+
+pub type VisitFun = fn(ReduceCtx) -> bool;
 pub type ApplyFun = fn(ReduceCtx) -> bool;
 
 pub struct VisitObj {

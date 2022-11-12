@@ -6,6 +6,7 @@
 #![allow(non_snake_case)]
 #![allow(unused_macros)]
 #![allow(unused_parens)]
+#![allow(unused_labels)]
 
 mod language;
 mod runtime;

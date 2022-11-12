@@ -70,7 +70,7 @@ impl RedexBag {
     let redex = self.data[index as usize].fetch_sub(1, Ordering::Relaxed);
     if get_redex_left(redex) == 1 {
       self.data[index as usize].store(0, Ordering::Relaxed);
-      return Some((get_redex_host(redex), get_redex_cont(redex)));
+      return Some((get_redex_cont(redex), get_redex_host(redex)));
     } else {
       return None;
     }

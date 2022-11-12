@@ -1,6 +1,53 @@
 use crate::runtime::{*};
 
 #[inline(always)]
+pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
+  let len = sidxs.len() as u64;
+  if len == 0 {
+    return false;
+  } else {
+    let mut count = 0;
+    for (i, sidx) in sidxs.iter().enumerate() {
+      if !is_whnf(load_arg(ctx.heap, ctx.term, *sidx)) {
+        count += 1;
+      }
+    }
+    if count == 0 {
+      return false;
+    } else {
+      let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, count));
+      *ctx.cont = goup;
+      *ctx.host = u64::MAX;
+      for (i, sidx) in sidxs.iter().enumerate() {
+        if !is_whnf(load_arg(ctx.heap, ctx.term, *sidx)) {
+          if *ctx.host != u64::MAX {
+            ctx.visit.push(new_visit(goup, *ctx.host));
+          }
+          *ctx.host = get_loc(ctx.term, *sidx);
+        }
+      }
+      return true;
+    }
+  }
+  //OLD_VISITER:
+  //let len = fn_visit.strict_idx.len() as u64;
+  //if len == 0 {
+    //break 'visit;
+  //} else {
+    //let goup = redex.insert(tid, new_redex(host, cont, fn_visit.strict_idx.len() as u64));
+    //for (i, arg_idx) in fn_visit.strict_idx.iter().enumerate() {
+      //if i < fn_visit.strict_idx.len() - 1 {
+        //visit.push(new_visit(get_loc(term, *arg_idx), goup));
+      //} else {
+        //cont = goup;
+        //host = get_loc(term, *arg_idx);
+        //continue 'visit;
+      //}
+    //}
+  //}
+}
+
+#[inline(always)]
 pub fn apply(heap: &Heap, prog: &Program, tid: usize, host: u64, term: Ptr, fid: u64, arity: u64, visit: &VisitObj, apply: &ApplyObj) -> bool {
   // Reduces function superpositions
   for (n, is_strict) in visit.strict_map.iter().enumerate() {

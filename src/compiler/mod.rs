@@ -47,6 +47,7 @@ instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
 #![allow(non_snake_case)]
 #![allow(unused_macros)]
 #![allow(unused_parens)]
+#![allow(unused_labels)]
 
 mod language;
 mod runtime;
@@ -76,6 +77,8 @@ fn main() -> Result<(), String> {
 }
 "#;
 
+  let (builtin_rs, reducer_rs) = compile_code(code).unwrap();
+
   std::fs::create_dir("./_hvm_").ok();
   std::fs::write("./_hvm_/Cargo.toml", cargo)?;
 
@@ -90,12 +93,12 @@ fn main() -> Result<(), String> {
   std::fs::write("./_hvm_/src/language/syntax.rs", include_str!("./../language/syntax.rs"))?;
 
   std::fs::create_dir("./_hvm_/src/runtime").ok();
-  std::fs::write("./_hvm_/src/runtime/builtins.rs", compile_code(code).unwrap())?;
+  std::fs::write("./_hvm_/src/runtime/builtins.rs", builtin_rs)?;
   std::fs::write("./_hvm_/src/runtime/debug.rs", include_str!("./../runtime/debug.rs"))?;
   std::fs::write("./_hvm_/src/runtime/memory.rs", include_str!("./../runtime/memory.rs"))?;
   std::fs::write("./_hvm_/src/runtime/mod.rs", include_str!("./../runtime/mod.rs"))?;
   std::fs::write("./_hvm_/src/runtime/program.rs", include_str!("./../runtime/program.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/reducer.rs", include_str!("./../runtime/reducer.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/reducer.rs", reducer_rs)?;
 
   std::fs::create_dir("./_hvm_/src/runtime/rewriters").ok();
   std::fs::write("./_hvm_/src/runtime/rewriters/app_lam.rs", include_str!("./../runtime/rewriters/app_lam.rs"))?;
@@ -137,14 +140,14 @@ fn compile_name(name: &str) -> String {
   format!("_{}_", name)
 }
 
-fn compile_code(code: &str) -> Result<String, String> {
+fn compile_code(code: &str) -> Result<(String,String), String> {
   let file = language::syntax::read_file(code)?;
   let book = language::rulebook::gen_rulebook(&file);
   runtime::gen_functions(&book);
   Ok(compile_rulebook(&book))
 }
 
-fn compile_rulebook(book: &language::rulebook::RuleBook) -> String {
+fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   // Builtin ids
   let mut builtin_ids = String::new();
   for (id, name) in itertools::sorted(book.id_to_name.iter()) {
@@ -188,13 +191,64 @@ fn compile_rulebook(book: &language::rulebook::RuleBook) -> String {
     }
   }
 
+  // Fast visit
+  let mut fast_visit = String::new();
+  line(&mut fast_visit, 7, &format!("match fid {{"));
+  for id in itertools::sorted(book.id_to_arit.keys()) {
+    if id >= &runtime::BUILTIN_COUNT {
+      let name = book.id_to_name.get(id).unwrap();
+      let rules = book.rule_group.get(name).unwrap();
+      let (visit_fun, apply_fun) = compile_function(book, &name, &rules.1);
+      line(&mut fast_visit, 8, &format!("{} => {{", &compile_name(&name)));
+      line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &compile_name(&name)));
+      line(&mut fast_visit, 10, &format!("continue 'visit;"));
+      line(&mut fast_visit, 9, &format!("}} else {{"));
+      line(&mut fast_visit, 10, &format!("break 'visit;"));
+      line(&mut fast_visit, 9, &format!("}}"));
+      line(&mut fast_visit, 8, &format!("}}"));
+    }
+  }
+  line(&mut fast_visit, 8, &format!("_ => {{}}"));
+  line(&mut fast_visit, 7, &format!("}}"));
+
+  // Fast apply
+  let mut fast_apply = String::new();
+  line(&mut fast_apply, 8, &format!("match fid {{"));
+  for id in itertools::sorted(book.id_to_arit.keys()) {
+    if id >= &runtime::BUILTIN_COUNT {
+      let name = book.id_to_name.get(id).unwrap();
+      let rules = book.rule_group.get(name).unwrap();
+      let (visit_fun, apply_fun) = compile_function(book, &name, &rules.1);
+      line(&mut fast_apply, 9, &format!("{} => {{", &compile_name(&name)));
+      //line(&mut fast_apply, 10, &format!("if 
+      //book.
+
+                  ////if is_whnf(load_arg(heap, term, 0)) {
+                    ////break 'visit;
+                  ////}
+      line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &compile_name(&name)));
+      line(&mut fast_apply, 11, &format!("continue 'work;"));
+      line(&mut fast_apply, 10, &format!("}} else {{"));
+      line(&mut fast_apply, 11, &format!("break 'apply;"));
+      line(&mut fast_apply, 10, &format!("}}"));
+      line(&mut fast_apply, 9, &format!("}}"));
+    }
+  }
+  line(&mut fast_apply, 9, &format!("_ => {{}}"));
+  line(&mut fast_apply, 8, &format!("}}"));
+
   // builtins.rs
   let builtins_rs : &str = include_str!("./../runtime/builtins.rs");
-  let builtins_rs = builtins_rs.replace("//GENERATED-BUILTIN-IDS//", &builtin_ids);
-  let builtins_rs = builtins_rs.replace("//GENERATED-BUILTIN-ELS//", &builtin_els);
-  let builtins_rs = builtins_rs.replace("//GENERATED-BUILTIN-FNS//", &builtin_fns);
+  let builtins_rs = builtins_rs.replace("//[[CODEGEN:BUILTIN-IDS]]//\n", &builtin_ids);
+  let builtins_rs = builtins_rs.replace("//[[CODEGEN:BUILTIN-ELS]]//\n", &builtin_els);
+  let builtins_rs = builtins_rs.replace("//[[CODEGEN:BUILTIN-FNS]]//\n", &builtin_fns);
 
-  return builtins_rs;
+  // reducer.rs
+  let reducer_rs : &str = include_str!("./../runtime/reducer.rs");
+  let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-VISIT]]//\n", &fast_visit);
+  let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-APPLY]]//\n", &fast_apply);
+
+  return (builtins_rs, reducer_rs);
 }
 
 fn compile_function(
@@ -212,26 +266,56 @@ fn compile_function(
     // -----
 
     let mut visit = String::new();
-
-    //line(&mut visit, tab + 0, &format!("if arity_of(mem, term) == {} {{", function.is_strict.len())); // FIXME: ?
     line(&mut visit, 0, &format!("#[inline(always)]"));
-    line(&mut visit, 0, &format!("pub fn {}_visit(ctx: ReduceCtx) {{", &compile_name(fname)));
+    line(&mut visit, 0, &format!("pub fn {}_visit(ctx: ReduceCtx) -> bool {{", &compile_name(fname)));
     if fn_visit.strict_idx.is_empty() {
-      line(&mut visit, 1, "*ctx.init = false;");
+      line(&mut visit, 1, "return false;");
     } else {
-      line(&mut visit, 1, &format!("let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, {}));", fn_visit.strict_idx.len()));
-      for (i, strict) in fn_visit.strict_idx.iter().enumerate() {
-        if i < fn_visit.strict_idx.len() - 1 {
-          line(&mut visit, 1, &format!("ctx.visit.push(new_visit(get_loc(ctx.term, {}), goup));", strict));
-        } else {
-          line(&mut visit, 1, &format!("*ctx.work = true;"));
-          line(&mut visit, 1, &format!("*ctx.init = true;"));
-          line(&mut visit, 1, &format!("*ctx.cont = goup;"));
-          line(&mut visit, 1, &format!("*ctx.host = get_loc(ctx.term, {});", strict));
-        }
+      for (i, sidx) in fn_visit.strict_idx.iter().enumerate() {
+        line(&mut visit, 1, &format!("let arg{} = load_arg(ctx.heap, ctx.term, {});", i, sidx));
       }
+      line(&mut visit, 1, &format!("let mut count = 0;"));
+      for (i, sidx) in fn_visit.strict_idx.iter().enumerate() {
+        line(&mut visit, 1, &format!("if !is_whnf(arg{}) {{ count += 1; }}", sidx));
+      }
+      line(&mut visit, 1, &format!("if count == 0 {{"));
+      line(&mut visit, 2, &format!("return false;"));
+      line(&mut visit, 1, &format!("}} else {{"));
+      line(&mut visit, 2, &format!("let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, count));"));
+      line(&mut visit, 2, &format!("*ctx.cont = goup;"));
+      line(&mut visit, 2, &format!("*ctx.host = u64::MAX;"));
+      for (i, sidx) in fn_visit.strict_idx.iter().enumerate() {
+        line(&mut visit, 2, &format!("if !is_whnf(arg{}) {{", sidx));
+        line(&mut visit, 3, &format!("if *ctx.host != u64::MAX {{"));
+        line(&mut visit, 4, &format!("ctx.visit.push(new_visit(goup, *ctx.host));"));
+        line(&mut visit, 3, &format!("}}"));
+        line(&mut visit, 3, &format!("*ctx.host = get_loc(ctx.term, {});", sidx));
+        line(&mut visit, 2, &format!("}}"));
+      }
+      line(&mut visit, 2, &format!("return true;"));
+      line(&mut visit, 1, &format!("}}"));
     }
     line(&mut visit, 0, "}");
+
+    //OLD_VISITER:
+    //let mut visit = String::new();
+    //line(&mut visit, 0, &format!("#[inline(always)]"));
+    //line(&mut visit, 0, &format!("pub fn {}_visit(ctx: ReduceCtx) -> bool {{", &compile_name(fname)));
+    //if fn_visit.strict_idx.is_empty() {
+      //line(&mut visit, 1, "return false;");
+    //} else {
+      //line(&mut visit, 1, &format!("let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, {}));", fn_visit.strict_idx.len()));
+      //for (i, strict) in fn_visit.strict_idx.iter().enumerate() {
+        //if i < fn_visit.strict_idx.len() - 1 {
+          //line(&mut visit, 1, &format!("ctx.visit.push(new_visit(get_loc(ctx.term, {}), goup));", strict));
+        //} else {
+          //line(&mut visit, 1, &format!("*ctx.cont = goup;"));
+          //line(&mut visit, 1, &format!("*ctx.host = get_loc(ctx.term, {});", strict));
+          //line(&mut visit, 1, &format!("return true;"));
+        //}
+      //}
+    //}
+    //line(&mut visit, 0, "}");
 
     // Apply
     // -----
@@ -331,7 +415,6 @@ fn compile_function(
         );
       }
       line(&mut apply, 2, &format!("free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), {});", fn_visit.strict_map.len()));
-      line(&mut apply, 2, "*ctx.init = true;");
       line(&mut apply, 2, "return true;");
       line(&mut apply, 1, "}");
     }
