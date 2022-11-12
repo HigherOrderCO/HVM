@@ -19,16 +19,6 @@ use crossbeam::utils::{Backoff};
 //     steal { ... }
 //   }
 
-// funcoes podem retornar 3 coisas:
-// - favor ir para o modo visit, pois gerei filhos
-// - favor ir para o modo apply, pois não gerei filhos
-// - favor ir para o modo climb, pois estou normalizado
-
-// TODO: rebote: quando volta do apply, tentar um outro apply diretamente
-
-// A function must return `true` if it must visit. Optimize by returning `false` on ctors.
-// A visit should attempt applying before? <- maybe not needed if the extra load is skipped
-
 pub fn is_whnf(term: Ptr) -> bool {
   match get_tag(term) {
     VAR => true,
@@ -41,7 +31,23 @@ pub fn is_whnf(term: Ptr) -> bool {
   }
 }
 
-#[inline(never)]
+pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
+  // Halting flag
+  let stop = &AtomicBool::new(false);
+
+  // Spawn a thread for each worker
+  std::thread::scope(|s| {
+    for tid in tids {
+      s.spawn(move || {
+        reducer(heap, prog, tids, stop, root, *tid);
+      });
+    }
+  });
+
+  // Return whnf term ptr
+  return load_ptr(heap, root);
+}
+
 pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, root: u64, tid: usize) {
 
   // State Stacks
@@ -49,6 +55,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
   let visit = &heap.vstk[tid];
   let delay = &mut vec![];
   let bkoff = &Backoff::new();
+  //let mut tick = 0;
 
   // State Vars
   let (mut cont, mut host) = if tid == tids[0] {
@@ -57,16 +64,12 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
     (0, u64::MAX)
   };
 
-  //let mut tick = 0;
-
   // State Machine
   'main: loop {
     'init: {
       if host == u64::MAX {
         break 'init;
       }
-      //if cont == REDEX_CONT_RET { println!("[{}] ue", tid); }
-      //tick = tick + 1; if tick > 20 { std::process::exit(0); };
       //println!("main {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
       'work: loop {
         //println!("work {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
@@ -75,10 +78,11 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
           //println!("visit {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
           match get_tag(term) {
             APP => {
-              let goup = redex.insert(tid, new_redex(host, cont, 1));
-              cont = goup;
-              host = get_loc(term, 0);
-              continue 'visit;
+              if app::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                continue 'visit;
+              } else {
+                break 'work;
+              }
             }
             DP0 | DP1 => {
               match acquire_lock(heap, tid, term) {
@@ -92,27 +96,28 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                     release_lock(heap, tid, term);
                     continue 'visit;
                   } else {
-                    let goup = redex.insert(tid, new_redex(host, cont, 1));
-                    cont = goup;
-                    host = get_loc(term, 2);
-                    continue 'visit;
+                    if dup::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                      continue 'visit;
+                    } else {
+                      break 'work;
+                    }
                   }
                 }
               }
             }
             OP2 => {
-              let goup = redex.insert(tid, new_redex(host, cont, 2));
-              visit.push(new_visit(get_loc(term, 1), goup));
-              cont = goup;
-              host = get_loc(term, 0);
-              continue 'visit;
+              if op2::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                continue 'visit;
+              } else {
+                break 'work;
+              }
             }
             FUN => {
               let fid = get_ext(term);
 //[[CODEGEN:FAST-VISIT]]//
               match &prog.funs.get(&fid) {
                 Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                  if fun_ctr::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, &fn_visit.strict_idx) {
+                  if fun::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, &fn_visit.strict_idx) {
                     continue 'visit;
                   } else {
                     break 'visit;
@@ -142,45 +147,14 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
             // Apply rewrite rules
             match get_tag(term) {
               APP => {
-                let arg0 = load_arg(heap, term, 0);
-                if get_tag(arg0) == LAM {
-                  app_lam::apply(heap, &prog.arit, tid, host, term, arg0);
+                if app::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
                   continue 'work;
-                }
-                if get_tag(arg0) == SUP {
-                  app_sup::apply(heap, &prog.arit, tid, host, term, arg0);
+                } else {
                   break 'apply;
                 }
               }
               DP0 | DP1 => {
-                let arg0 = load_arg(heap, term, 2);
-                let tcol = get_ext(term);
-                //println!("[{}] dups {}", lvar.tid, get_loc(term, 0));
-                if get_tag(arg0) == LAM {
-                  dup_lam::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                  release_lock(heap, tid, term);
-                  continue 'work;
-                } else if get_tag(arg0) == SUP {
-                  //println!("dup-sup {}", tcol == get_ext(arg0));
-                  if tcol == get_ext(arg0) {
-                    dup_dup::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                    release_lock(heap, tid, term);
-                    continue 'work;
-                  } else {
-                    dup_sup::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                    release_lock(heap, tid, term);
-                    continue 'work;
-                  }
-                } else if get_tag(arg0) == NUM {
-                  dup_num::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                  release_lock(heap, tid, term);
-                  continue 'work;
-                } else if get_tag(arg0) == CTR {
-                  dup_ctr::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
-                  release_lock(heap, tid, term);
-                  continue 'work;
-                } else if get_tag(arg0) == ERA {
-                  dup_era::apply(heap, &prog.arit, tid, host, term, arg0, tcol);
+                if dup::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
                   release_lock(heap, tid, term);
                   continue 'work;
                 } else {
@@ -189,16 +163,9 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                 }
               }
               OP2 => {
-                let arg0 = load_arg(heap, term, 0);
-                let arg1 = load_arg(heap, term, 1);
-                if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
-                  op2_num::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
-                  break 'apply;
-                } else if get_tag(arg0) == SUP {
-                  op2_sup_0::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
-                  break 'apply;
-                } else if get_tag(arg1) == SUP {
-                  op2_sup_1::apply(heap, &prog.arit, tid, host, term, arg0, arg1);
+                if op2::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                  continue 'work;
+                } else {
                   break 'apply;
                 }
               }
@@ -207,7 +174,8 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
 //[[CODEGEN:FAST-APPLY]]//
                 match &prog.funs.get(&fid) {
                   Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                    if fun_ctr::apply(heap, prog, tid, host, term, fid, *fn_arity, fn_visit, fn_apply) {
+                    if fun::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, fid, *fn_arity, fn_visit, fn_apply) {
+                    //if fun::apply(heap, prog, tid, host, term, fid, *fn_arity, fn_visit, fn_apply) {
                       continue 'work;
                     } else {
                       break 'apply;
@@ -230,10 +198,8 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
               }
             }
           }
-          //println!("climb {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
           // If root is on WHNF, halt
           if cont == REDEX_CONT_RET {
-            //println!("[{}] stop {} {}", tid, cont, REDEX_CONT_RET);
             stop.store(true, Ordering::Relaxed);
             break 'main;
           }
@@ -250,7 +216,6 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
         }
       }
       'blink: loop {
-        //println!("blink");
         // If available, visit a new location
         if let Some((new_cont, new_host)) = visit.pop() {
           cont = new_cont;
@@ -271,15 +236,12 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
       }
     }
     'steal: loop {
-      //println!("[{}] steal", tid);
       if stop.load(Ordering::Relaxed) {
-        //println!("[{}] halt", tid);
         break 'main;
       } else {
         for victim_tid in tids {
           if *victim_tid != tid {
             if let Some((new_cont, new_host)) = heap.vstk[*victim_tid].steal() {
-              //println!("[{}] stole {} {} from {}", tid, new_host, new_cont, victim_tid);
               cont = new_cont;
               host = new_host;
               continue 'main;
@@ -291,22 +253,6 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
       }
     }
   }
-}
-
-pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
-  // Halting flag
-  let stop = &AtomicBool::new(false);
-
-  // Spawn a thread for each worker
-  std::thread::scope(|s| {
-    for tid in tids {
-      s.spawn(move || {
-        reducer(heap, prog, tids, stop, root, *tid);
-      });
-    }
-  });
-
-  return load_ptr(heap, root);
 }
 
 pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &Box<[AtomicU64]>) -> Ptr {

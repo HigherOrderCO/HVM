@@ -103,17 +103,17 @@ pub fn new_program() -> Program {
   let mut arit = U64Map::new();
   let mut nams = U64Map::new();
   // Adds the built-in functions
-  for fid in 0 .. crate::runtime::builtins::BUILTIN_COUNT as usize {
-    if let Some(builtin) = BUILTINS.get(fid) {
-      if let Some(funcs) = &builtin.funcs {
+  for fid in 0 .. crate::runtime::precomp::PRECOMP_COUNT as usize {
+    if let Some(precomp) = PRECOMP.get(fid) {
+      if let Some(funcs) = &precomp.funcs {
         funs.insert(fid as u64, Function::Compiled {
-          arity: builtin.arity as u64,
+          arity: precomp.arity as u64,
           visit: funcs.visit,
           apply: funcs.apply,
         });
       }
-      nams.insert(fid as u64, builtin.name.to_string());
-      arit.insert(fid as u64, builtin.arity as u64);
+      nams.insert(fid as u64, precomp.name.to_string());
+      arit.insert(fid as u64, precomp.arity as u64);
     }
   }
   return Program { funs, arit, nams };

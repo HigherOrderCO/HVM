@@ -34,12 +34,12 @@ pub fn new_rulebook() -> RuleBook {
     id_to_arit: HashMap::new(),
     ctr_is_cal: HashMap::new(),
   };
-  for builtin in runtime::BUILTINS {
+  for precomp in runtime::PRECOMP {
     book.name_count = book.name_count + 1;
-    book.name_to_id.insert(builtin.name.to_string(), builtin.id);
-    book.id_to_name.insert(builtin.id, builtin.name.to_string());
-    book.id_to_arit.insert(builtin.id, builtin.arity as u64);
-    book.ctr_is_cal.insert(builtin.name.to_string(), builtin.funcs.is_some());
+    book.name_to_id.insert(precomp.name.to_string(), precomp.id);
+    book.id_to_name.insert(precomp.id, precomp.name.to_string());
+    book.id_to_arit.insert(precomp.id, precomp.arity as u64);
+    book.ctr_is_cal.insert(precomp.name.to_string(), precomp.funcs.is_some());
   }
   return book;
 }

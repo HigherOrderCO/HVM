@@ -4,30 +4,19 @@
 #![allow(unused_attributes)]
 #![allow(unused_imports)]
 
-pub mod builtins;
-pub mod debug;
-pub mod memory;
-pub mod program;
-pub mod reducer;
-pub mod rewriters;
-pub mod structures;
+pub mod base;
+pub mod data;
+pub mod rule;
 
-pub use crate::runtime::builtins::{*};
-pub use crate::runtime::debug::{*};
-pub use crate::runtime::memory::{*};
-pub use crate::runtime::program::{*};
-pub use crate::runtime::reducer::{*};
-pub use crate::runtime::rewriters::{*};
-pub use crate::runtime::structures::allocator::{*};
-pub use crate::runtime::structures::redex_bag::{*};
-pub use crate::runtime::structures::u64_map::{*};
-pub use crate::runtime::structures::visit_queue::{*};
+pub use base::{*};
+pub use data::{*};
+pub use rule::{*};
 
 pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
 pub const CELLS_PER_GB: usize = 0x8000000;
 
-pub const HEAP_SIZE: usize = 24 * CELLS_PER_GB;
+pub const HEAP_SIZE: usize = 4 * CELLS_PER_GB;
 
 pub fn available_parallelism() -> usize {
   return std::thread::available_parallelism().unwrap().get();

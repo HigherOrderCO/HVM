@@ -8,125 +8,51 @@ use crate::runtime as runtime;
 
 pub fn compile(code: &str, file_name: &str) -> std::io::Result<()> {
 
-  let cargo = r#"
-[package]
-name = "hvm-app"
-version = "0.1.0"
-edition = "2021"
-description = "An HVM application"
-repository = "https://github.com/Kindelia/HVM"
-license = "MIT"
-keywords = ["functional", "language", "runtime", "compiler", "target"]
-categories = ["compilers"]
-
-[[bin]]
-name = "hvm-app"
-test = false
-
-[dependencies]
-crossbeam = "0.8.2"
-thread-priority = "0.9.2"
-itertools = "0.10"
-num_cpus = "1.13"
-regex = "1.5.4"
-fastrand = "1.8.0"
-highlight_error = "0.1.1"
-clap = { version = "3.1.8", features = ["derive"] }
-wasm-bindgen = "0.2.82"
-reqwest = { version = "0.11.11", features = ["blocking"] }
-web-sys = { version = "0.3", features = ["console"] }
-instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
-"#;
-
-  let main = r#"
-#![feature(atomic_from_mut)]
-#![feature(atomic_mut_ptr)]
-#![allow(non_upper_case_globals)]
-#![allow(unused_variables)]
-#![allow(dead_code)]
-#![allow(non_snake_case)]
-#![allow(unused_macros)]
-#![allow(unused_parens)]
-#![allow(unused_labels)]
-
-mod language;
-mod runtime;
-
-fn make_main_call(params: &Vec<String>) -> Result<language::syntax::Term, String> {
-  let name = "Main".to_string();
-  let args = params.iter().map(|x| language::syntax::read_term(x).unwrap()).collect();
-  return Ok(language::syntax::Term::Ctr { name, args });
-}
-
-fn run_code(code: &str, debug: bool, params: Vec<String>, size: usize) -> Result<(), String> {
-  let call = make_main_call(&params)?;
-  let (norm, cost, size, time) = runtime::eval_code(&call, code, debug, size)?;
-  println!("{}", norm);
-  eprintln!();
-  eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
-  eprintln!("Mem.Size: {}", size);
-  return Ok(());
-}
-
-fn main() -> Result<(), String> {
-  let params : Vec<String> = vec![];
-  let size = runtime::HEAP_SIZE;
-  let debug = false;
-  run_code("", debug, params, size)?;
-  return Ok(());
-}
-"#;
-
-  let (builtin_rs, reducer_rs) = compile_code(code).unwrap();
-
+  // hvm
   std::fs::create_dir("./_hvm_").ok();
-  std::fs::write("./_hvm_/Cargo.toml", cargo)?;
+  std::fs::write("./_hvm_/Cargo.toml", CARGO_TOML)?;
 
+  // hvm/src
   std::fs::create_dir("./_hvm_/src").ok();
-  std::fs::write("./_hvm_/src/main.rs", main)?;
+  std::fs::write("./_hvm_/src/main.rs", MAIN_RS)?;
 
+  // hvm/src/language
   std::fs::create_dir("./_hvm_/src/language").ok();
-  std::fs::write("./_hvm_/src/language/mod.rs", include_str!("./../language/mod.rs"))?;
-  std::fs::write("./_hvm_/src/language/parser.rs", include_str!("./../language/parser.rs"))?;
-  std::fs::write("./_hvm_/src/language/readback.rs", include_str!("./../language/readback.rs"))?;
-  std::fs::write("./_hvm_/src/language/rulebook.rs", include_str!("./../language/rulebook.rs"))?;
-  std::fs::write("./_hvm_/src/language/syntax.rs", include_str!("./../language/syntax.rs"))?;
+  std::fs::write("./_hvm_/src/language/mod.rs"      , include_str!("./../language/mod.rs"))?;
+  std::fs::write("./_hvm_/src/language/parser.rs"   , include_str!("./../language/parser.rs"))?;
+  std::fs::write("./_hvm_/src/language/readback.rs" , include_str!("./../language/readback.rs"))?;
+  std::fs::write("./_hvm_/src/language/rulebook.rs" , include_str!("./../language/rulebook.rs"))?;
+  std::fs::write("./_hvm_/src/language/syntax.rs"   , include_str!("./../language/syntax.rs"))?;
 
+  // hvm/src/runtime
   std::fs::create_dir("./_hvm_/src/runtime").ok();
-  std::fs::write("./_hvm_/src/runtime/builtins.rs", builtin_rs)?;
-  std::fs::write("./_hvm_/src/runtime/debug.rs", include_str!("./../runtime/debug.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/memory.rs", include_str!("./../runtime/memory.rs"))?;
   std::fs::write("./_hvm_/src/runtime/mod.rs", include_str!("./../runtime/mod.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/program.rs", include_str!("./../runtime/program.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/reducer.rs", reducer_rs)?;
 
-  std::fs::create_dir("./_hvm_/src/runtime/rewriters").ok();
-  std::fs::write("./_hvm_/src/runtime/rewriters/app_lam.rs", include_str!("./../runtime/rewriters/app_lam.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/app_sup.rs", include_str!("./../runtime/rewriters/app_sup.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/dup_ctr.rs", include_str!("./../runtime/rewriters/dup_ctr.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/dup_dup.rs", include_str!("./../runtime/rewriters/dup_dup.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/dup_era.rs", include_str!("./../runtime/rewriters/dup_era.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/dup_lam.rs", include_str!("./../runtime/rewriters/dup_lam.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/dup_num.rs", include_str!("./../runtime/rewriters/dup_num.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/dup_sup.rs", include_str!("./../runtime/rewriters/dup_sup.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/fun_ctr.rs", include_str!("./../runtime/rewriters/fun_ctr.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/fun_sup.rs", include_str!("./../runtime/rewriters/fun_sup.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/mod.rs", include_str!("./../runtime/rewriters/mod.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/op2_num.rs", include_str!("./../runtime/rewriters/op2_num.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/op2_sup_0.rs", include_str!("./../runtime/rewriters/op2_sup_0.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/rewriters/op2_sup_1.rs", include_str!("./../runtime/rewriters/op2_sup_1.rs"))?;
+  // hvm/src/runtime/base
+  let (precomp_rs, reducer_rs) = compile_code(code).unwrap();
+  std::fs::create_dir("./_hvm_/src/runtime/base").ok();
+  std::fs::write("./_hvm_/src/runtime/base/mod.rs"     , include_str!("./../runtime/base/mod.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/base/debug.rs"   , include_str!("./../runtime/base/debug.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/base/memory.rs"  , include_str!("./../runtime/base/memory.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/base/precomp.rs" , precomp_rs)?;
+  std::fs::write("./_hvm_/src/runtime/base/program.rs" , include_str!("./../runtime/base/program.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/base/reducer.rs" , reducer_rs)?;
 
-  std::fs::create_dir("./_hvm_/src/runtime/structures").ok();
-  std::fs::write("./_hvm_/src/runtime/structures/allocator.rs", include_str!("./../runtime/structures/allocator.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/structures/mod.rs", include_str!("./../runtime/structures/mod.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/structures/redex_bag.rs", include_str!("./../runtime/structures/redex_bag.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/structures/u64_map.rs", include_str!("./../runtime/structures/u64_map.rs"))?;
-  std::fs::write("./_hvm_/src/runtime/structures/visit_queue.rs", include_str!("./../runtime/structures/visit_queue.rs"))?;
+  // hvm/src/runtime/data
+  std::fs::create_dir("./_hvm_/src/runtime/data").ok();
+  std::fs::write("./_hvm_/src/runtime/data/mod.rs"         , include_str!("./../runtime/data/mod.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/data/allocator.rs"   , include_str!("./../runtime/data/allocator.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/data/redex_bag.rs"   , include_str!("./../runtime/data/redex_bag.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/data/u64_map.rs"     , include_str!("./../runtime/data/u64_map.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/data/visit_queue.rs" , include_str!("./../runtime/data/visit_queue.rs"))?;
 
-  //std::fs::write("./_hvm_/src/parser.rs", parser)?;
-  //std::fs::write("./_hvm_/src/readback.rs", readback)?;
-  //std::fs::write("./_hvm_/src/rulebook.rs", rulebook)?;
-  //std::fs::write("./_hvm_/src/mod/runtime.rs", runtime)?;
+  // hvm/src/runtime/rule
+  std::fs::create_dir("./_hvm_/src/runtime/rule").ok();
+  std::fs::write("./_hvm_/src/runtime/rule/mod.rs" , include_str!("./../runtime/rule/mod.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/rule/app.rs" , include_str!("./../runtime/rule/app.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/rule/dup.rs" , include_str!("./../runtime/rule/dup.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/rule/fun.rs" , include_str!("./../runtime/rule/fun.rs"))?;
+  std::fs::write("./_hvm_/src/runtime/rule/op2.rs" , include_str!("./../runtime/rule/op2.rs"))?;
 
   return Ok(());
 }
@@ -148,54 +74,54 @@ fn compile_code(code: &str) -> Result<(String,String), String> {
 }
 
 fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
-  // Builtin ids
-  let mut builtin_ids = String::new();
+  // precomp ids
+  let mut precomp_ids = String::new();
   for (id, name) in itertools::sorted(book.id_to_name.iter()) {
-    if id >= &runtime::BUILTIN_COUNT {
-      line(&mut builtin_ids, 0, &format!("pub const {} : u64 = {};", &compile_name(name), id));
+    if id >= &runtime::PRECOMP_COUNT {
+      line(&mut precomp_ids, 0, &format!("pub const {} : u64 = {};", &compile_name(name), id));
     }
   }
 
-  // Builtin els
-  let mut builtin_els = String::new();
+  // precomp els
+  let mut precomp_els = String::new();
   for id in itertools::sorted(book.id_to_arit.keys()) {
-    if id >= &runtime::BUILTIN_COUNT {
+    if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       let comp = &compile_name(name);
       let arity = book.id_to_arit.get(id).unwrap();
-      line(&mut builtin_els, 0, &format!(r#"  Builtin {{"#));
-      line(&mut builtin_els, 0, &format!(r#"    id    : {},"#, comp));
-      line(&mut builtin_els, 0, &format!(r#"    name  : "{}","#, &name));
-      line(&mut builtin_els, 0, &format!(r#"    arity : {},"#, arity));
+      line(&mut precomp_els, 0, &format!(r#"  Precomp {{"#));
+      line(&mut precomp_els, 0, &format!(r#"    id    : {},"#, comp));
+      line(&mut precomp_els, 0, &format!(r#"    name  : "{}","#, &name));
+      line(&mut precomp_els, 0, &format!(r#"    arity : {},"#, arity));
       if *book.ctr_is_cal.get(name).unwrap() {
-        line(&mut builtin_els, 0, &format!(r#"    funcs : Some(BuiltinFuncs {{"#));
-        line(&mut builtin_els, 0, &format!(r#"      visit: {}_visit,"#, comp));
-        line(&mut builtin_els, 0, &format!(r#"      apply: {}_apply,"#, comp));
-        line(&mut builtin_els, 0, &format!(r#"    }}),"#));
+        line(&mut precomp_els, 0, &format!(r#"    funcs : Some(PrecompFns {{"#));
+        line(&mut precomp_els, 0, &format!(r#"      visit: {}_visit,"#, comp));
+        line(&mut precomp_els, 0, &format!(r#"      apply: {}_apply,"#, comp));
+        line(&mut precomp_els, 0, &format!(r#"    }}),"#));
       } else {
-        line(&mut builtin_els, 0, &format!(r#"    funcs : None,"#));
+        line(&mut precomp_els, 0, &format!(r#"    funcs : None,"#));
       }
-      line(&mut builtin_els, 0, &format!(r#"  }},"#));
+      line(&mut precomp_els, 0, &format!(r#"  }},"#));
     }
   }
 
-  // Builtin fns
-  let mut builtin_fns = String::new();
+  // precomp fns
+  let mut precomp_fns = String::new();
   for id in itertools::sorted(book.id_to_arit.keys()) {
-    if id >= &runtime::BUILTIN_COUNT {
+    if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       let rules = book.rule_group.get(name).unwrap();
       let (visit_fn, apply_fn) = compile_function(book, &name, &rules.1);
-      line(&mut builtin_fns, 0, &format!("{}", visit_fn));
-      line(&mut builtin_fns, 0, &format!("{}", apply_fn));
+      line(&mut precomp_fns, 0, &format!("{}", visit_fn));
+      line(&mut precomp_fns, 0, &format!("{}", apply_fn));
     }
   }
 
-  // Fast visit
+  // fast visit
   let mut fast_visit = String::new();
   line(&mut fast_visit, 7, &format!("match fid {{"));
   for id in itertools::sorted(book.id_to_arit.keys()) {
-    if id >= &runtime::BUILTIN_COUNT {
+    if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       let rules = book.rule_group.get(name).unwrap();
       let (visit_fun, apply_fun) = compile_function(book, &name, &rules.1);
@@ -211,21 +137,15 @@ fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   line(&mut fast_visit, 8, &format!("_ => {{}}"));
   line(&mut fast_visit, 7, &format!("}}"));
 
-  // Fast apply
+  // fast apply
   let mut fast_apply = String::new();
   line(&mut fast_apply, 8, &format!("match fid {{"));
   for id in itertools::sorted(book.id_to_arit.keys()) {
-    if id >= &runtime::BUILTIN_COUNT {
+    if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       let rules = book.rule_group.get(name).unwrap();
       let (visit_fun, apply_fun) = compile_function(book, &name, &rules.1);
       line(&mut fast_apply, 9, &format!("{} => {{", &compile_name(&name)));
-      //line(&mut fast_apply, 10, &format!("if 
-      //book.
-
-                  ////if is_whnf(load_arg(heap, term, 0)) {
-                    ////break 'visit;
-                  ////}
       line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &compile_name(&name)));
       line(&mut fast_apply, 11, &format!("continue 'work;"));
       line(&mut fast_apply, 10, &format!("}} else {{"));
@@ -237,18 +157,18 @@ fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   line(&mut fast_apply, 9, &format!("_ => {{}}"));
   line(&mut fast_apply, 8, &format!("}}"));
 
-  // builtins.rs
-  let builtins_rs : &str = include_str!("./../runtime/builtins.rs");
-  let builtins_rs = builtins_rs.replace("//[[CODEGEN:BUILTIN-IDS]]//\n", &builtin_ids);
-  let builtins_rs = builtins_rs.replace("//[[CODEGEN:BUILTIN-ELS]]//\n", &builtin_els);
-  let builtins_rs = builtins_rs.replace("//[[CODEGEN:BUILTIN-FNS]]//\n", &builtin_fns);
+  // precomp.rs
+  let precomp_rs : &str = include_str!("./../runtime/base/precomp.rs");
+  let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-IDS]]//\n", &precomp_ids);
+  let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-ELS]]//\n", &precomp_els);
+  let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-FNS]]//\n", &precomp_fns);
 
   // reducer.rs
-  let reducer_rs : &str = include_str!("./../runtime/reducer.rs");
+  let reducer_rs : &str = include_str!("./../runtime/base/reducer.rs");
   let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-VISIT]]//\n", &fast_visit);
   let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-APPLY]]//\n", &fast_apply);
 
-  return (builtins_rs, reducer_rs);
+  return (precomp_rs, reducer_rs);
 }
 
 fn compile_function(
@@ -329,7 +249,7 @@ fn compile_function(
     for (i, is_strict) in fn_visit.strict_map.iter().enumerate() {
       if *is_strict {
         line(&mut apply, 1, &format!("if get_tag(load_arg(ctx.heap, ctx.term, {})) == SUP {{", i));
-        line(&mut apply, 2, &format!("fun_sup::apply(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, load_arg(ctx.heap, ctx.term, {}), {});", i, i));
+        line(&mut apply, 2, &format!("fun::superpose(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, load_arg(ctx.heap, ctx.term, {}), {});", i, i));
         line(&mut apply, 1, "}");
       }
     }
@@ -709,3 +629,73 @@ fn get_var(var: &runtime::RuleVar) -> String {
     }
   }
 }
+
+const CARGO_TOML : &str = r#"
+[package]
+name = "hvm-app"
+version = "0.1.0"
+edition = "2021"
+description = "An HVM application"
+repository = "https://github.com/Kindelia/HVM"
+license = "MIT"
+keywords = ["functional", "language", "runtime", "compiler", "target"]
+categories = ["compilers"]
+
+[[bin]]
+name = "hvm-app"
+test = false
+
+[dependencies]
+crossbeam = "0.8.2"
+thread-priority = "0.9.2"
+itertools = "0.10"
+num_cpus = "1.13"
+regex = "1.5.4"
+fastrand = "1.8.0"
+highlight_error = "0.1.1"
+clap = { version = "3.1.8", features = ["derive"] }
+wasm-bindgen = "0.2.82"
+reqwest = { version = "0.11.11", features = ["blocking"] }
+web-sys = { version = "0.3", features = ["console"] }
+instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
+"#;
+
+const MAIN_RS : &str = r#"
+#![feature(atomic_from_mut)]
+#![feature(atomic_mut_ptr)]
+#![allow(non_upper_case_globals)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(non_snake_case)]
+#![allow(unused_macros)]
+#![allow(unused_parens)]
+#![allow(unused_labels)]
+
+mod language;
+mod runtime;
+
+fn make_main_call(params: &Vec<String>) -> Result<language::syntax::Term, String> {
+  let name = "Main".to_string();
+  let args = params.iter().map(|x| language::syntax::read_term(x).unwrap()).collect();
+  return Ok(language::syntax::Term::Ctr { name, args });
+}
+
+fn run_code(code: &str, debug: bool, params: Vec<String>, size: usize) -> Result<(), String> {
+  let call = make_main_call(&params)?;
+  let (norm, cost, size, time) = runtime::eval_code(&call, code, debug, size)?;
+  println!("{}", norm);
+  eprintln!();
+  eprintln!("Rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
+  eprintln!("Mem.Size: {}", size);
+  return Ok(());
+}
+
+fn main() -> Result<(), String> {
+  let params : Vec<String> = vec![];
+  let size = runtime::HEAP_SIZE;
+  let debug = false;
+  run_code("", debug, params, size)?;
+  return Ok(());
+}
+"#;
+

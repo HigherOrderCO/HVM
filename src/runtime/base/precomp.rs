@@ -1,19 +1,19 @@
 use crate::runtime::{*};
 use std::sync::atomic::{AtomicBool};
 
-// Builtins
+// Precomps
 // --------
 
-pub struct BuiltinFuncs {
+pub struct PrecompFns {
   pub visit: VisitFun,
   pub apply: ApplyFun,
 }
 
-pub struct Builtin {
+pub struct Precomp {
   pub id    : u64,
   pub name  : &'static str,
   pub arity : usize,
-  pub funcs : Option<BuiltinFuncs>,
+  pub funcs : Option<PrecompFns>,
 }
 
 pub const STRING_NIL : u64 = 0;
@@ -38,151 +38,151 @@ pub const KIND_TERM_CTG : u64 = 18;
 pub const KIND_TERM_NUM : u64 = 19;
 pub const HVM_LOG : u64 = 20;
 pub const HVM_PUT : u64 = 21;
-//[[CODEGEN:BUILTIN-IDS]]//
+//[[CODEGEN:PRECOMP-IDS]]//
 
-pub const BUILTINS : &[Builtin] = &[
-  Builtin {
+pub const PRECOMP : &[Precomp] = &[
+  Precomp {
     id: STRING_NIL,
     name: "String.nil",
     arity: 0,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: STRING_CONS,
     name: "String.cons",
     arity: 2,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT0,
     name: "Kind.Term.ct0",
     arity: 2,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT1,
     name: "Kind.Term.ct1",
     arity: 3,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT2,
     name: "Kind.Term.ct2",
     arity: 4,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT3,
     name: "Kind.Term.ct3",
     arity: 5,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT4,
     name: "Kind.Term.ct4",
     arity: 6,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT5,
     name: "Kind.Term.ct5",
     arity: 7,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT6,
     name: "Kind.Term.ct6",
     arity: 8,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT7,
     name: "Kind.Term.ct7",
     arity: 9,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT8,
     name: "Kind.Term.ct8",
     arity: 10,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CT9,
     name: "Kind.Term.ct9",
     arity: 11,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CTA,
     name: "Kind.Term.ctA",
     arity: 12,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CTB,
     name: "Kind.Term.ctB",
     arity: 13,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CTC,
     name: "Kind.Term.ctC",
     arity: 14,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CTD,
     name: "Kind.Term.ctD",
     arity: 15,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CTE,
     name: "Kind.Term.ctE",
     arity: 16,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CTF,
     name: "Kind.Term.ctF",
     arity: 17,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_CTG,
     name: "Kind.Term.ctG",
     arity: 18,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: KIND_TERM_NUM,
     name: "Kind.Term.num",
     arity: 2,
     funcs: None,
   },
-  Builtin {
+  Precomp {
     id: HVM_LOG,
     name: "HVM.log",
     arity: 2,
-    funcs: Some(BuiltinFuncs {
+    funcs: Some(PrecompFns {
       visit: hvm_log_visit,
       apply: hvm_log_apply,
     }),
   },
-  Builtin {
+  Precomp {
     id: HVM_PUT,
     name: "HVM.put",
     arity: 2,
-    funcs: Some(BuiltinFuncs {
+    funcs: Some(PrecompFns {
       visit: hvm_put_visit,
       apply: hvm_put_apply,
     }),
   },
-//[[CODEGEN:BUILTIN-ELS]]//
+//[[CODEGEN:PRECOMP-ELS]]//
 ];
 
-pub const BUILTIN_COUNT : u64 = BUILTINS.len() as u64;
+pub const PRECOMP_COUNT : u64 = PRECOMP.len() as u64;
 
 fn hvm_log_visit(ctx: ReduceCtx) -> bool {
   return false;
@@ -216,4 +216,4 @@ fn hvm_put_apply(ctx: ReduceCtx) -> bool {
   return true;
 }
 
-//[[CODEGEN:BUILTIN-FNS]]//
+//[[CODEGEN:PRECOMP-FNS]]//

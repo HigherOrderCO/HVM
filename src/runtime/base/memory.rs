@@ -167,9 +167,10 @@
 //     7. A lambda uses 2 memory slots, a duplication uses 3, an operator uses 2. Total: 112 bytes.
 //     8. In-memory size is different to, and larger than, serialization size.
 
-pub use crate::runtime::structures::allocator::{*};
-pub use crate::runtime::structures::redex_bag::{*};
-pub use crate::runtime::structures::visit_queue::{*};
+//pub use crate::runtime::data::allocator::{*};
+//pub use crate::runtime::data::redex_bag::{*};
+//pub use crate::runtime::data::visit_queue::{*};
+pub use crate::runtime::{*};
 
 use std::sync::atomic::{AtomicU8, AtomicU64, AtomicI64, Ordering};
 use crossbeam::utils::{CachePadded, Backoff};
@@ -179,7 +180,7 @@ use crossbeam::utils::{CachePadded, Backoff};
 
 pub type Ptr = u64;
 pub type AtomicPtr = AtomicU64;
-pub type ArityMap = crate::runtime::U64Map<u64>;
+pub type ArityMap = crate::runtime::data::u64_map::U64Map<u64>;
 
 // Thread local data and stats
 #[derive(Debug)]
