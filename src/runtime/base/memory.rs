@@ -202,6 +202,7 @@ pub struct Heap {
   pub lock: Box<[AtomicU8]>,
   pub vstk: Box<[VisitQueue]>,
   pub aloc: Box<[Box<[AtomicU64]>]>,
+  pub vbuf: Box<[Box<[AtomicU64]>]>,
   pub rbag: RedexBag,
 }
 
@@ -408,8 +409,9 @@ pub fn new_heap(size: usize, tids: usize) -> Heap {
   let lock = new_atomic_u8_array(size);
   let rbag = RedexBag::new(tids);
   let aloc = (0 .. tids).map(|x| new_atomic_u64_array(1 << 20)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
+  let vbuf = (0 .. tids).map(|x| new_atomic_u64_array(1 << 16)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
   let vstk = (0 .. tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
-  return Heap { tids, node, lvar, lock, rbag, aloc, vstk };
+  return Heap { tids, node, lvar, lock, rbag, aloc, vbuf, vstk };
 }
 
 // Allocator

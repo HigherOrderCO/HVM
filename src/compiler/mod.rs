@@ -93,7 +93,7 @@ fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
       line(&mut precomp_els, 0, &format!(r#"    id    : {},"#, comp));
       line(&mut precomp_els, 0, &format!(r#"    name  : "{}","#, &name));
       line(&mut precomp_els, 0, &format!(r#"    arity : {},"#, arity));
-      if *book.ctr_is_cal.get(name).unwrap() {
+      if *book.ctr_is_cal.get(name).unwrap_or(&false) {
         line(&mut precomp_els, 0, &format!(r#"    funcs : Some(PrecompFns {{"#));
         line(&mut precomp_els, 0, &format!(r#"      visit: {}_visit,"#, comp));
         line(&mut precomp_els, 0, &format!(r#"      apply: {}_apply,"#, comp));
@@ -110,10 +110,11 @@ fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   for id in itertools::sorted(book.id_to_arit.keys()) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
-      let rules = book.rule_group.get(name).unwrap();
-      let (visit_fn, apply_fn) = compile_function(book, &name, &rules.1);
-      line(&mut precomp_fns, 0, &format!("{}", visit_fn));
-      line(&mut precomp_fns, 0, &format!("{}", apply_fn));
+      if let Some(rules) = book.rule_group.get(name) {
+        let (visit_fn, apply_fn) = compile_function(book, &name, &rules.1);
+        line(&mut precomp_fns, 0, &format!("{}", visit_fn));
+        line(&mut precomp_fns, 0, &format!("{}", apply_fn));
+      }
     }
   }
 
@@ -123,15 +124,16 @@ fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   for id in itertools::sorted(book.id_to_arit.keys()) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
-      let rules = book.rule_group.get(name).unwrap();
-      let (visit_fun, apply_fun) = compile_function(book, &name, &rules.1);
-      line(&mut fast_visit, 8, &format!("{} => {{", &compile_name(&name)));
-      line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &compile_name(&name)));
-      line(&mut fast_visit, 10, &format!("continue 'visit;"));
-      line(&mut fast_visit, 9, &format!("}} else {{"));
-      line(&mut fast_visit, 10, &format!("break 'visit;"));
-      line(&mut fast_visit, 9, &format!("}}"));
-      line(&mut fast_visit, 8, &format!("}}"));
+      if let Some(rules) = book.rule_group.get(name) {
+        let (visit_fun, apply_fun) = compile_function(book, &name, &rules.1);
+        line(&mut fast_visit, 8, &format!("{} => {{", &compile_name(&name)));
+        line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &compile_name(&name)));
+        line(&mut fast_visit, 10, &format!("continue 'visit;"));
+        line(&mut fast_visit, 9, &format!("}} else {{"));
+        line(&mut fast_visit, 10, &format!("break 'visit;"));
+        line(&mut fast_visit, 9, &format!("}}"));
+        line(&mut fast_visit, 8, &format!("}}"));
+      };
     }
   }
   line(&mut fast_visit, 8, &format!("_ => {{}}"));
@@ -143,15 +145,17 @@ fn compile_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   for id in itertools::sorted(book.id_to_arit.keys()) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
-      let rules = book.rule_group.get(name).unwrap();
-      let (visit_fun, apply_fun) = compile_function(book, &name, &rules.1);
-      line(&mut fast_apply, 9, &format!("{} => {{", &compile_name(&name)));
-      line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &compile_name(&name)));
-      line(&mut fast_apply, 11, &format!("continue 'work;"));
-      line(&mut fast_apply, 10, &format!("}} else {{"));
-      line(&mut fast_apply, 11, &format!("break 'apply;"));
-      line(&mut fast_apply, 10, &format!("}}"));
-      line(&mut fast_apply, 9, &format!("}}"));
+      let rules = 
+      if let Some(rules) = book.rule_group.get(name) {
+        let (visit_fun, apply_fun) = compile_function(book, &name, &rules.1);
+        line(&mut fast_apply, 9, &format!("{} => {{", &compile_name(&name)));
+        line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &compile_name(&name)));
+        line(&mut fast_apply, 11, &format!("continue 'work;"));
+        line(&mut fast_apply, 10, &format!("}} else {{"));
+        line(&mut fast_apply, 11, &format!("break 'apply;"));
+        line(&mut fast_apply, 10, &format!("}}"));
+        line(&mut fast_apply, 9, &format!("}}"));
+      };
     }
   }
   line(&mut fast_apply, 9, &format!("_ => {{}}"));
@@ -191,31 +195,29 @@ fn compile_function(
     if fn_visit.strict_idx.is_empty() {
       line(&mut visit, 1, "return false;");
     } else {
-      for (i, sidx) in fn_visit.strict_idx.iter().enumerate() {
-        line(&mut visit, 1, &format!("let arg{} = load_arg(ctx.heap, ctx.term, {});", i, sidx));
+      line(&mut visit, 1, &format!("let mut vlen = 0;"));
+      line(&mut visit, 1, &format!("let vbuf = unsafe {{ ctx.heap.vbuf.get_unchecked(ctx.tid) }};"));
+      for sidx in &fn_visit.strict_idx {
+        line(&mut visit, 1, &format!("if !is_whnf(load_arg(ctx.heap, ctx.term, {})) {{", *sidx));
+        line(&mut visit, 2, &format!("unsafe {{ vbuf.get_unchecked(vlen) }}.store(get_loc(ctx.term, {}), Ordering::Relaxed);", *sidx));
+        line(&mut visit, 2, &format!("vlen += 1"));
+        line(&mut visit, 1, &format!("}}"));
       }
-      line(&mut visit, 1, &format!("let mut count = 0;"));
-      for (i, sidx) in fn_visit.strict_idx.iter().enumerate() {
-        line(&mut visit, 1, &format!("if !is_whnf(arg{}) {{ count += 1; }}", sidx));
-      }
-      line(&mut visit, 1, &format!("if count == 0 {{"));
+      line(&mut visit, 1, &format!("if vlen == 0 {{"));
       line(&mut visit, 2, &format!("return false;"));
       line(&mut visit, 1, &format!("}} else {{"));
-      line(&mut visit, 2, &format!("let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, count));"));
-      line(&mut visit, 2, &format!("*ctx.cont = goup;"));
-      line(&mut visit, 2, &format!("*ctx.host = u64::MAX;"));
-      for (i, sidx) in fn_visit.strict_idx.iter().enumerate() {
-        line(&mut visit, 2, &format!("if !is_whnf(arg{}) {{", sidx));
-        line(&mut visit, 3, &format!("if *ctx.host != u64::MAX {{"));
-        line(&mut visit, 4, &format!("ctx.visit.push(new_visit(goup, *ctx.host));"));
-        line(&mut visit, 3, &format!("}}"));
-        line(&mut visit, 3, &format!("*ctx.host = get_loc(ctx.term, {});", sidx));
+      line(&mut visit, 2, &format!("let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));"));
+      for i in 0 .. fn_visit.strict_idx.len() {
+        line(&mut visit, 2, &format!("if {} < vlen - 1 {{", i));
+        line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({}).load(Ordering::Relaxed) }}, goup));", i));
         line(&mut visit, 2, &format!("}}"));
       }
+      line(&mut visit, 2, &format!("*ctx.cont = goup;"));
+      line(&mut visit, 2, &format!("*ctx.host = unsafe {{ vbuf.get_unchecked(vlen - 1).load(Ordering::Relaxed) }};"));
       line(&mut visit, 2, &format!("return true;"));
       line(&mut visit, 1, &format!("}}"));
     }
-    line(&mut visit, 0, "}");
+    line(&mut visit, 0, &format!("}}"));
 
     //OLD_VISITER:
     //let mut visit = String::new();
@@ -245,59 +247,64 @@ fn compile_function(
     line(&mut apply, 0, &format!("#[inline(always)]"));
     line(&mut apply, 0, &format!("pub fn {}_apply(ctx: ReduceCtx) -> bool {{", &compile_name(fname)));
 
+    // Loads strict arguments
+    for i in 0 .. fn_arity {
+      line(&mut apply, 1, &format!("let arg{} = load_arg(ctx.heap, ctx.term, {});", i, i));
+    }
+
     // Applies the fun_sup rule to superposed args
     for (i, is_strict) in fn_visit.strict_map.iter().enumerate() {
       if *is_strict {
-        line(&mut apply, 1, &format!("if get_tag(load_arg(ctx.heap, ctx.term, {})) == SUP {{", i));
-        line(&mut apply, 2, &format!("fun::superpose(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, load_arg(ctx.heap, ctx.term, {}), {});", i, i));
+        line(&mut apply, 1, &format!("if get_tag(arg{}) == SUP {{", i));
+        line(&mut apply, 2, &format!("fun::superpose(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, arg{}, {});", i, i));
         line(&mut apply, 1, "}");
       }
     }
 
     // For each rule condition vector
-    for (r, dynrule) in fn_apply.rules.iter().enumerate() {
+    for (r, rule) in fn_apply.rules.iter().enumerate() {
       let mut matched: Vec<String> = Vec::new();
 
       // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
-      for (i, cond) in dynrule.cond.iter().enumerate() {
+      for (i, cond) in rule.cond.iter().enumerate() {
         let i = i as u64;
         if runtime::get_tag(*cond) == runtime::NUM {
-          let same_tag = format!("get_tag(load_arg(ctx.heap, ctx.term, {})) == NUM", i);
-          let same_val = format!("get_num(load_arg(ctx.heap, ctx.term, {})) == {}", i, runtime::get_num(*cond));
+          let same_tag = format!("get_tag(arg{}) == NUM", i);
+          let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
           matched.push(format!("({} && {})", same_tag, same_val));
         }
         if runtime::get_tag(*cond) == runtime::CTR {
-          let some_tag = format!("get_tag(load_arg(ctx.heap, ctx.term, {})) == CTR", i);
-          let some_ext = format!("get_ext(load_arg(ctx.heap, ctx.term, {})) == {}", i, runtime::get_ext(*cond));
+          let some_tag = format!("get_tag(arg{}) == CTR", i);
+          let some_ext = format!("get_ext(arg{}) == {}", i, runtime::get_ext(*cond));
           matched.push(format!("({} && {})", some_tag, some_ext));
         }
           // If this is a strict argument, then we're in a default variable
         if runtime::get_tag(*cond) == runtime::VAR && fn_visit.strict_map[i as usize] {
 
           // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
-          if dynrule.hoas && r != fn_apply.rules.len() - 1 {
+          if rule.hoas && r != fn_apply.rules.len() - 1 {
 
             // Matches number literals
             let is_num
-              = format!("get_tag(load_arg(ctx.heap, ctx.term, {})) == NUM", i);
+              = format!("get_tag(arg{}) == NUM", i);
 
             // Matches constructor labels
             let is_ctr = format!("({} && {})",
-              format!("get_tag(load_arg(ctx.heap, ctx.term, {})) == CTR", i),
-              format!("arity_of(heap, load_arg(ctx.heap, ctx.term, {})) == 0u", i));
+              format!("get_tag(arg{}) == CTR", i),
+              format!("arity_of(heap, arg{}) == 0u", i));
 
             // Matches HOAS numbers and constructors
             let is_hoas_ctr_num = format!("({} && {} && {})",
-              format!("get_tag(load_arg(ctx.heap, ctx.term, {})) == CTR", i),
-              format!("get_ext(load_arg(ctx.heap, ctx.term, {})) >= HOAS_CT0", i),
-              format!("get_ext(load_arg(ctx.heap, ctx.term, {})) <= HOAS_NUM", i));
+              format!("get_tag(arg{}) == CTR", i),
+              format!("get_ext(arg{}) >= HOAS_CT0", i),
+              format!("get_ext(arg{}) <= HOAS_NUM", i));
 
             matched.push(format!("({} || {} || {})", is_num, is_ctr, is_hoas_ctr_num));
 
           // Only match default variables on CTRs and NUMs
           } else {
-            let is_ctr = format!("get_tag(load_arg(ctx.heap, ctx.term, {})) == CTR", i);
-            let is_num = format!("get_tag(load_arg(ctx.heap, ctx.term, {})) == NUM", i);
+            let is_ctr = format!("get_tag(arg{}) == CTR", i);
+            let is_num = format!("get_tag(arg{}) == NUM", i);
             matched.push(format!("({} || {})", is_ctr, is_num));
           }
 
@@ -311,28 +318,24 @@ fn compile_function(
       line(&mut apply, 2, "inc_cost(ctx.heap, ctx.tid);");
 
       // Builds the right-hand side term (ex: `(Succ (Add a b))`)
-      //let done = compile_function_rule_body(&mut apply, 2, &dynrule.body, &dynrule.vars);
-      let done = compile_function_rule_rhs(book, &mut apply, 2, &dynrule.core, &dynrule.vars);
+      //let done = compile_function_rule_body(&mut apply, 2, &rule.body, &rule.vars);
+      let done = compile_function_rule_rhs(book, &mut apply, 2, &rule.core, &rule.vars);
       line(&mut apply, 2, &format!("let done = {};", done));
 
       // Links the host location to it
       line(&mut apply, 2, "link(ctx.heap, *ctx.host, done);");
 
       // Collects unused variables (none in this example)
-      for dynvar @ runtime::RuleVar { param: _, field: _, erase } in dynrule.vars.iter() {
+      for dynvar @ runtime::RuleVar { param: _, field: _, erase } in rule.vars.iter() {
         if *erase {
           line(&mut apply, 2, &format!("collect(ctx.heap, &ctx.prog.arit, ctx.tid, {});", get_var(dynvar)));
         }
       }
 
       // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-      for (i, arity) in &dynrule.free {
+      for (i, arity) in &rule.free {
         let i = *i as u64;
-        line(
-          &mut apply,
-          2,
-          &format!("free(ctx.heap, ctx.tid, get_loc(load_arg(ctx.heap, ctx.term, {}), 0), {});", i, arity),
-        );
+        line(&mut apply, 2, &format!("free(ctx.heap, ctx.tid, get_loc(arg{}, 0), {});", i, arity));
       }
       line(&mut apply, 2, &format!("free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), {});", fn_visit.strict_map.len()));
       line(&mut apply, 2, "return true;");
@@ -397,6 +400,7 @@ fn compile_function_rule_rhs(
     term : &runtime::Core,
   ) -> String {
     const INLINE_NUMBERS: bool = true;
+
     //println!("compile {:?}", term);
     //println!("- vars: {:?}", vars);
     match term {
@@ -598,10 +602,10 @@ fn compile_function_rule_rhs(
     .iter()
     .map(|_var @ runtime::RuleVar { param, field, erase: _ }| match field {
       Some(field) => {
-        format!("load_arg(ctx.heap, load_arg(ctx.heap, ctx.term, {}), {})", param, field)
+        format!("load_arg(ctx.heap, arg{}, {})", param, field)
       }
       None => {
-        format!("load_arg(ctx.heap, ctx.term, {})", param)
+        format!("arg{}", param)
       }
     })
     .collect();
@@ -622,10 +626,10 @@ fn get_var(var: &runtime::RuleVar) -> String {
   let runtime::RuleVar { param, field, erase: _ } = var;
   match field {
     Some(i) => {
-      format!("load_arg(heap, load_arg(heap, term, {}), {})", param, i)
+      format!("load_arg(ctx.heap, arg{}, {})", param, i)
     }
     None => {
-      format!("load_arg(heap, term, {})", param)
+      format!("arg{}", param)
     }
   }
 }

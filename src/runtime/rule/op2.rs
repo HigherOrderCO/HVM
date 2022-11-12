@@ -18,6 +18,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // --------- OP2-NUM
   // add(a, b)
   if get_tag(arg0) == NUM && get_tag(arg1) == NUM {
+    //operate(ctx.heap, ctx.tid, ctx.term, arg0, arg1, *ctx.host);
+
     inc_cost(ctx.heap, ctx.tid);
     let a = get_num(arg0);
     let b = get_num(arg1);
@@ -43,6 +45,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     let done = Num(c);
     link(ctx.heap, *ctx.host, done);
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
+
     return false;
   }
 

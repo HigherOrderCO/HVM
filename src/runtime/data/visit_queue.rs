@@ -41,16 +41,17 @@ impl VisitQueue {
 
   pub fn push(&self, value: u64) {
     let index = self.last.fetch_add(1, Ordering::Relaxed);
-    self.data[index].store(value, Ordering::Relaxed);
+    unsafe { self.data.get_unchecked(index) }.store(value, Ordering::Relaxed);
   }
 
+  #[inline(always)]
   pub fn pop(&self) -> Option<(u64, u64)> {
     loop {
       let last = self.last.load(Ordering::Relaxed);
       if last > 0 {
         self.last.fetch_sub(1, Ordering::Relaxed);
         self.init.fetch_min(last - 1, Ordering::Relaxed);
-        let visit = self.data[last - 1].swap(0, Ordering::Relaxed);
+        let visit = unsafe { self.data.get_unchecked(last - 1) }.swap(0, Ordering::Relaxed);
         if visit == 0 {
           continue;
         } else {
@@ -62,11 +63,12 @@ impl VisitQueue {
     }
   }
 
+  #[inline(always)]
   pub fn steal(&self) -> Option<(u64, u64)> {
     let index = self.init.load(Ordering::Relaxed);
-    let visit = self.data[index].load(Ordering::Relaxed);
+    let visit = unsafe { self.data.get_unchecked(index) }.load(Ordering::Relaxed);
     if visit != 0 {
-      if let Ok(visit) = self.data[index].compare_exchange(visit, 0, Ordering::Relaxed, Ordering::Relaxed) {
+      if let Ok(visit) = unsafe { self.data.get_unchecked(index) }.compare_exchange(visit, 0, Ordering::Relaxed, Ordering::Relaxed) {
         self.init.fetch_add(1, Ordering::Relaxed);
         return Some((get_visit_cont(visit), get_visit_host(visit)));
       }

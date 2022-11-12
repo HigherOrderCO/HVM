@@ -21,7 +21,6 @@ use crossbeam::utils::{Backoff};
 
 pub fn is_whnf(term: Ptr) -> bool {
   match get_tag(term) {
-    VAR => true,
     ERA => true,
     LAM => true,
     SUP => true,
@@ -175,7 +174,6 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                 match &prog.funs.get(&fid) {
                   Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
                     if fun::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, fid, *fn_arity, fn_visit, fn_apply) {
-                    //if fun::apply(heap, prog, tid, host, term, fid, *fn_arity, fn_visit, fn_apply) {
                       continue 'work;
                     } else {
                       break 'apply;
@@ -236,7 +234,9 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
       }
     }
     'steal: loop {
+      //println!("[{}] steal", tid);
       if stop.load(Ordering::Relaxed) {
+        //println!("[{}] stop", tid);
         break 'main;
       } else {
         for victim_tid in tids {
@@ -244,11 +244,13 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
             if let Some((new_cont, new_host)) = heap.vstk[*victim_tid].steal() {
               cont = new_cont;
               host = new_host;
+              //println!("stolen");
               continue 'main;
             }
           }
         }
         bkoff.snooze();
+        //println!("[{}] continue stealing", tid);
         continue 'steal;
       }
     }

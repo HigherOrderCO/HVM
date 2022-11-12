@@ -54,22 +54,24 @@ impl RedexBag {
     return std::cmp::min(REDEX_BAG_SIZE / self.tids * (tid + 1), REDEX_CONT_RET as usize - 1);
   }
 
+  #[inline(always)]
   pub fn insert(&self, tid: usize, redex: u64) -> u64 {
     loop {
-      let index = self.next[tid].fetch_add(1, Ordering::Relaxed);
+      let index = unsafe { self.next.get_unchecked(tid) }.fetch_add(1, Ordering::Relaxed);
       if index + 1 >= self.max_index(tid) { 
-        self.next[tid].store(self.min_index(tid), Ordering::Relaxed);
+        unsafe { self.next.get_unchecked(tid) }.store(self.min_index(tid), Ordering::Relaxed);
       }
-      if self.data[index].compare_exchange_weak(0, redex, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
+      if unsafe { self.data.get_unchecked(index) }.compare_exchange_weak(0, redex, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
         return index as u64;
       }
     }
   }
 
+  #[inline(always)]
   pub fn complete(&self, index: u64) -> Option<(u64,u64)> {
-    let redex = self.data[index as usize].fetch_sub(1, Ordering::Relaxed);
+    let redex = unsafe { self.data.get_unchecked(index as usize) }.fetch_sub(1, Ordering::Relaxed);
     if get_redex_left(redex) == 1 {
-      self.data[index as usize].store(0, Ordering::Relaxed);
+      unsafe { self.data.get_unchecked(index as usize) }.store(0, Ordering::Relaxed);
       return Some((get_redex_cont(redex), get_redex_host(redex)));
     } else {
       return None;

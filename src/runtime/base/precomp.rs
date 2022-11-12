@@ -1,5 +1,5 @@
 use crate::runtime::{*};
-use std::sync::atomic::{AtomicBool};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // Precomps
 // --------

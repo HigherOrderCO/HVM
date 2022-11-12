@@ -1,4 +1,5 @@
 use crate::runtime::{*};
+use std::sync::atomic::{Ordering};
 
 #[inline(always)]
 pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
@@ -6,44 +7,42 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
   if len == 0 {
     return false;
   } else {
-    let mut count = 0;
-    for (i, sidx) in sidxs.iter().enumerate() {
+    let mut vlen = 0;
+    let vbuf = unsafe { ctx.heap.vbuf.get_unchecked(ctx.tid) };
+    for sidx in sidxs {
       if !is_whnf(load_arg(ctx.heap, ctx.term, *sidx)) {
-        count += 1;
+        unsafe { vbuf.get_unchecked(vlen) }.store(get_loc(ctx.term, *sidx), Ordering::Relaxed);
+        vlen += 1;
       }
     }
-    if count == 0 {
+    if vlen == 0 {
       return false;
     } else {
-      let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, count));
-      *ctx.cont = goup;
-      *ctx.host = u64::MAX;
-      for (i, sidx) in sidxs.iter().enumerate() {
-        if !is_whnf(load_arg(ctx.heap, ctx.term, *sidx)) {
-          if *ctx.host != u64::MAX {
-            ctx.visit.push(new_visit(goup, *ctx.host));
-          }
-          *ctx.host = get_loc(ctx.term, *sidx);
-        }
+      let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));
+      for i in 0 .. vlen - 1 {
+        ctx.visit.push(new_visit(unsafe { vbuf.get_unchecked(i).load(Ordering::Relaxed) }, goup));
       }
+      *ctx.cont = goup;
+      *ctx.host = unsafe { vbuf.get_unchecked(vlen - 1).load(Ordering::Relaxed) };
       return true;
     }
   }
   //OLD_VISITER:
-  //let len = fn_visit.strict_idx.len() as u64;
+  //let len = sidxs.len() as u64;
   //if len == 0 {
-    //break 'visit;
+    //return false;
   //} else {
-    //let goup = redex.insert(tid, new_redex(host, cont, fn_visit.strict_idx.len() as u64));
-    //for (i, arg_idx) in fn_visit.strict_idx.iter().enumerate() {
-      //if i < fn_visit.strict_idx.len() - 1 {
-        //visit.push(new_visit(get_loc(term, *arg_idx), goup));
+    //let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, sidxs.len() as u64));
+    //for (i, arg_idx) in sidxs.iter().enumerate() {
+      //if i < sidxs.len() - 1 {
+        //ctx.visit.push(new_visit(get_loc(ctx.term, *arg_idx), goup));
       //} else {
-        //cont = goup;
-        //host = get_loc(term, *arg_idx);
-        //continue 'visit;
+        //*ctx.cont = goup;
+        //*ctx.host = get_loc(ctx.term, *arg_idx);
+        //return true;
       //}
     //}
+    //return true;
   //}
 }
 
@@ -120,7 +119,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &App
       inc_cost(ctx.heap, ctx.tid);
 
       // Builds the right-hand side ctx.term
-      let done = alloc_body(ctx.heap, ctx.tid, ctx.term, &rule.vars, &rule.body);
+      let done = alloc_body(ctx.heap, ctx.prog, ctx.tid, ctx.term, &rule.vars, &rule.body);
 
       // Links the *ctx.host location to it
       link(ctx.heap, *ctx.host, done);

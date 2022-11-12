@@ -151,12 +151,11 @@ pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
   }
 }
 
-pub fn alloc_body(heap: &Heap, tid: usize, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
-  // FIXME: verify the use of get_unchecked
-  let (elem, nodes, dupk) = body;
-  fn elem_to_ptr(heap: &Heap, lvar: &LocalVars, aloc: &[AtomicU64], term: Ptr, vars: &[RuleVar], elem: &RuleBodyCell) -> Ptr {
+pub fn alloc_body(heap: &Heap, prog: &Program, tid: usize, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
+  //#[inline(always)]
+  fn cell_to_ptr(heap: &Heap, lvar: &LocalVars, aloc: &[AtomicU64], term: Ptr, vars: &[RuleVar], cell: &RuleBodyCell) -> Ptr {
     unsafe {
-      match elem {
+      match cell {
         RuleBodyCell::Val { value } => {
           *value
         },
@@ -166,10 +165,7 @@ pub fn alloc_body(heap: &Heap, tid: usize, term: Ptr, vars: &[RuleVar], body: &R
         RuleBodyCell::Ptr { value, targ, slot } => {
           let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
           // should be changed if the pointer format changes
-          if get_tag(*value) == DP0 {
-            val += (*lvar.dups.as_mut_ptr() & 0xFFF_FFFF) * EXT;
-          }
-          if get_tag(*value) == DP1 {
+          if get_tag(*value) <= DP1 {
             val += (*lvar.dups.as_mut_ptr() & 0xFFF_FFFF) * EXT;
           }
           val
@@ -177,7 +173,9 @@ pub fn alloc_body(heap: &Heap, tid: usize, term: Ptr, vars: &[RuleVar], body: &R
       }
     }
   }
+  // FIXME: verify the use of get_unchecked
   unsafe {
+    let (cell, nodes, dupk) = body;
     let aloc = &heap.aloc[tid];
     let lvar = &heap.lvar[tid];
     for i in 0 .. nodes.len() {
@@ -189,17 +187,18 @@ pub fn alloc_body(heap: &Heap, tid: usize, term: Ptr, vars: &[RuleVar], body: &R
     for i in 0 .. nodes.len() {
       let host = *aloc.get_unchecked(i).as_mut_ptr() as usize;
       for j in 0 .. (*nodes.get_unchecked(i)).len() {
-        let elem = (*nodes.get_unchecked(i)).get_unchecked(j);
-        let ptr = elem_to_ptr(heap, lvar, aloc, term, vars, elem);
-        if let RuleBodyCell::Var { .. } = elem {
+        let cell = (*nodes.get_unchecked(i)).get_unchecked(j);
+        let ptr = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
+        if let RuleBodyCell::Var { .. } = cell {
           link(heap, (host + j) as u64, ptr);
         } else {
           *heap.node.data.get_unchecked(host + j).as_mut_ptr() = ptr;
         }
-      };
-    };
-    let done = elem_to_ptr(heap, lvar, aloc, term, vars, elem);
+      }
+    }
+    let done = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
     *lvar.dups.as_mut_ptr() += dupk;
+    //println!("result: {}\n{}\n", show_ptr(done), show_term(heap, prog, done, 0));
     return done;
   }
 }
@@ -638,16 +637,16 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
   (elem, nodes, dupk)
 }
 
-pub fn alloc_closed_core(heap: &Heap, tid: usize, term: &Core) -> u64 {
+pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -> u64 {
   let host = alloc(heap, tid, 1);
   let body = build_body(term, 0);
-  let term = alloc_body(heap, tid, 0, &[], &body);
+  let term = alloc_body(heap, prog, tid, 0, &[], &body);
   link(heap, host, term);
   host
 }
 
-pub fn alloc_term(heap: &Heap, tid: usize, book: &language::rulebook::RuleBook, term: &language::syntax::Term) -> u64 {
-  alloc_closed_core(heap, tid, &term_to_core(book, term, &vec![]))
+pub fn alloc_term(heap: &Heap, prog: &Program, tid: usize, book: &language::rulebook::RuleBook, term: &language::syntax::Term) -> u64 {
+  alloc_closed_core(heap, prog, tid, &term_to_core(book, term, &vec![]))
 }
 
 // Evaluates a HVM term to normal form
@@ -666,11 +665,11 @@ pub fn eval_code(
   // Creates the runtime program
   let prog = init_program(&mut gen_functions(&book), &mut gen_arities(&book), &mut gen_names(&book));
 
-  let mut heap = new_heap(size, available_parallelism());
-  let     tids = new_tids(available_parallelism());
+  let heap = new_heap(size, available_parallelism());
+  let tids = new_tids(available_parallelism());
 
   // Allocates the main term
-  let host = alloc_term(&mut heap, tids[0], &book, call); // FIXME tid?
+  let host = alloc_term(&heap, &prog, tids[0], &book, call); // FIXME tid?
 
   // Normalizes it
   let init = instant::Instant::now();
