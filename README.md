@@ -15,6 +15,9 @@ scale towards uncharted levels of performance.
 
 **Welcome to the massively parallel future of computers!**
 
+*Note: this repository is, right now, being updated towards V1. Expect some
+unstable bits, missing stuff, and many changes through this week!*
+
 Usage
 -----
 
@@ -43,39 +46,21 @@ HVM files look like untyped Haskell. Save the file below as `main.hvm`:
 (Main n) = (Sum (Gen n))
 ```
 
-The program above creates a perfect binary tree with `2^n` elements and adds
-them up. Since it is recursive, HVM will parallelize it automatically.
-
-### 3. Run and compile
+### 3. Run it!
 
 ```sh
-hvm r main 10                      # runs it with n=10
-hvm c main                         # compiles HVM to C
-clang -O2 main.c -o main -pthread  # compiles C to BIN
-./main 30                          # runs it with n=30
+hvm run -f main.hvm "(Main 25)"
 ```
 
-The program above runs in about **6.4 seconds** in a modern 8-core processor,
-while the identical Haskell code takes about **19.2 seconds** in the same
-machine with GHC. This is HVM: write a functional program, get a parallel C
-runtime. And that's just the tip of iceberg!
-
-[See Nix usage documentation here.](./NIX.md)
-
-[See build instructions here.](./BUILDING.md)
-
-[See also HVM-JS, a WASM wrapper for HVM on JavaScript.](https://github.com/kindelia/hvm-js)
+This will sum 2^25 numbers in parallel, using HVM's interpreter. To learn how to
+compile it, and much more, see the complete [GUIDE.md](./GUIDE.md). To
+understand the technology behind it, check [HOW.md](./HOW.md).
 
 Benchmarks
 ==========
 
 HVM has two main advantages over GHC: automatic parallelism and beta-optimality.
-I've selected 5 common micro-benchmarks to compare them. Keep in mind that HVM
-is still an early prototype, so it **obviously** won't beat GHC in general, but
-it does quite well already and should improve steadily as optimizations are
-implemented. Tests were compiled with `ghc -O2` for Haskell and `clang -O2` for
-HVM, on an 8-core M1 Max processor. The complete files to replicate these
-results are in [the `bench/` directory](bench).
+I've selected 5 common benchmarks to compare them. Below are the results:
 
 List Fold (Sequential)
 ----------------------
@@ -399,19 +384,6 @@ How is that possible?
 =====================
 
 Check [HOW.md](HOW.md).
-
-How can I help?
-===============
-
-Most importantly, if you appreciate our work, please help spread word of the
-project! Sharing on Reddit, HN, and other communities helps more than you
-think.
-
-Second, I'm looking for partners! I believe HVM's current design is ready to
-scale and become the fastest runtime in the world, but a lot still needs to be
-done to get there. We're also building interesting products built on top of it.
-If you'd like to get involved, please [email me](mailto:victor.taelin@gmail.com),
-or just send me a personal message on [Twitter](https://twitter.com/victortaelin).
 
 Community
 =========

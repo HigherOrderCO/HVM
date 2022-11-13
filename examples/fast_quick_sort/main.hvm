@@ -1,0 +1,28 @@
+// Parallel QuickSort
+(Sort Nil)         = Leaf
+(Sort (Cons x xs)) =
+  let split = (Split x xs)
+  (split λmin λmax
+    let lft = (Sort min)
+    let mid = x
+    let rgt = (Sort max)
+    (Node lft mid rgt))
+
+  // Splits a list in two halves, less-than-p and greater-than-p
+  (Split p Nil)         = λt (t Nil Nil)
+  (Split p (Cons x xs)) = (Push (> x p) x (Split p xs))
+
+  // Pushes a value to the first or second list of a pair
+  (Push 0 x pair) = (pair λmin λmax λp (p (Cons x min) max))
+  (Push 1 x pair) = (pair λmin λmax λp (p min (Cons x max)))
+  
+// Generates a random list
+(Rnd 0 s) = (Nil)
+(Rnd n s) = (Cons s (Rnd (- n 1) (% (+ (* s 1664525) 1013904223) 4294967296)))
+
+// Sums all elements in a concatenation tree
+(Sum Leaf)         = 0
+(Sum (Node l m r)) = (+ 1 (+ (Sum l) (Sum r)))
+
+// Sorts and sums n random numbers
+(Main n) = (Sum (Sort (Rnd (<< 1 20) 1)))

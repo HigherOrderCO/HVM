@@ -1,0 +1,48 @@
+// Parallel Bitonic Sorter on HVM
+// https://en.wikipedia.org/wiki/Bitonic_sorter
+
+// Atomic swapper.
+(Swap 0 0 a b) = (N a b)
+(Swap 0 1 a b) = (N b a)
+(Swap 1 0 a b) = (N b a)
+(Swap 1 1 a b) = (N a b)
+
+// Swaps distant values in parallel. Corresponds to a Red Box.
+(Warp s (L a)   (L b))   = (Swap (> a b) s (L a) (L b))
+(Warp s (N a b) (N c d)) = (Join (Warp s a c) (Warp s b d))
+
+// Rebuilds the warped tree in the original order.
+(Join (N a b) (N c d)) = (N (N a c) (N b d))
+
+// Recursively warps each sub-tree. Corresponds to a Blue/Green Box.
+(Flow s (L a))   = (L a)
+(Flow s (N a b)) = (Down s (Warp s a b))
+
+// Auxiliary function that calls Flow recursively.
+(Down s (L a))   = (L a)
+(Down s (N a b)) = (N (Flow s a) (Flow s b))
+
+// Parallel Bitonic Sort 
+(Sort s (L a))   = (L a)
+(Sort s (N a b)) = (Flow s (N (Sort 0 a) (Sort 1 b)))
+
+// Generates a tree of depth `n`.
+(Gen 0 x) = (L x)
+(Gen n x) = let m = (- n 1); (N (Gen m (* x 2)) (Gen m (+ (* x 2) 1)))
+
+// Reverses a tree.
+(Rev (L x))   = (L x)
+(Rev (N a b)) = (N (Rev b) (Rev a))
+
+// Sums a tree.
+(Sum (L x))   = x
+(Sum (N a b)) = (+ (Sum a) (Sum b))
+
+(Main n) =
+  let t = (Rev (Gen 20 0))
+  let t = (Sort 0 t)
+  (Sum t)
+
+// qsort, 2^20 elems: 136154826 rewrites
+// bsort, 2^20 elems: 926941175 rewrites
+// d = 10, 284148 rewrites
