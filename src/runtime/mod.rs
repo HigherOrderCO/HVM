@@ -16,12 +16,10 @@ pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
 pub const CELLS_PER_GB: usize = 0x8000000;
 
-pub const HEAP_SIZE: usize = 24 * CELLS_PER_GB;
-
-pub fn available_parallelism() -> usize {
-  return std::thread::available_parallelism().unwrap().get();
+pub fn default_heap_size() -> usize {
+  return 16 * CELLS_PER_GB;
 }
 
-pub fn new_tids(tids: usize) -> Box<[usize]> {
-  return (0 .. tids).collect::<Vec<usize>>().into_boxed_slice();
+pub fn default_heap_tids() -> usize {
+  return std::thread::available_parallelism().unwrap().get();
 }

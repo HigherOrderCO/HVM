@@ -193,7 +193,7 @@ pub fn alloc_body(heap: &Heap, prog: &Program, tid: usize, term: Ptr, vars: &[Ru
         if let RuleBodyCell::Var { .. } = cell {
           link(heap, (host + j) as u64, ptr);
         } else {
-          *heap.node.data.get_unchecked(host + j).as_mut_ptr() = ptr;
+          *heap.node.get_unchecked(host + j).as_mut_ptr() = ptr;
         }
       }
     }
@@ -650,6 +650,7 @@ pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -
   let body = build_body(term, 0);
   let term = alloc_body(heap, prog, tid, 0, &[], &body);
   link(heap, host, term);
+  println!("allocated {}", show_term(heap, prog, term, 0));
   host
 }
 
@@ -657,52 +658,3 @@ pub fn alloc_term(heap: &Heap, prog: &Program, tid: usize, book: &language::rule
   alloc_closed_core(heap, prog, tid, &term_to_core(book, term, &vec![]))
 }
 
-// Evaluates a HVM term to normal form
-pub fn eval_code(
-  call: &language::syntax::Term,
-  code: &str,
-  debug: bool,
-  size: usize,
-) -> Result<(String, u64, i64, u64), String> {
-  // Parses and reads the input file
-  let file = language::syntax::read_file(code)?;
-
-  // Converts the HVM "file" to a Rulebook
-  let book = language::rulebook::gen_rulebook(&file);
-
-  // Creates the runtime program
-  let prog = init_program(&mut gen_functions(&book), &mut gen_arities(&book), &mut gen_names(&book));
-
-  let heap = new_heap(size, available_parallelism());
-  let tids = new_tids(available_parallelism());
-
-  // Allocates the main term
-  let host = alloc_term(&heap, &prog, tids[0], &book, call); // FIXME tid?
-
-  // Normalizes it
-  let init = instant::Instant::now();
-  #[cfg(not(target_arch = "wasm32"))]
-  normalize(&heap, &prog, &tids, host, true);
-  let time = init.elapsed().as_millis() as u64;
-
-  // Reads it back to a string
-  let code = format!("{}", language::readback::as_term(&heap, &prog, host));
-
-  // Collects the result expression
-  collect(&heap, &prog.arit, tids[0], load_ptr(&heap, host));
-
-  // Frees the memory used by the main node
-  // TODO: must get the arity
-
-  // Returns the result, the rewrite cost, used memory and time elapsed
-  Ok((code, get_cost(&heap), get_used(&heap), time))
-
-  //println!("before collect:\n{}", runtime::show_heap(&heap));
-  //println!("{}", runtime::show_term(&heap, &prog, runtime::load_ptr(&heap, host), runtime::load_ptr(&heap, host)));
-  //runtime::collect(&heap, &prog, tids[0], runtime::load_ptr(&heap, host));
-  //runtime::free(&heap, 0, 0, 2); // FIXME: remove this (just clearing main)
-
-  //println!("after collect:\n{}", runtime::show_heap(&heap));
-  //println!("{}", runtime::show_term(&heap, &prog, runtime::load_ptr(&heap, host), runtime::load_ptr(&heap, host)));
-
-}

@@ -7,43 +7,59 @@
 #![allow(unused_macros)]
 #![allow(unused_parens)]
 #![allow(unused_labels)]
+#![allow(non_upper_case_globals)]
 
 mod language;
 mod runtime;
 mod compiler;
+mod api;
 
-pub use clap::{Parser, Subcommand};
-use regex::RegexBuilder;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[clap(author, version, about, long_about = None)]
 #[clap(propagate_version = true)]
-pub struct Cli {
-  /// Set quantity of allocated memory
-  #[clap(short = 'M', long, default_value = "", parse(try_from_str=parse_mem_size))]
-  pub memory_size: usize,
-
+struct Cli {
   #[clap(subcommand)]
   pub command: Command,
 }
 
 #[derive(Subcommand)]
-pub enum Command {
-  /// Run a file interpreted
+enum Command {
+  /// Load a file and run an expression
   #[clap(aliases = &["r"])]
-  Run { file: String, params: Vec<String> },
 
-  /// Run in debug mode
-  #[clap(aliases = &["d"])]
-  Debug { file: String, params: Vec<String> },
+  Run { 
+    /// Set the heap size (in 64-bit nodes).
+    #[clap(short = 's', long, default_value = "auto", parse(try_from_str=parse_size))]
+    size: usize,
 
-  /// Compile a file to C
+    /// Set the number of threads to use.
+    #[clap(short = 't', long, default_value = "auto", parse(try_from_str=parse_tids))]
+    tids: usize,
+
+    /// Shows the number of graph rewrites performed.
+    #[clap(short = 'c', long, default_value = "false", default_missing_value = "true", parse(try_from_str=parse_bool))]
+    cost: bool,
+
+    /// Toggles debug mode, showing each reduction step.
+    #[clap(short = 'd', long, default_value = "false", default_missing_value = "true", parse(try_from_str=parse_bool))]
+    debug: bool,
+
+    /// A "file.hvm" to load.
+    #[clap(short = 'f', long, default_value = "")]
+    file: String,
+
+    /// The expression to run.
+    #[clap(default_value = "Main")]
+    expr: String,
+  },
+
+  /// Compile a file to Rust
   #[clap(aliases = &["c"])]
   Compile {
-    file: String,
-    #[clap(long)]
-    /// Disable multi-threading
-    single_thread: bool,
+    /// A "file.hvm" to load.
+    file: String
   },
 }
 
@@ -54,113 +70,53 @@ fn main() {
 }
 
 fn run_cli() -> Result<(), String> {
-  let cli_matches = Cli::parse();
+  let cli = Cli::parse();
 
-  fn hvm(file: &str) -> String {
-    if file.ends_with(".hvm") {
-      file.to_string()
-    } else {
-      format!("{}.hvm", file)
-    }
-  }
-
-  match cli_matches.command {
-    Command::Compile { file, single_thread } => {
-      let file = &hvm(&file);
-      let code = load_file_code(file)?;
-      compile_code(&code, file)?;
-      Ok(())
-    }
-    Command::Run { file, params } => {
-      let code = load_file_code(&hvm(&file))?;
-
-      run_code(&code, false, params, cli_matches.memory_size / std::mem::size_of::<u64>())?;
-      Ok(())
-    }
-
-    Command::Debug { file, params } => {
-      let code = load_file_code(&hvm(&file))?;
-
-      run_code(&code, true, params, cli_matches.memory_size / std::mem::size_of::<u64>())?;
-      Ok(())
-    }
-  }
-}
-
-
-fn get_unit_ratio(unit: &str) -> Option<usize> {
-  match unit.to_lowercase().as_str() {
-    "k" => Some(1 << 10),
-    "m" => Some(1 << 20),
-    "g" => Some(1 << 30),
-    _ => None,
-  }
-}
-
-fn parse_mem_size(raw: &str) -> Result<usize, String> {
-  if raw.is_empty() {
-    return Ok(runtime::HEAP_SIZE * 64 / 8);
-  } else {
-    let re = RegexBuilder::new(r"^(\d+)([KMG])i?B?$").case_insensitive(true).build().unwrap();
-    if let Some(caps) = re.captures(raw) {
-      let size = caps.get(1).unwrap().as_str().parse::<usize>();
-      let unit = caps.get(2).unwrap().as_str();
-      if let Ok(size) = size {
-        if let Some(unit) = get_unit_ratio(unit) {
-          return Ok(size * unit);
-        }
+  match cli.command {
+    Command::Run { size, tids, cost: show_cost, debug, file, expr } => {
+      let tids = if debug { 1 } else { tids };
+      let (norm, cost, time) = api::eval(&load_code(&file)?, &expr, size, tids, debug)?;
+      println!("{}", norm);
+      if show_cost {
+        eprintln!();
+        eprintln!("\x1b[32m[TIME: {:.2}s | COST: {} | RPS: {:.2}m]\x1b[0m", ((time as f64)/1000.0), cost - 1, (cost as f64) / (time as f64) / 1000.0);
       }
+      Ok(())
     }
-    Err(format!("'{}' is not a valid memory size", raw))
-  }
-}
-
-fn make_main_call(params: &Vec<String>) -> Result<language::syntax::Term, String> {
-  let name = "Main".to_string();
-  let mut args = Vec::new();
-  for param in params {
-    let term = language::syntax::read_term(param)?;
-    args.push(term);
-  }
-  Ok(language::syntax::Term::Ctr { name, args })
-}
-
-fn run_code(code: &str, debug: bool, params: Vec<String>, memory: usize) -> Result<(), String> {
-  let call = make_main_call(&params)?;
-  //FIXME: remove below (parallel debug)
-  //let call = language::syntax::Term::Ctr {
-    //name: "Pair".to_string(),
-    //args: vec![
-      //Box::new(language::syntax::Term::Ctr { name: "Main0".to_string(), args: vec![] }),
-      //Box::new(language::syntax::Term::Ctr { name: "Main1".to_string(), args: vec![] }),
-    //]
-  //};
-  let (norm, cost, used, time) = runtime::eval_code(&call, code, debug, memory)?;
-  println!("{}", norm);
-  eprintln!();
-  eprintln!("rewrites: {} ({:.2} MR/s)", cost, (cost as f64) / (time as f64) / 1000.0);
-  eprintln!("used_mem: {}", used);
-  Ok(())
-}
-
-fn compile_code(code: &str, name: &str) -> Result<(), String> {
-  if !name.ends_with(".hvm") {
-    return Err("Input file must end with .hvm.".to_string());
-  }
-  //let name = &format!("{}", &name[0..name.len() - 4]);
-  let name = &format!("hvm_app");
-  match compiler::compile(code, name) {
-    Err(er) => {
-      println!("{}", er);
+    Command::Compile { file } => {
+      let code = load_code(&file)?;
+      let name = file.replace(".hvm", "");
+      compiler::compile(&code, &name).map_err(|x| x.to_string())?;
+      println!("Compiled definitions to '/{}'.", name);
+      Ok(())
     }
-    Ok(res) => {}
   }
-  println!("Created the 'hvm_app' directory.");
-  println!("You must compile it using rustc.");
-  println!("Run the executable to call Main.");
-  Ok(())
 }
 
-fn load_file_code(file_name: &str) -> Result<String, String> {
-  std::fs::read_to_string(file_name).map_err(|err| err.to_string())
+fn parse_size(text: &str) -> Result<usize, String> {
+  if text == "auto" {
+    return Ok(runtime::default_heap_size());
+  } else {
+    return text.parse::<usize>().map_err(|x| format!("{}", x));
+  }
+}
+
+fn parse_tids(text: &str) -> Result<usize, String> {
+  if text == "auto" {
+    return Ok(runtime::default_heap_tids());
+  } else {
+    return text.parse::<usize>().map_err(|x| format!("{}", x));
+  }
+}
+
+fn parse_bool(text: &str) -> Result<bool, String> {
+  return text.parse::<bool>().map_err(|x| format!("{}", x));
+}
+
+fn load_code(file: &str) -> Result<String, String> {
+  if file.is_empty() {
+    return Ok(String::new());
+  } else {
+    return std::fs::read_to_string(file).map_err(|err| err.to_string());
+  }
 }

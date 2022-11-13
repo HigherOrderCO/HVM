@@ -169,9 +169,6 @@
 //     7. A lambda uses 2 memory slots, a duplication uses 3, an operator uses 2. Total: 112 bytes.
 //     8. In-memory size is different to, and larger than, serialization size.
 
-//pub use crate::runtime::data::allocator::{*};
-//pub use crate::runtime::data::redex_bag::{*};
-//pub use crate::runtime::data::visit_queue::{*};
 pub use crate::runtime::{*};
 
 use std::sync::atomic::{AtomicU8, AtomicU64, AtomicI64, Ordering};
@@ -199,9 +196,9 @@ pub struct LocalVars {
 // Global memory buffer
 pub struct Heap {
   pub tids: usize,
-  pub node: Allocator,
-  pub lvar: Box<[CachePadded<LocalVars>]>,
+  pub node: Box<[AtomicU64]>,
   pub lock: Box<[AtomicU8]>,
+  pub lvar: Box<[CachePadded<LocalVars>]>,
   pub vstk: Box<[VisitQueue]>,
   pub aloc: Box<[Box<[AtomicU64]>]>,
   pub vbuf: Box<[Box<[AtomicU64]>]>,
@@ -350,7 +347,7 @@ pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {
 
 // Given a location, loads the ptr stored on it
 pub fn load_ptr(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { heap.node.data.get_unchecked(loc as usize).load(Ordering::Relaxed) }
+  unsafe { heap.node.get_unchecked(loc as usize).load(Ordering::Relaxed) }
 }
 
 // Moves a pointer to another location
@@ -365,7 +362,7 @@ pub fn load_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
 
 // Given a location, takes the ptr stored on it
 pub fn take_ptr(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { heap.node.data.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
+  unsafe { heap.node.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
 }
 
 // Given a pointer to a node, takes its nth arg
@@ -376,10 +373,10 @@ pub fn take_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
 // Writes a ptr to memory. Updates binders.
 pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
   unsafe {
-    heap.node.data.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
+    heap.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
     if get_tag(ptr) <= VAR {
       let arg_loc = get_loc(ptr, get_tag(ptr) & 0x01);
-      heap.node.data.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+      heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
     }
   }
   ptr
@@ -396,6 +393,10 @@ pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
   return unsafe { Box::from_raw(AtomicU64::from_mut_slice(Box::leak(vec![0u64; size].into_boxed_slice()))) }
 }
 
+pub fn new_tids(tids: usize) -> Box<[usize]> {
+  return (0 .. tids).collect::<Vec<usize>>().into_boxed_slice();
+}
+
 pub fn new_heap(size: usize, tids: usize) -> Heap {
   let mut lvar = vec![];
   for tid in 0 .. tids {
@@ -409,21 +410,20 @@ pub fn new_heap(size: usize, tids: usize) -> Heap {
       cost: AtomicU64::new(0),
     }))
   }
-  let node = Allocator::new(tids);
-  let lvar = lvar.into_boxed_slice();
+  let node = new_atomic_u64_array(size);
   let lock = new_atomic_u8_array(size);
+  let lvar = lvar.into_boxed_slice();
   let rbag = RedexBag::new(tids);
   let aloc = (0 .. tids).map(|x| new_atomic_u64_array(1 << 20)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
   let vbuf = (0 .. tids).map(|x| new_atomic_u64_array(1 << 16)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
   let vstk = (0 .. tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
-  return Heap { tids, node, lvar, lock, rbag, aloc, vbuf, vstk };
+  return Heap { tids, node, lock, lvar, rbag, aloc, vbuf, vstk };
 }
 
 // Allocator
 // ---------
 
 pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
-  //heap.node.alloc(tid, arity)
   unsafe {
     let lvar = &heap.lvar[tid];
     if arity == 0 {
@@ -437,7 +437,7 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
           //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
         //}
         // Loads value on cursor
-        let val = heap.node.data.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
+        let val = heap.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
         // If it is empty, increment length
         if val == 0 {
           length += 1;
@@ -468,9 +468,8 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
 }
 
 pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
-  //heap.node.free(tid, loc, arity)
   for i in 0 .. arity {
-    unsafe { heap.node.data.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
+    unsafe { heap.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
   }
 }
 
@@ -480,10 +479,10 @@ pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
 // Atomically replaces a ptr by another. Updates binders.
 pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, Ptr> {
   unsafe {
-    let got = heap.node.data.get_unchecked(loc as usize).compare_exchange_weak(old, neo, Ordering::Relaxed, Ordering::Relaxed)?;
+    let got = heap.node.get_unchecked(loc as usize).compare_exchange_weak(old, neo, Ordering::Relaxed, Ordering::Relaxed)?;
     if get_tag(neo) <= VAR {
       let arg_loc = get_loc(neo, get_tag(neo) & 0x01);
-      heap.node.data.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+      heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
     }
     return Ok(got);
   }
@@ -494,10 +493,15 @@ pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr
   loop {
     let arg_ptr = load_ptr(heap, get_loc(var, get_tag(var) & 0x01));
     if get_tag(arg_ptr) == ARG {
-      if atomic_relink(heap, get_loc(arg_ptr, 0), var, val).is_ok() {
+      if heap.tids == 1 {
+        link(heap, get_loc(arg_ptr, 0), val);
         return;
       } else {
-        continue;
+        if atomic_relink(heap, get_loc(arg_ptr, 0), var, val).is_ok() {
+          return;
+        } else {
+          continue;
+        }
       }
     }
     if get_tag(arg_ptr) == ERA {

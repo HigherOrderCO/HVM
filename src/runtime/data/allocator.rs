@@ -34,6 +34,40 @@ impl Allocator {
   }
 
   pub fn alloc(&self, tid: usize, arity: u64) -> u64 {
+    unsafe {
+      let lvar = &heap.lvar[tid];
+      if arity == 0 {
+        0
+      } else {
+        let mut length = 0;
+        loop {
+          // Loads value on cursor
+          let val = self.data.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
+          // If it is empty, increment length; otherwise, reset it
+          length = if val == 0 { length + 1 } else { 0 };
+          // Moves the cursor forward
+          *lvar.next.as_mut_ptr() += 1;
+          // If it is out of bounds, warp around
+          if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
+            length = 0;
+            *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
+          }
+          // If length equals arity, allocate that space
+          if length == arity {
+            return *lvar.next.as_mut_ptr() - length;
+          }
+        }
+      }
+    }
+  }
+
+  pub fn free(&self, tid: usize, loc: u64, arity: u64) {
+    for i in 0 .. arity {
+      unsafe { self.data.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
+    }
+  }
+
+  pub fn arena_alloc(&self, tid: usize, arity: u64) -> u64 {
     let next = unsafe { self.next.get_unchecked(tid) };
     // Attempts to allocate on this thread's owned area
     let aloc = next.cell.fetch_add(arity, Ordering::Relaxed);
@@ -58,7 +92,7 @@ impl Allocator {
     }
   }
 
-  pub fn free(&self, tid: usize, loc: u64, arity: u64) {
+  pub fn arena_free(&self, tid: usize, loc: u64, arity: u64) {
     //for i in 0 .. arity { unsafe { self.data.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed); }
     let area = loc / PAGE_SIZE as u64;
     let used = unsafe { self.used.get_unchecked(area as usize) }.fetch_sub(arity, Ordering::Relaxed);

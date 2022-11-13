@@ -31,7 +31,7 @@ pub fn is_whnf(term: Ptr) -> bool {
   }
 }
 
-pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
+pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, debug: bool) -> Ptr {
   // Halting flag
   let stop = &AtomicBool::new(false);
 
@@ -39,7 +39,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
   std::thread::scope(|s| {
     for tid in tids {
       s.spawn(move || {
-        reducer(heap, prog, tids, stop, root, *tid);
+        reducer(heap, prog, tids, stop, root, *tid, debug);
       });
     }
   });
@@ -48,7 +48,11 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64) -> Ptr {
   return load_ptr(heap, root);
 }
 
-pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, root: u64, tid: usize) {
+pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, root: u64, tid: usize, debug: bool) {
+
+  let debug_print = |term: Ptr| {
+    println!("{}\n----------------", show_term(heap, prog, load_ptr(heap, root), term));
+  };
 
   // State Stacks
   let redex = &heap.rbag;
@@ -75,7 +79,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
         //println!("work {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
         'visit: loop {
           let term = load_ptr(heap, host);
-          //println!("visit {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
+          if debug { debug_print(term); }
           match get_tag(term) {
             APP => {
               if app::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
@@ -144,6 +148,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
           'apply: loop {
             //println!("apply {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
             let term = load_ptr(heap, host);
+            if debug { debug_print(term); }
             // Apply rewrite rules
             match get_tag(term) {
               APP => {
@@ -258,7 +263,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
   }
 }
 
-pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &Box<[AtomicU64]>) -> Ptr {
+pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &Box<[AtomicU64]>, debug: bool) -> Ptr {
   pub fn set_visited(visited: &Box<[AtomicU64]>, bit: u64) {
     let val = &visited[bit as usize >> 6];
     val.store(val.load(Ordering::Relaxed) | (1 << (bit & 0x3f)), Ordering::Relaxed);
@@ -272,7 +277,7 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &
     term
   } else {
     //let term = reduce2(heap, lvars, prog, host);
-    let term = reduce(heap, prog, tids, host);
+    let term = reduce(heap, prog, tids, host, debug);
     set_visited(visited, host);
     let mut rec_locs = vec![];
     match get_tag(term) {
@@ -324,7 +329,7 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &
             //}
             let new_loc = *rec_loc;
             s.spawn(move || {
-              let ptr = normal(heap, prog, rec_tids, new_loc, visited);
+              let ptr = normal(heap, prog, rec_tids, new_loc, visited, debug);
               //if thd_len == rec_len {
                 //move_ptr(heap, new_loc, *rec_loc);
               //}
@@ -342,7 +347,7 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &
             s.spawn(move || {
               for idx in min_idx .. max_idx {
                 let loc = rec_loc[idx];
-                let lnk = normal(heap, prog, std::slice::from_ref(tid), loc, visited);
+                let lnk = normal(heap, prog, std::slice::from_ref(tid), loc, visited, debug);
                 link(heap, loc, lnk);
               }
             });
@@ -354,12 +359,12 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &
   }
 }
 
-pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, run_io: bool) -> Ptr {
+pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
   let mut cost = get_cost(heap);
-  let visited = new_atomic_u64_array(HEAP_SIZE / 64);
+  let visited = new_atomic_u64_array(heap.node.len() / 64);
   loop {
-    let visited = new_atomic_u64_array(HEAP_SIZE / 64);
-    normal(&heap, prog, tids, host, &visited);
+    let visited = new_atomic_u64_array(heap.node.len() / 64);
+    normal(&heap, prog, tids, host, &visited, debug);
     let new_cost = get_cost(heap);
     if new_cost != cost {
       cost = new_cost;

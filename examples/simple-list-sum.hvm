@@ -1,4 +1,0 @@
-(Sum (List.cons x xs)) = (+ x (Sum xs))
-(Sum List.nil)         = 0
-
-Main = (Sum [1, 2, 3, 4])

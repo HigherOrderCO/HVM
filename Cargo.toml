@@ -1,14 +1,12 @@
 [package]
 name = "hvm"
-version = "0.1.88"
+version = "1.0.0-beta"
 edition = "2021"
-description = "A lazy, beta-optimal, massively-parallel, non-garbage-collected and strongly-confluent functional compilation target."
+description = "A massively parallel functional runtime."
 repository = "https://github.com/Kindelia/HVM"
 license = "MIT"
 keywords = ["functional", "language", "runtime", "compiler", "target"]
 categories = ["compilers"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
 test = true
@@ -18,25 +16,13 @@ crate-type = ["cdylib", "rlib"]
 name = "hvm"
 test = false
 
-[profile.dev_fast]
-inherits = "dev"
+[profile.release]
 opt-level = 3
 
 [dependencies]
-backtrace = "0.3"
-crossbeam = "0.8.2"
-thread-priority = "0.9.2"
-itertools = "0.10"
-num_cpus = "1.13"
-regex = "1.5.4"
-fastrand = "1.8.0"
-highlight_error = "0.1.1"
 clap = { version = "3.1.8", features = ["derive"] }
-wasm-bindgen = "0.2.82"
-reqwest = { version = "0.11.11", features = ["blocking"] }
-web-sys = { version = "0.3", features = ["console"] }
+crossbeam = "0.8.2"
+highlight_error = "0.1.1"
+im = "15.1.0"
 instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
-
-[dev-dependencies]
-proptest = "1.0"
-
+itertools = "0.10"
