@@ -56,7 +56,7 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       if let Some(rules) = book.rule_group.get(name) {
-        let (visit_fn, apply_fn) = build_function(book, &name, &rules.1);
+        let (visit_fn, apply_fn) = build_function(book, name, &rules.1);
         line(&mut precomp_fns, 0, &format!("{}", visit_fn));
         line(&mut precomp_fns, 0, &format!("{}", apply_fn));
       }
@@ -65,46 +65,46 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
 
   // fast visit
   let mut fast_visit = String::new();
-  line(&mut fast_visit, 7, &format!("match fid {{"));
+  line(&mut fast_visit, 6, &format!("match fid {{"));
   for id in itertools::sorted(book.id_to_arit.keys()) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       if let Some(rules) = book.rule_group.get(name) {
-        let (visit_fun, apply_fun) = build_function(book, &name, &rules.1);
-        line(&mut fast_visit, 8, &format!("{} => {{", &build_name(&name)));
-        line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
-        line(&mut fast_visit, 10, &format!("continue 'visit;"));
-        line(&mut fast_visit, 9, &format!("}} else {{"));
-        line(&mut fast_visit, 10, &format!("break 'visit;"));
-        line(&mut fast_visit, 9, &format!("}}"));
+        let (visit_fun, apply_fun) = build_function(book, name, &rules.1);
+        line(&mut fast_visit, 7, &format!("{} => {{", &build_name(name)));
+        line(&mut fast_visit, 8, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(name)));
+        line(&mut fast_visit, 9, &format!("goto!(Visit);"));
+        line(&mut fast_visit, 8, &format!("}} else {{"));
+        line(&mut fast_visit, 9, &format!("goto!(Apply);"));
         line(&mut fast_visit, 8, &format!("}}"));
+        line(&mut fast_visit, 7, &format!("}}"));
       };
     }
   }
-  line(&mut fast_visit, 8, &format!("_ => {{}}"));
-  line(&mut fast_visit, 7, &format!("}}"));
+  line(&mut fast_visit, 7, &format!("_ => {{}}"));
+  line(&mut fast_visit, 6, &format!("}}"));
 
   // fast apply
   let mut fast_apply = String::new();
-  line(&mut fast_apply, 8, &format!("match fid {{"));
+  line(&mut fast_apply, 6, &format!("match fid {{"));
   for id in itertools::sorted(book.id_to_arit.keys()) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       let rules = 
       if let Some(rules) = book.rule_group.get(name) {
-        let (visit_fun, apply_fun) = build_function(book, &name, &rules.1);
-        line(&mut fast_apply, 9, &format!("{} => {{", &build_name(&name)));
-        line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
-        line(&mut fast_apply, 11, &format!("continue 'work;"));
-        line(&mut fast_apply, 10, &format!("}} else {{"));
-        line(&mut fast_apply, 11, &format!("break 'apply;"));
-        line(&mut fast_apply, 10, &format!("}}"));
-        line(&mut fast_apply, 9, &format!("}}"));
+        let (visit_fun, apply_fun) = build_function(book, name, &rules.1);
+        line(&mut fast_apply, 7, &format!("{} => {{", &build_name(name)));
+        line(&mut fast_apply, 8, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(name)));
+        line(&mut fast_apply, 9, &format!("goto!(Visit);"));
+        line(&mut fast_apply, 8, &format!("}} else {{"));
+        line(&mut fast_apply, 9, &format!("goto!(Call);"));
+        line(&mut fast_apply, 8, &format!("}}"));
+        line(&mut fast_apply, 7, &format!("}}"));
       };
     }
   }
-  line(&mut fast_apply, 9, &format!("_ => {{}}"));
-  line(&mut fast_apply, 8, &format!("}}"));
+  line(&mut fast_apply, 7, &format!("_ => {{}}"));
+  line(&mut fast_apply, 6, &format!("}}"));
 
   // precomp.rs
   let precomp_rs : &str = include_str!("./../runtime/base/precomp.rs");
@@ -117,7 +117,7 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-VISIT]]//\n", &fast_visit);
   let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-APPLY]]//\n", &fast_apply);
 
-  return (precomp_rs, reducer_rs);
+  (precomp_rs, reducer_rs)
 }
 
 pub fn build_function(

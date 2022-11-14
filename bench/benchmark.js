@@ -41,7 +41,7 @@ var langs = {
       exec("cd main; cargo build --release; mv target/release/main ../main.bin");
     },
     bench: (task, size, tids) => {
-      return bench('./main.bin run -t '+tids+' "(Main ' + size + ')" 2>/dev/null');
+      return bench('./main.bin run -t '+tids+' "(Main ' + size + ')"');
     },
     clean: () => {
       exec("rm main.hvm");

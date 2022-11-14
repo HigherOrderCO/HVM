@@ -49,6 +49,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, debug: boo
 }
 
 pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, root: u64, tid: usize, debug: bool) {
+  enum State { Init, Visit, Call, Apply, Blink, Steal }
 
   let debug_print = |term: Ptr| {
     println!("{}\n----------------", show_term(heap, prog, load_ptr(heap, root), term));
@@ -67,197 +68,204 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
   } else {
     (0, u64::MAX)
   };
+  let mut state = State::Init;
 
   // State Machine
   'main: loop {
-    'init: {
-      if host == u64::MAX {
-        break 'init;
+    macro_rules! goto {
+      ($variant:ident) => {
+        state = State::$variant;
+        continue 'main;
+      };
+    }
+
+    match state {
+      State::Init => {
+        if host == u64::MAX {
+          goto!(Steal);
+        } else {
+          goto!(Visit);
+        }
       }
-      //println!("main {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
-      'work: loop {
+      State::Visit => {
         //println!("work {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
-        'visit: loop {
-          let term = load_ptr(heap, host);
-          if debug { debug_print(term); }
-          match get_tag(term) {
-            APP => {
-              if app::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                continue 'visit;
-              } else {
-                break 'work;
-              }
+        let term = load_ptr(heap, host);
+        if debug { debug_print(term); }
+        match get_tag(term) {
+          APP => {
+            if app::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+              goto!(Visit);
+            } else {
+              goto!(Blink);
             }
-            DP0 | DP1 => {
-              match acquire_lock(heap, tid, term) {
-                Err(locker_tid) => {
-                  delay.push(new_visit(host, cont));
-                  break 'work;
-                }
-                Ok(_) => {
-                  // If the term changed, release lock and try again
-                  if term != load_ptr(heap, host) {
-                    release_lock(heap, tid, term);
-                    continue 'visit;
-                  } else {
-                    if dup::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                      continue 'visit;
-                    } else {
-                      break 'work;
-                    }
-                  }
+          }
+          DP0 | DP1 => {
+            match acquire_lock(heap, tid, term) {
+              Err(_locker_tid) => {
+                delay.push(new_visit(host, cont));
+                goto!(Blink);
+              }
+              Ok(_) => {
+                // If the term changed, release lock and try again
+                if term != load_ptr(heap, host) {
+                  release_lock(heap, tid, term);
+                  goto!(Visit);
+                } else if dup::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                  goto!(Visit);
+                } else {
+                  goto!(Blink);
                 }
               }
             }
-            OP2 => {
-              if op2::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                continue 'visit;
-              } else {
-                break 'work;
-              }
+          }
+          OP2 => {
+            if op2::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+              goto!(Visit);
+            } else {
+              goto!(Blink);
             }
-            FUN => {
-              let fid = get_ext(term);
+          }
+          FUN => {
+            let fid = get_ext(term);
 //[[CODEGEN:FAST-VISIT]]//
-              match &prog.funs.get(&fid) {
-                Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                  if fun::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, &fn_visit.strict_idx) {
-                    continue 'visit;
-                  } else {
-                    break 'visit;
-                  }
-                }
-                Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                  if fn_visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                    continue 'visit;
-                  } else {
-                    break 'visit;
-                  }
-                }
-                None => {
-                  break 'visit;
-                }
-              }
-            }
-            _ => {
-              break 'visit;
-            }
-          }
-        }
-        'call: loop {
-          'apply: loop {
-            //println!("apply {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
-            let term = load_ptr(heap, host);
-            if debug { debug_print(term); }
-            // Apply rewrite rules
-            match get_tag(term) {
-              APP => {
-                if app::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                  continue 'work;
+            match &prog.funs.get(&fid) {
+              Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                if fun::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, &fn_visit.strict_idx) {
+                  goto!(Visit);
                 } else {
-                  break 'apply;
+                  goto!(Apply);
                 }
               }
-              DP0 | DP1 => {
-                if dup::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                  release_lock(heap, tid, term);
-                  continue 'work;
+              Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                if fn_visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                  goto!(Visit);
                 } else {
-                  release_lock(heap, tid, term);
-                  break 'apply;
+                  goto!(Apply);
                 }
               }
-              OP2 => {
-                if op2::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                  continue 'work;
-                } else {
-                  break 'apply;
-                }
-              }
-              FUN => {
-                let fid = get_ext(term);
-//[[CODEGEN:FAST-APPLY]]//
-                match &prog.funs.get(&fid) {
-                  Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                    if fun::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, fid, *fn_arity, fn_visit, fn_apply) {
-                      continue 'work;
-                    } else {
-                      break 'apply;
-                    }
-                  }
-                  Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                    if fn_apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                      continue 'work;
-                    } else {
-                      break 'apply;
-                    }
-                  }
-                  None => {
-                    break 'apply;
-                  }
-                }
-              }
-              _ => {
-                break 'apply;
+              None => {
+                goto!(Apply);
               }
             }
           }
-          // If root is on WHNF, halt
-          if cont == REDEX_CONT_RET {
-            stop.store(true, Ordering::Relaxed);
-            break 'main;
-          }
-          // Otherwise, try reducing the parent redex
-          else if let Some((new_cont, new_host)) = redex.complete(cont) {
-            cont = new_cont;
-            host = new_host;
-            continue 'call;
-          }
-          // Otherwise, visit next pointer
-          else {
-            break 'work;
+          _ => {
+            goto!(Apply);
           }
         }
       }
-      'blink: loop {
+      State::Apply => {
+        //println!("apply {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
+        let term = load_ptr(heap, host);
+        if debug { debug_print(term); }
+        // Apply rewrite rules
+        match get_tag(term) {
+          APP => {
+            if app::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+              goto!(Visit);
+            } else {
+              goto!(Call);
+            }
+          }
+          DP0 | DP1 => {
+            if dup::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+              release_lock(heap, tid, term);
+              goto!(Visit);
+            } else {
+              release_lock(heap, tid, term);
+              goto!(Call);
+            }
+          }
+          OP2 => {
+            if op2::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+              goto!(Visit);
+            } else {
+              goto!(Call);
+            }
+          }
+          FUN => {
+            let fid = get_ext(term);
+//[[CODEGEN:FAST-APPLY]]//
+            match &prog.funs.get(&fid) {
+              Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                if fun::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, fid, *fn_arity, fn_visit, fn_apply) {
+                  goto!(Visit);
+                } else {
+                  goto!(Call);
+                }
+              }
+              Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                if fn_apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                  goto!(Visit);
+                } else {
+                  goto!(Call);
+                }
+              }
+              None => {
+                goto!(Call);
+              }
+            }
+          }
+          _ => {
+            goto!(Call);
+          }
+        }
+      }
+      State::Call => {
+        // If root is on WHNF, halt
+        if cont == REDEX_CONT_RET {
+          stop.store(true, Ordering::Relaxed);
+          break 'main;
+        }
+        // Otherwise, try reducing the parent redex
+        else if let Some((new_cont, new_host)) = redex.complete(cont) {
+          cont = new_cont;
+          host = new_host;
+          goto!(Apply);
+        }
+        // Otherwise, visit next pointer
+        else {
+          goto!(Blink);
+        }
+      }
+      State::Blink => {
         // If available, visit a new location
         if let Some((new_cont, new_host)) = visit.pop() {
           cont = new_cont;
           host = new_host;
-          continue 'main;
+          goto!(Init);
         }
         // If available, visit a delayed location
-        else if delay.len() > 0 {
+        else if !delay.is_empty() {
           for next in delay.drain(0..).rev() {
             visit.push(next);
           }
-          continue 'blink;
+          goto!(Blink);
         }
         // Otherwise, we have nothing to do
         else {
-          break 'blink;
+          goto!(Init);
         }
       }
-    }
-    'steal: loop {
-      //println!("[{}] steal", tid);
-      if stop.load(Ordering::Relaxed) {
-        //println!("[{}] stop", tid);
-        break 'main;
-      } else {
-        for victim_tid in tids {
-          if *victim_tid != tid {
-            if let Some((new_cont, new_host)) = heap.vstk[*victim_tid].steal() {
-              cont = new_cont;
-              host = new_host;
-              //println!("stolen");
-              continue 'main;
+      State::Steal => {
+        //println!("[{}] steal", tid);
+        if stop.load(Ordering::Relaxed) {
+          //println!("[{}] stop", tid);
+          break 'main;
+        } else {
+          for victim_tid in tids {
+            if *victim_tid != tid {
+              if let Some((new_cont, new_host)) = heap.vstk[*victim_tid].steal() {
+                cont = new_cont;
+                host = new_host;
+                //println!("stolen");
+              goto!(Init);
+              }
             }
           }
+          bkoff.snooze();
+          //println!("[{}] continue stealing", tid);
+          goto!(Steal);
         }
-        bkoff.snooze();
-        //println!("[{}] continue stealing", tid);
-        continue 'steal;
       }
     }
   }
