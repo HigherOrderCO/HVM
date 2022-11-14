@@ -1,0 +1,18 @@
+// Sorts a list
+(Sort Nil)         = Nil
+(Sort (Cons x xs)) = (Insert x (Sort xs))
+  // Inserts an element on its sorted position
+  (Insert v Nil)         = (Cons v Nil)
+  (Insert v (Cons x xs)) = (Insert.go (> v x) v x xs)
+    (Insert.go 0 v x xs) = (Cons v (Cons x xs))
+    (Insert.go 1 v x xs) = (Cons x (Insert v xs))
+
+// Generates a random list
+(Rnd 0 s) = (Nil)
+(Rnd n s) = (Cons s (Rnd (- n 1) (% (+ (* s 1664525) 1013904223) 4294967296)))
+
+// Sums a list
+(Sum Nil)         = 0
+(Sum (Cons x xs)) = (+ x (Sum xs))
+
+(Main n) = (Sum (Sort (Rnd (<< 1 n) 1)))

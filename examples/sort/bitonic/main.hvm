@@ -1,0 +1,38 @@
+// Atomic Swap
+(Swap 0 0 a b) = (Node a b)
+(Swap 0 1 a b) = (Node b a)
+(Swap 1 0 a b) = (Node b a)
+(Swap 1 1 a b) = (Node a b)
+
+// Swaps distant values in parallel; corresponds to a Red Box
+(Warp s (Leaf a)   (Leaf b))   = (Swap (> a b) s (Leaf a) (Leaf b))
+(Warp s (Node a b) (Node c d)) = (Join (Warp s a c) (Warp s b d))
+
+// Rebuilds the warped tree in the original order
+(Join (Node a b) (Node c d)) = (Node (Node a c) (Node b d))
+
+// Recursively warps each sub-tree; corresponds to a Blue/Green Box
+(Flow s (Leaf a))   = (Leaf a)
+(Flow s (Node a b)) = (Down s (Warp s a b))
+
+// Propagates Flow downwards
+(Down s (Leaf a))   = (Leaf a)
+(Down s (Node a b)) = (Node (Flow s a) (Flow s b))
+
+// Bitonic Sort
+(Sort s (Leaf a))   = (Leaf a)
+(Sort s (Node a b)) = (Flow s (Node (Sort 0 a) (Sort 1 b)))
+
+// Generates a tree of depth `n`
+(Gen 0 x) = (Leaf x)
+(Gen n x) = let m = (- n 1); (Node (Gen m (* x 2)) (Gen m (+ (* x 2) 1)))
+
+// Reverses a tree
+(Rev (Leaf x))   = (Leaf x)
+(Rev (Node a b)) = (Node (Rev b) (Rev a))
+
+// Sums a tree
+(Sum (Leaf x))   = x
+(Sum (Node a b)) = (+ (Sum a) (Sum b))
+
+(Main n) = (Sum (Sort 0 (Rev (Gen n 0))))

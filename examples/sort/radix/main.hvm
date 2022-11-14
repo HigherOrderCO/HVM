@@ -1,0 +1,83 @@
+// Sort : NTree -> NTree
+(Sort t) = (STree.to_ntree (STree.from_ntree t))
+
+// STree.merge : STree -> STree -> STree
+(STree.merge Free       Free)       = Free
+(STree.merge Free       Used)       = Used
+(STree.merge Used       Free)       = Used
+(STree.merge Used       Used)       = Used
+(STree.merge Free       (Both c d)) = (Both c d)
+(STree.merge (Both a b) Free)       = (Both a b)
+(STree.merge (Both a b) (Both c d)) = (Both (STree.merge a c) (STree.merge b d))
+
+// STree.from_ntree : NTree -> STree
+(STree.from_ntree Null)       = Free
+(STree.from_ntree (Leaf a))   = (STree.from_num a)
+(STree.from_ntree (Node a b)) = (STree.merge (STree.from_ntree a) (STree.from_ntree b))
+
+// STree.from_num : Num -> STree
+(STree.from_num n) = (STree.from_num.go 24 n Used)
+  (STree.from_num.go 0 n r) = r
+  (STree.from_num.go s n r) = (STree.from_num.go (- s 1) (>> n 1) (STree.from_num.mk (& n 1) r))
+  (STree.from_num.mk 0 r)   = (Both r Free)
+  (STree.from_num.mk 1 r)   = (Both Free r)
+
+// STree.to_ntree : STree -> NTree
+(STree.to_ntree t) = (STree.to_ntree.go 0 t)
+  (STree.to_ntree.go x Free)       = Null
+  (STree.to_ntree.go x Used)       = (Leaf x)
+  (STree.to_ntree.go x (Both a b)) =
+    let x = (<< x 1)
+    let a = (STree.to_ntree.go x       a)
+    let b = (STree.to_ntree.go (| x 1) b)
+    (Node a b)
+
+// Reverse : NTree -> NTree
+(Reverse Null)       = Null
+(Reverse (Leaf a))   = (Leaf a)
+(Reverse (Node a b)) = (Node (Reverse b) (Reverse a))
+
+// Sum : NTree -> Num
+(Sum Null)       = 0
+(Sum (Leaf x))   = x
+(Sum (Node a b)) = (+ (Sum a) (Sum b))
+
+// Gen : Num -> NTree
+(Gen n) = (Gen.go n 0)
+  (Gen.go 0 x) = (Leaf x)
+  (Gen.go n x) =
+    let x = (<< x 1)
+    let n = (- n 1)
+    (Node (Gen.go n x) (Gen.go n (| x 1)))
+
+(Main n) = (Sum (Sort (Reverse (Gen n))))
+
+//(STree.from_num.bit 0 r) = (Both r E)
+//(Tree.from_num.bit n r) = (Both E r)
+//(Tree.from_num n) =
+  //let r = T 
+  //let r = (Tree.from_num.bit (& n 1) r)
+  //let r = (Tree.from_num.bit (& n 2) r)
+  //let r = (Tree.from_num.bit (& n 4) r)
+  //let r = (Tree.from_num.bit (& n 8) r)
+  //let r = (Tree.from_num.bit (& n 16) r)
+  //let r = (Tree.from_num.bit (& n 32) r)
+  //let r = (Tree.from_num.bit (& n 64) r)
+  //let r = (Tree.from_num.bit (& n 128) r)
+  //let r = (Tree.from_num.bit (& n 256) r)
+  //let r = (Tree.from_num.bit (& n 512) r)
+  //let r = (Tree.from_num.bit (& n 1024) r)
+  //let r = (Tree.from_num.bit (& n 2048) r)
+  //let r = (Tree.from_num.bit (& n 4096) r)
+  //let r = (Tree.from_num.bit (& n 8192) r)
+  //let r = (Tree.from_num.bit (& n 16384) r)
+  //let r = (Tree.from_num.bit (& n 32768) r)
+  //let r = (Tree.from_num.bit (& n 65536) r)
+  //let r = (Tree.from_num.bit (& n 131072) r)
+  //let r = (Tree.from_num.bit (& n 262144) r)
+  //let r = (Tree.from_num.bit (& n 524288) r)
+  //let r = (Tree.from_num.bit (& n 1048576) r)
+  //let r = (Tree.from_num.bit (& n 2097152) r)
+  //let r = (Tree.from_num.bit (& n 4194304) r)
+  //let r = (Tree.from_num.bit (& n 8388608) r)
+  //r
