@@ -1,3 +1,5 @@
+module Main where
+
 import Data.Word
 import System.Environment
 
