@@ -17,7 +17,7 @@ pub const CELLS_PER_MB: usize = 0x20000;
 pub const CELLS_PER_GB: usize = 0x8000000;
 
 pub fn default_heap_size() -> usize {
-  return 16 * CELLS_PER_GB;
+  return 20 * CELLS_PER_GB;
 }
 
 pub fn default_heap_tids() -> usize {

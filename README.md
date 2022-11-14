@@ -53,8 +53,8 @@ hvm run -f main.hvm "(Main 25)"
 ```
 
 This will sum 2^25 numbers in parallel, using HVM's interpreter. To learn how to
-compile it, and much more, see the complete [GUIDE.md](./GUIDE.md). To
-understand the technology behind it, check [HOW.md](./HOW.md).
+compile it, and much more, see the [guide/README.md](guide/README.md). To
+understand the technology behind it, check [guide/HOW.md](guide/HOW.md).
 
 Benchmarks
 ==========
@@ -383,7 +383,7 @@ of lambda-encoded algorithms that were simply impossible before.
 How is that possible?
 =====================
 
-Check [HOW.md](HOW.md).
+Check [guide/HOW.md](guide/HOW.md).
 
 Community
 =========

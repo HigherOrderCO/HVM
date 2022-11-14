@@ -331,11 +331,11 @@ pub fn get_used(heap: &Heap) -> i64 {
 }
 
 pub fn inc_cost(heap: &Heap, tid: usize) {
-  heap.lvar[tid].cost.fetch_add(1, Ordering::Relaxed);
+  unsafe { heap.lvar.get_unchecked(tid) }.cost.fetch_add(1, Ordering::Relaxed);
 }
 
 pub fn gen_dup(heap: &Heap, tid: usize) -> u64 {
-  return heap.lvar[tid].dups.fetch_add(1, Ordering::Relaxed) & 0xFFFFFFF;
+  return unsafe { heap.lvar.get_unchecked(tid) }.dups.fetch_add(1, Ordering::Relaxed) & 0xFFF_FFFF;
 }
 
 pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {
@@ -425,7 +425,7 @@ pub fn new_heap(size: usize, tids: usize) -> Heap {
 
 pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
   unsafe {
-    let lvar = &heap.lvar[tid];
+    let lvar = &heap.lvar.get_unchecked(tid);
     if arity == 0 {
       0
     } else {

@@ -5,12 +5,12 @@
 use crossbeam::utils::{CachePadded};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-pub const REDEX_BAG_SIZE : usize = 1 << 24;
-pub const REDEX_CONT_RET : u64 = 0xFFFFFF; // signals to return
+pub const REDEX_BAG_SIZE : usize = 1 << 26;
+pub const REDEX_CONT_RET : u64 = 0x3FFFFFF; // signals to return
 
 // - 32 bits: host
-// - 24 bits: cont
-// -  8 bits: left
+// - 26 bits: cont
+// -  6 bits: left
 pub type Redex = u64;
 
 pub struct RedexBag {
@@ -20,7 +20,7 @@ pub struct RedexBag {
 }
 
 pub fn new_redex(host: u64, cont: u64, left: u64) -> Redex {
-  return (host << 32) | (cont << 8) | left;
+  return (host << 32) | (cont << 6) | left;
 }
 
 pub fn get_redex_host(redex: Redex) -> u64 {
@@ -28,11 +28,11 @@ pub fn get_redex_host(redex: Redex) -> u64 {
 }
 
 pub fn get_redex_cont(redex: Redex) -> u64 {
-  return (redex >> 8) & 0xFFFFFF;
+  return (redex >> 6) & 0x3FFFFFF;
 }
 
 pub fn get_redex_left(redex: Redex) -> u64 {
-  return redex & 0xFF;
+  return redex & 0x3F;
 }
 
 impl RedexBag {
@@ -46,20 +46,20 @@ impl RedexBag {
     return RedexBag { tids, next, data };
   }
 
-  pub fn min_index(&self, tid: usize) -> usize {
-    return REDEX_BAG_SIZE / self.tids * (tid + 0);
-  }
+  //pub fn min_index(&self, tid: usize) -> usize {
+    //return REDEX_BAG_SIZE / self.tids * (tid + 0);
+  //}
 
-  pub fn max_index(&self, tid: usize) -> usize {
-    return std::cmp::min(REDEX_BAG_SIZE / self.tids * (tid + 1), REDEX_CONT_RET as usize - 1);
-  }
+  //pub fn max_index(&self, tid: usize) -> usize {
+    //return std::cmp::min(REDEX_BAG_SIZE / self.tids * (tid + 1), REDEX_CONT_RET as usize - 1);
+  //}
 
   #[inline(always)]
   pub fn insert(&self, tid: usize, redex: u64) -> u64 {
     loop {
       let index = unsafe { self.next.get_unchecked(tid) }.fetch_add(1, Ordering::Relaxed);
-      if index + 1 >= self.max_index(tid) { 
-        unsafe { self.next.get_unchecked(tid) }.store(self.min_index(tid), Ordering::Relaxed);
+      if index + 2 >= REDEX_BAG_SIZE { 
+        unsafe { self.next.get_unchecked(tid) }.store(0, Ordering::Relaxed);
       }
       if unsafe { self.data.get_unchecked(index) }.compare_exchange_weak(0, redex, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
         return index as u64;
