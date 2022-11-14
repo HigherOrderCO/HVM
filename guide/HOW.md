@@ -33,8 +33,7 @@ lambdas, which explains why HVM has better asymptotics than GHC: it is capable
 of **sharing computations inside lambdas, which GHC can't**. That was only
 possible due to a key insight that comes from Lamping's Abstract Algorithm for
 optimal evaluation of λ-calculus terms. Finally, the fact that objects only
-exist in one place greatly simplifies parallelism. Notice how there is only one
-use of atomics in the entire [runtime.c](src/runtime.c).
+exist in one place greatly simplifies parallelism.
 
 This was all known and possible since years ago (see other implementations of
 optimal reduction), but all implementations of this algorithm, until now,
@@ -814,11 +813,8 @@ HVM to achieve its current performance, so we believe it is justified.
 HVM's Low-level Implementation
 ==============================
 
-TODO: in this section, explain how HVM nodes are stored in memory, how rewrites
-and reduction works, etc. Since this isn't done yet, feel free to explore it
-yourself by reading [runtime.c](https://github.com/Kindelia/HVM/blob/master/src/runtime.c).
-
-[TODO]
+To learn more about HVM's low level implementation and memory layour, check the comments on
+[../src/runtime/base/memory.rs](runtime/memory.rs).
 
 Bonus: Copatterns
 =================
