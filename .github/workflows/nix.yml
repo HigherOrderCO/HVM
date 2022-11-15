@@ -6,20 +6,20 @@ jobs:
     name: 🔨 Nix Build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2.4.0
-    - uses: cachix/install-nix-action@v15
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v18
       with:
         extra_nix_config: |
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-    - run: nix build
+    - run: nix build .#hvm
 
   nix_flake_check:
     name: ❄️ Nix Flake Check
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2.4.0
-    - uses: cachix/install-nix-action@v15
+    - uses: actions/checkout@v3
+    - uses: cachix/install-nix-action@v18
       with:
         extra_nix_config: |
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
-    - run: nix build -f . checks.x86_64-linux
+    - run: nix flake check
