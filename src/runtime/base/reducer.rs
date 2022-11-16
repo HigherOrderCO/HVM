@@ -263,22 +263,14 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
   }
 }
 
-pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &Box<[AtomicU64]>, debug: bool) -> Ptr {
-  pub fn set_visited(visited: &Box<[AtomicU64]>, bit: u64) {
-    let val = &visited[bit as usize >> 6];
-    val.store(val.load(Ordering::Relaxed) | (1 << (bit & 0x3f)), Ordering::Relaxed);
-  }
-  pub fn was_visited(visited: &Box<[AtomicU64]>, bit: u64) -> bool {
-    let val = &visited[bit as usize >> 6];
-    (((val.load(Ordering::Relaxed) >> (bit & 0x3f)) as u8) & 1) == 1
-  }
+pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut im::HashSet<u64>, debug: bool) -> Ptr {
   let term = load_ptr(heap, host);
-  if was_visited(visited, host) {
+  if seen.contains(&host) {
     term
   } else {
     //let term = reduce2(heap, lvars, prog, host);
     let term = reduce(heap, prog, tids, host, debug);
-    set_visited(visited, host);
+    seen.insert(host);
     let mut rec_locs = vec![];
     match get_tag(term) {
       LAM => {
@@ -327,9 +319,10 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &
             //} else {
               //new_loc = *rec_loc;
             //}
-            let new_loc = *rec_loc;
+            //let new_loc = *rec_loc;
+            let mut seen = seen.clone();
             s.spawn(move || {
-              let ptr = normal(heap, prog, rec_tids, new_loc, visited, debug);
+              let ptr = normal(heap, prog, rec_tids, *rec_loc, &mut seen, debug);
               //if thd_len == rec_len {
                 //move_ptr(heap, new_loc, *rec_loc);
               //}
@@ -344,10 +337,11 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &
             let min_idx = thd_num * rec_len / thd_len;
             let max_idx = if thd_num < thd_len - 1 { (thd_num + 1) * rec_len / thd_len } else { rec_len };
             //println!("~ thread {} gets rec_locs {} to {}", thd_num, min_idx, max_idx);
+            let mut seen = seen.clone();
             s.spawn(move || {
               for idx in min_idx .. max_idx {
                 let loc = rec_loc[idx];
-                let lnk = normal(heap, prog, std::slice::from_ref(tid), loc, visited, debug);
+                let lnk = normal(heap, prog, std::slice::from_ref(tid), loc, &mut seen, debug);
                 link(heap, loc, lnk);
               }
             });
@@ -361,10 +355,8 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, visited: &
 
 pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
   let mut cost = get_cost(heap);
-  let visited = new_atomic_u64_array(heap.node.len() / 64);
   loop {
-    let visited = new_atomic_u64_array(heap.node.len() / 64);
-    normal(&heap, prog, tids, host, &visited, debug);
+    normal(&heap, prog, tids, host, &mut im::HashSet::new(), debug);
     let new_cost = get_cost(heap);
     if new_cost != cost {
       cost = new_cost;
