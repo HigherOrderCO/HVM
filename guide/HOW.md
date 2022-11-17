@@ -813,7 +813,7 @@ HVM to achieve its current performance, so we believe it is justified.
 HVM's Low-level Implementation
 ==============================
 
-To learn more about HVM's low level implementation and memory layour, check the comments on
+To learn more about HVM's low level implementation and memory layout, check the comments on
 [../src/runtime/base/memory.rs](runtime/memory.rs).
 
 Bonus: Copatterns
