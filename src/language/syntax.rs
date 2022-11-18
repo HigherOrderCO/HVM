@@ -110,8 +110,8 @@ impl std::fmt::Display for Term {
             if let Term::U6O { numb } = *args[0] {
               text.push(std::char::from_u32(numb as u32)?);
               go(&args[1], text)?;
+              return Some(());
             }
-            return Some(());
           }
           if name == "String.nil" && args.is_empty() {
             return Some(());
