@@ -59,8 +59,8 @@ hvm run -f BMI.hvm "(BMI 62.0 1.70)"
 
 The `-f` option tells HVM to load all the functions defined on `BMI.hvm` before
 running the expression. The command above outputs `21.453287197231816`, which is
-my BMI.
-
+my BMI. Note that function names must start with an uppercase letter: that's how
+HVM differentiates global functions from lambda-bound variables.
 
 A sequential function
 ---------------------
@@ -192,26 +192,19 @@ It will output:
 ```
 
 The RPS becomes 268 million rewrites per second! That's an almost perfect 7.38x
-improvement, in a 8-core CPU. In this case, the parallel version did way more
-operations overall, which decreased the TIME gains, but that's only because the
-original `Sum` was too simple. In general, one can improve a function's
+improvement, in a 8-core CPU. In general, one can improve a function's
 performance proportionally to the number of cores by just writing its recursion
-in a parallel-aware manner.
+in a parallel-aware manner. No need for manual thread spawning, no kernels,
+mutexes, locks, atomics nor any other overwhelmingly complex, error-prone
+synchronization primitives. 
 
-Take a moment to appreciate how we didn't do anything related to parallelism.
-No manual thread spawning, no kernels, mutexes, locks, atomics nor any other
-overwhelmingly complex, error-prone synchronization primitives. We just wrote a
-pure recursive function, and HVM smoothly distributed the workload across all
-available cores. That's the paradigm shift that makes HVM so powerful: it makes
-parallelism trivial, finally allowing software to make full use of the
-performance that increasingly parallel CPUs have to offer.
-
-Of course, this function in particular was fairly trivial, and it wouldn't be
-hard to parallelize it using threads, or even Haskell's `par`. Some other
-algorithms, though, aren't so simple. For example, the Fibonacci function
-doesn't recurse in a regular way: some branches are much deeper than others. As
-such, threads or `par` would fail to make full use of cores. HVM does so in all
-cases, as long as your program isn't inherently sequential.
+While the function above could be parallelized with some effort in other
+languages; for example, using Haskell's `par`; this becomes considerably harder
+as the recursion schemes become more complex. For example, the Fibonacci
+function doesn't recurse in a regular way: some branches are much deeper than
+others. As such, using all available parallelism with `par` alone would be very
+hard. On HVM, you just write the function as it is, and HVM will smoothly
+distribute the workload evenly across all available cores.
 
 ```javascript
 (Fib 0) = 1
@@ -219,7 +212,64 @@ cases, as long as your program isn't inherently sequential.
 (Fib n) = (+ (Fib (- n 1)) (Fib (- n 2)))
 ```
 
-To learn more about parallel algorithm design, check [PARALLELISM](PARALLELISM.md).
+To learn more about parallel algorithm design on HVM, check [PARALLELISM](PARALLELISM.md).
+
+Constructors
+------------
+
+If you do not write an equation for a function you use, it is considered a
+constructor. That means you do not need to define datatypes with a `data` syntax
+(as in Haskell). You can use any name starting with an uppercase, and it will
+just work. For example, the program below extracts the first element of a pair:
+
+```javascript
+(First (Pair x y)) = x
+
+Main = (First (Pair 1 2))
+```
+
+Notice that `Pair` is considered a constructor, because we didn't write an
+equation to reduce it to some other expression. Another example would be
+representing booleans:
+
+```javascript
+(And True  True)  = True
+(And True  False) = False
+(And False True)  = False
+(And False False) = False
+
+Main = (And True False)
+```
+
+HVM also has two pre-defined constructors, `String.cons` and `String.nil`, which
+are meant to be used as UTF-32 strings. This just affects pretty printing. For
+example:
+
+```javascript
+Main = (String.cons 104 (String.cons 105 String.nil))
+```
+
+If you run this, it will output the string `"hi"`, because `[104,105]` is the
+UTF-32 encoding for it. HVM also has syntax sugars for Strings, so the program
+above is equivalent to both programs below:
+
+```javascript
+Main = (String.cons 'h' (String.cons 'i' String.nil))
+```
+
+```javascript
+Main = "hi"
+```
+
+HVM also has a syntax sugar for `List.cons` and `List.nil`, which are printed as
+`[]` lists. For example:
+
+```javascript
+Main = (List.cons 1 (List.cons 2 (List.cons 3 List.nil)))
+```
+
+Running this will output `[1, 2, 3]`. As you can guess, you can also write `[1,
+2, 3]` instead of `List.cons`. Both are equivalent.
 
 Compiling a program
 -------------------
@@ -264,28 +314,7 @@ language compiler's job to do these optimizations.
 Builtin Functions
 -----------------
 
-HVM has some useful pre-compiled functions and constructors.
-
-### String.cons and String.nil
-
-The `String.cons` and `String.nil` constructors are pre-defined as UTF-32
-strings. This affects pretty printing. Example:
-
-```javascript
-Main = (String.cons 104 (String.cons 105 String.nil))
-```
-
-If you run this, it will output the string `"hi"`, because `[104,105]` is the
-UTF-32 encoding for it. HVM also has syntax sugars for Strings, so the program
-above is equivalent to both programs below:
-
-```javascript
-Main = (String.cons 'h' (String.cons 'i' String.nil))
-```
-
-```javascript
-Main = "hi"
-```
+HVM has some useful pre-compiled functions.
 
 ### HVM.log (term: Term) (cont: Term)
 
@@ -300,7 +329,7 @@ Main = (Sum 4)
 
 Will output:
 
-```
+```javascript
 (Call "Sum" 4)
 (Call "Sum" 3)
 (Call "Sum" 2)
@@ -316,7 +345,7 @@ Note that `10` is the result, and the other lines are the logged expressions.
 Prints a string to the terminal. The difference from `HVM.log` is that the text
 is expected to be a string. Example:
 
-```
+```javascript
 Main = (HVM.print "Hello" (+ 2 3))
 ```
 
