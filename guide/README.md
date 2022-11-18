@@ -260,3 +260,187 @@ any reasonable compiler would convert it into a tight numeric loop anyway. Keep
 in mind that HVM is a runtime, not a compiler, and, as such, it will run exactly
 what you give it, without doing any kind of transformation. It is the source
 language compiler's job to do these optimizations.
+
+Builtin Functions
+-----------------
+
+HVM has some useful pre-compiled functions and constructors.
+
+### String.cons and String.nil
+
+The `String.cons` and `String.nil` constructors are pre-defined as UTF-32
+strings. This affects pretty printing. Example:
+
+```javascript
+Main = (String.cons 104 (String.cons 105 String.nil))
+```
+
+If you run this, it will output the string `"hi"`, because `[104,105]` is the
+UTF-32 encoding for it. HVM also has syntax sugars for Strings, so the program
+above is equivalent to both programs below:
+
+```javascript
+Main = (String.cons 'h' (String.cons 'i' String.nil))
+```
+
+```javascript
+Main = "hi"
+```
+
+### HVM.log (term: Term) (cont: Term)
+
+Prints an arbitrary term to the terminal. It is very useful for debugging. Example:
+
+```javascript
+(Sum 0) = (HVM.log Done 0)
+(Sum n) = (HVM.log (Call "Sum" n) (+ n (Sum (- n 1))))
+
+Main = (Sum 4)
+```
+
+Will output:
+
+```
+(Call "Sum" 4)
+(Call "Sum" 3)
+(Call "Sum" 2)
+(Call "Sum" 1)
+(Done)
+10
+```
+
+Note that `10` is the result, and the other lines are the logged expressions.
+
+### HVM.print (text: String) (cont: Term)
+
+Prints a string to the terminal. The difference from `HVM.log` is that the text
+is expected to be a string. Example:
+
+```
+Main = (HVM.print "Hello" (+ 2 3))
+```
+
+This will output:
+
+```
+Hello
+5
+```
+
+### HVM.query (cont: String -> Term)
+
+Reads an user input from the terminal as a String. Example:
+
+```javascript
+(String.concat String.nil         ys) = ys
+(String.concat (String.cons x xs) ys) = (String.cons x (String.concat xs ys))
+
+Main =
+  (HVM.print "What is your name?"
+  (HVM.query λname
+  (HVM.print (String.concat "Hello, " name)
+  (Done))))
+```
+
+This will ask your name, then greet you.
+
+### HVM.store (key: String) (val: String) (cont: Term)
+
+Saves a text file on the working directory. Example:
+
+```javascript
+Main =
+  (HVM.store "name.txt" "Alice"
+  (Done))
+```
+
+This will save `name.txt` with the contents `Alice`.
+
+### HVM.load (key: String) (cont: String -> Term)
+
+Loads a text file from the working directory. Example:
+
+```javascript
+Main =
+  (HVM.load "name.txt" λname
+  (HVM.print name
+  (Done)))
+```
+
+This will print the contents of `name.txt`. 
+
+Extending HVM
+-------------
+
+HVM's built-in effects may not be sufficient for your needs, but it is possible
+to extend HVM with new effects via its Rust API. For example, in the snippet
+below, we extend HVM with a custom "MyPrint" IO:
+
+```rust
+// File to foad definitions from
+let file = "file.hvm";
+
+// Term to evaluate
+let term = "(MyPrint \"cats are life\" (Done))";
+
+// Extends HVM with our custom MyPrint IO function
+let funs = vec![
+  ("MyPrint".toString(), hvm::runtime::Function::Compiled {
+    arity: 2,
+    visit: |ctx| false,
+    apply: |ctx| {
+
+      // Loads argument locations
+      let arg0 = runtime::get_loc(ctx.term, 0);
+      let arg1 = runtime::get_loc(ctx.term, 1);
+
+      // Converts the argument #0 to a Rust string
+      if let Some(text) = crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], arg0) {
+        // Prints it
+        println!("{}", text);
+      }
+
+      // Sets the returned result to be the argument #1
+      hvm::runtime::link(ctx.heap, *ctx.host, arg1);
+
+      // Collects the argument #0
+      hvm::runtime::collect(ctx.heap, &ctx.prog.arit, ctx.tid, hvm::runtime::load_ptr(ctx.heap, arg0));
+
+      // Frees the memory used by this function call
+      hvm::runtime::free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
+
+      // Tells HVM the returned value must be reduced
+      return true;
+    },
+  })
+];
+
+// Alloc 2 GB for the heap
+let size = 2 * runtime::CELLS_PER_GB;
+
+// Use 2 threads
+let tids = 2;
+
+// Don't show step-by-step
+let dbug = false;
+
+// Evaluate the expression above with "MyPrint" available
+hvm::runtime::eval(file, term, funs, size, tids, dbug);
+```
+
+*To learn how to design the `apply` function, first learn HVM's memory model
+(documented on
+[runtime/base/memory.rs](https://github.com/Kindelia/HVM/blob/master/src/runtime/base/memory.rs)),
+and then consult some of the precompiled IO functions
+[here](https://github.com/Kindelia/HVM/blob/master/src/runtime/base/precomp.rs).
+You can also use this API to extend HVM with new compute primitives, but to make
+this efficient, you'll need to use the `visit` function too. You can see some
+examples by compiling a `.hvm` file to Rust, and then checking the `precomp.rs`
+file on the generated project.*
+
+TODO: this section is a draft, must finish it.
+
+To be continued...
+------------------
+
+This guide is a work-in-progress and will be expanded soon.

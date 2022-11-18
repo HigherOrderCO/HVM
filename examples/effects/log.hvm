@@ -1,0 +1,4 @@
+(Sum 0) = (HVM.log Done 0)
+(Sum n) = (HVM.log (Call "Sum" n) (+ n (Sum (- n 1))))
+
+(Main n) = (Sum 5)
