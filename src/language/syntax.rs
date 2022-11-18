@@ -518,6 +518,25 @@ pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
   )
 }
 
+pub fn parse_if_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
+  return parser::guard(
+    parser::text_parser("if "),
+    Box::new(|state| {
+      let (state, _)    = parser::consume("if ", state)?;
+      let (state, cond) = parse_term(state)?;
+      let (state, _)    = parser::consume("{", state)?;
+      let (state, if_t) = parse_term(state)?;
+      let (state, _)    = parser::consume("}", state)?;
+      let (state, _)    = parser::consume("else", state)?;
+      let (state, _)    = parser::consume("{", state)?;
+      let (state, if_f) = parse_term(state)?;
+      let (state, _)    = parser::consume("}", state)?;
+      Ok((state, Box::new(Term::Ctr { name: "U60.if".to_string(), args: vec![cond, if_t, if_f] })))
+    }),
+    state,
+  );
+}
+
 pub fn parse_term(state: parser::State) -> parser::Answer<Box<Term>> {
   parser::grammar(
     "Term",
@@ -534,6 +553,7 @@ pub fn parse_term(state: parser::State) -> parser::Answer<Box<Term>> {
       Box::new(parse_chr_sugar),
       Box::new(parse_str_sugar),
       Box::new(parse_lst_sugar),
+      Box::new(parse_if_sugar),
       Box::new(parse_ask_sugar_named),
       Box::new(parse_ask_sugar_anon),
       Box::new(parse_var),

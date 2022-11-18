@@ -154,7 +154,7 @@ pub fn build_function(
       line(&mut visit, 2, &format!("let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));"));
       for i in 0 .. fn_visit.strict_idx.len() {
         line(&mut visit, 2, &format!("if {} < vlen - 1 {{", i));
-        line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({}).load(Ordering::Relaxed) }}, hold, goup));", i));
+        line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({}).load(Ordering::Relaxed) }}, ctx.hold, goup));", i));
         line(&mut visit, 2, &format!("}}"));
       }
       line(&mut visit, 2, &format!("*ctx.cont = goup;"));
@@ -455,24 +455,78 @@ pub fn build_function_rule_rhs(
         format!("App({})", name)
       }
       runtime::Core::Ctr { func, args } => {
-        let ctr_args: Vec<String> = args.iter().map(|arg| build_term(book, code, tab, vars, nams, lams, dups, arg)).collect();
+        let cargs: Vec<String> = args.iter().map(|arg| build_term(book, code, tab, vars, nams, lams, dups, arg)).collect();
         let name = fresh(nams, "ctr");
-        line(code, tab, &format!("let {} = alloc(ctx.heap, ctx.tid, {});", name, ctr_args.len()));
-        for (i, arg) in ctr_args.iter().enumerate() {
+        line(code, tab, &format!("let {} = alloc(ctx.heap, ctx.tid, {});", name, cargs.len()));
+        for (i, arg) in cargs.iter().enumerate() {
           line(code, tab, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
         }
         let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
         format!("Ctr({}, {})", fnam, name)
       }
       runtime::Core::Fun { func, args } => {
-        let cal_args: Vec<String> = args.iter().map(|arg| build_term(book, code, tab, vars, nams, lams, dups, arg)).collect();
-        let name = fresh(nams, "cal");
-        line(code, tab, &format!("let {} = alloc(ctx.heap, ctx.tid, {});", name, cal_args.len()));
-        for (i, arg) in cal_args.iter().enumerate() {
-          line(code, tab, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+        let fargs: Vec<String> = args.iter().map(|arg| build_term(book, code, tab, vars, nams, lams, dups, arg)).collect();
+        // Inlined U60.if
+        if INLINE_NUMBERS && *func == runtime::U60_IF && fargs.len() == 3 {
+          let ret = fresh(nams, "ret");
+          line(code, tab + 0, &format!("let {};", ret));
+          line(code, tab + 0, &format!("if get_tag({}) == U60 {{", fargs[0]));
+          line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
+          line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
+          line(code, tab + 2, &format!("collect(ctx.heap, &ctx.prog.arit, ctx.tid, {});", fargs[1]));
+          line(code, tab + 2, &format!("{} = {};", ret, fargs[2]));
+          line(code, tab + 1, &format!("}} else {{"));
+          line(code, tab + 2, &format!("collect(ctx.heap, &ctx.prog.arit, ctx.tid, {});", fargs[2]));
+          line(code, tab + 2, &format!("{} = {};", ret, fargs[1]));
+          line(code, tab + 1, &format!("}}"));
+          line(code, tab + 0, &format!("}} else {{"));
+          let name = fresh(nams, "cal");
+          line(code, tab + 1, &format!("let {} = alloc(ctx.heap, ctx.tid, {});", name, fargs.len()));
+          for (i, arg) in fargs.iter().enumerate() {
+            line(code, tab + 1, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+          }
+          let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
+          line(code, tab + 1, &format!("{} = Fun({}, {})", ret, fnam, name));
+          line(code, tab + 0, &format!("}}"));
+          return ret;
+        // Inlined U60.swap
+        } else if INLINE_NUMBERS && *func == runtime::U60_SWAP && fargs.len() == 3 {
+          let ret = fresh(nams, "ret");
+          line(code, tab + 0, &format!("let {};", ret));
+          line(code, tab + 0, &format!("if get_tag({}) == U60 {{", fargs[0]));
+          line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
+          let both = fresh(nams, "both");
+          line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
+          line(code, tab + 2, &format!("let {} = alloc(ctx.heap, ctx.tid, 2);", both));
+          line(code, tab + 2, &format!("link(ctx.heap, {} + 0, {});", both, fargs[1]));
+          line(code, tab + 2, &format!("link(ctx.heap, {} + 1, {});", both, fargs[2]));
+          line(code, tab + 2, &format!("{} = Ctr(BOTH, {});", ret, both));
+          line(code, tab + 1, &format!("}} else {{"));
+          line(code, tab + 2, &format!("let {} = alloc(ctx.heap, ctx.tid, 2);", both));
+          line(code, tab + 2, &format!("link(ctx.heap, {} + 0, {});", both, fargs[2]));
+          line(code, tab + 2, &format!("link(ctx.heap, {} + 1, {});", both, fargs[1]));
+          line(code, tab + 2, &format!("{} = Ctr(BOTH, {});", ret, both));
+          line(code, tab + 1, &format!("}}"));
+          line(code, tab + 0, &format!("}} else {{"));
+          let name = fresh(nams, "cal");
+          line(code, tab + 1, &format!("let {} = alloc(ctx.heap, ctx.tid, {});", name, fargs.len()));
+          for (i, arg) in fargs.iter().enumerate() {
+            line(code, tab + 1, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+          }
+          let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
+          line(code, tab + 1, &format!("{} = Fun({}, {})", ret, fnam, name));
+          line(code, tab + 0, &format!("}}"));
+          return ret;
+        // Other functions
+        } else {
+          let name = fresh(nams, "cal");
+          line(code, tab, &format!("let {} = alloc(ctx.heap, ctx.tid, {});", name, fargs.len()));
+          for (i, arg) in fargs.iter().enumerate() {
+            line(code, tab, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+          }
+          let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
+          return format!("Fun({}, {})", fnam, name);
         }
-        let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
-        format!("Fun({}, {})", fnam, name)
       }
       runtime::Core::U6O { numb } => {
         format!("U6O({})", numb)

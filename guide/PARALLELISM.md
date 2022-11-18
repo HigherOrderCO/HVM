@@ -157,38 +157,32 @@ merge all the trees in parallel. The resulting tree will then contain all
 numbers in ascending order. This is the algorithm:
 
 ```javascript
-// Sort : Nums -> Nums
-(Sort t) = (Sorter.to_nums (Sorter.from_nums t))
+// Sort : NTree -> NTree
+(Sort t) = (STree.back (STree.make t))
 
-// Sorter.from_nums : Nums -> Sorter
-(Sorter.from_nums None)       = E
-(Sorter.from_nums (Some a))   = (Sorter.from_num a)
-(Sorter.from_nums (Node a b)) = (Sorter.merge (Sorter.from_nums a) (Sorter.from_nums b))
+// STree.merge : STree -> STree -> STree
+(STree.merge Free       Free)       = Free
+(STree.merge Free       Used)       = Used
+(STree.merge Used       Free)       = Used
+(STree.merge Used       Used)       = Used
+(STree.merge Free       (Both c d)) = (Both c d)
+(STree.merge (Both a b) Free)       = (Both a b)
+(STree.merge (Both a b) (Both c d)) = (Both (STree.merge a c) (STree.merge b d))
 
-// Sorter.from_num : Num -> Sorter
-(Sorter.from_num n) = (Sorter.from_num.a 24 n T)
-  (Sorter.from_num.a 0 n r) = r
-  (Sorter.from_num.a s n r) = (Sorter.from_num.a (- s 1) (>> n 1) (Sorter.from_num.b (& n 1) r))
-  (Sorter.from_num.b 0 r)   = (N r E)
-  (Sorter.from_num.b 1 r)   = (N E r)
+// STree.make : NTree -> STree
+(STree.make Null)       = Free
+(STree.make (Leaf a))   = (STree.word a)
+(STree.make (Node a b)) = (STree.merge (STree.make a) (STree.make b))
 
-// Sorter.merge : Sorter -> Sorter -> Sorter
-(Sorter.merge E       E)       = E
-(Sorter.merge E       T)       = T
-(Sorter.merge T       E)       = T
-(Sorter.merge T       T)       = T
-(Sorter.merge E       (N c d)) = (N c d)
-(Sorter.merge (N a b) E)       = (N a b)
-(Sorter.merge (N a b) (N c d)) = (N (Sorter.merge a c) (Sorter.merge b d))
-
-// Sorter.to_nums : Sorter -> Nums
-(Sorter.to_nums t) = (Sorter.to_nums.go 0 t)
-  (Sorter.to_nums.go x E)       = None
-  (Sorter.to_nums.go x T)       = (Some x)
-  (Sorter.to_nums.go x (N a b)) =
+// STree.back : STree -> NTree
+(STree.back t) = (STree.back.go 0 t)
+  (STree.back.go x Free) = Null
+  (STree.back.go x Used) = (Leaf x)
+  (STree.back.go x (Both a b)) =
     let x = (<< x 1)
-    let a = (Sorter.to_nums.go x       a)
-    let b = (Sorter.to_nums.go (| x 1) b)
+    let y = (| x 1)
+    let a = (STree.back.go x a)
+    let b = (STree.back.go y b)
     (Node a b)
 ```
 

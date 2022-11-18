@@ -18,31 +18,34 @@ pub struct Precomp {
 
 pub const STRING_NIL : u64 = 0;
 pub const STRING_CONS : u64 = 1;
-pub const KIND_TERM_CT0 : u64 = 2;
-pub const KIND_TERM_CT1 : u64 = 3;
-pub const KIND_TERM_CT2 : u64 = 4;
-pub const KIND_TERM_CT3 : u64 = 5;
-pub const KIND_TERM_CT4 : u64 = 6;
-pub const KIND_TERM_CT5 : u64 = 7;
-pub const KIND_TERM_CT6 : u64 = 8;
-pub const KIND_TERM_CT7 : u64 = 9;
-pub const KIND_TERM_CT8 : u64 = 10;
-pub const KIND_TERM_CT9 : u64 = 11;
-pub const KIND_TERM_CTA : u64 = 12;
-pub const KIND_TERM_CTB : u64 = 13;
-pub const KIND_TERM_CTC : u64 = 14;
-pub const KIND_TERM_CTD : u64 = 15;
-pub const KIND_TERM_CTE : u64 = 16;
-pub const KIND_TERM_CTF : u64 = 17;
-pub const KIND_TERM_CTG : u64 = 18;
-pub const KIND_TERM_U60 : u64 = 19;
-pub const KIND_TERM_F60 : u64 = 20;
-pub const HVM_LOG : u64 = 21;
-pub const HVM_QUERY : u64 = 22;
-pub const HVM_PRINT : u64 = 23;
-pub const HVM_SLEEP : u64 = 24;
-pub const HVM_STORE : u64 = 25;
-pub const HVM_LOAD : u64 = 26;
+pub const BOTH : u64 = 2;
+pub const KIND_TERM_CT0 : u64 = 3;
+pub const KIND_TERM_CT1 : u64 = 4;
+pub const KIND_TERM_CT2 : u64 = 5;
+pub const KIND_TERM_CT3 : u64 = 6;
+pub const KIND_TERM_CT4 : u64 = 7;
+pub const KIND_TERM_CT5 : u64 = 8;
+pub const KIND_TERM_CT6 : u64 = 9;
+pub const KIND_TERM_CT7 : u64 = 10;
+pub const KIND_TERM_CT8 : u64 = 11;
+pub const KIND_TERM_CT9 : u64 = 12;
+pub const KIND_TERM_CTA : u64 = 13;
+pub const KIND_TERM_CTB : u64 = 14;
+pub const KIND_TERM_CTC : u64 = 15;
+pub const KIND_TERM_CTD : u64 = 16;
+pub const KIND_TERM_CTE : u64 = 17;
+pub const KIND_TERM_CTF : u64 = 18;
+pub const KIND_TERM_CTG : u64 = 19;
+pub const KIND_TERM_U60 : u64 = 20;
+pub const KIND_TERM_F60 : u64 = 21;
+pub const U60_IF : u64 = 22;
+pub const U60_SWAP : u64 = 23;
+pub const HVM_LOG : u64 = 24;
+pub const HVM_QUERY : u64 = 25;
+pub const HVM_PRINT : u64 = 26;
+pub const HVM_SLEEP : u64 = 27;
+pub const HVM_STORE : u64 = 28;
+pub const HVM_LOAD : u64 = 29;
 //[[CODEGEN:PRECOMP-IDS]]//
 
 pub const PRECOMP : &[Precomp] = &[
@@ -55,6 +58,12 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: STRING_CONS,
     name: "String.cons",
+    arity: 2,
+    funcs: None,
+  },
+  Precomp {
+    id: BOTH,
+    name: "Both",
     arity: 2,
     funcs: None,
   },
@@ -173,6 +182,24 @@ pub const PRECOMP : &[Precomp] = &[
     funcs: None,
   },
   Precomp {
+    id: U60_IF,
+    name: "U60.if",
+    arity: 3,
+    funcs: Some(PrecompFns {
+      visit: u60_if_visit,
+      apply: u60_if_apply,
+    }),
+  },
+  Precomp {
+    id: U60_SWAP,
+    name: "U60.swap",
+    arity: 3,
+    funcs: Some(PrecompFns {
+      visit: u60_swap_visit,
+      apply: u60_swap_apply,
+    }),
+  },
+  Precomp {
     id: HVM_LOG,
     name: "HVM.log",
     arity: 2,
@@ -230,6 +257,96 @@ pub const PRECOMP : &[Precomp] = &[
 ];
 
 pub const PRECOMP_COUNT : u64 = PRECOMP.len() as u64;
+
+// Ul0.if (cond: Term) (if_t: Term) (if_f: Term)
+// ---------------------------------------------
+
+#[inline(always)]
+pub fn u60_if_visit(ctx: ReduceCtx) -> bool {
+  if is_whnf(load_arg(ctx.heap, ctx.term, 0)) {
+    return false;
+  } else {
+    let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
+    *ctx.cont = goup;
+    *ctx.host = get_loc(ctx.term, 0);
+    return true;
+  }
+}
+
+#[inline(always)]
+pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
+  let arg0 = load_arg(ctx.heap, ctx.term, 0);
+  let arg1 = load_arg(ctx.heap, ctx.term, 1);
+  let arg2 = load_arg(ctx.heap, ctx.term, 2);
+  if get_tag(arg0) == SUP {
+    fun::superpose(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, arg0, 0);
+  }
+  if (get_tag(arg0) == U60) {
+    if (get_num(arg0) == 0) {
+      inc_cost(ctx.heap, ctx.tid);
+      let done = arg2;
+      link(ctx.heap, *ctx.host, done);
+      collect(ctx.heap, &ctx.prog.arit, ctx.tid, arg1);
+      free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
+      return true;
+    } else {
+      inc_cost(ctx.heap, ctx.tid);
+      let done = arg1;
+      link(ctx.heap, *ctx.host, done);
+      collect(ctx.heap, &ctx.prog.arit, ctx.tid, arg2);
+      free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
+      return true;
+    }
+  }
+  return false;
+}
+
+// U60.swap (cond: Term) (pair: Term)
+// ----------------------------------
+
+#[inline(always)]
+pub fn u60_swap_visit(ctx: ReduceCtx) -> bool {
+  if is_whnf(load_arg(ctx.heap, ctx.term, 0)) {
+    return false;
+  } else {
+    let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
+    *ctx.cont = goup;
+    *ctx.host = get_loc(ctx.term, 0);
+    return true;
+  }
+}
+
+#[inline(always)]
+pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
+  let arg0 = load_arg(ctx.heap, ctx.term, 0);
+  let arg1 = load_arg(ctx.heap, ctx.term, 1);
+  let arg2 = load_arg(ctx.heap, ctx.term, 2);
+  if get_tag(arg0) == SUP {
+    fun::superpose(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, arg0, 0);
+  }
+  if (get_tag(arg0) == U60) {
+    if (get_num(arg0) == 0) {
+      inc_cost(ctx.heap, ctx.tid);
+      let ctr_0 = alloc(ctx.heap, ctx.tid, 2);
+      link(ctx.heap, ctr_0 + 0, arg1);
+      link(ctx.heap, ctr_0 + 1, arg2);
+      let done = Ctr(BOTH, ctr_0);
+      link(ctx.heap, *ctx.host, done);
+      free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
+      return true;
+    } else {
+      inc_cost(ctx.heap, ctx.tid);
+      let ctr_0 = alloc(ctx.heap, ctx.tid, 2);
+      link(ctx.heap, ctr_0 + 0, arg2);
+      link(ctx.heap, ctr_0 + 1, arg1);
+      let done = Ctr(BOTH, ctr_0);
+      link(ctx.heap, *ctx.host, done);
+      free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
+      return true;
+    }
+  }
+  return false;
+}
 
 // HVM.log (term: Term)
 // --------------------
@@ -362,7 +479,5 @@ fn hvm_load_apply(ctx: ReduceCtx) -> bool {
   println!("Runtime failure on: {}", show_term(ctx.heap, ctx.prog, ctx.term, 0));
   std::process::exit(0);
 }
-
-
 
 //[[CODEGEN:PRECOMP-FNS]]//
