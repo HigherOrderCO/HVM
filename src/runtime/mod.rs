@@ -13,12 +13,6 @@ pub use base::{*};
 pub use data::{*};
 pub use rule::{*};
 
-//pub struct Runtime {
-  //heap: runtime::Heap,
-  //prog: runtime::Program,
-  //book: language::rulebook::RuleBook,
-//}
-
 pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
 pub const CELLS_PER_GB: usize = 0x8000000;

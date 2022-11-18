@@ -88,49 +88,57 @@ pub struct Program {
   pub nams: Nams,
 }
 
-pub fn new_program() -> Program {
-  let mut funs = U64Map::new();
-  let mut arit = U64Map::new();
-  let mut nams = U64Map::new();
-  // Adds the built-in functions
-  for fid in 0 .. crate::runtime::precomp::PRECOMP_COUNT as usize {
-    if let Some(precomp) = PRECOMP.get(fid) {
-      if let Some(funcs) = &precomp.funcs {
-        funs.insert(fid as u64, Function::Compiled {
-          arity: precomp.arity as u64,
-          visit: funcs.visit,
-          apply: funcs.apply,
-        });
+impl Program {
+  pub fn new() -> Program {
+    let mut funs = U64Map::new();
+    let mut arit = U64Map::new();
+    let mut nams = U64Map::new();
+    // Adds the built-in functions
+    for fid in 0 .. crate::runtime::precomp::PRECOMP_COUNT as usize {
+      if let Some(precomp) = PRECOMP.get(fid) {
+        if let Some(funcs) = &precomp.funcs {
+          funs.insert(fid as u64, Function::Compiled {
+            arity: precomp.arity as u64,
+            visit: funcs.visit,
+            apply: funcs.apply,
+          });
+        }
+        nams.insert(fid as u64, precomp.name.to_string());
+        arit.insert(fid as u64, precomp.arity as u64);
       }
-      nams.insert(fid as u64, precomp.name.to_string());
-      arit.insert(fid as u64, precomp.arity as u64);
     }
+    return Program { funs, arit, nams };
   }
-  return Program { funs, arit, nams };
-}
 
-pub fn extend_program(prog: &mut Program, funs: &mut Funs, arit: &mut Arit, nams: &Nams) {
-  for (fid, fun) in funs.data.drain(0..).enumerate() {
-    if let Some(fun) = fun {
-      prog.funs.insert(fid as u64, fun);
+  pub fn add_book(&mut self, book: &language::rulebook::RuleBook) {
+    let funs = &mut gen_functions(&book);
+    let nams = &mut gen_names(&book);
+    let arit = &mut gen_arities(&book);
+    for (fid, fun) in funs.data.drain(0..).enumerate() {
+      if let Some(fun) = fun {
+        self.funs.insert(fid as u64, fun);
+      }
+    }
+    for (fid, nam) in nams.data.iter().enumerate() {
+      if let Some(nam) = nam {
+        self.nams.insert(fid as u64, nam.clone());
+      }
+    }
+    for (fid, ari) in arit.data.iter().enumerate() {
+      if let Some(ari) = ari {
+        self.arit.insert(fid as u64, *ari);
+      }
     }
   }
-  for (fid, nam) in nams.data.iter().enumerate() {
-    if let Some(nam) = nam {
-      prog.nams.insert(fid as u64, nam.clone());
-    }
-  }
-  for (fid, ari) in arit.data.iter().enumerate() {
-    if let Some(ari) = ari {
-      prog.arit.insert(fid as u64, *ari);
-    }
-  }
-}
 
-pub fn init_program(funs: &mut Funs, arit: &mut Arit, nams: &mut Nams) -> Program {
-  let mut prog = new_program();
-  extend_program(&mut prog, funs, arit, nams);
-  return prog;
+  pub fn add_function(&mut self, name: String, function: Function) {
+    self.nams.push(name);
+    self.arit.push(match &function {
+      Function::Interpreted { arity, .. } => *arity,
+      Function::Compiled { arity, .. } => *arity,
+    });
+    self.funs.push(function);
+  }
 }
 
 pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {

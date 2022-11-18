@@ -5,6 +5,7 @@ use crate::runtime;
 pub fn eval(
   file: &str,
   term: &str,
+  funs: Vec<(String, runtime::Function)>,
   size: usize,
   tids: usize,
   dbug: bool,
@@ -13,11 +14,19 @@ pub fn eval(
   // Parses and reads the input file
   let file = language::syntax::read_file(&format!("{}\nHVM_MAIN_CALL = {}", file, term))?;
 
-  // Converts the HVM "file" to a Rulebook
+  // Converts the file to a Rulebook
   let book = language::rulebook::gen_rulebook(&file);
 
   // Creates the runtime program
-  let prog = runtime::init_program(&mut runtime::gen_functions(&book), &mut runtime::gen_arities(&book), &mut runtime::gen_names(&book));
+  let mut prog = runtime::Program::new();
+
+  // Adds the interpreted functions (from the Rulebook)
+  prog.add_book(&book);
+
+  // Adds the extra functions
+  for (name, fun) in funs {
+    prog.add_function(name, fun);
+  }
 
   // Creates the runtime heap
   let heap = runtime::new_heap(size, tids);

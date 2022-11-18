@@ -18,6 +18,12 @@ impl<A> U64Map<A> {
     return new_map;
   }
 
+  pub fn push(&mut self, val: A) -> u64 {
+    let key = self.data.len() as u64;
+    self.insert(key, val);
+    return key;
+  }
+
   pub fn insert(&mut self, key: u64, val: A) {
     while self.data.len() <= key as usize {
       self.data.push(None);
