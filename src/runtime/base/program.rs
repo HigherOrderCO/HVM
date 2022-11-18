@@ -53,17 +53,6 @@ pub enum RuleBodyCell {
   Ptr { value: u64, targ: u64, slot: u64 }, // Local link, requires adjustment
 }
 
-pub struct ReduceCtx<'a> {
-  pub heap  : &'a Heap,
-  pub prog  : &'a Program,
-  pub tid   : usize,
-  pub term  : Ptr,
-  pub visit : &'a VisitQueue,
-  pub redex : &'a RedexBag,
-  pub cont  : &'a mut u64,
-  pub host  : &'a mut u64,
-}
-
 pub type VisitFun = fn(ReduceCtx) -> bool;
 pub type ApplyFun = fn(ReduceCtx) -> bool;
 
@@ -658,3 +647,13 @@ pub fn alloc_term(heap: &Heap, prog: &Program, tid: usize, book: &language::rule
   alloc_closed_core(heap, prog, tid, &term_to_core(book, term, &vec![]))
 }
 
+pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
+  let mut term = Ctr(STRING_NIL, 0);
+  for chr in text.chars().rev() { // TODO: reverse
+    let ctr0 = alloc(heap, tid, 2);
+    link(heap, ctr0 + 0, U6O(chr as u64));
+    link(heap, ctr0 + 1, term);
+    term = Ctr(STRING_CONS, ctr0);
+  }
+  return term;
+}

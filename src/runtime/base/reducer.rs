@@ -2,6 +2,19 @@ pub use crate::runtime::{*};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use crossbeam::utils::{Backoff};
 
+pub struct ReduceCtx<'a> {
+  pub heap  : &'a Heap,
+  pub prog  : &'a Program,
+  pub tid   : usize,
+  pub hold  : bool,
+  pub term  : Ptr,
+  pub visit : &'a VisitQueue,
+  pub redex : &'a RedexBag,
+  pub cont  : &'a mut u64,
+  pub host  : &'a mut u64,
+}
+
+
 // HVM's reducer is a finite stack machine with 4 possible states:
 // - visit: visits a node and add its children to the visit stack ~> visit, apply, blink
 // - apply: reduces a node, applying a rewrite rule               ~> visit, apply, blink, halt
@@ -59,6 +72,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
   let visit = &heap.vstk[tid];
   let delay = &mut vec![];
   let bkoff = &Backoff::new();
+  let hold  = tids.len() <= 1;
   //let mut tick = 0;
 
   // State Vars
@@ -82,7 +96,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
           if debug { debug_print(term); }
           match get_tag(term) {
             APP => {
-              if app::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+              if app::visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                 continue 'visit;
               } else {
                 break 'work;
@@ -91,7 +105,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
             DP0 | DP1 => {
               match acquire_lock(heap, tid, term) {
                 Err(locker_tid) => {
-                  delay.push(new_visit(host, cont));
+                  delay.push(new_visit(host, hold, cont));
                   break 'work;
                 }
                 Ok(_) => {
@@ -100,7 +114,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                     release_lock(heap, tid, term);
                     continue 'visit;
                   } else {
-                    if dup::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                    if dup::visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                       continue 'visit;
                     } else {
                       break 'work;
@@ -110,7 +124,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
               }
             }
             OP2 => {
-              if op2::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+              if op2::visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                 continue 'visit;
               } else {
                 break 'work;
@@ -121,14 +135,14 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
 //[[CODEGEN:FAST-VISIT]]//
               match &prog.funs.get(&fid) {
                 Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                  if fun::visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, &fn_visit.strict_idx) {
+                  if fun::visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }, &fn_visit.strict_idx) {
                     continue 'visit;
                   } else {
                     break 'visit;
                   }
                 }
                 Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                  if fn_visit(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                  if fn_visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                     continue 'visit;
                   } else {
                     break 'visit;
@@ -152,14 +166,14 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
             // Apply rewrite rules
             match get_tag(term) {
               APP => {
-                if app::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                if app::apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                   continue 'work;
                 } else {
                   break 'apply;
                 }
               }
               DP0 | DP1 => {
-                if dup::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                if dup::apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                   release_lock(heap, tid, term);
                   continue 'work;
                 } else {
@@ -168,7 +182,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                 }
               }
               OP2 => {
-                if op2::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                if op2::apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                   continue 'work;
                 } else {
                   break 'apply;
@@ -179,14 +193,14 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
 //[[CODEGEN:FAST-APPLY]]//
                 match &prog.funs.get(&fid) {
                   Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                    if fun::apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }, fid, *fn_arity, fn_visit, fn_apply) {
+                    if fun::apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }, fid, *fn_arity, fn_visit, fn_apply) {
                       continue 'work;
                     } else {
                       break 'apply;
                     }
                   }
                   Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                    if fn_apply(ReduceCtx { heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }) {
+                    if fn_apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                       continue 'work;
                     } else {
                       break 'apply;

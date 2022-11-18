@@ -17,16 +17,20 @@ pub struct VisitQueue {
   pub data: Box<[AtomicU64]>,
 }
 
-pub fn new_visit(host: u64, cont: u64) -> Visit {
-  return (host << 32) | cont;
+pub fn new_visit(host: u64, hold: bool, cont: u64) -> Visit {
+  return (host << 32) | (if hold { 0x80000000 } else { 0 }) | cont;
 }
 
 pub fn get_visit_host(visit: Visit) -> u64 {
   return visit >> 32;
 }
 
+pub fn get_visit_hold(visit: Visit) -> bool {
+  return (visit >> 31) & 1 == 1; 
+}
+
 pub fn get_visit_cont(visit: Visit) -> u64 {
-  return visit & 0xFFFFFFFF;
+  return visit & 0x3FFFFFF;
 }
 
 impl VisitQueue {
@@ -67,7 +71,7 @@ impl VisitQueue {
   pub fn steal(&self) -> Option<(u64, u64)> {
     let index = self.init.load(Ordering::Relaxed);
     let visit = unsafe { self.data.get_unchecked(index) }.load(Ordering::Relaxed);
-    if visit != 0 {
+    if visit != 0 && !get_visit_hold(visit) {
       if let Ok(visit) = unsafe { self.data.get_unchecked(index) }.compare_exchange(visit, 0, Ordering::Relaxed, Ordering::Relaxed) {
         self.init.fetch_add(1, Ordering::Relaxed);
         return Some((get_visit_cont(visit), get_visit_host(visit)));

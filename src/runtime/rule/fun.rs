@@ -20,7 +20,7 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
     } else {
       let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));
       for i in 0 .. vlen - 1 {
-        ctx.visit.push(new_visit(unsafe { vbuf.get_unchecked(i).load(Ordering::Relaxed) }, goup));
+        ctx.visit.push(new_visit(unsafe { vbuf.get_unchecked(i).load(Ordering::Relaxed) }, ctx.hold, goup));
       }
       *ctx.cont = goup;
       *ctx.host = unsafe { vbuf.get_unchecked(vlen - 1).load(Ordering::Relaxed) };

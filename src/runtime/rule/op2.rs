@@ -3,7 +3,7 @@ use crate::runtime::{*};
 #[inline(always)]
 pub fn visit(ctx: ReduceCtx) -> bool {
   let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 2));
-  ctx.visit.push(new_visit(get_loc(ctx.term, 1), goup));
+  ctx.visit.push(new_visit(get_loc(ctx.term, 1), ctx.hold, goup));
   *ctx.cont = goup;
   *ctx.host = get_loc(ctx.term, 0);
   return true;

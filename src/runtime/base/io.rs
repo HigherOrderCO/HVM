@@ -129,6 +129,7 @@
   //}
 //}
 
+
 //pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
   //let mut term = Ctr(STRING_NIL, 0);
   //for chr in text.chars().rev() { // TODO: reverse
@@ -138,33 +139,4 @@
     //term = Ctr(STRING_CONS, ctr0);
   //}
   //return term;
-//}
-
-//// TODO: finish this
-//pub fn readback_string(heap: &Heap, prog: &Program, tids: &[usize], host: u64) -> Option<String> {
-  //let mut host = host;
-  //let mut text = String::new();
-  //loop {
-    //let term = reduce(heap, prog, tids, host);
-    //if get_tag(term) == CTR {
-      //let fid = get_ext(term);
-      //if fid == STRING_NIL {
-        //break;
-      //}
-      //if fid == STRING_CONS {
-        //let chr = reduce(heap, prog, tids, get_loc(term, 0));
-        //if get_tag(chr) == NUM {
-          //text.push(std::char::from_u32(get_num(chr) as u32).unwrap_or('?'));
-          //host = get_loc(term, 1);
-          //continue;
-        //} else {
-          //return None;
-        //}
-      //}
-      //return None;
-    //} else {
-      //return None;
-    //}
-  //}
-  //return Some(text);
 //}

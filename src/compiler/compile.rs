@@ -72,7 +72,7 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
       if let Some(rules) = book.rule_group.get(name) {
         let (visit_fun, apply_fun) = build_function(book, &name, &rules.1);
         line(&mut fast_visit, 8, &format!("{} => {{", &build_name(&name)));
-        line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
+        line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
         line(&mut fast_visit, 10, &format!("continue 'visit;"));
         line(&mut fast_visit, 9, &format!("}} else {{"));
         line(&mut fast_visit, 10, &format!("break 'visit;"));
@@ -94,7 +94,7 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
       if let Some(rules) = book.rule_group.get(name) {
         let (visit_fun, apply_fun) = build_function(book, &name, &rules.1);
         line(&mut fast_apply, 9, &format!("{} => {{", &build_name(&name)));
-        line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
+        line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
         line(&mut fast_apply, 11, &format!("continue 'work;"));
         line(&mut fast_apply, 10, &format!("}} else {{"));
         line(&mut fast_apply, 11, &format!("break 'apply;"));
@@ -154,7 +154,7 @@ pub fn build_function(
       line(&mut visit, 2, &format!("let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));"));
       for i in 0 .. fn_visit.strict_idx.len() {
         line(&mut visit, 2, &format!("if {} < vlen - 1 {{", i));
-        line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({}).load(Ordering::Relaxed) }}, goup));", i));
+        line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({}).load(Ordering::Relaxed) }}, hold, goup));", i));
         line(&mut visit, 2, &format!("}}"));
       }
       line(&mut visit, 2, &format!("*ctx.cont = goup;"));

@@ -457,3 +457,33 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
 pub fn as_linear_code(heap: &Heap, prog: &Program, host: u64) -> String {
   return format!("{}", as_linear_term(heap, prog, host));
 }
+
+
+// This reads a term in the `(String.cons ... String.nil)` shape directly into a string.
+pub fn as_string(heap: &Heap, prog: &Program, tids: &[usize], host: u64) -> Option<String> {
+  let mut host = host;
+  let mut text = String::new();
+  loop {
+    let term = runtime::reduce(heap, prog, tids, host, false);
+    if runtime::get_tag(term) == runtime::CTR {
+      let fid = runtime::get_ext(term);
+      if fid == runtime::STRING_NIL {
+        break;
+      }
+      if fid == runtime::STRING_CONS {
+        let chr = runtime::reduce(heap, prog, tids, runtime::get_loc(term, 0), false);
+        if runtime::get_tag(chr) == runtime::U60 {
+          text.push(std::char::from_u32(runtime::get_num(chr) as u32).unwrap_or('?'));
+          host = runtime::get_loc(term, 1);
+          continue;
+        } else {
+          return None;
+        }
+      }
+      return None;
+    } else {
+      return None;
+    }
+  }
+  return Some(text);
+}

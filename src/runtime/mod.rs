@@ -13,6 +13,11 @@ pub use base::{*};
 pub use data::{*};
 pub use rule::{*};
 
+//pub struct Runtime {
+  //heap: runtime::Heap,
+  //prog: runtime::Program,
+  //book: language::rulebook::RuleBook,
+//}
 
 pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
@@ -32,3 +37,5 @@ pub fn default_heap_size() -> usize {
 pub fn default_heap_tids() -> usize {
   return std::thread::available_parallelism().unwrap().get();
 }
+
+
