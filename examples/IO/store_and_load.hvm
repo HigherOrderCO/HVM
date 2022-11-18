@@ -1,0 +1,5 @@
+Main =
+  (HVM.store "name.txt" "Alice"
+  (HVM.load "name.txt" λname
+  (HVM.print name
+  (Done))))
