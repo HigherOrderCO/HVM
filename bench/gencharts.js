@@ -26,7 +26,7 @@ var label_format = {
 }
 
 var lang_color = {
-  "GHC-1": "purple",
+  "GHC": "purple",
   "HVM-1": "#425F57",
   "HVM-2": "#749F82",
   "HVM-4": "#A8E890",
