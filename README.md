@@ -15,13 +15,10 @@ scale towards uncharted levels of performance.
 
 **Welcome to the massively parallel future of computers!**
 
-*Note: this repository is, right now, being updated towards V1. Expect some
-unstable bits, missing stuff, and many changes through this week!*
+Getting Started
+===============
 
-Usage
-=====
-
-Check the [guide](guide/README.md) for install instructions.
+Check the [guide](guide/README.md) for install and usage instructions.
 
 Benchmarks
 ==========
