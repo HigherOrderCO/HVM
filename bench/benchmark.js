@@ -7,10 +7,11 @@ var langs = {
   GHC: {
     tids: [1],
     tasks: {
-      "sort/bitonic": [1, 24],
-      "sort/bubble": [12, 17],
-      "sort/quick": [1, 24],
-      "sort/radix": [1, 24],
+      "sort/bubble": [0, 64],
+      "sort/bitonic": [20, 24],
+      "sort/quick": [20, 24],
+      "sort/radix": [20, 24],
+      "lambda/arithmetic": [0, 120],
     },
     build: (task) => {
       exec("cp ../../examples/"+task+"/main.hs main.hs");
@@ -30,10 +31,11 @@ var langs = {
   HVM: {
     tids: [1, 2, 4, 8],
     tasks: {
-      "sort/bitonic": [1, 24],
-      "sort/bubble": [12, 17],
-      "sort/quick": [1, 24],
-      "sort/radix": [1, 24],
+      "sort/bubble": [0, 64],
+      "sort/bitonic": [20, 24],
+      "sort/quick": [20, 24],
+      "sort/radix": [20, 24],
+      "lambda/arithmetic": [0, 120],
     },
     build: (task) => {
       exec("cp ../../examples/"+task+"/main.hvm main.hvm");

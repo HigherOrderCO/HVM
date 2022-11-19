@@ -2,6 +2,29 @@ const { ChartJSNodeCanvas } = require('chartjs-node-canvas');
 
 var results = require("./results.json");
 
+var label_format = {
+  "lambda-multiplication": {
+    unit: n => String(n) + "m",
+    name: "multiplier",
+  },
+  "sort-bubble": {
+    unit: n => String(n) + "k",
+    name: "list length",
+  },
+  "sort-bitonic": {
+    unit: n => "2^" + String(n),
+    name: "list length",
+  },
+  "sort-quick": {
+    unit: n => "2^" + String(n),
+    name: "list length",
+  },
+  "sort-radix": {
+    unit: n => "2^" + String(n),
+    name: "list length",
+  },
+}
+
 var lang_color = {
   "GHC-1": "purple",
   "HVM-1": "#425F57",
@@ -56,7 +79,7 @@ for (let chart in charts) {
   if (!max_time_limit[chart]) {
     for (var lang in charts[chart]) {
       for (var time of charts[chart][lang].data) {
-        max_time = Math.max(max_time, time);
+        max_time = Math.floor(Math.max(max_time, time));
       }
     }
   } else {
@@ -65,11 +88,10 @@ for (let chart in charts) {
 
   for (var lang in charts[chart]) {
     datasets.push(charts[chart][lang]);
-    console.log(chart, max_time);
     if (!labels) {
       labels = [];
       for (var i = 0; i < charts[chart][lang].data.length; ++i) {
-        labels.push(String(charts[chart][lang].init + i));
+        labels.push(label_format[chart].unit(charts[chart][lang].init + i));
       }
     }
   }
@@ -96,14 +118,14 @@ for (let chart in charts) {
           display: true,
           title: {
             display: true,
-            text: 'log2(input_size)'
+            text: label_format[chart].name,
           }
         },
         y: {
           display: true,
           title: {
             display: true,
-            text: 'time (seconds)'
+            text: 'Time Elapsed (seconds)'
           },
           min: 0,
           max: max_time,
@@ -120,6 +142,7 @@ for (let chart in charts) {
   (async () => {
       const image = await chartJSNodeCanvas.renderToBuffer(configuration);
       require("fs").writeFileSync("_results_/"+chart+".png", image);
+      console.log("_results_/"+chart+".png");
       //const dataUrl = await chartJSNodeCanvas.renderToDataURL(configuration);
       //const stream = chartJSNodeCanvas.renderToStream(configuration);
   })();

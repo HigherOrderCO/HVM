@@ -20,13 +20,17 @@ Bubble Sort
 Let's get started with a simple algorithm: Bubble Sort. 
 
 ```javascript
+// sort : List -> List
 (Sort Nil)         = Nil
 (Sort (Cons x xs)) = (Insert x (Sort xs))
-  // Inserts an element on its sorted position
-  (Insert v Nil)         = (Cons v Nil)
-  (Insert v (Cons x xs)) = (Insert.go (> v x) v x xs)
-    (Insert.go 0 v x xs) = (Cons v (Cons x xs))
-    (Insert.go 1 v x xs) = (Cons x (Insert v xs))
+
+// Insert : U60 -> List -> List
+(Insert v Nil)         = (Cons v Nil)
+(Insert v (Cons x xs)) = (GoDown (> v x) v x xs)
+
+// GoDown : U60 -> U60 -> U60 -> List -> List
+(GoDown 0 v x xs) = (Cons v (Cons x xs))
+(GoDown 1 v x xs) = (Cons x (Insert v xs))
 ```
 
 Complete file: [examples/sort/bubble/main.hvm](../examples/sort/bubble/main.hvm)
@@ -105,30 +109,28 @@ less known, though, is that the Bitonic Sort has a very elegant presentation in
 the functional paradigm:
 
 ```javascript
-// Atomic swapper.
-(Swap 0 0 a b) = (N a b)
-(Swap 0 1 a b) = (N b a)
-(Swap 1 0 a b) = (N b a)
-(Swap 1 1 a b) = (N a b)
+// Atomic Swapper
+(Swap 0 a b) = (Both a b)
+(Swap n a b) = (Both b a)
 
-// Swaps distant values in parallel. Corresponds to a Red Box.
-(Warp s (Leaf a)   (Leaf b))   = (Swap (> a b) s (Leaf a) (Leaf b))
-(Warp s (Node a b) (Node c d)) = (Join (Warp s a c) (Warp s b d))
+// Swaps distant values in parallel; corresponds to a Red Box
+(Warp s (Leaf a)   (Leaf b))   = (Swap (^ (> a b) s) (Leaf a) (Leaf b))
+(Warp s (Both a b) (Both c d)) = (Join (Warp s a c) (Warp s b d))
 
-// Rebuilds the warped tree in the original order.
-(Join (Node a b) (Node c d)) = (Node (Node a c) (Node b d))
+// Rebuilds the warped tree in the original order
+(Join (Both a b) (Both c d)) = (Both (Both a c) (Both b d))
 
-// Recursively warps each sub-tree. Corresponds to a Blue/Green Box.
+// Recursively warps each sub-tree; corresponds to a Blue/Green Box
 (Flow s (Leaf a))   = (Leaf a)
-(Flow s (Node a b)) = (Down s (Warp s a b))
+(Flow s (Both a b)) = (Down s (Warp s a b))
 
-// Auxiliary function that calls Flow recursively.
+// Propagates Flow downwards
 (Down s (Leaf a))   = (Leaf a)
-(Down s (Node a b)) = (Node (Flow s a) (Flow s b))
+(Down s (Both a b)) = (Both (Flow s a) (Flow s b))
 
-// Parallel Bitonic Sort 
+// Bitonic Sort
 (Sort s (Leaf a))   = (Leaf a)
-(Sort s (Node a b)) = (Flow s (Node (Sort 0 a) (Sort 1 b)))
+(Sort s (Both a b)) = (Flow s (Both (Sort 0 a) (Sort 1 b)))
 ```
 
 Complete file: [examples/sort/bitonic/main.hvm](../examples/sort/bitonic/main.hvm)
@@ -157,33 +159,30 @@ merge all the trees in parallel. The resulting tree will then contain all
 numbers in ascending order. This is the algorithm:
 
 ```javascript
-// Sort : NTree -> NTree
-(Sort t) = (STree.back (STree.make t))
+// Sort : Arr -> Arr
+(Sort t) = (ToArr 0 (ToMap t))
 
-// STree.merge : STree -> STree -> STree
-(STree.merge Free       Free)       = Free
-(STree.merge Free       Used)       = Used
-(STree.merge Used       Free)       = Used
-(STree.merge Used       Used)       = Used
-(STree.merge Free       (Both c d)) = (Both c d)
-(STree.merge (Both a b) Free)       = (Both a b)
-(STree.merge (Both a b) (Both c d)) = (Both (STree.merge a c) (STree.merge b d))
+// ToMap : Arr -> Map
+(ToMap Null)       = Free
+(ToMap (Leaf a))   = (Radix a)
+(ToMap (Node a b)) = (Merge (ToMap a) (ToMap b))
 
-// STree.make : NTree -> STree
-(STree.make Null)       = Free
-(STree.make (Leaf a))   = (STree.word a)
-(STree.make (Node a b)) = (STree.merge (STree.make a) (STree.make b))
+// ToArr : Map -> Arr
+(ToArr x Free) = Null
+(ToArr x Used) = (Leaf x)
+(ToArr x (Both a b)) =
+  let a = (ToArr (+ (* x 2) 0) a)
+  let b = (ToArr (+ (* x 2) 1) b)
+  (Node a b)
 
-// STree.back : STree -> NTree
-(STree.back t) = (STree.back.go 0 t)
-  (STree.back.go x Free) = Null
-  (STree.back.go x Used) = (Leaf x)
-  (STree.back.go x (Both a b)) =
-    let x = (<< x 1)
-    let y = (| x 1)
-    let a = (STree.back.go x a)
-    let b = (STree.back.go y b)
-    (Node a b)
+// Merge : Map -> Map -> Map
+(Merge Free       Free)       = Free
+(Merge Free       Used)       = Used
+(Merge Used       Free)       = Used
+(Merge Used       Used)       = Used
+(Merge Free       (Both c d)) = (Both c d)
+(Merge (Both a b) Free)       = (Both a b)
+(Merge (Both a b) (Both c d)) = (Both (Merge a c) (Merge b d))
 ```
 
 Complete file: [examples/sort/radix/main.hvm](../examples/sort/radix/main.hvm)

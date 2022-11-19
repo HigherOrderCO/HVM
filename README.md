@@ -15,267 +15,180 @@ scale towards uncharted levels of performance.
 
 **Welcome to the massively parallel future of computers!**
 
-Getting Started
-===============
+Examples
+========
 
-Check the [guide](guide/README.md) for install and usage instructions.
+Essentially, HVM is a minimalist functional language that is compiled to a
+novel runtime based on [Interaction
+Nets](https://pdf.sciencedirectassets.com/272575/1-s2.0-S0890540100X00600/1-s2.0-S0890540197926432/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEEkaCXVzLWVhc3QtMSJGMEQCIDQQ1rA8jV9UQEKlaFzLfqINP%2B%2FrcTj4NCbI40n%2FrGbyAiBLG%2FpnaXmp6BGaG1Yplr3YYsHzxet6aQXc1qnkbb3W0irMBAhSEAUaDDA1OTAwMzU0Njg2NSIM1FOMCDHcoyvFFAU6KqkEgJPcH6B8%2BRYsdLtUERtVlwtcXZBW38xnvb%2FPRSkmxcNaK%2BmQTa7L3ZFuZt9rpNjrB3sJHg%2Bxc%2FqdAF%2FsthEb1NreHNze7LmbStuRufZCGEcxax%2FsyjnSb9bnrHuDEpnck1Dhk2YPqR8%2Bim%2BdQisDUp%2F4torZsCK1%2BPAEQkQAmGqinioexAr8dEE0BOlHgxBz5YRIkV9pjLoq%2FjWFqiUSO2bPdVi2AfpDbXI48ek6gQs%2F6VTIFRShfezfAr1HoDlQEoyyVYnVy6wI%2Fu1WVB%2FA0JJHK1B7rZFEYilPSAdUpVSOvjhNHN9elxIxlFX6hOZz3YJ4QDeLCPztfMClYYxAex6hoBBVzTkRzszs18hK1K%2FMUMwF4o%2FDy1i3WLeUmC36CL7WXDik%2BTZ7WjJNYGVRILH6cDsHrg17A0MVI5njvw7iM%2FrYKoOgBD2ESct4nO3mpRkKVq%2F9UyKScwVT5VrNpuLWLnrg29BDvE%2BDoFI6c71cisENjhIhGPNrBCQvZLNe1k%2BD54NyfqOe4a1DguuzxBnsNj6BBD2lM6TyDvCz9w36u194aN8oks9hLuTuKp7Rk05dTt6rj4pThkHA%2FQQymmx74MlQtTXTnD5v%2F%2BmGSUz6vHzqaV2Ft5xjWf9w9NJHfTkFkpxNEv8fTUUSMBEhL4nF8wj0wiNbSwp9NvPOj3YMIG2icNxdAZyNsJYJUowOCXi4JTwCkqb2WdNOi88pOSaAautZrBg7nzCKyuCbBjqqATOzXItndBn%2Be6oyH2l8sD%2B5v%2FjIqCz8%2Bx%2Bz%2FZA3dntddFac64iWFGPbJeRGw05BiPX5TKBnrR%2BmaqfO%2F7SxoYfTV4hl5Z2lmJcoiEd%2BWUmNK2wntMlGtFn%2FmFeeljKBeMxnfh8DN0qRz10NZAfxhvqxAEBu67G0ZXpECGxr8fAiBrdvnEac6rWfv8%2FT0VA%2Fu6xjIMIrrwU65xAuVuIG%2BXpsdC073VLm1%2BEW&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20221119T011901Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYYRK5XVMW%2F20221119%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=74892553e56ba432350974a6f4dbebfd97418e2187a5c4e183da61dd0e951609&hash=bc1de316d0b6ee58191106c1cdbc34d1eaeab536a9bbc02dfae09818a8cc2510&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S0890540197926432&tid=spdf-00500b38-a41c-4d5b-98bb-4a2754da3953&sid=17532fa99b4522476f2b00d636dc838e7e36gxrqa&type=client&ua=515904515402570a0401&rr=76c51d7eea7b4d36).
+This approach is not only memory-efficient (no GC needed), but also has two
+significant advantages: **automatic parallelism** and **beta-optimality**. The
+idea is that you write a simple functional program, and HVM will turn it into a
+massively parallel, beta-optimal executable. The examples below highlight these
+advantages in action.
 
-Benchmarks
-==========
-
-HVM has two main advantages over GHC: automatic parallelism and beta-optimality.
-I've selected 5 common benchmarks to compare them. Below are the results:
-
-List Fold (Sequential)
-----------------------
+Bubble Sort
+-----------
 
 <table>
 <tr>
-  <td><a href="./bench/ListFold/main.hvm"> main.hvm </a></td>
-  <td><a href="./bench/ListFold/main.hs" > main.hs </a></td>
+  <td>From: <a href="./examples/sort/bubble/main.hvm">HVM/examples/sort/bubble/main.hvm</a></td>
+  <td>From: <a href="./examples/sort/bubble/main.hs" >HVM/examples/sort/bubble/main.hs</a></td>
 </tr>
 <tr>
 <td>
 
 ```javascript
-// Folds over a list
-(Fold Nil         c n) = n
-(Fold (Cons x xs) c n) = (c x (Fold xs c n))
+// sort : List -> List
+(Sort Nil)         = Nil
+(Sort (Cons x xs)) = (Insert x (Sort xs))
 
-// A list from 0 to n
-(Range 0 xs) = xs
-(Range n xs) =
-  let m = (- n 1)
-  (Range m (Cons m xs))
+// Insert : U60 -> List -> List
+(Insert v Nil)         = (Cons v Nil)
+(Insert v (Cons x xs)) = (SwapGT (> v x) v x xs)
 
-// Sums a big list with fold
-(Main n) =
-  let size = (* n 1000000)
-  let list = (Range size Nil)
-  (Fold list λaλb(+ a b) 0)
+// SwapGT : U60 -> U60 -> U60 -> List -> List
+(SwapGT 0 v x xs) = (Cons v (Cons x xs))
+(SwapGT 1 v x xs) = (Cons x (Insert v xs))
 ```
 
 </td>
 <td>
 
 ```haskell
--- Folds over a list
-fold Nil         c n = n
-fold (Cons x xs) c n = c x (fold xs c n)
+sort' :: List -> List
+sort' Nil         = Nil
+sort' (Cons x xs) = insert x (sort' xs)
 
--- A list from 0 to n
-range 0 xs = xs
-range n xs =
-  let m = n - 1
-  in range m (Cons m xs)
+insert :: Word64 -> List -> List
+insert v Nil         = Cons v Nil
+insert v (Cons x xs) = swapGT (if v > x then 1 else 0) v x xs
 
--- Sums a big list with fold
-main = do
-  n <- read.head <$> getArgs :: IO Word32
-  let size = 1000000 * n
-  let list = range size Nil
-  print $ fold list (+) 0
+swapGT :: Word64 -> Word64 -> Word64 -> List -> List
+swapGT 0 v x xs = Cons v (Cons x xs)
+swapGT 1 v x xs = Cons x (insert v xs)
 ```
 
 </td>
 </tr>
 </table>
 
-![](bench/_results_/ListFold.png)
-<sub> *the lower the better </sub>
+![](bench/_results_/sort-bubble.png)
 
-In this micro-benchmark, we just build a huge list of numbers, and fold over
-it to sum them. Since lists are sequential, and since there are no higher-order
-lambdas, HVM doesn't have any technical advantage over GHC. As such, both
-runtimes perform very similarly.
+On this example, we run a simple, recursive [Bubble
+Sort](https://en.wikipedia.org/wiki/Bubble_sort) on both HVM and GHC (Haskell's
+compiler). Notice the algorithms are identical. The chart shows how much time
+each runtime took to sort a list of given size (the lower, the better). The
+purple line shows GHC (single-thread), the green lines show HVM (1, 2, 4 and 8
+threads). As you can see, both perform similarly, with HVM having a small edge.
+Sadly, here, its performance doesn't improve with added cores. That's because
+Bubble Sort is an *inherently sequential* algorithm, so HVM can't improve it.
 
-Tree Sum (Parallel)
--------------------
+Radix Sort
+----------
 
 <table>
 <tr>
-  <td><a href="./bench/TreeSum/main.hvm"> main.hvm </a></td>
-  <td><a href="./bench/TreeSum/main.hs" > main.hs </a></td>
+  <td>From: <a href="./examples/sort/radix/main.hvm">HVM/examples/sort/radix/main.hvm</a></td>
+  <td>From: <a href="./examples/sort/radix/main.hs" >HVM/examples/sort/radix/main.hs</a></td>
 </tr>
 <tr>
 <td>
 
 ```javascript
-// Creates a tree with `2^n` elements
-(Gen 0) = (Leaf 1)
-(Gen n) = (Node (Gen(- n 1)) (Gen(- n 1)))
+// Sort : Arr -> Arr
+(Sort t) = (ToArr 0 (ToMap t))
 
-// Adds all elements of a tree
-(Sum (Leaf x))   = x
-(Sum (Node a b)) = (+ (Sum a) (Sum b))
+// ToMap : Arr -> Map
+(ToMap Null)       = Free
+(ToMap (Leaf a))   = (Radix a)
+(ToMap (Node a b)) =
+  (Merge (ToMap a) (ToMap b))
 
-// Performs 2^n additions
-(Main n) = (Sum (Gen n))
+// ToArr : Map -> Arr
+(ToArr x Free) = Null
+(ToArr x Used) = (Leaf x)
+(ToArr x (Both a b)) =
+  let a = (ToArr (+ (* x 2) 0) a)
+  let b = (ToArr (+ (* x 2) 1) b)
+  (Node a b)
+
+// Merge : Map -> Map -> Map
+(Merge Free       Free)       = Free
+(Merge Free       Used)       = Used
+(Merge Used       Free)       = Used
+(Merge Used       Used)       = Used
+(Merge Free       (Both c d)) = (Both c d)
+(Merge (Both a b) Free)       = (Both a b)
+(Merge (Both a b) (Both c d)) =
+  (Both (Merge a c) (Merge b d))
 ```
 
 </td>
 <td>
 
 ```haskell
--- Creates a tree with 2^n elements
-gen 0 = Leaf 1
-gen n = Node (gen(n - 1)) (gen(n - 1))
+sort :: Arr -> Arr
+sort t = toArr 0 (toMap t)
 
--- Adds all elements of a tree
-sun (Leaf x)   = 1
-sun (Node a b) = sun a + sun b
+toMap :: Arr -> Map
+toMap Null       = Free
+toMap (Leaf a)   = radix a
+toMap (Node a b) =
+  merge (toMap a) (toMap b)
 
--- Performs 2^n additions
-main = do
-  n <- read.head <$> getArgs :: IO Word32
-  print $ sun (gen n)
+toArr :: Word64 -> Map -> Arr
+toArr x Free       = Null
+toArr x Used       = Leaf x
+toArr x (Both a b) =
+  let a' = toArr (x * 2 + 0) a
+      b' = toArr (x * 2 + 1) b
+  in Node a' b'
+
+merge :: Map -> Map -> Map
+merge Free       Free       = Free
+merge Free       Used       = Used
+merge Used       Free       = Used
+merge Used       Used       = Used
+merge Free       (Both c d) = (Both c d)
+merge (Both a b) Free       = (Both a b)
+merge (Both a b) (Both c d) =
+  (Both (merge a c) (merge b d))
 ```
 
 </td>
 </tr>
 </table>
 
-![](bench/_results_/TreeSum.png)
 
-TreeSum recursively builds and sums all elements of a perfect binary tree. HVM
-outperforms Haskell by a wide margin because this algorithm is embarrassingly
-parallel, allowing it to fully use the available cores.
+![](bench/_results_/sort-radix.png)
 
-QuickSort (Parallel)
---------------------
+On this example, we try a [Radix
+Sort](https://en.wikipedia.org/wiki/Radix_sort), based on merging immutable
+trees. This time, HVM's performance improves proportionally to the number of
+cores, allowing it to sort large lists **9x faster** than GHC! That's because
+GHC is locked to a single thread, while HVM exploits the fact that tree-merging
+is *inherently parallel*. Of course, one could parallelize the Haskell version
+with `par` annotations, but that would require refactoring. Usually, doing so is
+very hard and time-consuming. In some cases, it is even *impossible* to use all
+the available parallelism with `par` alone. HVM, on the other hands, will
+automatically distribute the workload evenly among all available cores.
 
-<table>
-<tr>
-  <td><a href="./bench/QuickSort/main.hvm"> main.hvm </a></td>
-  <td><a href="./bench/QuickSort/main.hs" > main.hs </a></td>
-</tr>
-<tr>
-<td>
 
-```javascript
-// QuickSort
-(QSort p s Nil)          = Empty
-(QSort p s (Cons x Nil)) = (Single x)
-(QSort p s (Cons x xs))  =
-  (Split p s (Cons x xs) Nil Nil)
-
-// Splits list in two partitions
-(Split p s Nil min max) =
-  let s   = (>> s 1)
-  let min = (QSort (- p s) s min)
-  let max = (QSort (+ p s) s max)
-  (Concat min max)
-(Split p s (Cons x xs) min max) =
-  (Place p s (< p x) x xs min max)
-
-// Sorts and sums n random numbers
-(Main n) =
-  let list = (Randoms 1 (* 100000 n))
-  (Sum (QSort Pivot Pivot list))
-```
-
-</td>
-<td>
-
-```haskell
--- QuickSort
-qsort p s Nil          = Empty
-qsort p s (Cons x Nil) = Single x
-qsort p s (Cons x xs)  =
-  split p s (Cons x xs) Nil Nil
-
--- Splits list in two partitions
-split p s Nil min max =
-  let s'   = shiftR s 1
-      min' = qsort (p - s') s' min
-      max' = qsort (p + s') s' max
-  in  Concat min' max'
-split p s (Cons x xs) min max =
-  place p s (p < x) x xs min max
-
--- Sorts and sums n random numbers
-main = do
-  n <- read.head <$> getArgs :: IO Word32
-  let list = randoms 1 (100000 * n)
-  print $ sun $ qsort pivot pivot $ list
-```
-
-</td>
-</tr>
-</table>
-
-![](bench/_results_/QuickSort.png)
-
-This test modifies QuickSort to return a concatenation tree instead of a flat
-list. This makes it embarrassingly parallel, allowing HVM to outperform GHC by a
-wide margin again. It even beats Haskell's sort from Data.List! Note that
-flattening the tree will make the algorithm sequential. That's why we didn't
-choose MergeSort, as `merge` operates on lists. In general, trees should be
-favoured over lists on HVM.
-
-Composition (Optimal)
+Lambda Multiplication
 ---------------------
 
 <table>
 <tr>
-  <td><a href="./bench/Composition/main.hvm"> main.hvm </a></td>
-  <td><a href="./bench/Composition/main.hs" > main.hs </a></td>
-</tr>
-<tr>
-<td>
-
-```javascript
-// Computes f^(2^n)
-(Comp 0 f x) = (f x)
-(Comp n f x) = (Comp (- n 1) λk(f (f k)) x)
-
-// Performs 2^n compositions
-(Main n) = (Comp n λx(x) 0)
-```
-
-</td>
-<td>
-
-```haskell
--- Computes f^(2^n)
-comp 0 f x = f x
-comp n f x = comp (n - 1) (\x -> f (f x)) x
-
--- Performs 2^n compositions
-main = do
-  n <- read.head <$> getArgs :: IO Int
-  print $ comp n (\x -> x) (0 :: Int)
-```
-
-</td>
-</tr>
-</table>
-
-![](bench/_results_/Composition.png)
-
-This chart isn't wrong: HVM is *exponentially* faster for function composition,
-due to optimality, depending on the target function. There is no parallelism
-involved here. In general, if the composition of a function `f` has a constant-
-size normal form, then `f^(2^N)(x)` is linear-time (`O(N)`) on HVM, and
-exponential-time (`O(2^N)`) on GHC. This can be taken advantage of to design
-novel functional algorithms. I highly encourage you to try composing different
-functions and watching how their complexity behaves. Can you tell if it will be
-linear or exponential? Or how recursion will affect it? That's a very
-insightful experience!
-
-Lambda Arithmetic (Optimal)
----------------------------
-
-<table>
-<tr>
-  <td><a href="./bench/LambdaArithmetic/main.hvm"> main.hvm </a></td>
-  <td><a href="./bench/LambdaArithmetic/main.hs" > main.hs </a></td>
+  <td>From: <a href="./examples/lambda/multiplication/main.hvm">HVM/examples/lambda/multiplication/main.hvm </a></td>
+  <td>From: <a href="./examples/lambda/multiplication/main.hs" >HVM/examples/lambda/multiplication/main.hs </a></td>
 </tr>
 <tr>
 <td>
 
 ```javascript
 // Increments a Bits by 1
+// Inc : Bits -> Bits
 (Inc xs) = λex λox λix
   let e = ex
   let o = ix
@@ -283,20 +196,16 @@ Lambda Arithmetic (Optimal)
   (xs e o i)
 
 // Adds two Bits
+// Add : Bits -> Bits -> Bits
 (Add xs ys) = (App xs λx(Inc x) ys)
 
 // Multiplies two Bits
+// Mul : Bits -> Bits -> Bits
 (Mul xs ys) =
   let e = End
   let o = λp (B0 (Mul p ys))
   let i = λp (Add ys (B0 (Mul p ys)))
   (xs e o i)
-
-// Squares (n * 100k)
-(Main n) =
-  let a = (FromU32 32 (* 100000 n))
-  let b = (FromU32 32 (* 100000 n))
-  (ToU32 (Mul a b))
 ```
 
 </td>
@@ -304,6 +213,7 @@ Lambda Arithmetic (Optimal)
 
 ```haskell
 -- Increments a Bits by 1
+inc :: Bits -> Bits
 inc xs = Bits $ \ex -> \ox -> \ix ->
   let e = ex
       o = ix
@@ -311,47 +221,67 @@ inc xs = Bits $ \ex -> \ox -> \ix ->
   in get xs e o i
 
 -- Adds two Bits
+add :: Bits -> Bits -> Bits
 add xs ys = app xs (\x -> inc x) ys
 
--- Multiplies two Bits
+-- Muls two Bits
+mul :: Bits -> Bits -> Bits
 mul xs ys =
   let e = end
       o = \p -> b0 (mul p ys)
-      i = \p -> add ys (b1 (mul p ys))
+      i = \p -> add ys (b0 (mul p ys))
   in get xs e o i
-
--- Squares (n * 100k)
-main = do
-  n <- read.head <$> getArgs :: IO Word32
-  let a = fromU32 32 (100000 * n)
-  let b = fromU32 32 (100000 * n)
-  print $ toU32 (mul a b)
 ```
 
 </td>
 </tr>
 </table>
 
-![](bench/_results_/LambdaArithmetic.png)
+![](bench/_results_/lambda-multiplication.png)
 
-This example takes advantage of beta-optimality to implement multiplication
-using lambda-encoded bitstrings. Once again, HVM halts instantly, while GHC
-struggles to deal with all these lambdas. Lambda encodings have wide practical
-applications. For example, Haskell's Lists are optimized by converting them to
-lambdas (foldr/build), its Free Monads library has a faster version based on
-lambdas, and so on. HVM's optimality open doors for an entire unexplored field
-of lambda-encoded algorithms that were simply impossible before.
+This example implements bitwise multiplication using
+[λ-encodings](https://en.wikipedia.org/wiki/Church_encoding). Its purpose is to
+show yet another important advantage of HVM: beta-optimality. This chart isn't
+wrong: HVM multiplies λ-encoded numbers **exponentially faster** than GHC, since
+it can deal with very higher-order programs with optimal asymptotics, while GHC
+can not. As esoteric as this technique may look, it can actually be very useful
+to design efficient functional algorithms. One application, for example, is to
+implement [runtime
+deforestation](https://github.com/Kindelia/HVM/issues/167#issuecomment-1314665474)
+for immutable datatypes. In general, HVM is capable of applying any fusible
+function `2^n` times in linear time, which sounds impossible, but is indeed true.
 
 *Charts made on [plotly.com](https://chart-studio.plotly.com/).*
 
-How is that possible?
-=====================
+Getting Started
+===============
 
-Check [guide/HOW.md](guide/HOW.md).
+1. Install Rust nightly:
 
-Community
-=========
+    ```
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+    rustup default nightly
+    ```
 
-To follow the project, please join our [Telegram Chat](https://t.me/kindelia),
-the [Kindelia community on Discord](https://discord.gg/VV7ppaVWYn) or
-[Matrix](https://matrix.to/#/#kindelia:kde.org)!
+2. Install HVM:
+
+    ```
+    cargo install hvm
+    ```
+
+3. Run an HVM expression:
+
+    ```
+    hvm run "(@x(+ x 1) 41)"
+    ```
+
+That's it! For more advanced usage, check the [complete guide](guide/README.md).
+
+More Information
+================
+
+- To learn more about the **underlying tech**, check [guide/HOW.md](guide/HOW.md).
+
+- To ask questions and **join our community**, check our [Discord Server](https://discord.gg/kindelia).
+
+- To **contact the author** directly, send an email to <taelin@kindelia.org>.

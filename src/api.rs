@@ -20,6 +20,8 @@ pub fn eval(
   // Creates the runtime program
   let mut prog = runtime::Program::new();
 
+  let begin = instant::Instant::now();
+
   // Adds the interpreted functions (from the Rulebook)
   prog.add_book(&book);
 

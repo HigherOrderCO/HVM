@@ -4,40 +4,36 @@ import Data.Word
 import Data.Bits
 import System.Environment
 
-data NTree = Null | Leaf Word64 | Node NTree NTree deriving Show
-data STree = Free | Used        | Both STree STree deriving Show
+data Arr = Null | Leaf Word64 | Node Arr Arr deriving Show
+data Map = Free | Used        | Both Map Map deriving Show
 
-sort :: NTree -> NTree
-sort t = stree_back (stree_make t)
+sort :: Arr -> Arr
+sort t = toArr 0 (toMap t)
 
-stree_merge :: STree -> STree -> STree
-stree_merge Free       Free       = Free
-stree_merge Free       Used       = Used
-stree_merge Used       Free       = Used
-stree_merge Used       Used       = Used
-stree_merge Free       (Both c d) = (Both c d)
-stree_merge (Both a b) Free       = (Both a b)
-stree_merge (Both a b) (Both c d) = (Both (stree_merge a c) (stree_merge b d))
+toMap :: Arr -> Map
+toMap Null       = Free
+toMap (Leaf a)   = radix a
+toMap (Node a b) = merge (toMap a) (toMap b)
 
-stree_make :: NTree -> STree
-stree_make Null       = Free
-stree_make (Leaf a)   = stree_word a
-stree_make (Node a b) = stree_merge (stree_make a) (stree_make b)
+toArr :: Word64 -> Map -> Arr
+toArr x Free       = Null
+toArr x Used       = Leaf x
+toArr x (Both a b) =
+  let a' = toArr (x * 2 + 0) a
+      b' = toArr (x * 2 + 1) b
+  in Node a' b'
 
-stree_back :: STree -> NTree
-stree_back t = stree_back_go 0 t where
-  stree_back_go :: Word64 -> STree -> NTree
-  stree_back_go x Free       = Null
-  stree_back_go x Used       = Leaf x
-  stree_back_go x (Both a b) =
-    let x' = x * 2
-        y' = x' + 1
-        a' = stree_back_go x' a
-        b' = stree_back_go y' b
-    in Node a' b'
+merge :: Map -> Map -> Map
+merge Free       Free       = Free
+merge Free       Used       = Used
+merge Used       Free       = Used
+merge Used       Used       = Used
+merge Free       (Both c d) = (Both c d)
+merge (Both a b) Free       = (Both a b)
+merge (Both a b) (Both c d) = (Both (merge a c) (merge b d))
 
-stree_word :: Word64 -> STree
-stree_word n =
+radix :: Word64 -> Map
+radix n =
   let r0 = Used
       r1 = u60_swap (n .&. 1) r0 Free
       r2 = u60_swap (n .&. 2) r1 Free
@@ -65,23 +61,23 @@ stree_word n =
       rO = u60_swap (n .&. 8388608) rN Free
   in rO
 
-u60_swap :: Word64 -> STree -> STree -> STree
+u60_swap :: Word64 -> Map -> Map -> Map
 u60_swap 0 a b = Both a b
 u60_swap n a b = Both b a
 
-reverse' :: NTree -> NTree
+reverse' :: Arr -> Arr
 reverse' Null       = Null
 reverse' (Leaf a)   = Leaf a
 reverse' (Node a b) = Node (reverse' b) (reverse' a)
 
-sum' :: NTree -> Word64
+sum' :: Arr -> Word64
 sum' Null       = 0
 sum' (Leaf x)   = x
 sum' (Node a b) = sum' a + sum' b
 
-gen :: Word64 -> NTree
+gen :: Word64 -> Arr
 gen n = gen_go n 0 where
-  gen_go :: Word64 -> Word64 -> NTree
+  gen_go :: Word64 -> Word64 -> Arr
   gen_go 0 x = Leaf x
   gen_go n x =
     let x' = x * 2

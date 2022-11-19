@@ -4,12 +4,17 @@ HVM Guide
 Installation
 ------------
 
-First [install Rust](https://www.rust-lang.org/tools/install). Then, enter:
+First, install [install Rust nightly](https://www.rust-lang.org/tools/install):
+
+```
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup default nightly
+```
+
+Then, install HVM:
 
 ```bash
-git clone https://github.com/kindelia/hvm
-cd hvm
-cargo install --path .
+cargo install hvm
 ```
 
 This will install HVM's command-line interface. Make sure it worked with:
@@ -30,7 +35,7 @@ outputs its normal form. You can ask it to compute an expression with `hvm run`:
 hvm run "(+ 2 3)"
 ```
 
-This will adds `2` and `3`, and output `5`. Expressions can include lambdas,
+This will add `2` and `3`, and output `5`. Expressions can include lambdas,
 which are created with `@`. For example:
 
 ```bash
@@ -308,12 +313,7 @@ Moreover, it will be much faster. On my computer, the command below outputs:
 ```
 
 That's another massive 6.7x increase in performance. With parallelism and
-compilation, we're now 49.97x faster than before! While this looks fantastic,
-this program in particular isn't a great showoff of HVM's capabilities, since
-any reasonable compiler would convert it into a tight numeric loop anyway. Keep
-in mind that HVM is a runtime, not a compiler, and, as such, it will run exactly
-what you give it, without doing any kind of transformation. It is the source
-language compiler's job to do these optimizations.
+compilation, we're now 49.97x faster than before.
 
 Builtin Functions
 -----------------

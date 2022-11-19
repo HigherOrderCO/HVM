@@ -1,33 +1,30 @@
-// Sort : NTree -> NTree
-(Sort t) = (STree.back (STree.make t))
+// Sort : Arr -> Arr
+(Sort t) = (ToArr 0 (ToMap t))
 
-// STree.merge : STree -> STree -> STree
-(STree.merge Free       Free)       = Free
-(STree.merge Free       Used)       = Used
-(STree.merge Used       Free)       = Used
-(STree.merge Used       Used)       = Used
-(STree.merge Free       (Both c d)) = (Both c d)
-(STree.merge (Both a b) Free)       = (Both a b)
-(STree.merge (Both a b) (Both c d)) = (Both (STree.merge a c) (STree.merge b d))
+// ToMap : Arr -> Map
+(ToMap Null)       = Free
+(ToMap (Leaf a))   = (Radix a)
+(ToMap (Node a b)) = (Merge (ToMap a) (ToMap b))
 
-// STree.make : NTree -> STree
-(STree.make Null)       = Free
-(STree.make (Leaf a))   = (STree.word a)
-(STree.make (Node a b)) = (STree.merge (STree.make a) (STree.make b))
+// ToArr : Map -> Arr
+(ToArr x Free) = Null
+(ToArr x Used) = (Leaf x)
+(ToArr x (Both a b)) =
+  let a = (ToArr (+ (* x 2) 0) a)
+  let b = (ToArr (+ (* x 2) 1) b)
+  (Node a b)
 
-// STree.back : STree -> NTree
-(STree.back t) = (STree.back.go 0 t)
-  (STree.back.go x Free) = Null
-  (STree.back.go x Used) = (Leaf x)
-  (STree.back.go x (Both a b)) =
-    let x = (<< x 1)
-    let y = (| x 1)
-    let a = (STree.back.go x a)
-    let b = (STree.back.go y b)
-    (Node a b)
+// Merge : Map -> Map -> Map
+(Merge Free       Free)       = Free
+(Merge Free       Used)       = Used
+(Merge Used       Free)       = Used
+(Merge Used       Used)       = Used
+(Merge Free       (Both c d)) = (Both c d)
+(Merge (Both a b) Free)       = (Both a b)
+(Merge (Both a b) (Both c d)) = (Both (Merge a c) (Merge b d))
 
-// STree.word : U60 -> STree
-(STree.word n) =
+// Radix : U60 -> Map
+(Radix n) =
   let r = Used
   let r = (U60.swap (& n 1) r Free)
   let r = (U60.swap (& n 2) r Free)
@@ -55,21 +52,21 @@
   let r = (U60.swap (& n 8388608) r Free)
   r
 
-// This is hardcoded by HVM:
+// HVM builtin:
 // (U60.swap 0 a b) = (Both a b)
 // (U60.swap n a b) = (Both b a)
 
-// Reverse : NTree -> NTree
+// Reverse : Arr -> Arr
 (Reverse Null)       = Null
 (Reverse (Leaf a))   = (Leaf a)
 (Reverse (Node a b)) = (Node (Reverse b) (Reverse a))
 
-// Sum : NTree -> U60
+// Sum : Arr -> U60
 (Sum Null)       = 0
 (Sum (Leaf x))   = x
 (Sum (Node a b)) = (+ (Sum a) (Sum b))
 
-// Gen : U60 -> NTree
+// Gen : U60 -> Arr
 (Gen n) = (Gen.go n 0)
   (Gen.go 0 x) = (Leaf x)
   (Gen.go n x) =
@@ -78,11 +75,4 @@
     let n = (- n 1)
     (Node (Gen.go n x) (Gen.go n y))
 
-(Main n) = (Sum (Sort (Reverse (Gen 24))))
-
-// STree.from_num : U60 -> STree
-//(STree.from_num n) = (STree.from_num.go 24 n Used)
-  //(STree.from_num.go 0 n r) = r
-  //(STree.from_num.go s n r) = (STree.from_num.go (- s 1) (>> n 1) (STree.from_num.mk (& n 1) r))
-  //(STree.from_num.mk 0 r)   = (Both r Free)
-  //(STree.from_num.mk 1 r)   = (Both Free r)
+(Main n) = (Sum (Sort (Reverse (Gen n))))
