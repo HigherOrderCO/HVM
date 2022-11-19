@@ -19,42 +19,9 @@ scale towards uncharted levels of performance.
 unstable bits, missing stuff, and many changes through this week!*
 
 Usage
------
+=====
 
-### 1. Install it
-
-First, install [Rust](https://www.rust-lang.org/). Then, type:
-
-```sh
-cargo install hvm
-```
-
-### 2. Create an HVM file
-
-HVM files look like untyped Haskell. Save the file below as `main.hvm`:
-
-```javascript
-// Creates a tree with `2^n` elements
-(Gen 0) = (Leaf 1)
-(Gen n) = (Node (Gen(- n 1)) (Gen(- n 1)))
-
-// Adds all elements of a tree
-(Sum (Leaf x))   = x
-(Sum (Node a b)) = (+ (Sum a) (Sum b))
-
-// Performs 2^n additions in parallel
-(Main n) = (Sum (Gen n))
-```
-
-### 3. Run it!
-
-```sh
-hvm run -f main.hvm "(Main 25)"
-```
-
-This will sum 2^25 numbers in parallel, using HVM's interpreter. To learn how to
-compile it, and much more, see the [guide/README.md](guide/README.md). To
-understand the technology behind it, check [guide/HOW.md](guide/HOW.md).
+Check the [guide](guide/README.md) for install instructions.
 
 Benchmarks
 ==========
