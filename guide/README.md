@@ -7,7 +7,9 @@ Installation
 First [install Rust](https://www.rust-lang.org/tools/install). Then, enter:
 
 ```bash
-cargo install hvm
+git clone https://github.com/kindelia/hvm
+cd hvm
+cargo install --path .
 ```
 
 This will install HVM's command-line interface. Make sure it worked with:
@@ -15,6 +17,8 @@ This will install HVM's command-line interface. Make sure it worked with:
 ```bash
 hvm --version
 ```
+
+You should see `hvm 1.0.0-beta`.
 
 Basic Usage
 -----------
