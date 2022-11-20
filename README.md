@@ -166,7 +166,7 @@ merge (Both a b) (Both c d) =
 On this example, we try a [Radix
 Sort](https://en.wikipedia.org/wiki/Radix_sort), based on merging immutable
 trees. This time, HVM's performance improves proportionally to the number of
-cores, allowing it to sort large lists **9x faster** than GHC! That's because
+cores. As such, in this test, it was able to sort large lists **9x faster** than GHC! That's because
 GHC is locked to a single thread, while HVM exploits the fact that tree-merging
 is *inherently parallel*. Of course, one could parallelize the Haskell version
 with `par` annotations, but that would require refactoring. Usually, doing so is
