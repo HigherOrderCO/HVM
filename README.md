@@ -172,7 +172,8 @@ is *inherently parallel*. Of course, one could parallelize the Haskell version
 with `par` annotations, but that would require refactoring. Usually, doing so is
 very hard and time-consuming. In some cases, it is even *impossible* to use all
 the available parallelism with `par` alone. HVM, on the other hands, will
-automatically distribute the workload evenly among all available cores.
+automatically distribute the workload evenly among all available cores, with
+no added programmer effort.
 
 
 Lambda Multiplication
