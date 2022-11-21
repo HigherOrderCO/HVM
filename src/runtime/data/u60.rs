@@ -19,7 +19,7 @@ pub fn add(a: U60, b: U60) -> U60 {
 
 #[inline(always)]
 pub fn sub(a: U60, b: U60) -> U60 {
-  return if a > b { a - b } else { b - a };
+  return if a >= b { a - b } else { 0x1000000000000000 - (b - a) };
 }
 
 #[inline(always)]
