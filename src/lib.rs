@@ -15,39 +15,36 @@ pub mod runtime;
 pub use language::{*};
 pub use runtime::{*};
 
-//// FIXME: what is the right way to export the definitions on api.rs as a lib?
+pub use runtime::{Ptr,
+  DP0, DP1, VAR, ARG,
+  ERA, LAM, APP, SUP,
+  CTR, FUN, OP2, U60, F60,
+  ADD, SUB, MUL, DIV,
+  MOD, AND, OR , XOR,
+  SHL, SHR, LTN, LTE,
+  EQL, GTE, GTN, NEQ,
+  get_tag,
+  get_ext,
+  get_val,
+  get_num,
+  get_loc,
+  CELLS_PER_KB,
+  CELLS_PER_MB,
+  CELLS_PER_GB,
+};
 
-//use wasm_bindgen::prelude::*;
-
-//pub use runtime::{Ptr,
-  //DP0, DP1, VAR, ARG,
-  //ERA, LAM, APP, SUP,
-  //CTR, FUN, OP2, NUM,
-  //ADD, SUB, MUL, DIV,
-  //MOD, AND, OR , XOR,
-  //SHL, SHR, LTN, LTE,
-  //EQL, GTE, GTN, NEQ,
-  //get_tag,
-  //get_ext,
-  //get_val,
-  //get_num,
-  //get_loc,
-  //CELLS_PER_KB,
-  //CELLS_PER_MB,
-  //CELLS_PER_GB,
-//};
-
-//pub use language::syntax::{
-  //Term,
-  //Term::Var, // TODO: add `global: bool`
-  //Term::Dup,
-  //Term::Let,
-  //Term::Lam,
-  //Term::App,
-  //Term::Ctr,
-  //Term::Num,
-  //Term::Op2,
-//};
+pub use language::syntax::{
+  Term,
+  Term::Var, // TODO: add `global: bool`
+  Term::Dup,
+  Term::Let,
+  Term::Lam,
+  Term::App,
+  Term::Ctr,
+  Term::U6O,
+  Term::F6O,
+  Term::Op2,
+};
 
 //// Helps with WASM debugging
 //macro_rules! log {
@@ -57,12 +54,6 @@ pub use runtime::{*};
 //}
 
 //#[wasm_bindgen]
-//pub struct Runtime {
-  //heap: runtime::Heap,
-  //prog: runtime::Program,
-  //book: language::rulebook::RuleBook,
-//}
-
 //pub fn make_call(func: &str, args: &[&str]) -> Result<language::syntax::Term, String> {
   //// TODO: redundant with `make_main_call`
   //let args = args.iter().map(|par| language::syntax::read_term(par).unwrap()).collect();
@@ -444,7 +435,7 @@ pub use runtime::{*};
 
 //}
 
-//// Methods that aren't compiled to JS
+// Methods that aren't compiled to JS
 //impl Runtime {
   ///// Allocates a new term, returns its location
   //pub fn alloc_term(&mut self, term: &language::syntax::Term) -> u64 {

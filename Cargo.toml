@@ -1,6 +1,6 @@
 [package]
 name = "hvm"
-version = "1.0.3-beta"
+version = "1.0.4-beta"
 edition = "2021"
 description = "A massively parallel functional runtime."
 repository = "https://github.com/Kindelia/HVM"
