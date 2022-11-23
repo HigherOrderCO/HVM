@@ -172,13 +172,13 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: KIND_TERM_U60,
     name: "Kind.Term.u60",
-    smap: &[false; 2],
+    smap: &[false; 1],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_F60,
     name: "Kind.Term.f60",
-    smap: &[false; 2],
+    smap: &[false; 1],
     funs: None,
   },
   Precomp {
