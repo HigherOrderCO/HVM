@@ -45,7 +45,7 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
         line(&mut precomp_els, 0, &format!(r#"      apply: {}_apply,"#, &build_name(&name)));
         line(&mut precomp_els, 0, &format!(r#"    }}),"#));
       } else {
-        line(&mut precomp_els, 0, &format!(r#"    funs : None,"#));
+        line(&mut precomp_els, 0, &format!(r#"    funs: None,"#));
       }
       line(&mut precomp_els, 0, &format!(r#"  }},"#));
     }

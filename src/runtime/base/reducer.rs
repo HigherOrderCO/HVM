@@ -130,7 +130,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                 break 'work;
               }
             }
-            FUN => {
+            FUN | CTR => {
               let fid = get_ext(term);
 //[[CODEGEN:FAST-VISIT]]//
               match &prog.funs.get(&fid) {
@@ -188,7 +188,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                   break 'apply;
                 }
               }
-              FUN => {
+              FUN | CTR => {
                 let fid = get_ext(term);
 //[[CODEGEN:FAST-APPLY]]//
                 match &prog.funs.get(&fid) {
