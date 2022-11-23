@@ -21,7 +21,7 @@
 (Merge Used       Used)       = Used
 (Merge Free       (Both c d)) = (Both c d)
 (Merge (Both a b) Free)       = (Both a b)
-(Merge (Both a b) (Both c d)) = (Both (Merge a c) (Merge b d))
+(Merge (Both a b) (Both c d)) = (BOTH (Merge a c) (Merge b d))
 
 // Radix : U60 -> Map
 (Radix n) =
@@ -52,10 +52,6 @@
   let r = (U60.swap (& n 8388608) r Free)
   r
 
-// HVM builtin:
-// (U60.swap 0 a b) = (Both a b)
-// (U60.swap n a b) = (Both b a)
-
 // Reverse : Arr -> Arr
 (Reverse Null)       = Null
 (Reverse (Leaf a))   = (Leaf a)
@@ -73,6 +69,11 @@
     let x = (<< x 1)
     let y = (| x 1)
     let n = (- n 1)
-    (Node (Gen.go n x) (Gen.go n y))
+    (NODE (Gen.go n x) (Gen.go n y))
+
+// Strict constructors
+(NODE !a !b) = (Node a b)
+(BOTH !a !b) = (Both a b)
+(LEAF !a)    = (Leaf a)
 
 (Main n) = (Sum (Sort (Reverse (Gen n))))

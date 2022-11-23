@@ -68,7 +68,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
       runtime::U60 => {}
       runtime::F60 => {}
       runtime::CTR | runtime::FUN => {
-        let arity = runtime::arity_of(&ctx.prog.arit, term);
+        let arity = runtime::arity_of(&ctx.prog.aris, term);
         for i in 0..arity {
           let arg = runtime::load_arg(&ctx.heap, term, i);
           gen_var_names(heap, prog, ctx, arg, depth + 1);
@@ -199,7 +199,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
       }
       runtime::CTR | runtime::FUN => {
         let func = runtime::get_ext(term);
-        let arit = runtime::arity_of(&ctx.prog.arit, term);
+        let arit = runtime::arity_of(&ctx.prog.aris, term);
         let mut args = Vec::new();
         for i in 0 .. arit {
           let arg = runtime::load_arg(&ctx.heap, term, i);
@@ -292,7 +292,7 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
           stack.push(runtime::load_arg(heap, term, 0));
         }
         runtime::CTR | runtime::FUN => {
-          let arity = runtime::arity_of(&prog.arit, term);
+          let arity = runtime::arity_of(&prog.aris, term);
           for i in (0..arity).rev() {
             stack.push(runtime::load_arg(heap, term, i));
           }
@@ -333,7 +333,7 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
           match runtime::get_tag(term) {
             runtime::CTR => {
               let func = runtime::get_ext(term);
-              let arit = runtime::arity_of(&prog.arit, term);
+              let arit = runtime::arity_of(&prog.aris, term);
               let mut args = Vec::new();
               for _ in 0..arit {
                 args.push(Box::new(output.pop().unwrap()));
@@ -343,7 +343,7 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
             },
             runtime::FUN => {
               let func = runtime::get_ext(term);
-              let arit = runtime::arity_of(&prog.arit, term);
+              let arit = runtime::arity_of(&prog.aris, term);
               let mut args = Vec::new();
               for _ in 0..arit {
                 args.push(Box::new(output.pop().unwrap()));
@@ -427,14 +427,14 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
               output.push(language::syntax::Term::F6O { numb });
             }
             runtime::CTR => {
-              let arit = runtime::arity_of(&prog.arit, term);
+              let arit = runtime::arity_of(&prog.aris, term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
                 stack.push(StackItem::Term(runtime::load_arg(heap, term, i)));
               }
             }
             runtime::FUN => {
-              let arit = runtime::arity_of(&prog.arit, term);
+              let arit = runtime::arity_of(&prog.aris, term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
                 stack.push(StackItem::Term(runtime::load_arg(heap, term, i)));

@@ -67,53 +67,53 @@ pub struct ApplyObj {
 
 pub enum Function {
   Interpreted {
-    arity: u64,
+    smap: Box<[bool]>,
     visit: VisitObj,
     apply: ApplyObj,
   },
   Compiled {
-    arity: u64,
+    smap: Box<[bool]>,
     visit: VisitFun,
     apply: ApplyFun,
   }
 }
 
 pub type Funs = U64Map<Function>;
-pub type Arit = U64Map<u64>;
+pub type Aris = U64Map<u64>;
 pub type Nams = U64Map<String>;
 
 pub struct Program {
   pub funs: Funs,
-  pub arit: Arit,
+  pub aris: Aris,
   pub nams: Nams,
 }
 
 impl Program {
   pub fn new() -> Program {
     let mut funs = U64Map::new();
-    let mut arit = U64Map::new();
+    let mut aris = U64Map::new();
     let mut nams = U64Map::new();
     // Adds the built-in functions
     for fid in 0 .. crate::runtime::precomp::PRECOMP_COUNT as usize {
       if let Some(precomp) = PRECOMP.get(fid) {
-        if let Some(funcs) = &precomp.funcs {
+        if let Some(fs) = &precomp.funs {
           funs.insert(fid as u64, Function::Compiled {
-            arity: precomp.arity as u64,
-            visit: funcs.visit,
-            apply: funcs.apply,
+            smap: precomp.smap.to_vec().into_boxed_slice(),
+            visit: fs.visit,
+            apply: fs.apply,
           });
         }
         nams.insert(fid as u64, precomp.name.to_string());
-        arit.insert(fid as u64, precomp.arity as u64);
+        aris.insert(fid as u64, precomp.smap.len() as u64);
       }
     }
-    return Program { funs, arit, nams };
+    return Program { funs, aris, nams };
   }
 
   pub fn add_book(&mut self, book: &language::rulebook::RuleBook) {
-    let funs = &mut gen_functions(&book);
-    let nams = &mut gen_names(&book);
-    let arit = &mut gen_arities(&book);
+    let funs : &mut Funs = &mut gen_functions(&book);
+    let nams : &mut Nams = &mut gen_names(&book);
+    let aris : &mut Aris = &mut U64Map::new();
     for (fid, fun) in funs.data.drain(0..).enumerate() {
       if let Some(fun) = fun {
         self.funs.insert(fid as u64, fun);
@@ -124,19 +124,13 @@ impl Program {
         self.nams.insert(fid as u64, nam.clone());
       }
     }
-    for (fid, ari) in arit.data.iter().enumerate() {
-      if let Some(ari) = ari {
-        self.arit.insert(fid as u64, *ari);
-      }
+    for (fid, smp) in &book.id_to_smap {
+      self.aris.insert(*fid as u64, smp.len() as u64);
     }
   }
 
   pub fn add_function(&mut self, name: String, function: Function) {
     self.nams.push(name);
-    self.arit.push(match &function {
-      Function::Interpreted { arity, .. } => *arity,
-      Function::Compiled { arity, .. } => *arity,
-    });
     self.funs.push(function);
   }
 }
@@ -216,11 +210,6 @@ pub fn get_global_name_misc(name: &str) -> Option<u64> {
 
 // todo: "dups" still needs to be moved out on `alloc_body` etc.
 pub fn build_function(book: &language::rulebook::RuleBook, fn_name: &str, rules: &[language::syntax::Rule]) -> Function {
-  let mut is_strict = if let language::syntax::Term::Ctr { name: _, ref args } = *rules[0].lhs {
-    vec![false; args.len()]
-  } else {
-    panic!("invalid left-hand side: {}", rules[0].lhs);
-  };
   let hoas = fn_name.starts_with("f$");
   let dynrules = rules.iter().filter_map(|rule| {
     if let language::syntax::Term::Ctr { ref name, ref args } = *rule.lhs {
@@ -228,13 +217,9 @@ pub fn build_function(book: &language::rulebook::RuleBook, fn_name: &str, rules:
       let mut vars = Vec::new();
       let mut inps = Vec::new();
       let mut free = Vec::new();
-      if args.len() != is_strict.len() {
-        panic!("inconsistent length of left-hand side on equation for '{}'.", name);
-      }
-      for ((i, arg), is_strict) in args.iter().enumerate().zip(is_strict.iter_mut()) {
+      for (i, arg) in args.iter().enumerate() {
         match &**arg {
           language::syntax::Term::Ctr { name, args } => {
-            *is_strict = true;
             cond.push(Ctr(*book.name_to_id.get(&*name).unwrap_or(&0), 0));
             free.push((i as u64, args.len() as u64));
             for (j, arg) in args.iter().enumerate() {
@@ -247,11 +232,9 @@ pub fn build_function(book: &language::rulebook::RuleBook, fn_name: &str, rules:
             }
           }
           language::syntax::Term::U6O { numb } => {
-            *is_strict = true;
             cond.push(U6O(*numb as u64));
           }
           language::syntax::Term::F6O { numb } => {
-            *is_strict = true;
             cond.push(F6O(*numb as u64));
           }
           language::syntax::Term::Var { name } => {
@@ -274,17 +257,20 @@ pub fn build_function(book: &language::rulebook::RuleBook, fn_name: &str, rules:
     }
   }).collect();
 
-  let arity = is_strict.len() as u64;
-  let mut stricts = Vec::new();
-  for (i, is_strict) in is_strict.iter().enumerate() {
+  let fnid = book.name_to_id.get(fn_name).unwrap();
+  let smap = book.id_to_smap.get(fnid).unwrap().clone().into_boxed_slice();
+
+  let strict_map = smap.to_vec();
+  let mut strict_idx = Vec::new();
+  for (i, is_strict) in smap.iter().enumerate() {
     if *is_strict {
-      stricts.push(i as u64);
+      strict_idx.push(i as u64);
     }
   }
 
   Function::Interpreted {
-    arity,
-    visit: VisitObj { strict_map: is_strict, strict_idx: stricts },
+    smap,
+    visit: VisitObj { strict_map, strict_idx },
     apply: ApplyObj { rules: dynrules },
   }
 }
@@ -294,56 +280,6 @@ pub fn hash<T: std::hash::Hash>(t: &T) -> u64 {
   let mut s = std::collections::hash_map::DefaultHasher::new();
   t.hash(&mut s);
   s.finish()
-}
-
-pub fn gen_arities(rb: &language::rulebook::RuleBook) -> U64Map<u64> {
-  // todo: checking arity consistency would be nice, but where?
-  fn find_arities(rb: &language::rulebook::RuleBook, arit: &mut U64Map<u64>, term: &language::syntax::Term) {
-    match term {
-      language::syntax::Term::Var { .. } => {}
-      language::syntax::Term::Dup { expr, body, .. } => {
-        find_arities(rb, arit, expr);
-        find_arities(rb, arit, body);
-      }
-      language::syntax::Term::Sup { val0, val1 } => {
-        find_arities(rb, arit, val0);
-        find_arities(rb, arit, val1);
-      }
-      language::syntax::Term::Lam { body, .. } => {
-        find_arities(rb, arit, body);
-      }
-      language::syntax::Term::Let { expr, body, .. } => {
-        find_arities(rb, arit, expr);
-        find_arities(rb, arit, body);
-      }
-      language::syntax::Term::App { func, argm } => {
-        find_arities(rb, arit, func);
-        find_arities(rb, arit, argm);
-      }
-      language::syntax::Term::Ctr { name, args } => {
-        if let Some(id) = rb.name_to_id.get(name) {
-          arit.insert(*id, args.len() as u64);
-          for arg in args {
-            find_arities(rb, arit, arg);
-          }
-        }
-      }
-      language::syntax::Term::U6O { .. } => {}
-      language::syntax::Term::F6O { .. } => {}
-      language::syntax::Term::Op2 { val0, val1, .. } => {
-        find_arities(rb, arit, val0);
-        find_arities(rb, arit, val1);
-      }
-    }
-  }
-  let mut arit: U64Map<u64> = U64Map::new();
-  for rules_info in rb.rule_group.values() {
-    for rule in &rules_info.1 {
-      find_arities(rb, &mut arit, &rule.lhs);
-      find_arities(rb, &mut arit, &rule.rhs);
-    }
-  }
-  return arit;
 }
 
 pub fn gen_functions(book: &language::rulebook::RuleBook) -> U64Map<Function> {
@@ -442,7 +378,7 @@ pub fn term_to_core(book: &language::rulebook::RuleBook, term: &language::syntax
       language::syntax::Term::Ctr { name, args } => {
         let term_func = *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
         let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
-        if *book.ctr_is_cal.get(name).unwrap_or(&false) {
+        if *book.ctr_is_fun.get(name).unwrap_or(&false) {
           Core::Fun { func: term_func, args: term_args }
         } else {
           Core::Ctr { func: term_func, args: term_args }

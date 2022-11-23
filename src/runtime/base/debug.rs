@@ -99,7 +99,7 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
         find_lets(heap, prog, load_arg(heap, term, 1), lets, kinds, names, count);
       }
       CTR | FUN => {
-        let arity = arity_of(&prog.arit, term);
+        let arity = arity_of(&prog.aris, term);
         for i in 0..arity {
           find_lets(heap, prog, load_arg(heap, term, i), lets, kinds, names, count);
         }
@@ -187,7 +187,7 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
       }
       CTR | FUN => {
         let func = get_ext(term);
-        let arit = arity_of(&prog.arit, term);
+        let arit = arity_of(&prog.aris, term);
         let args: Vec<String> = (0..arit).map(|i| go(heap, prog, load_arg(heap, term, i), names, focus)).collect();
         let name = &prog.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
         format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())

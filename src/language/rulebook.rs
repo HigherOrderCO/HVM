@@ -9,17 +9,17 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 // - rule_group: sanitized rules grouped by function
 // - id_to_name: maps ctr ids to names
 // - name_to_id: maps ctr names to ids
-// - ctr_is_cal: true if a ctr is used as a function
+// - ctr_is_fun: true if a ctr is used as a function
 // A sanitized rule has all its variables renamed to have unique names.
 // Variables that are never used are renamed to "*".
 #[derive(Clone, Debug)]
 pub struct RuleBook {
   pub rule_group: HashMap<String, RuleGroup>,
   pub name_count: u64,
-  pub id_to_name: HashMap<u64, String>,
   pub name_to_id: HashMap<String, u64>,
-  pub id_to_arit: HashMap<u64, u64>,
-  pub ctr_is_cal: HashMap<String, bool>,
+  pub id_to_smap: HashMap<u64, Vec<bool>>,
+  pub id_to_name: HashMap<u64, String>,
+  pub ctr_is_fun: HashMap<String, bool>,
 }
 
 pub type RuleGroup = (usize, Vec<language::syntax::Rule>);
@@ -30,46 +30,46 @@ pub fn new_rulebook() -> RuleBook {
     rule_group: HashMap::new(),
     name_count: 0,
     name_to_id: HashMap::new(),
+    id_to_smap: HashMap::new(),
     id_to_name: HashMap::new(),
-    id_to_arit: HashMap::new(),
-    ctr_is_cal: HashMap::new(),
+    ctr_is_fun: HashMap::new(),
   };
   for precomp in runtime::PRECOMP {
     book.name_count = book.name_count + 1;
     book.name_to_id.insert(precomp.name.to_string(), precomp.id);
     book.id_to_name.insert(precomp.id, precomp.name.to_string());
-    book.id_to_arit.insert(precomp.id, precomp.arity as u64);
-    book.ctr_is_cal.insert(precomp.name.to_string(), precomp.funcs.is_some());
+    book.id_to_smap.insert(precomp.id, precomp.smap.to_vec());
+    book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
   }
   return book;
 }
 
 // Adds a group to a rulebook
 pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
-  fn register_names_and_arities(book: &mut RuleBook, term: &language::syntax::Term) {
+  fn register(book: &mut RuleBook, term: &language::syntax::Term, lhs_top: bool) {
     match term {
       language::syntax::Term::Dup { expr, body, .. } => {
-        register_names_and_arities(book, expr);
-        register_names_and_arities(book, body);
+        register(book, expr, false);
+        register(book, body, false);
       }
       language::syntax::Term::Sup { val0, val1 } => {
-        register_names_and_arities(book, val0);
-        register_names_and_arities(book, val1);
+        register(book, val0, false);
+        register(book, val1, false);
       }
       language::syntax::Term::Let { expr, body, .. } => {
-        register_names_and_arities(book, expr);
-        register_names_and_arities(book, body);
+        register(book, expr, false);
+        register(book, body, false);
       }
       language::syntax::Term::Lam { body, .. } => {
-        register_names_and_arities(book, body);
+        register(book, body, false);
       }
       language::syntax::Term::App { func, argm, .. } => {
-        register_names_and_arities(book, func);
-        register_names_and_arities(book, argm);
+        register(book, func, false);
+        register(book, argm, false);
       }
       language::syntax::Term::Op2 { val0, val1, .. } => {
-        register_names_and_arities(book, val0);
-        register_names_and_arities(book, val1);
+        register(book, val0, false);
+        register(book, val1, false);
       }
       term@language::syntax::Term::Ctr { name, args } => {
         // Registers id
@@ -85,17 +85,34 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
             *id
           }
         };
-        // Registers arity
-        if let Some(arit) = book.id_to_arit.get(&id) {
-          if *arit != args.len() as u64 {
-            panic!("Incorrect arity on {}.", term);
+        // Registers smap
+        match book.id_to_smap.get(&id) {
+          None => {
+            book.id_to_smap.insert(id, vec![false; args.len()]);
           }
-        } else {
-          book.id_to_arit.insert(id, args.len() as u64);
+          Some(smap) => {
+            if smap.len() != args.len() {
+              panic!("inconsistent arity on: '{}'", term);
+            }
+          }
+        }
+        // Force strictness when pattern-matching
+        if lhs_top {
+          for i in 0 .. args.len() {
+            let is_strict = match *args[i] {
+              language::syntax::Term::Ctr { .. } => true,
+              language::syntax::Term::U6O { .. } => true,
+              language::syntax::Term::F6O { .. } => true,
+              _ => false,
+            };
+            if is_strict {
+              book.id_to_smap.get_mut(&id).unwrap()[i] = true;
+            }
+          }
         }
         // Recurses
         for arg in args {
-          register_names_and_arities(book, arg);
+          register(book, arg, false);
         }
       }
       _ => (),
@@ -105,12 +122,12 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
   // Inserts the group on the book
   book.rule_group.insert(name.to_string(), group.clone());
 
-  // Builds its metadata (name_to_id, id_to_name, ctr_is_cal)
+  // Builds its metadata (name_to_id, id_to_name, ctr_is_fun)
   for rule in &group.1 {
-    register_names_and_arities(book, &rule.lhs);
-    register_names_and_arities(book, &rule.rhs);
+    register(book, &rule.lhs, true);
+    register(book, &rule.rhs, false);
     if let language::syntax::Term::Ctr { ref name, .. } = *rule.lhs {
-      book.ctr_is_cal.insert(name.clone(), true);
+      book.ctr_is_fun.insert(name.clone(), true);
     }
   }
 }
@@ -126,6 +143,20 @@ pub fn gen_rulebook(file: &language::syntax::File) -> RuleBook {
   // Adds each group
   for (name, group) in groups.iter() {
     add_group(&mut book, name, group);
+  }
+
+  // Includes SMaps
+  for (rule_name, rule_smap) in &file.smaps {
+    let id = book.name_to_id.get(rule_name).unwrap();
+    if book.id_to_smap.get(id).is_none() {
+      book.id_to_smap.insert(*id, vec![false; rule_smap.len()]);
+    }
+    let smap = book.id_to_smap.get_mut(id).unwrap();
+    for i in 0 .. smap.len() {
+      if rule_smap[i] {
+        smap[i] = true;
+      }
+    }
   }
 
   book
@@ -617,13 +648,13 @@ mod tests {
       assert_eq!(*id_to_compare, id);
     }
 
-    // ctr_is_cal testing
+    // ctr_is_fun testing
     // expected key exist
-    assert!(rulebook.ctr_is_cal.contains_key("Double"));
+    assert!(rulebook.ctr_is_fun.contains_key("Double"));
     // contains expected number of keys
-    assert_eq!(rulebook.ctr_is_cal.len(), 1);
+    assert_eq!(rulebook.ctr_is_fun.len(), 1);
     // key contains expected value
-    assert!(*rulebook.ctr_is_cal.get("Double").unwrap());
+    assert!(*rulebook.ctr_is_fun.get("Double").unwrap());
   }
 }
 

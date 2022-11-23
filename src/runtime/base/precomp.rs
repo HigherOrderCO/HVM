@@ -4,16 +4,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 // Precomps
 // --------
 
-pub struct PrecompFns {
+pub struct PrecompFuns {
   pub visit: VisitFun,
   pub apply: ApplyFun,
 }
 
 pub struct Precomp {
-  pub id    : u64,
-  pub name  : &'static str,
-  pub arity : usize,
-  pub funcs : Option<PrecompFns>,
+  pub id: u64,
+  pub name: &'static str,
+  pub smap: &'static [bool],
+  pub funs: Option<PrecompFuns>,
 }
 
 pub const STRING_NIL : u64 = 0;
@@ -52,140 +52,140 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: STRING_NIL,
     name: "String.nil",
-    arity: 0,
-    funcs: None,
+    smap: &[false; 0],
+    funs: None,
   },
   Precomp {
     id: STRING_CONS,
     name: "String.cons",
-    arity: 2,
-    funcs: None,
+    smap: &[false; 2],
+    funs: None,
   },
   Precomp {
     id: BOTH,
     name: "Both",
-    arity: 2,
-    funcs: None,
+    smap: &[false; 2],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT0,
     name: "Kind.Term.ct0",
-    arity: 2,
-    funcs: None,
+    smap: &[false; 2],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT1,
     name: "Kind.Term.ct1",
-    arity: 3,
-    funcs: None,
+    smap: &[false; 3],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT2,
     name: "Kind.Term.ct2",
-    arity: 4,
-    funcs: None,
+    smap: &[false; 4],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT3,
     name: "Kind.Term.ct3",
-    arity: 5,
-    funcs: None,
+    smap: &[false; 5],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT4,
     name: "Kind.Term.ct4",
-    arity: 6,
-    funcs: None,
+    smap: &[false; 6],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT5,
     name: "Kind.Term.ct5",
-    arity: 7,
-    funcs: None,
+    smap: &[false; 7],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT6,
     name: "Kind.Term.ct6",
-    arity: 8,
-    funcs: None,
+    smap: &[false; 8],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT7,
     name: "Kind.Term.ct7",
-    arity: 9,
-    funcs: None,
+    smap: &[false; 9],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT8,
     name: "Kind.Term.ct8",
-    arity: 10,
-    funcs: None,
+    smap: &[false; 10],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CT9,
     name: "Kind.Term.ct9",
-    arity: 11,
-    funcs: None,
+    smap: &[false; 11],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CTA,
     name: "Kind.Term.ctA",
-    arity: 12,
-    funcs: None,
+    smap: &[false; 12],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CTB,
     name: "Kind.Term.ctB",
-    arity: 13,
-    funcs: None,
+    smap: &[false; 13],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CTC,
     name: "Kind.Term.ctC",
-    arity: 14,
-    funcs: None,
+    smap: &[false; 14],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CTD,
     name: "Kind.Term.ctD",
-    arity: 15,
-    funcs: None,
+    smap: &[false; 15],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CTE,
     name: "Kind.Term.ctE",
-    arity: 16,
-    funcs: None,
+    smap: &[false; 16],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CTF,
     name: "Kind.Term.ctF",
-    arity: 17,
-    funcs: None,
+    smap: &[false; 17],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_CTG,
     name: "Kind.Term.ctG",
-    arity: 18,
-    funcs: None,
+    smap: &[false; 18],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_U60,
     name: "Kind.Term.u60",
-    arity: 2,
-    funcs: None,
+    smap: &[false; 2],
+    funs: None,
   },
   Precomp {
     id: KIND_TERM_F60,
     name: "Kind.Term.f60",
-    arity: 2,
-    funcs: None,
+    smap: &[false; 2],
+    funs: None,
   },
   Precomp {
     id: U60_IF,
     name: "U60.if",
-    arity: 3,
-    funcs: Some(PrecompFns {
+    smap: &[true, false, false],
+    funs: Some(PrecompFuns {
       visit: u60_if_visit,
       apply: u60_if_apply,
     }),
@@ -193,8 +193,8 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: U60_SWAP,
     name: "U60.swap",
-    arity: 3,
-    funcs: Some(PrecompFns {
+    smap: &[true, false, false],
+    funs: Some(PrecompFuns {
       visit: u60_swap_visit,
       apply: u60_swap_apply,
     }),
@@ -202,8 +202,8 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: HVM_LOG,
     name: "HVM.log",
-    arity: 2,
-    funcs: Some(PrecompFns {
+    smap: &[false; 2],
+    funs: Some(PrecompFuns {
       visit: hvm_log_visit,
       apply: hvm_log_apply,
     }),
@@ -211,8 +211,8 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: HVM_QUERY,
     name: "HVM.query",
-    arity: 1,
-    funcs: Some(PrecompFns {
+    smap: &[false; 1],
+    funs: Some(PrecompFuns {
       visit: hvm_query_visit,
       apply: hvm_query_apply,
     }),
@@ -220,8 +220,8 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: HVM_PRINT,
     name: "HVM.print",
-    arity: 2,
-    funcs: Some(PrecompFns {
+    smap: &[false; 2],
+    funs: Some(PrecompFuns {
       visit: hvm_print_visit,
       apply: hvm_print_apply,
     }),
@@ -229,8 +229,8 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: HVM_SLEEP,
     name: "HVM.sleep",
-    arity: 2,
-    funcs: Some(PrecompFns {
+    smap: &[false; 2],
+    funs: Some(PrecompFuns {
       visit: hvm_sleep_visit,
       apply: hvm_sleep_apply,
     }),
@@ -238,8 +238,8 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: HVM_STORE,
     name: "HVM.store",
-    arity: 3,
-    funcs: Some(PrecompFns {
+    smap: &[false; 3],
+    funs: Some(PrecompFuns {
       visit: hvm_store_visit,
       apply: hvm_store_apply,
     }),
@@ -247,8 +247,8 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: HVM_LOAD,
     name: "HVM.load",
-    arity: 2,
-    funcs: Some(PrecompFns {
+    smap: &[false; 2],
+    funs: Some(PrecompFuns {
       visit: hvm_load_visit,
       apply: hvm_load_apply,
     }),
@@ -279,21 +279,21 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
   let arg1 = load_arg(ctx.heap, ctx.term, 1);
   let arg2 = load_arg(ctx.heap, ctx.term, 2);
   if get_tag(arg0) == SUP {
-    fun::superpose(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, arg0, 0);
+    fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
   }
   if (get_tag(arg0) == U60) {
     if (get_num(arg0) == 0) {
       inc_cost(ctx.heap, ctx.tid);
       let done = arg2;
       link(ctx.heap, *ctx.host, done);
-      collect(ctx.heap, &ctx.prog.arit, ctx.tid, arg1);
+      collect(ctx.heap, &ctx.prog.aris, ctx.tid, arg1);
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     } else {
       inc_cost(ctx.heap, ctx.tid);
       let done = arg1;
       link(ctx.heap, *ctx.host, done);
-      collect(ctx.heap, &ctx.prog.arit, ctx.tid, arg2);
+      collect(ctx.heap, &ctx.prog.aris, ctx.tid, arg2);
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     }
@@ -322,7 +322,7 @@ pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
   let arg1 = load_arg(ctx.heap, ctx.term, 1);
   let arg2 = load_arg(ctx.heap, ctx.term, 2);
   if get_tag(arg0) == SUP {
-    fun::superpose(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, arg0, 0);
+    fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
   }
   if (get_tag(arg0) == U60) {
     if (get_num(arg0) == 0) {
@@ -360,7 +360,7 @@ fn hvm_log_apply(ctx: ReduceCtx) -> bool {
   let code = crate::language::readback::as_code(ctx.heap, ctx.prog, get_loc(ctx.term, 0));
   println!("{}", code);
   link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 1));
-  collect(ctx.heap, &ctx.prog.arit, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
+  collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   return true;
 }
@@ -405,7 +405,7 @@ fn hvm_print_apply(ctx: ReduceCtx) -> bool {
     println!("{}", text);
   }
   link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 1));
-  collect(ctx.heap, &ctx.prog.arit, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
+  collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   return true;
 }
@@ -442,8 +442,8 @@ fn hvm_store_apply(ctx: ReduceCtx) -> bool {
         //free(ctx.heap, 0, get_loc(ctx.term, 0), 2);
         let done = load_arg(ctx.heap, ctx.term, 2);
         link(ctx.heap, *ctx.host, done);
-        collect(ctx.heap, &ctx.prog.arit, ctx.tid, load_arg(ctx.heap, ctx.term, 0));
-        collect(ctx.heap, &ctx.prog.arit, ctx.tid, load_arg(ctx.heap, ctx.term, 1));
+        collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_arg(ctx.heap, ctx.term, 0));
+        collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_arg(ctx.heap, ctx.term, 1));
         free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
         return true;
       }

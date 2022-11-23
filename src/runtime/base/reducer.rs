@@ -134,14 +134,14 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
               let fid = get_ext(term);
 //[[CODEGEN:FAST-VISIT]]//
               match &prog.funs.get(&fid) {
-                Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                Some(Function::Interpreted { smap: fn_smap, visit: fn_visit, apply: fn_apply }) => {
                   if fun::visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }, &fn_visit.strict_idx) {
                     continue 'visit;
                   } else {
                     break 'visit;
                   }
                 }
-                Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                Some(Function::Compiled { smap: fn_smap, visit: fn_visit, apply: fn_apply }) => {
                   if fn_visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                     continue 'visit;
                   } else {
@@ -192,14 +192,14 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                 let fid = get_ext(term);
 //[[CODEGEN:FAST-APPLY]]//
                 match &prog.funs.get(&fid) {
-                  Some(Function::Interpreted { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
-                    if fun::apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }, fid, *fn_arity, fn_visit, fn_apply) {
+                  Some(Function::Interpreted { smap: fn_smap, visit: fn_visit, apply: fn_apply }) => {
+                    if fun::apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }, fid, fn_visit, fn_apply) {
                       continue 'work;
                     } else {
                       break 'apply;
                     }
                   }
-                  Some(Function::Compiled { arity: fn_arity, visit: fn_visit, apply: fn_apply }) => {
+                  Some(Function::Compiled { smap: fn_smap, visit: fn_visit, apply: fn_apply }) => {
                     if fn_apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
                       continue 'work;
                     } else {
@@ -305,7 +305,7 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut
         rec_locs.push(get_loc(term, 2));
       }
       CTR | FUN => {
-        let arity = arity_of(&prog.arit, term);
+        let arity = arity_of(&prog.aris, term);
         for i in 0 .. arity {
           rec_locs.push(get_loc(term, i));
         }

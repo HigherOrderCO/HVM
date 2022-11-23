@@ -47,12 +47,12 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
 }
 
 #[inline(always)]
-pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &ApplyObj) -> bool {
+pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bool {
   // Reduces function superpositions
   for (n, is_strict) in visit.strict_map.iter().enumerate() {
     let n = n as u64;
     if *is_strict && get_tag(load_arg(ctx.heap, ctx.term, n)) == SUP {
-      superpose(ctx.heap, &ctx.prog.arit, ctx.tid, *ctx.host, ctx.term, load_arg(ctx.heap, ctx.term, n), n);
+      superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, load_arg(ctx.heap, ctx.term, n), n);
       return true;
     }
   }
@@ -97,7 +97,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &App
               // Matches constructor labels
               let is_ctr
                 =  get_tag(load_arg(ctx.heap, ctx.term, i)) == CTR
-                && arity_of(&ctx.prog.arit, load_arg(ctx.heap, ctx.term, i)) == 0;
+                && arity_of(&ctx.prog.aris, load_arg(ctx.heap, ctx.term, i)) == 0;
 
               // Matches KIND_ctx.term numbers and constructors
               let is_hoas_ctr_num
@@ -134,7 +134,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &App
       // Collects unused variables
       for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
         if *erase {
-          collect(ctx.heap, &ctx.prog.arit, ctx.tid, get_var(ctx.heap, ctx.term, var));
+          collect(ctx.heap, &ctx.prog.aris, ctx.tid, get_var(ctx.heap, ctx.term, var));
         }
       }
 
@@ -142,7 +142,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &App
       for (i, arity) in &rule.free {
         free(ctx.heap, ctx.tid, get_loc(load_arg(ctx.heap, ctx.term, *i as u64), 0), *arity);
       }
-      free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), arity);
+      free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), arity_of(&ctx.prog.aris, fid));
 
       return true;
     }
@@ -152,9 +152,9 @@ pub fn apply(ctx: ReduceCtx, fid: u64, arity: u64, visit: &VisitObj, apply: &App
 }
 
 #[inline(always)]
-pub fn superpose(heap: &Heap, arit: &Arit, tid: usize, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr {
+pub fn superpose(heap: &Heap, aris: &Aris, tid: usize, host: u64, term: Ptr, argn: Ptr, n: u64) -> Ptr {
   inc_cost(heap, tid);
-  let arit = arity_of(arit, term);
+  let arit = arity_of(aris, term);
   let func = get_ext(term);
   let fun0 = get_loc(term, 0);
   let fun1 = alloc(heap, tid, arit);

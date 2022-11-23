@@ -4,8 +4,8 @@ import Data.Word
 import Data.Bits
 import System.Environment
 
-data Arr = Null | Leaf Word64 | Node Arr Arr deriving Show
-data Map = Free | Used        | Both Map Map deriving Show
+data Arr = Null | Leaf !Word64 | Node Arr Arr deriving Show
+data Map = Free | Used         | Both !Map !Map deriving Show
 
 sort :: Arr -> Arr
 sort t = toArr 0 (toMap t)

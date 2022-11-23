@@ -39,11 +39,17 @@ pub struct Rule {
   pub rhs: Box<Term>,
 }
 
+// SMap
+// ----
+
+type SMap = (String, Vec<bool>);
+
 // File
 // ----
 
 pub struct File {
   pub rules: Vec<Rule>,
+  pub smaps: Vec<SMap>,
 }
 
 // Stringifier
@@ -537,30 +543,35 @@ pub fn parse_if_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>>
   );
 }
 
+pub fn parse_bng(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
+  return parser::guard(parser::text_parser("!"), Box::new(|state| {
+    let (state, _)    = parser::consume("!", state)?;
+    let (state, term) = parse_term(state)?;
+    Ok((state, term))
+  }), state);
+}
+
 pub fn parse_term(state: parser::State) -> parser::Answer<Box<Term>> {
-  parser::grammar(
-    "Term",
-    &[
-      Box::new(parse_let),
-      Box::new(parse_dup),
-      Box::new(parse_lam),
-      Box::new(parse_ctr),
-      Box::new(parse_op2),
-      Box::new(parse_app),
-      Box::new(parse_sup),
-      Box::new(parse_num),
-      Box::new(parse_sym_sugar),
-      Box::new(parse_chr_sugar),
-      Box::new(parse_str_sugar),
-      Box::new(parse_lst_sugar),
-      Box::new(parse_if_sugar),
-      Box::new(parse_ask_sugar_named),
-      Box::new(parse_ask_sugar_anon),
-      Box::new(parse_var),
-      Box::new(|state| Ok((state, None))),
-    ],
-    state,
-  )
+  parser::grammar("Term", &[
+    Box::new(parse_let),
+    Box::new(parse_dup),
+    Box::new(parse_lam),
+    Box::new(parse_ctr),
+    Box::new(parse_op2),
+    Box::new(parse_app),
+    Box::new(parse_sup),
+    Box::new(parse_num),
+    Box::new(parse_sym_sugar),
+    Box::new(parse_chr_sugar),
+    Box::new(parse_str_sugar),
+    Box::new(parse_lst_sugar),
+    Box::new(parse_if_sugar),
+    Box::new(parse_bng),
+    Box::new(parse_ask_sugar_named),
+    Box::new(parse_ask_sugar_anon),
+    Box::new(parse_var),
+    Box::new(|state| Ok((state, None))),
+  ], state)
 }
 
 pub fn parse_rule(state: parser::State) -> parser::Answer<Option<Rule>> {
@@ -576,24 +587,44 @@ pub fn parse_rule(state: parser::State) -> parser::Answer<Option<Rule>> {
   );
 }
 
+pub fn parse_smap(state: parser::State) -> parser::Answer<Option<SMap>> {
+  pub fn parse_stct(state: parser::State) -> parser::Answer<bool> {
+    let (state, stct) = parser::text("!", state)?;
+    let (state, _)    = parse_term(state)?;
+    Ok((state, stct))
+  }
+  let (state, init) = parser::text("(", state)?;
+  if init {
+    let (state, name) = parser::name1(state)?;
+    let (state, args) = parser::until(parser::text_parser(")"), Box::new(parse_stct), state)?;
+    return Ok((state, Some((name, args))));
+  } else {
+    return Ok((state, None));
+  }
+}
+
 pub fn parse_file(state: parser::State) -> parser::Answer<File> {
   let mut rules = Vec::new();
+  let mut smaps = Vec::new();
   let mut state = state;
   loop {
     let (new_state, done) = parser::done(state)?;
     if done {
       break;
     }
+    let (_, smap) = parse_smap(new_state)?;
+    if let Some(smap) = smap {
+      smaps.push(smap);
+    }
     let (new_state, rule) = parse_rule(new_state)?;
     if let Some(rule) = rule {
       rules.push(rule);
-    } else {
-      return parser::expected("definition", 1, state);
+      state = new_state;
+      continue;
     }
-    state = new_state;
+    return parser::expected("declaration", 1, state);
   }
-
-  Ok((state, File { rules }))
+  Ok((state, File { rules, smaps }))
 }
 
 pub fn read_term(code: &str) -> Result<Box<Term>, String> {
