@@ -69,11 +69,11 @@
     let x = (<< x 1)
     let y = (| x 1)
     let n = (- n 1)
-    (NODE (Gen.go n x) (Gen.go n y))
+    (Node (Gen.go n x) (Gen.go n y))
 
 // Strict constructors
-(NODE !a !b) = (Node a b)
 (BOTH !a !b) = (Both a b)
-(LEAF !a)    = (Leaf a)
+//(NODE !a !b) = (Node a b)
+//(LEAF !a)    = (Leaf a)
 
 (Main n) = (Sum (Sort (Reverse (Gen n))))
