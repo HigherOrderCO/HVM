@@ -197,7 +197,7 @@ pub struct LocalVars {
 pub struct Heap {
   pub tids: usize,
   pub node: Box<[AtomicU64]>,
-  pub lock: Box<[AtomicU8]>,
+  pub lock: Box<[AtomicU64]>,
   pub lvar: Box<[CachePadded<LocalVars>]>,
   pub vstk: Box<[VisitQueue]>,
   pub aloc: Box<[Box<[AtomicU64]>]>,
@@ -385,10 +385,6 @@ pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
 // Heap Constructors
 // -----------------
 
-pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
-  return unsafe { Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice()))) }
-}
-
 pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
   return unsafe { Box::from_raw(AtomicU64::from_mut_slice(Box::leak(vec![0u64; size].into_boxed_slice()))) }
 }
@@ -411,7 +407,7 @@ pub fn new_heap(size: usize, tids: usize) -> Heap {
     }))
   }
   let node = new_atomic_u64_array(size);
-  let lock = new_atomic_u8_array(size);
+  let lock = new_atomic_u64_array(size);
   let lvar = lvar.into_boxed_slice();
   let rbag = RedexBag::new(tids);
   let aloc = (0 .. tids).map(|x| new_atomic_u64_array(1 << 20)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
@@ -514,16 +510,21 @@ pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr
 // Locks
 // -----
 
-pub const LOCK_OPEN : u8 = 0xFF;
+type Lock = u64;
 
-pub fn acquire_lock(heap: &Heap, tid: usize, term: Ptr) -> Result<u8, u8> {
+pub fn acquire_lock(heap: &Heap, term: Ptr) -> Result<u64, u64> {
   let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
-  locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
+  locker.compare_exchange_weak(0, u64::MAX, Ordering::Acquire, Ordering::Relaxed)
 }
 
-pub fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
+pub fn release_lock(heap: &Heap, term: Ptr) -> u64 {
   let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
-  locker.store(LOCK_OPEN, Ordering::Release)
+  locker.swap(0, Ordering::Release)
+}
+
+pub fn annotate_lock(heap: &Heap, term: Ptr, redex: u64) -> bool {
+  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
+  locker.compare_exchange_weak(u64::MAX, redex, Ordering::Relaxed, Ordering::Relaxed).is_ok()
 }
 
 // Garbage Collection
@@ -601,22 +602,22 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
     match get_tag(term) {
       DP0 => {
         link(heap, get_loc(term, 0), Era());
-        if acquire_lock(heap, tid, term).is_ok() {
+        if acquire_lock(heap, term).is_ok() {
           if get_tag(load_arg(heap, term, 1)) == ERA {
             collect(heap, arit, tid, load_arg(heap, term, 2));
             free(heap, tid, get_loc(term, 0), 3);
           }
-          release_lock(heap, tid, term);
+          release_lock(heap, term);
         }
       }
       DP1 => {
         link(heap, get_loc(term, 1), Era());
-        if acquire_lock(heap, tid, term).is_ok() {
+        if acquire_lock(heap, term).is_ok() {
           if get_tag(load_arg(heap, term, 0)) == ERA {
             collect(heap, arit, tid, load_arg(heap, term, 2));
             free(heap, tid, get_loc(term, 0), 3);
           }
-          release_lock(heap, tid, term);
+          release_lock(heap, term);
         }
       }
       VAR => {

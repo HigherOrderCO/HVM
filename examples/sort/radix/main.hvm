@@ -76,4 +76,13 @@
 //(NODE !a !b) = (Node a b)
 //(LEAF !a)    = (Leaf a)
 
-(Main n) = (Sum (Sort (Reverse (Gen n))))
+(Main n) = (Sum (Sort (Reverse (Gen 23))))
+
+
+
+
+
+
+
+
+
