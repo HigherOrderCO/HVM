@@ -210,7 +210,7 @@ pub fn get_global_name_misc(name: &str) -> Option<u64> {
 
 // todo: "dups" still needs to be moved out on `alloc_body` etc.
 pub fn build_function(book: &language::rulebook::RuleBook, fn_name: &str, rules: &[language::syntax::Rule]) -> Function {
-  let hoas = fn_name.starts_with("f$");
+  let hoas = fn_name.starts_with("F$");
   let dynrules = rules.iter().filter_map(|rule| {
     if let language::syntax::Term::Ctr { ref name, ref args } = *rule.lhs {
       let mut cond = Vec::new();
