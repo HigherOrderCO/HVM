@@ -181,7 +181,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           runtime::GTE => language::syntax::Oper::Gte,
           runtime::GTN => language::syntax::Oper::Gtn,
           runtime::NEQ => language::syntax::Oper::Neq,
-          _       => panic!("unknown operation"),
+          _            => panic!("unknown operation"),
         };
         let val0 = runtime::load_arg(&ctx.heap, term, 0);
         let val1 = runtime::load_arg(&ctx.heap, term, 1);

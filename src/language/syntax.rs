@@ -396,7 +396,7 @@ pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
         hasher.write(name.as_bytes());
         hasher.finish()
       };
-      Ok((state, Box::new(Term::U6O { numb: hash })))
+      Ok((state, Box::new(Term::U6O { numb: u60::new(hash) })))
     }),
     state,
   )

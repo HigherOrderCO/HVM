@@ -1,6 +1,6 @@
 [package]
 name = "hvm"
-version = "1.0.7-beta"
+version = "1.0.8-beta"
 edition = "2021"
 description = "A massively parallel functional runtime."
 repository = "https://github.com/Kindelia/HVM"
@@ -20,6 +20,7 @@ test = false
 opt-level = 3
 
 [dependencies]
+backtrace = "0.3.66"
 sysinfo = "0.26.7"
 clap = { version = "3.1.8", features = ["derive"] }
 crossbeam = "0.8.2"
