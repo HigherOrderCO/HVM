@@ -106,18 +106,14 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
               match acquire_lock(heap, term) {
                 // If we couldn't acquire the lock...
                 Err(lock) => {
-                  //delay.push(new_visit(host, hold, cont));
-                  //break 'work;
-
                   if annotate_lock(heap, term, new_redex(host, cont, 1)) {
-                    bkoff.snooze(); // FIXME
+                    // FIXME
+                    // TODO: explain the FIXME
+                    bkoff.snooze();
                     break 'work;
                   } else {
                     continue 'visit;
                   }
-
-                  //eprintln!("Invalid state. This is an internal error. Please report.");
-                  //std::process::exit(1);
                 }
                 Ok(_) => {
                   // If the term changed, release lock and try again
