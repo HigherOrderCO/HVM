@@ -8,13 +8,13 @@ First, install [install Rust nightly](https://www.rust-lang.org/tools/install):
 
 ```
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-rustup default nightly
+rustup install nightly
 ```
 
 Then, install HVM:
 
 ```bash
-cargo install hvm
+cargo +nightly install --force --git https://github.com/Kindelia/HVM.git
 ```
 
 This will install HVM's command-line interface. Make sure it worked with:
@@ -23,7 +23,7 @@ This will install HVM's command-line interface. Make sure it worked with:
 hvm --version
 ```
 
-You should see `hvm 1.0.0-beta`.
+You should see `hvm 1.0.5-beta`.
 
 Basic Usage
 -----------
