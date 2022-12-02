@@ -42,7 +42,6 @@
 
 // Squares (n * 100k)
 (Main n) =
-  let n = 100
   let a = (FromU32 32 (* 100000 n))
   let b = (FromU32 32 (* 100000 n))
   (ToU32 (Mul a b))

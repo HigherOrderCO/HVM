@@ -62,6 +62,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, debug: boo
 }
 
 pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, root: u64, tid: usize, debug: bool) {
+  //let debug = true;
 
   let debug_print = |term: Ptr| {
     println!("{}\n----------------", show_term(heap, prog, load_ptr(heap, root), term));
@@ -107,9 +108,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
                 // If we couldn't acquire the lock...
                 Err(lock) => {
                   if annotate_lock(heap, term, new_redex(host, cont, 1)) {
-                    // FIXME
-                    // TODO: explain the FIXME
-                    bkoff.snooze();
+                    bkoff.snooze(); // FIXME
                     break 'work;
                   } else {
                     continue 'visit;
@@ -180,12 +179,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
               }
               DP0 | DP1 => {
                 if dup::apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                  let lock = release_lock(heap, term);
-                  //println!("[{}] released lock: {:x}", tid, lock);
-                  if lock == 0 {
-                    eprintln!("Internal error. Please report.");
-                    std::process::exit(1);
-                  }
+                  let lock = destroy_lock(heap, term);
                   if lock != u64::MAX {
                     //println!("[{}] recov node: {} {}", tid, get_redex_host(lock), get_redex_cont(lock));
                     visit.push(new_visit(get_redex_host(lock), hold, get_redex_cont(lock)));
