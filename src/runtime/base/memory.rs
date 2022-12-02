@@ -171,7 +171,7 @@
 
 pub use crate::runtime::{*};
 
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicI64, Ordering};
+use std::sync::atomic::{AtomicU8, AtomicU64, AtomicI64, Ordering};
 use crossbeam::utils::{CachePadded, Backoff};
 
 // Types
@@ -197,6 +197,7 @@ pub struct LocalVars {
 pub struct Heap {
   pub tids: usize,
   pub node: Box<[AtomicU64]>,
+  pub lock: Box<[AtomicU64]>,
   pub lvar: Box<[CachePadded<LocalVars>]>,
   pub vstk: Box<[VisitQueue]>,
   pub aloc: Box<[Box<[AtomicU64]>]>,
@@ -224,7 +225,6 @@ pub const FUN: u64 = 0x9;
 pub const OP2: u64 = 0xA;
 pub const U60: u64 = 0xB;
 pub const F60: u64 = 0xC;
-pub const LCK: u64 = 0xE;
 pub const NIL: u64 = 0xF;
 
 pub const ADD: u64 = 0x0;
@@ -297,14 +297,6 @@ pub fn Ctr(fun: u64, pos: u64) -> Ptr {
 
 pub fn Fun(fun: u64, pos: u64) -> Ptr {
   (FUN * TAG) | (fun * EXT) | pos
-}
-
-pub fn Lck() -> Ptr {
-  (LCK * TAG)
-}
-
-pub fn Nil() -> Ptr {
-  (NIL * TAG)
 }
 
 // Pointer Getters
@@ -415,12 +407,13 @@ pub fn new_heap(size: usize, tids: usize) -> Heap {
     }))
   }
   let node = new_atomic_u64_array(size);
+  let lock = new_atomic_u64_array(size);
   let lvar = lvar.into_boxed_slice();
   let rbag = RedexBag::new(tids);
   let aloc = (0 .. tids).map(|x| new_atomic_u64_array(1 << 20)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
   let vbuf = (0 .. tids).map(|x| new_atomic_u64_array(1 << 16)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
   let vstk = (0 .. tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
-  return Heap { tids, node, lvar, rbag, aloc, vbuf, vstk };
+  return Heap { tids, node, lock, lvar, rbag, aloc, vbuf, vstk };
 }
 
 // Allocator
@@ -516,32 +509,21 @@ pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr
 
 // Locks
 // -----
-// TODO: replace u64::MAX and annotated locks by proper Lck-tagged Ptrs
 
 type Lock = u64;
 
 pub fn acquire_lock(heap: &Heap, term: Ptr) -> Result<u64, u64> {
-  let locker = unsafe { heap.node.get_unchecked(get_loc(term, 3) as usize) };
-  locker.compare_exchange_weak(Lck(), u64::MAX, Ordering::Relaxed, Ordering::Relaxed) // Acquire/Relaxed
+  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
+  locker.compare_exchange_weak(0, u64::MAX, Ordering::Acquire, Ordering::Relaxed)
 }
 
 pub fn release_lock(heap: &Heap, term: Ptr) -> u64 {
-  let locker = unsafe { heap.node.get_unchecked(get_loc(term, 3) as usize) };
-  locker.swap(Lck(), Ordering::Relaxed) // Release
-}
-
-pub fn destroy_lock(heap: &Heap, term: Ptr) -> u64 {
-  let locker = unsafe { heap.node.get_unchecked(get_loc(term, 3) as usize) };
-  let lock = locker.swap(0, Ordering::Relaxed); // Release
-  if lock == 0 { // should never happen
-    eprintln!("Internal error. Please report.");
-    std::process::exit(1);
-  }
-  return lock;
+  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
+  locker.swap(0, Ordering::Release)
 }
 
 pub fn annotate_lock(heap: &Heap, term: Ptr, redex: u64) -> bool {
-  let locker = unsafe { heap.node.get_unchecked(get_loc(term, 3) as usize) };
+  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
   locker.compare_exchange_weak(u64::MAX, redex, Ordering::Relaxed, Ordering::Relaxed).is_ok()
 }
 
@@ -613,7 +595,6 @@ pub fn annotate_lock(heap: &Heap, term: Ptr, redex: u64) -> bool {
 // solution that maintains HVM philosophy of only including constant-time compute primitives.
 
 pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
-  static WARNED_DUP_COLLECT : AtomicBool = AtomicBool::new(false);
   let mut coll = Vec::new();
   let mut next = term;
   loop {
@@ -625,11 +606,6 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
           if get_tag(load_arg(heap, term, 1)) == ERA {
             collect(heap, arit, tid, load_arg(heap, term, 2));
             free(heap, tid, get_loc(term, 0), 3);
-            let lock = destroy_lock(heap, term);
-            if lock != u64::MAX && WARNED_DUP_COLLECT.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
-              eprintln!("WORNING: attempt to collect a dup-node shared by 2 threads.");
-              eprintln!("This is not implemented yet, and may lead to incorrect results.");
-            }
           }
           release_lock(heap, term);
         }
@@ -640,21 +616,9 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
           if get_tag(load_arg(heap, term, 0)) == ERA {
             collect(heap, arit, tid, load_arg(heap, term, 2));
             free(heap, tid, get_loc(term, 0), 3);
-            let lock = destroy_lock(heap, term);
-            if lock != u64::MAX && WARNED_DUP_COLLECT.compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed).is_ok() {
-              eprintln!("WORNING: attempt to collect a dup-node shared by 2 threads.");
-              eprintln!("This is not implemented yet, and may lead to incorrect results.");
-            }
           }
           release_lock(heap, term);
         }
-        //if acquire_lock(heap, term).is_ok() {
-          //if get_tag(load_arg(heap, term, 0)) == ERA {
-            //collect(heap, arit, tid, load_arg(heap, term, 2));
-            //free(heap, tid, get_loc(term, 0), 3);
-          //}
-          //release_lock(heap, term);
-        //}
       }
       VAR => {
         link(heap, get_loc(term, 0), Era());

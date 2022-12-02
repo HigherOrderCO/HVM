@@ -92,10 +92,9 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     inc_cost(ctx.heap, ctx.tid);
     let op20 = get_loc(ctx.term, 0);
     let op21 = get_loc(arg0, 0);
-    let let0 = alloc(ctx.heap, ctx.tid, 4);
+    let let0 = alloc(ctx.heap, ctx.tid, 3);
     let par0 = alloc(ctx.heap, ctx.tid, 2);
     link(ctx.heap, let0 + 2, arg1);
-    link(ctx.heap, let0 + 3, Lck());
     link(ctx.heap, op20 + 1, Dp0(get_ext(arg0), let0));
     link(ctx.heap, op20 + 0, take_arg(ctx.heap, arg0, 0));
     link(ctx.heap, op21 + 0, take_arg(ctx.heap, arg0, 1));
@@ -115,10 +114,9 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     inc_cost(ctx.heap, ctx.tid);
     let op20 = get_loc(ctx.term, 0);
     let op21 = get_loc(arg1, 0);
-    let let0 = alloc(ctx.heap, ctx.tid, 4);
+    let let0 = alloc(ctx.heap, ctx.tid, 3);
     let par0 = alloc(ctx.heap, ctx.tid, 2);
     link(ctx.heap, let0 + 2, arg0);
-    link(ctx.heap, let0 + 3, Lck());
     link(ctx.heap, op20 + 0, Dp0(get_ext(arg1), let0));
     link(ctx.heap, op20 + 1, take_arg(ctx.heap, arg1, 0));
     link(ctx.heap, op21 + 1, take_arg(ctx.heap, arg1, 1));

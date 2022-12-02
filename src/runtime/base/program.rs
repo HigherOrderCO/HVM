@@ -429,7 +429,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       let dupc = *dupk;
       let targ = nodes.len() as u64;
       *dupk += 1;
-      nodes.push(vec![RuleBodyCell::Val { value: 0 }; 4]);
+      nodes.push(vec![RuleBodyCell::Val { value: 0 }; 3]);
       if glob != 0 {
         links.push((targ, 0, RuleBodyCell::Val { value: Era() }));
         links.push((targ, 1, RuleBodyCell::Val { value: Era() }));
@@ -478,7 +478,6 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
         let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
         let expr = gen_elems(expr, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 2, expr));
-        links.push((targ, 3, RuleBodyCell::Val { value: Lck() }));
         //let dupc = 0; // FIXME remove
         vars.push(RuleBodyCell::Ptr { value: Dp0(dupc, 0), targ, slot: 0 });
         vars.push(RuleBodyCell::Ptr { value: Dp1(dupc, 0), targ, slot: 0 });

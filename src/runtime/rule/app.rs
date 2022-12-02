@@ -33,10 +33,9 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     inc_cost(ctx.heap, ctx.tid);
     let app0 = get_loc(ctx.term, 0);
     let app1 = get_loc(arg0, 0);
-    let let0 = alloc(ctx.heap, ctx.tid, 4);
+    let let0 = alloc(ctx.heap, ctx.tid, 3);
     let par0 = alloc(ctx.heap, ctx.tid, 2);
     link(ctx.heap, let0 + 2, take_arg(ctx.heap, ctx.term, 1));
-    link(ctx.heap, let0 + 3, Lck());
     link(ctx.heap, app0 + 1, Dp0(get_ext(arg0), let0));
     link(ctx.heap, app0 + 0, take_arg(ctx.heap, arg0, 0));
     link(ctx.heap, app1 + 0, take_arg(ctx.heap, arg0, 1));

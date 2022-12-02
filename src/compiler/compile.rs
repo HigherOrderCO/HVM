@@ -422,7 +422,7 @@ pub fn build_function_rule_rhs(
       let coln = fresh(nams, "col");
       let name = fresh(nams, "dup");
       line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
-      line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, 4)));
+      line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, 3)));
       if glob != 0 {
         line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name)); // FIXME: remove when possible (same as above)
         line(code, tab, &format!("link(ctx.heap, {} + 1, Era());", name)); // FIXME: remove when possible (same as above)
@@ -512,7 +512,6 @@ pub fn build_function_rule_rhs(
           line(code, tab + 1, &format!("link(ctx.heap, {} + 1, Era());", name));
         }
         line(code, tab + 1, &format!("link(ctx.heap, {} + 2, {});", name, copy));
-        line(code, tab + 1, &format!("link(ctx.heap, {} + 3, Lck());", name));
         line(code, tab + 1, &format!("{} = Dp0({}, {});", dup0, coln, name));
         line(code, tab + 1, &format!("{} = Dp1({}, {});", dup1, coln, name));
         if INLINE_NUMBERS {
