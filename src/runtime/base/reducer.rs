@@ -70,7 +70,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
   // State Stacks
   let redex = &heap.rbag;
   let visit = &heap.vstk[tid];
-  //let delay = &mut vec![];
+  let delay = &mut vec![];
   let bkoff = &Backoff::new();
   let hold  = tids.len() <= 1;
   //let mut tick = 0;
@@ -103,22 +103,15 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
               }
             }
             DP0 | DP1 => {
-              match acquire_lock(heap, term) {
-                // If we couldn't acquire the lock...
-                Err(lock) => {
-                  if annotate_lock(heap, term, new_redex(host, cont, 1)) {
-                    // FIXME
-                    // TODO: explain the FIXME
-                    bkoff.snooze();
-                    break 'work;
-                  } else {
-                    continue 'visit;
-                  }
+              match acquire_lock(heap, tid, term) {
+                Err(locker_tid) => {
+                  delay.push(new_visit(host, hold, cont));
+                  break 'work;
                 }
                 Ok(_) => {
                   // If the term changed, release lock and try again
                   if term != load_ptr(heap, host) {
-                    release_lock(heap, term);
+                    release_lock(heap, tid, term);
                     continue 'visit;
                   } else {
                     if dup::visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
@@ -167,6 +160,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
         }
         'call: loop {
           'apply: loop {
+            //println!("apply {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
             let term = load_ptr(heap, host);
             if debug { debug_print(term); }
             // Apply rewrite rules
@@ -180,19 +174,10 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
               }
               DP0 | DP1 => {
                 if dup::apply(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
-                  let lock = release_lock(heap, term);
-                  //println!("[{}] released lock: {:x}", tid, lock);
-                  if lock == 0 {
-                    eprintln!("Internal error. Please report.");
-                    std::process::exit(1);
-                  }
-                  if lock != u64::MAX {
-                    //println!("[{}] recov node: {} {}", tid, get_redex_host(lock), get_redex_cont(lock));
-                    visit.push(new_visit(get_redex_host(lock), hold, get_redex_cont(lock)));
-                  }
+                  release_lock(heap, tid, term);
                   continue 'work;
                 } else {
-                  release_lock(heap, term);
+                  release_lock(heap, tid, term);
                   break 'apply;
                 }
               }
@@ -256,12 +241,12 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
           continue 'main;
         }
         // If available, visit a delayed location
-        //else if delay.len() > 0 {
-          //for next in delay.drain(0..).rev() {
-            //visit.push(next);
-          //}
-          //continue 'blink;
-        //}
+        else if delay.len() > 0 {
+          for next in delay.drain(0..).rev() {
+            visit.push(next);
+          }
+          continue 'blink;
+        }
         // Otherwise, we have nothing to do
         else {
           break 'blink;
