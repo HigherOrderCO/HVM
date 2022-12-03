@@ -583,7 +583,6 @@ pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -
   let body = build_body(term, 0);
   let term = alloc_body(heap, prog, tid, 0, &[], &body);
   link(heap, host, term);
-  println!("allocated {}", show_term(heap, prog, term, 0));
   host
 }
 

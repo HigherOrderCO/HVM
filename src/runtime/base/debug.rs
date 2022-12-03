@@ -45,7 +45,7 @@ pub fn show_heap(heap: &Heap) -> String {
   text
 }
 
-pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
+pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> String {
   let mut lets: HashMap<u64, u64> = HashMap::new();
   let mut kinds: HashMap<u64, u64> = HashMap::new();
   let mut names: HashMap<u64, String> = HashMap::new();
@@ -53,12 +53,13 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
   fn find_lets(
     heap: &Heap,
     prog: &Program,
-    term: Ptr,
+    host: u64,
     lets: &mut HashMap<u64, u64>,
     kinds: &mut HashMap<u64, u64>,
     names: &mut HashMap<u64, String>,
     count: &mut u64,
   ) {
+    let term = load_ptr(heap, host);
     if term == 0 {
       return;
     }
@@ -66,15 +67,15 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
       LAM => {
         names.insert(get_loc(term, 0), format!("{}", count));
         *count += 1;
-        find_lets(heap, prog, load_arg(heap, term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
       }
       APP => {
-        find_lets(heap, prog, load_arg(heap, term, 0), lets, kinds, names, count);
-        find_lets(heap, prog, load_arg(heap, term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, get_loc(term, 0), lets, kinds, names, count);
+        find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
       }
       SUP => {
-        find_lets(heap, prog, load_arg(heap, term, 0), lets, kinds, names, count);
-        find_lets(heap, prog, load_arg(heap, term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, get_loc(term, 0), lets, kinds, names, count);
+        find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
       }
       DP0 => {
         if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
@@ -82,7 +83,7 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
           *count += 1;
           kinds.insert(get_loc(term, 0), get_ext(term));
           e.insert(get_loc(term, 0));
-          find_lets(heap, prog, load_arg(heap, term, 2), lets, kinds, names, count);
+          find_lets(heap, prog, get_loc(term, 2), lets, kinds, names, count);
         }
       }
       DP1 => {
@@ -91,17 +92,17 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
           *count += 1;
           kinds.insert(get_loc(term, 0), get_ext(term));
           e.insert(get_loc(term, 0));
-          find_lets(heap, prog, load_arg(heap, term, 2), lets, kinds, names, count);
+          find_lets(heap, prog, get_loc(term, 2), lets, kinds, names, count);
         }
       }
       OP2 => {
-        find_lets(heap, prog, load_arg(heap, term, 0), lets, kinds, names, count);
-        find_lets(heap, prog, load_arg(heap, term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, get_loc(term, 0), lets, kinds, names, count);
+        find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
       }
       CTR | FUN => {
         let arity = arity_of(&prog.aris, term);
         for i in 0..arity {
-          find_lets(heap, prog, load_arg(heap, term, i), lets, kinds, names, count);
+          find_lets(heap, prog, get_loc(term, i), lets, kinds, names, count);
         }
       }
       _ => {}
@@ -110,99 +111,103 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
   fn go(
     heap: &Heap,
     prog: &Program,
-    term: Ptr,
+    host: u64,
     names: &HashMap<u64, String>,
-    focus: u64,
+    tlocs: &[AtomicU64],
   ) -> String {
+    let term = load_ptr(heap, host);
+    let done;
     if term == 0 {
-      return format!("<>");
-    }
-    let done = match get_tag(term) {
-      DP0 => {
-        if let Some(name) = names.get(&get_loc(term, 0)) {
-          return format!("a{}", name);
-        } else {
-          return format!("a^{}", get_loc(term, 0));
-        }
-      }
-      DP1 => {
-        if let Some(name) = names.get(&get_loc(term, 0)) {
-          return format!("b{}", name);
-        } else {
-          return format!("b^{}", get_loc(term, 0));
-        }
-      }
-      VAR => {
-        if let Some(name) = names.get(&get_loc(term, 0)) {
-          return format!("x{}", name);
-        } else {
-          return format!("x^{}", get_loc(term, 0));
-        }
-      }
-      LAM => {
-        let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("<lam>")));
-        format!("λ{} {}", name, go(heap, prog, load_arg(heap, term, 1), names, focus))
-      }
-      APP => {
-        let func = go(heap, prog, load_arg(heap, term, 0), names, focus);
-        let argm = go(heap, prog, load_arg(heap, term, 1), names, focus);
-        format!("({} {})", func, argm)
-      }
-      SUP => {
-        //let kind = get_ext(term);
-        let func = go(heap, prog, load_arg(heap, term, 0), names, focus);
-        let argm = go(heap, prog, load_arg(heap, term, 1), names, focus);
-        format!("{{{} {}}}", func, argm)
-      }
-      OP2 => {
-        let oper = get_ext(term);
-        let val0 = go(heap, prog, load_arg(heap, term, 0), names, focus);
-        let val1 = go(heap, prog, load_arg(heap, term, 1), names, focus);
-        let symb = match oper {
-          0x0 => "+",
-          0x1 => "-",
-          0x2 => "*",
-          0x3 => "/",
-          0x4 => "%",
-          0x5 => "&",
-          0x6 => "|",
-          0x7 => "^",
-          0x8 => "<<",
-          0x9 => ">>",
-          0xA => "<",
-          0xB => "<=",
-          0xC => "=",
-          0xD => ">=",
-          0xE => ">",
-          0xF => "!=",
-          _   => "<oper>",
-        };
-        format!("({} {} {})", symb, val0, val1)
-      }
-      U60 => {
-        format!("{}", u60::val(get_val(term)))
-      }
-      F60 => {
-        format!("{}", f60::val(get_val(term)))
-      }
-      CTR | FUN => {
-        let func = get_ext(term);
-        let arit = arity_of(&prog.aris, term);
-        let args: Vec<String> = (0..arit).map(|i| go(heap, prog, load_arg(heap, term, i), names, focus)).collect();
-        let name = &prog.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
-        format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
-      }
-      ERA => "*".to_string(),
-      _ => format!("<era:{}>", get_tag(term)),
-    };
-    if term == focus {
-      format!("${}", done)
+      done = format!("<>");
     } else {
-      done
+      done = match get_tag(term) {
+        DP0 => {
+          if let Some(name) = names.get(&get_loc(term, 0)) {
+            format!("a{}", name)
+          } else {
+            format!("a^{}", get_loc(term, 0))
+          }
+        }
+        DP1 => {
+          if let Some(name) = names.get(&get_loc(term, 0)) {
+            format!("b{}", name)
+          } else {
+            format!("b^{}", get_loc(term, 0))
+          }
+        }
+        VAR => {
+          if let Some(name) = names.get(&get_loc(term, 0)) {
+            format!("x{}", name)
+          } else {
+            format!("x^{}", get_loc(term, 0))
+          }
+        }
+        LAM => {
+          let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("<lam>")));
+          format!("λ{} {}", name, go(heap, prog, get_loc(term, 1), names, tlocs))
+        }
+        APP => {
+          let func = go(heap, prog, get_loc(term, 0), names, tlocs);
+          let argm = go(heap, prog, get_loc(term, 1), names, tlocs);
+          format!("({} {})", func, argm)
+        }
+        SUP => {
+          //let kind = get_ext(term);
+          let func = go(heap, prog, get_loc(term, 0), names, tlocs);
+          let argm = go(heap, prog, get_loc(term, 1), names, tlocs);
+          format!("{{{} {}}}", func, argm)
+        }
+        OP2 => {
+          let oper = get_ext(term);
+          let val0 = go(heap, prog, get_loc(term, 0), names, tlocs);
+          let val1 = go(heap, prog, get_loc(term, 1), names, tlocs);
+          let symb = match oper {
+            0x0 => "+",
+            0x1 => "-",
+            0x2 => "*",
+            0x3 => "/",
+            0x4 => "%",
+            0x5 => "&",
+            0x6 => "|",
+            0x7 => "^",
+            0x8 => "<<",
+            0x9 => ">>",
+            0xA => "<",
+            0xB => "<=",
+            0xC => "=",
+            0xD => ">=",
+            0xE => ">",
+            0xF => "!=",
+            _   => "<oper>",
+          };
+          format!("({} {} {})", symb, val0, val1)
+        }
+        U60 => {
+          format!("{}", u60::val(get_val(term)))
+        }
+        F60 => {
+          format!("{}", f60::val(get_val(term)))
+        }
+        CTR | FUN => {
+          let func = get_ext(term);
+          let arit = arity_of(&prog.aris, term);
+          let args: Vec<String> = (0..arit).map(|i| go(heap, prog, get_loc(term, i), names, tlocs)).collect();
+          let name = &prog.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
+          format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
+        }
+        ERA => "*".to_string(),
+        _ => format!("<era:{}>", get_tag(term)),
+      };
     }
+    for (tid, tid_loc) in tlocs.iter().enumerate() {
+      if host == tid_loc.load(Ordering::Relaxed) {
+        return format!("<{}>{}", tid, done);
+      }
+    }
+    return done;
   }
-  find_lets(heap, prog, term, &mut lets, &mut kinds, &mut names, &mut count);
-  let mut text = go(heap, prog, term, &names, focus);
+  find_lets(heap, prog, host, &mut lets, &mut kinds, &mut names, &mut count);
+  let mut text = go(heap, prog, host, &names, tlocs);
   for (_key, pos) in itertools::sorted(lets.iter()) {
     // todo: reverse
     let what = String::from("?h");
@@ -210,7 +215,7 @@ pub fn show_term(heap: &Heap, prog: &Program, term: Ptr, focus: u64) -> String {
     let name = names.get(&pos).unwrap_or(&what);
     let nam0 = if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
     let nam1 = if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
-    text.push_str(&format!("\ndup {} {} = {};", nam0, nam1, go(heap, prog, load_ptr(heap, pos + 2), &names, focus)));
+    text.push_str(&format!("\ndup {} {} = {};", nam0, nam1, go(heap, prog, pos + 2, &names, tlocs)));
   }
   text
 }

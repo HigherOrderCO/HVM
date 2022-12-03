@@ -47,12 +47,14 @@ pub fn is_whnf(term: Ptr) -> bool {
 pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, debug: bool) -> Ptr {
   // Halting flag
   let stop = &AtomicBool::new(false);
+  let barr = &Barrier::new(tids.len());
+  let locs = &tids.iter().map(|x| AtomicU64::new(u64::MAX)).collect::<Vec<AtomicU64>>();
 
   // Spawn a thread for each worker
   std::thread::scope(|s| {
     for tid in tids {
       s.spawn(move || {
-        reducer(heap, prog, tids, stop, root, *tid, debug);
+        reducer(heap, prog, tids, stop, barr, locs, root, *tid, debug);
       });
     }
   });
@@ -61,10 +63,27 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, debug: boo
   return load_ptr(heap, root);
 }
 
-pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, root: u64, tid: usize, debug: bool) {
+pub fn reducer(
+  heap: &Heap,
+  prog: &Program,
+  tids: &[usize],
+  stop: &AtomicBool,
+  barr: &Barrier,
+  locs: &[AtomicU64],
+  root: u64,
+  tid: usize,
+  debug: bool,
+) {
 
-  let debug_print = |term: Ptr| {
-    println!("{}\n----------------", show_term(heap, prog, load_ptr(heap, root), term));
+  let debug = true;
+  let print = |tid: usize, host: u64| {
+    barr.wait(stop);
+    locs[tid].store(host, Ordering::SeqCst);
+    barr.wait(stop);
+    if tid == tids[0] {
+      println!("{}\n----------------", show_at(heap, prog, root, locs));
+    }
+    barr.wait(stop);
   };
 
   // State Stacks
@@ -73,7 +92,6 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
   let delay = &mut vec![];
   let bkoff = &Backoff::new();
   let hold  = tids.len() <= 1;
-  //let mut tick = 0;
 
   // State Vars
   let (mut cont, mut host) = if tid == tids[0] {
@@ -93,7 +111,10 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
         //println!("work {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
         'visit: loop {
           let term = load_ptr(heap, host);
-          if debug { debug_print(term); }
+          if debug {
+            //println!("[{}] visit {} {}", tid, host, show_ptr(term));
+            print(tid, host);
+          }
           match get_tag(term) {
             APP => {
               if app::visit(ReduceCtx { heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }) {
@@ -105,7 +126,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
             DP0 | DP1 => {
               match acquire_lock(heap, tid, term) {
                 Err(locker_tid) => {
-                  delay.push(new_visit(host, hold, cont));
+                  delay.insert(0, new_visit(host, hold, cont));
                   break 'work;
                 }
                 Ok(_) => {
@@ -162,7 +183,10 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
           'apply: loop {
             //println!("apply {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
             let term = load_ptr(heap, host);
-            if debug { debug_print(term); }
+            if debug {
+              //println!("[{}] apply {} {}", tid, host, show_ptr(term));
+              print(tid, host);
+            }
             // Apply rewrite rules
             match get_tag(term) {
               APP => {
@@ -241,11 +265,25 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
           continue 'main;
         }
         // If available, visit a delayed location
-        else if delay.len() > 0 {
-          for next in delay.drain(0..).rev() {
-            visit.push(next);
-          }
-          continue 'blink;
+        else if let Some(next) = delay.pop() {
+          let new_cont = get_visit_cont(next);
+          let new_host = get_visit_host(next);
+          //if is_locked(heap, tid, load_ptr(heap, new_host)) {
+            //delay.push(next);
+            //break 'blink;
+            ////if debug {
+              ////println!("[{}] insists on {}", tid, new_host);
+            ////}
+            ////bkoff.snooze();
+            ////continue 'blink;
+          //} else {
+            //cont = new_cont;
+            //host = new_host;
+            //continue 'main;
+          //}
+          cont = new_cont;
+          host = new_host;
+          continue 'main;
         }
         // Otherwise, we have nothing to do
         else {
@@ -254,6 +292,10 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
       }
     }
     'steal: loop {
+      if debug {
+        println!("[{}] steal delay={}", tid, delay.len());
+        print(tid, u64::MAX);
+      }
       //println!("[{}] steal", tid);
       if stop.load(Ordering::Relaxed) {
         //println!("[{}] stop", tid);
@@ -270,7 +312,6 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
           }
         }
         bkoff.snooze();
-        //println!("[{}] continue stealing", tid);
         continue 'steal;
       }
     }

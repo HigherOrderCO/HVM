@@ -521,6 +521,11 @@ pub fn acquire_lock(heap: &Heap, tid: usize, term: Ptr) -> Result<u8, u8> {
   locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
 }
 
+pub fn is_locked(heap: &Heap, tid: usize, term: Ptr) -> bool {
+  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
+  locker.load(Ordering::Relaxed) != LOCK_OPEN
+}
+
 pub fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
   let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
   locker.store(LOCK_OPEN, Ordering::Release)

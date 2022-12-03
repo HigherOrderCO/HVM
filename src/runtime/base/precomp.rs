@@ -449,7 +449,7 @@ fn hvm_store_apply(ctx: ReduceCtx) -> bool {
       }
     }
   }
-  println!("Runtime failure on: {}", show_term(ctx.heap, ctx.prog, ctx.term, 0));
+  println!("Runtime failure on: {}", show_at(ctx.heap, ctx.prog, *ctx.host, &[]));
   std::process::exit(0);
 }
 
@@ -476,7 +476,7 @@ fn hvm_load_apply(ctx: ReduceCtx) -> bool {
       }
     }
   }
-  println!("Runtime failure on: {}", show_term(ctx.heap, ctx.prog, ctx.term, 0));
+  println!("Runtime failure on: {}", show_at(ctx.heap, ctx.prog, *ctx.host, &[]));
   std::process::exit(0);
 }
 
