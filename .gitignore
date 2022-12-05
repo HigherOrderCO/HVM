@@ -1,6 +1,5 @@
 .DS_Store
 tmp/
-examples/bug*
 **/bench/*/main
 **/bench/*/main.c
 **/result

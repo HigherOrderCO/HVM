@@ -1,0 +1,18 @@
+// List type
+(Head (Cons x xs)) = (Some x)
+(Head Nil) = None
+
+// Something like Rust's Option.unwrap_or
+(UnwrapOr (Some x) y) = x
+(UnwrapOr None y) = y
+
+(SumFirstTwo Nil) = 0 
+(SumFirstTwo (Cons x xs)) = (+ x (UnwrapOr (Head xs) 0))
+
+// Iterate a function n times on an input
+(Iter f x 0) = x
+(Iter f x n) = (f (Iter f x (- n 1)))
+
+(Fib n) = (Head (Iter λxs (Cons (SumFirstTwo xs) xs) (Cons 0 (Cons 1 Nil)) n))
+
+(Main n) = (Fib 2000000)

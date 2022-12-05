@@ -1,0 +1,4 @@
+(Fib 0 x0 x1) = x0
+(Fib i x0 x1) = (Fib (- i 1) x1 (+ x0 x1))
+
+(Main n) = (Fib 500000 0 1)

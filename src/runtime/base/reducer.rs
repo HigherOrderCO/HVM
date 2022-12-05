@@ -74,16 +74,6 @@ pub fn reducer(
   debug: bool,
 ) {
 
-  let print = |tid: usize, host: u64| {
-    barr.wait(stop);
-    locs[tid].store(host, Ordering::SeqCst);
-    barr.wait(stop);
-    if tid == tids[0] {
-      println!("{}\n----------------", show_at(heap, prog, root, locs));
-    }
-    barr.wait(stop);
-  };
-
   // State Stacks
   let redex = &heap.rbag;
   let visit = &heap.vstk[tid];
@@ -97,15 +87,24 @@ pub fn reducer(
     (0, u64::MAX)
   };
 
+  // Debug Printer
+  let print = |tid: usize, host: u64| {
+    barr.wait(stop);
+    locs[tid].store(host, Ordering::SeqCst);
+    barr.wait(stop);
+    if tid == tids[0] {
+      println!("{}\n----------------", show_at(heap, prog, root, locs));
+    }
+    barr.wait(stop);
+  };
+
   // State Machine
   'main: loop {
     'init: {
       if host == u64::MAX {
         break 'init;
       }
-      //println!("main {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
       'work: loop {
-        //println!("work {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
         'visit: loop {
           let term = load_ptr(heap, host);
           if debug {
@@ -176,10 +175,8 @@ pub fn reducer(
         }
         'call: loop {
           'apply: loop {
-            //println!("apply {} {}", show_ptr(load_ptr(heap, host)), show_term(heap, prog, load_ptr(heap, host), host));
             let term = load_ptr(heap, host);
             if debug {
-              //println!("[{}] apply {} {}", tid, host, show_ptr(term));
               print(tid, host);
             }
             // Apply rewrite rules
