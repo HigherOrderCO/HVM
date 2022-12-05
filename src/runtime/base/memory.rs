@@ -608,7 +608,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         link(heap, get_loc(term, 0), Era());
         if acquire_lock(heap, tid, term).is_ok() {
           if get_tag(load_arg(heap, term, 1)) == ERA {
-            collect(heap, arit, tid, load_arg(heap, term, 2));
+            coll.push(load_arg(heap, term, 2));
             free(heap, tid, get_loc(term, 0), 3);
           }
           release_lock(heap, tid, term);
@@ -618,7 +618,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         link(heap, get_loc(term, 1), Era());
         if acquire_lock(heap, tid, term).is_ok() {
           if get_tag(load_arg(heap, term, 0)) == ERA {
-            collect(heap, arit, tid, load_arg(heap, term, 2));
+            coll.push(load_arg(heap, term, 2));
             free(heap, tid, get_loc(term, 0), 3);
           }
           release_lock(heap, tid, term);

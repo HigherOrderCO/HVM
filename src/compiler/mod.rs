@@ -51,6 +51,7 @@ pub fn compile(code: &str, name: &str) -> std::io::Result<()> {
   std::fs::write(format!("./{}/src/runtime/data/mod.rs",name)         , include_str!("./../runtime/data/mod.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/f60.rs",name)         , include_str!("./../runtime/data/f60.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/allocator.rs",name)   , include_str!("./../runtime/data/allocator.rs"))?;
+  std::fs::write(format!("./{}/src/runtime/data/barrier.rs",name)     , include_str!("./../runtime/data/barrier.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/redex_bag.rs",name)   , include_str!("./../runtime/data/redex_bag.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/u60.rs",name)         , include_str!("./../runtime/data/u60.rs"))?;
   std::fs::write(format!("./{}/src/runtime/data/u64_map.rs",name)     , include_str!("./../runtime/data/u64_map.rs"))?;

@@ -14,7 +14,6 @@ pub struct ReduceCtx<'a> {
   pub host  : &'a mut u64,
 }
 
-
 // HVM's reducer is a finite stack machine with 4 possible states:
 // - visit: visits a node and add its children to the visit stack ~> visit, apply, blink
 // - apply: reduces a node, applying a rewrite rule               ~> visit, apply, blink, halt
@@ -75,7 +74,6 @@ pub fn reducer(
   debug: bool,
 ) {
 
-  let debug = true;
   let print = |tid: usize, host: u64| {
     barr.wait(stop);
     locs[tid].store(host, Ordering::SeqCst);
@@ -89,7 +87,6 @@ pub fn reducer(
   // State Stacks
   let redex = &heap.rbag;
   let visit = &heap.vstk[tid];
-  let delay = &mut vec![];
   let bkoff = &Backoff::new();
   let hold  = tids.len() <= 1;
 
@@ -112,7 +109,6 @@ pub fn reducer(
         'visit: loop {
           let term = load_ptr(heap, host);
           if debug {
-            //println!("[{}] visit {} {}", tid, host, show_ptr(term));
             print(tid, host);
           }
           match get_tag(term) {
@@ -126,7 +122,6 @@ pub fn reducer(
             DP0 | DP1 => {
               match acquire_lock(heap, tid, term) {
                 Err(locker_tid) => {
-                  delay.insert(0, new_visit(host, hold, cont));
                   break 'work;
                 }
                 Ok(_) => {
@@ -264,27 +259,6 @@ pub fn reducer(
           host = new_host;
           continue 'main;
         }
-        // If available, visit a delayed location
-        else if let Some(next) = delay.pop() {
-          let new_cont = get_visit_cont(next);
-          let new_host = get_visit_host(next);
-          //if is_locked(heap, tid, load_ptr(heap, new_host)) {
-            //delay.push(next);
-            //break 'blink;
-            ////if debug {
-              ////println!("[{}] insists on {}", tid, new_host);
-            ////}
-            ////bkoff.snooze();
-            ////continue 'blink;
-          //} else {
-            //cont = new_cont;
-            //host = new_host;
-            //continue 'main;
-          //}
-          cont = new_cont;
-          host = new_host;
-          continue 'main;
-        }
         // Otherwise, we have nothing to do
         else {
           break 'blink;
@@ -293,7 +267,7 @@ pub fn reducer(
     }
     'steal: loop {
       if debug {
-        println!("[{}] steal delay={}", tid, delay.len());
+        //println!("[{}] steal delay={}", tid, delay.len());
         print(tid, u64::MAX);
       }
       //println!("[{}] steal", tid);
@@ -411,7 +385,7 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut
 pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
   let mut cost = get_cost(heap);
   loop {
-    normal(&heap, prog, tids, host, &mut im::HashSet::new(), debug);
+    normal(heap, prog, tids, host, &mut im::HashSet::new(), debug);
     let new_cost = get_cost(heap);
     if new_cost != cost {
       cost = new_cost;
