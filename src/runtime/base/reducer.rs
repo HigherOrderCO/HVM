@@ -122,7 +122,7 @@ pub fn reducer(
             DP0 | DP1 => {
               match acquire_lock(heap, tid, term) {
                 Err(locker_tid) => {
-                  break 'work;
+                  continue 'work;
                 }
                 Ok(_) => {
                   // If the term changed, release lock and try again
