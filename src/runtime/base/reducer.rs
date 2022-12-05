@@ -58,7 +58,7 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, debug: boo
   });
 
   // Return whnf term ptr
-  return load_ptr(heap, root);
+  load_ptr(heap, root)
 }
 
 pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, root: u64, tid: usize, debug: bool) {
@@ -106,7 +106,7 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
               match acquire_lock(heap, tid, term) {
                 Err(locker_tid) => {
                   delay.push(new_visit(host, hold, cont));
-                  break 'work;
+                  continue 'work;
                 }
                 Ok(_) => {
                   // If the term changed, release lock and try again
@@ -241,12 +241,12 @@ pub fn reducer(heap: &Heap, prog: &Program, tids: &[usize], stop: &AtomicBool, r
           continue 'main;
         }
         // If available, visit a delayed location
-        else if delay.len() > 0 {
-          for next in delay.drain(0..).rev() {
-            visit.push(next);
-          }
-          continue 'blink;
-        }
+        // else if delay.len() > 0 {
+        //   for next in delay.drain(0..).rev() {
+        //     visit.push(next);
+        //   }
+        //   continue 'blink;
+        // }
         // Otherwise, we have nothing to do
         else {
           break 'blink;
@@ -370,7 +370,7 @@ pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut
 pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
   let mut cost = get_cost(heap);
   loop {
-    normal(&heap, prog, tids, host, &mut im::HashSet::new(), debug);
+    normal(heap, prog, tids, host, &mut im::HashSet::new(), debug);
     let new_cost = get_cost(heap);
     if new_cost != cost {
       cost = new_cost;
