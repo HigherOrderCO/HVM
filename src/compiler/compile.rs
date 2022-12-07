@@ -423,9 +423,9 @@ pub fn build_function_rule_rhs(
       let name = fresh(nams, "dup");
       line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
       line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, 3)));
+      line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name)); // FIXME: remove when possible (same as above)
+      line(code, tab, &format!("link(ctx.heap, {} + 1, Era());", name)); // FIXME: remove when possible (same as above)
       if glob != 0 {
-        line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name)); // FIXME: remove when possible (same as above)
-        line(code, tab, &format!("link(ctx.heap, {} + 1, Era());", name)); // FIXME: remove when possible (same as above)
         dups.insert(glob, (coln.clone(), name.clone()));
       }
       return (coln, name);

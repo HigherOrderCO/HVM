@@ -430,9 +430,9 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       let targ = nodes.len() as u64;
       *dupk += 1;
       nodes.push(vec![RuleBodyCell::Val { value: 0 }; 3]);
+      links.push((targ, 0, RuleBodyCell::Val { value: Era() }));
+      links.push((targ, 1, RuleBodyCell::Val { value: Era() }));
       if glob != 0 {
-        links.push((targ, 0, RuleBodyCell::Val { value: Era() }));
-        links.push((targ, 1, RuleBodyCell::Val { value: Era() }));
         dups.insert(glob, (targ, dupc));
       }
       return (targ, dupc);
