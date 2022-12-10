@@ -12,6 +12,7 @@ pub fn compile(code: &str, name: &str) -> std::io::Result<()> {
   // hvm
   std::fs::create_dir(format!("./{}",name)).ok();
   std::fs::write(format!("./{}/Cargo.toml",name), cargo_rs)?;
+  std::fs::write(format!("./{}/rust-toolchain.toml",name), include_str!("./../../rust-toolchain.toml"))?;
 
   // hvm/src
   std::fs::create_dir(format!("./{}/src",name)).ok();
