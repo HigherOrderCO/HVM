@@ -418,7 +418,7 @@ fn hvm_sleep_visit(ctx: ReduceCtx) -> bool {
 }
 
 fn hvm_sleep_apply(ctx: ReduceCtx) -> bool {
-  let time = reduce(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), false);
+  let time = reduce(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), true, false);
   std::thread::sleep(std::time::Duration::from_nanos(get_num(time)));
   link(ctx.heap, *ctx.host, load_ptr(ctx.heap, get_loc(ctx.term, 1)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);

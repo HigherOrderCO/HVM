@@ -1,6 +1,7 @@
 pub use crate::runtime::{*};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use crossbeam::utils::{Backoff};
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, AtomicUsize, AtomicU64, Ordering};
 
 pub struct ReduceCtx<'a> {
   pub heap  : &'a Heap,
@@ -43,9 +44,9 @@ pub fn is_whnf(term: Ptr) -> bool {
   }
 }
 
-pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, debug: bool) -> Ptr {
+pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, full: bool, debug: bool) -> Ptr {
   // Halting flag
-  let stop = &AtomicBool::new(false);
+  let stop = &AtomicUsize::new(1);
   let barr = &Barrier::new(tids.len());
   let locs = &tids.iter().map(|x| AtomicU64::new(u64::MAX)).collect::<Vec<AtomicU64>>();
 
@@ -53,7 +54,8 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, debug: boo
   std::thread::scope(|s| {
     for tid in tids {
       s.spawn(move || {
-        reducer(heap, prog, tids, stop, barr, locs, root, *tid, debug);
+        reducer(heap, prog, tids, stop, barr, locs, root, *tid, full, debug);
+        //println!("[{}] done", tid);
       });
     }
   });
@@ -66,11 +68,12 @@ pub fn reducer(
   heap: &Heap,
   prog: &Program,
   tids: &[usize],
-  stop: &AtomicBool,
+  stop: &AtomicUsize,
   barr: &Barrier,
   locs: &[AtomicU64],
   root: u64,
   tid: usize,
+  full: bool,
   debug: bool,
 ) {
 
@@ -79,6 +82,7 @@ pub fn reducer(
   let visit = &heap.vstk[tid];
   let bkoff = &Backoff::new();
   let hold  = tids.len() <= 1;
+  let seen  = &mut HashSet::new();
 
   // State Vars
   let (mut cont, mut host) = if tid == tids[0] {
@@ -234,19 +238,56 @@ pub fn reducer(
           }
           // If root is on WHNF, halt
           if cont == REDEX_CONT_RET {
-            stop.store(true, Ordering::Relaxed);
-            break 'main;
+            //println!("done {}", show_at(heap, prog, host, &[]));
+            stop.fetch_sub(1, Ordering::Relaxed);
+            if full && !seen.contains(&host) {
+              seen.insert(host);
+              let term = load_ptr(heap, host);
+              match get_tag(term) {
+                LAM => {
+                  stop.fetch_add(1, Ordering::Relaxed);
+                  visit.push(new_visit(get_loc(term, 1), hold, cont));
+                }
+                APP => {
+                  stop.fetch_add(2, Ordering::Relaxed);
+                  visit.push(new_visit(get_loc(term, 0), hold, cont));
+                  visit.push(new_visit(get_loc(term, 1), hold, cont));
+                }
+                SUP => {
+                  stop.fetch_add(2, Ordering::Relaxed);
+                  visit.push(new_visit(get_loc(term, 0), hold, cont));
+                  visit.push(new_visit(get_loc(term, 1), hold, cont));
+                }
+                DP0 => {
+                  stop.fetch_add(1, Ordering::Relaxed);
+                  visit.push(new_visit(get_loc(term, 2), hold, cont));
+                }
+                DP1 => {
+                  stop.fetch_add(1, Ordering::Relaxed);
+                  visit.push(new_visit(get_loc(term, 2), hold, cont));
+                }
+                CTR | FUN => {
+                  let arit = arity_of(&prog.aris, term);
+                  if arit > 0 {
+                    stop.fetch_add(arit as usize, Ordering::Relaxed);
+                    for i in 0 .. arit {
+                      visit.push(new_visit(get_loc(term, i), hold, cont));
+                    }
+                  }
+                }
+                _ => {}
+              }
+            }
+            break 'work;
           }
           // Otherwise, try reducing the parent redex
-          else if let Some((new_cont, new_host)) = redex.complete(cont) {
+          if let Some((new_cont, new_host)) = redex.complete(cont) {
             cont = new_cont;
             host = new_host;
             continue 'call;
           }
           // Otherwise, visit next pointer
-          else {
-            break 'work;
-          }
+          break 'work;
         }
       }
       'blink: loop {
@@ -268,7 +309,7 @@ pub fn reducer(
         print(tid, u64::MAX);
       }
       //println!("[{}] steal", tid);
-      if stop.load(Ordering::Relaxed) {
+      if stop.load(Ordering::Relaxed) == 0 {
         //println!("[{}] stop", tid);
         break 'main;
       } else {
@@ -289,106 +330,110 @@ pub fn reducer(
   }
 }
 
-pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut im::HashSet<u64>, debug: bool) -> Ptr {
-  let term = load_ptr(heap, host);
-  if seen.contains(&host) {
-    term
-  } else {
-    //let term = reduce2(heap, lvars, prog, host);
-    let term = reduce(heap, prog, tids, host, debug);
-    seen.insert(host);
-    let mut rec_locs = vec![];
-    match get_tag(term) {
-      LAM => {
-        rec_locs.push(get_loc(term, 1));
-      }
-      APP => {
-        rec_locs.push(get_loc(term, 0));
-        rec_locs.push(get_loc(term, 1));
-      }
-      SUP => {
-        rec_locs.push(get_loc(term, 0));
-        rec_locs.push(get_loc(term, 1));
-      }
-      DP0 => {
-        rec_locs.push(get_loc(term, 2));
-      }
-      DP1 => {
-        rec_locs.push(get_loc(term, 2));
-      }
-      CTR | FUN => {
-        let arity = arity_of(&prog.aris, term);
-        for i in 0 .. arity {
-          rec_locs.push(get_loc(term, i));
-        }
-      }
-      _ => {}
-    }
-    let rec_len = rec_locs.len(); // locations where we must recurse
-    let thd_len = tids.len(); // number of available threads
-    let rec_loc = &rec_locs;
-    //println!("~ rec_len={} thd_len={} {}", rec_len, thd_len, show_term(heap, prog, ask_lnk(heap,host), host));
-    if rec_len > 0 {
-      std::thread::scope(|s| {
-        // If there are more threads than rec_locs, splits threads for each rec_loc
-        if thd_len >= rec_len {
-          //panic!("b");
-          let spt_len = thd_len / rec_len;
-          let mut tids = tids;
-          for (rec_num, rec_loc) in rec_loc.iter().enumerate() {
-            let (rec_tids, new_tids) = tids.split_at(if rec_num == rec_len - 1 { tids.len() } else { spt_len });
-            //println!("~ rec_loc {} gets {} threads", rec_loc, rec_lvars.len());
-            //let new_loc;
-            //if thd_len == rec_len {
-              //new_loc = alloc(heap, rec_tids[0], 1);
-              //move_ptr(heap, *rec_loc, new_loc);
-            //} else {
-              //new_loc = *rec_loc;
-            //}
-            //let new_loc = *rec_loc;
-            let mut seen = seen.clone();
-            s.spawn(move || {
-              let ptr = normal(heap, prog, rec_tids, *rec_loc, &mut seen, debug);
-              //if thd_len == rec_len {
-                //move_ptr(heap, new_loc, *rec_loc);
-              //}
-              link(heap, *rec_loc, ptr);
-            });
-            tids = new_tids;
-          }
-        // Otherwise, splits rec_locs for each thread
-        } else {
-          //panic!("c");
-          for (thd_num, tid) in tids.iter().enumerate() {
-            let min_idx = thd_num * rec_len / thd_len;
-            let max_idx = if thd_num < thd_len - 1 { (thd_num + 1) * rec_len / thd_len } else { rec_len };
-            //println!("~ thread {} gets rec_locs {} to {}", thd_num, min_idx, max_idx);
-            let mut seen = seen.clone();
-            s.spawn(move || {
-              for idx in min_idx .. max_idx {
-                let loc = rec_loc[idx];
-                let lnk = normal(heap, prog, std::slice::from_ref(tid), loc, &mut seen, debug);
-                link(heap, loc, lnk);
-              }
-            });
-          }
-        }
-      });
-    }
-    term
-  }
+pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
+  reduce(heap, prog, tids, host, true, debug)
 }
 
-pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
-  let mut cost = get_cost(heap);
-  loop {
-    normal(heap, prog, tids, host, &mut im::HashSet::new(), debug);
-    let new_cost = get_cost(heap);
-    if new_cost != cost {
-      cost = new_cost;
-    } else {
-      break;
-    }
-  }
-  load_ptr(heap, host)
-}
+//pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut im::HashSet<u64>, debug: bool) -> Ptr {
+  //let term = load_ptr(heap, host);
+  //if seen.contains(&host) {
+    //term
+  //} else {
+    ////let term = reduce2(heap, lvars, prog, host);
+    //let term = reduce(heap, prog, tids, host, debug);
+    //seen.insert(host);
+    //let mut rec_locs = vec![];
+    //match get_tag(term) {
+      //LAM => {
+        //rec_locs.push(get_loc(term, 1));
+      //}
+      //APP => {
+        //rec_locs.push(get_loc(term, 0));
+        //rec_locs.push(get_loc(term, 1));
+      //}
+      //SUP => {
+        //rec_locs.push(get_loc(term, 0));
+        //rec_locs.push(get_loc(term, 1));
+      //}
+      //DP0 => {
+        //rec_locs.push(get_loc(term, 2));
+      //}
+      //DP1 => {
+        //rec_locs.push(get_loc(term, 2));
+      //}
+      //CTR | FUN => {
+        //let arity = arity_of(&prog.aris, term);
+        //for i in 0 .. arity {
+          //rec_locs.push(get_loc(term, i));
+        //}
+      //}
+      //_ => {}
+    //}
+    //let rec_len = rec_locs.len(); // locations where we must recurse
+    //let thd_len = tids.len(); // number of available threads
+    //let rec_loc = &rec_locs;
+    ////println!("~ rec_len={} thd_len={} {}", rec_len, thd_len, show_term(heap, prog, ask_lnk(heap,host), host));
+    //if rec_len > 0 {
+      //std::thread::scope(|s| {
+        //// If there are more threads than rec_locs, splits threads for each rec_loc
+        //if thd_len >= rec_len {
+          ////panic!("b");
+          //let spt_len = thd_len / rec_len;
+          //let mut tids = tids;
+          //for (rec_num, rec_loc) in rec_loc.iter().enumerate() {
+            //let (rec_tids, new_tids) = tids.split_at(if rec_num == rec_len - 1 { tids.len() } else { spt_len });
+            ////println!("~ rec_loc {} gets {} threads", rec_loc, rec_lvars.len());
+            ////let new_loc;
+            ////if thd_len == rec_len {
+              ////new_loc = alloc(heap, rec_tids[0], 1);
+              ////move_ptr(heap, *rec_loc, new_loc);
+            ////} else {
+              ////new_loc = *rec_loc;
+            ////}
+            ////let new_loc = *rec_loc;
+            //let mut seen = seen.clone();
+            //s.spawn(move || {
+              //let ptr = normal(heap, prog, rec_tids, *rec_loc, &mut seen, debug);
+              ////if thd_len == rec_len {
+                ////move_ptr(heap, new_loc, *rec_loc);
+              ////}
+              //link(heap, *rec_loc, ptr);
+            //});
+            //tids = new_tids;
+          //}
+        //// Otherwise, splits rec_locs for each thread
+        //} else {
+          ////panic!("c");
+          //for (thd_num, tid) in tids.iter().enumerate() {
+            //let min_idx = thd_num * rec_len / thd_len;
+            //let max_idx = if thd_num < thd_len - 1 { (thd_num + 1) * rec_len / thd_len } else { rec_len };
+            ////println!("~ thread {} gets rec_locs {} to {}", thd_num, min_idx, max_idx);
+            //let mut seen = seen.clone();
+            //s.spawn(move || {
+              //for idx in min_idx .. max_idx {
+                //let loc = rec_loc[idx];
+                //let lnk = normal(heap, prog, std::slice::from_ref(tid), loc, &mut seen, debug);
+                //link(heap, loc, lnk);
+              //}
+            //});
+          //}
+        //}
+      //});
+    //}
+    //term
+  //}
+//}
+
+//pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
+  //let mut cost = get_cost(heap);
+  //loop {
+    //normal(heap, prog, tids, host, &mut im::HashSet::new(), debug);
+    //let new_cost = get_cost(heap);
+    //if new_cost != cost {
+      //cost = new_cost;
+    //} else {
+      //break;
+    //}
+  //}
+  //load_ptr(heap, host)
+//}

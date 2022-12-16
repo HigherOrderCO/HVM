@@ -463,15 +463,16 @@ pub fn as_linear_code(heap: &Heap, prog: &Program, host: u64) -> String {
 pub fn as_string(heap: &Heap, prog: &Program, tids: &[usize], host: u64) -> Option<String> {
   let mut host = host;
   let mut text = String::new();
+  runtime::reduce(heap, prog, tids, host, true, false);
   loop {
-    let term = runtime::reduce(heap, prog, tids, host, false);
+    let term = runtime::load_ptr(heap, host);
     if runtime::get_tag(term) == runtime::CTR {
       let fid = runtime::get_ext(term);
       if fid == runtime::STRING_NIL {
         break;
       }
       if fid == runtime::STRING_CONS {
-        let chr = runtime::reduce(heap, prog, tids, runtime::get_loc(term, 0), false);
+        let chr = runtime::load_ptr(heap, runtime::get_loc(term, 0));
         if runtime::get_tag(chr) == runtime::U60 {
           text.push(std::char::from_u32(runtime::get_num(chr) as u32).unwrap_or('?'));
           host = runtime::get_loc(term, 1);

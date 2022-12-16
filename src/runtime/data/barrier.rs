@@ -15,13 +15,13 @@ impl Barrier {
     }
   }
 
-  pub fn wait(&self, stop: &AtomicBool) {
+  pub fn wait(&self, stop: &AtomicUsize) {
     let pass = self.pass.load(Ordering::Relaxed);
     if self.done.fetch_add(1, Ordering::SeqCst) == self.tids - 1 {
       self.done.store(0, Ordering::Relaxed);
       self.pass.store(pass + 1, Ordering::Release);
     } else {
-      while !stop.load(Ordering::Relaxed) && self.pass.load(Ordering::Relaxed) == pass {}
+      while stop.load(Ordering::Relaxed) != 0 && self.pass.load(Ordering::Relaxed) == pass {}
       fence(Ordering::Acquire);
     }
   }
