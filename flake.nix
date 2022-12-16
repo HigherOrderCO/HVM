@@ -7,12 +7,15 @@
     };
     nci = {
       inputs.nixpkgs.follows = "nixpkgs";
-      # The next commit, 5d3d4b15b7a5f2f393fe60fcdc32deeaab88d704, is broken.
-      url = "github:yusdacra/nix-cargo-integration/774b49912e6ae219e20bbb39258f8a283f6a251c";
+      url = "github:yusdacra/nix-cargo-integration";
     };
+    nix-filter.url = "github:numtide/nix-filter";
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
   };
-  outputs = inputs:
+  outputs = inputs: let
+    nix-filter = import inputs.nix-filter;
+    pkgs = common: packages: builtins.map (element: common.pkgs.${element}) packages;
+  in
     inputs.nci.lib.makeOutputs {
       config = common: {
         cCompiler = {
@@ -25,11 +28,11 @@
             package = "hvm";
           };
         };
-        runtimeLibs = [common.pkgs.openssl];
+        runtimeLibs = pkgs common ["openssl"];
         shell = {commands = builtins.map (element: {package = common.pkgs.${element};}) ["ghc" "nodejs"];};
       };
       pkgConfig = common: let
-        override = {buildInputs = [common.pkgs.openssl common.pkgs.pkg-config];};
+        override = {buildInputs = pkgs common ["openssl" "pkg-config"];};
       in {
         hvm = {
           app = true;
@@ -39,11 +42,19 @@
           profiles = {
             dev = false;
             dev_fast = false;
-            release = true;
+            release = false;
           };
         };
       };
-      # Exclude "wasm" directory because it causes "error: attribute 'crane' missing" and "error: expected a derivation".
-      root = builtins.filterSource (path: type: !(type == "directory" && baseNameOf path == "wasm")) ./.;
+      # Only include directories necessary for building the project, to make the derivation smaller.
+      root = nix-filter {
+        root = ./.;
+        include = [
+          ./src
+          ./Cargo.lock
+          ./Cargo.toml
+          ./rust-toolchain.toml
+        ];
+      };
     };
 }

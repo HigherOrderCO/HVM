@@ -66,6 +66,7 @@ enum Command {
 fn main() {
   if let Err(err) = run_cli() {
     eprintln!("{}", err);
+    std::process::exit(1);
   };
 }
 
