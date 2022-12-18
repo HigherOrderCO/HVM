@@ -142,7 +142,7 @@ pub fn gen_rulebook(file: &language::syntax::File) -> RuleBook {
 
   // Adds each group
   for (name, group) in groups.iter() {
-    if book.name_to_id.get(name).is_none() {
+    if book.rule_group.get(name).is_none() {
       add_group(&mut book, name, group);
     }
   }
