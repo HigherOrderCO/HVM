@@ -47,7 +47,6 @@ pub fn is_whnf(term: Ptr) -> bool {
 pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, full: bool, debug: bool) -> Ptr {
   // Halting flag
   let stop = &AtomicUsize::new(1);
-  let dead = &AtomicBool::new(false);
   let barr = &Barrier::new(tids.len());
   let locs = &tids.iter().map(|x| AtomicU64::new(u64::MAX)).collect::<Vec<AtomicU64>>();
 
@@ -55,19 +54,11 @@ pub fn reduce(heap: &Heap, prog: &Program, tids: &[usize], root: u64, full: bool
   std::thread::scope(|s| {
     for tid in tids {
       s.spawn(move || {
-        reducer(heap, prog, tids, stop, dead, barr, locs, root, *tid, full, debug);
+        reducer(heap, prog, tids, stop, barr, locs, root, *tid, full, debug);
         //println!("[{}] done", tid);
       });
     }
   });
-
-  // This is a temporary warning until we fix a deadlock case.
-  if dead.load(Ordering::Relaxed) {
-    eprintln!("WARNING: HVM wasn't able to evaluate your program with multiple threads.");
-    eprintln!("This is an internalbug that is currently under investigation. Meanwhile,");
-    eprintln!("you can run it with a single thread by using the `-t 1` option.");
-    std::process::exit(0);
-  }
 
   // Return whnf term ptr
   return load_ptr(heap, root);
@@ -78,14 +69,13 @@ pub fn reducer(
   prog: &Program,
   tids: &[usize],
   stop: &AtomicUsize,
-  dead: &AtomicBool,
   barr: &Barrier,
   locs: &[AtomicU64],
   root: u64,
   tid: usize,
   full: bool,
   debug: bool,
-) -> bool {
+) {
 
   // State Stacks
   let redex = &heap.rbag;
@@ -93,7 +83,6 @@ pub fn reducer(
   let bkoff = &Backoff::new();
   let hold  = tids.len() <= 1;
   let seen  = &mut HashSet::new();
-  let waits = &mut tids.iter().map(|x| AtomicUsize::new(usize::MAX)).collect::<Vec<AtomicUsize>>();
 
   // State Vars
   let (mut cont, mut host) = if tid == tids[0] {
@@ -112,24 +101,6 @@ pub fn reducer(
     }
     barr.wait(stop);
   };
-
-  // When a thread attempts to enter a dup locked node, the default behavior is
-  // to just wait for its completion. That may cause deadlocks, as follows:
-  // - thread A enters and locks a dup node X
-  // - thread B enters and locks a dup node Y
-  // - thread A steals a task that makes it enter Y
-  // - thread B steals a task that makes it enter X
-  // When that happens, we'll temporarily abort execution until this is fixed.
-  fn is_deadlocked(tids: &[usize], waits: &[AtomicUsize], tid: usize) -> bool {
-    let mut next_tid = tid;
-    for i in 0 .. tids.len() {
-      next_tid = waits[next_tid].load(Ordering::Relaxed);
-      if next_tid == usize::MAX {
-        return false;
-      }
-    }
-    return true;
-  }
 
   // State Machine
   'main: loop {
@@ -154,15 +125,7 @@ pub fn reducer(
             DP0 | DP1 => {
               match acquire_lock(heap, tid, term) {
                 Err(locker_tid) => {
-                  // Annotate the fact we're waiting for the locker_tid
-                  unsafe { waits.get_unchecked(tid) }.store(locker_tid as usize, Ordering::Relaxed);
-                  if !is_deadlocked(tids, waits, tid) {
-                    dead.store(true, Ordering::Relaxed);
-                    return true;
-                  // Otherwise, just wait for the lock
-                  } else {
-                    continue 'work;
-                  }
+                  continue 'work;
                 }
                 Ok(_) => {
                   // If the term changed, release lock and try again
@@ -365,8 +328,6 @@ pub fn reducer(
       }
     }
   }
-
-  return false;
 }
 
 pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
