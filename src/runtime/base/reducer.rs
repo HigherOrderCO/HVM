@@ -331,7 +331,17 @@ pub fn reducer(
 }
 
 pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
-  reduce(heap, prog, tids, host, true, debug)
+  let mut cost = get_cost(heap);
+  loop {
+    reduce(heap, prog, tids, host, true, debug);
+    let new_cost = get_cost(heap);
+    if new_cost != cost {
+      cost = new_cost;
+    } else {
+      break;
+    }
+  }
+  load_ptr(heap, host)
 }
 
 //pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut im::HashSet<u64>, debug: bool) -> Ptr {
