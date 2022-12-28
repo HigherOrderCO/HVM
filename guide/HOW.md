@@ -38,7 +38,7 @@ exist in one place greatly simplifies parallelism.
 This was all known and possible since years ago (see other implementations of
 optimal reduction), but all implementations of this algorithm, until now,
 represented terms as graphs. This demanded a lot of pointer indirection, making
-it slow in practice. A new memory format, based on [SIC](https://github.com/VictorTaelin/Symmetric-Interaction-Calculus),
+it slow in practice. A new memory format, based on the [Interaction Calculus](https://github.com/VictorTaelin/Symmetric-Interaction-Calculus),
 takes advantage of the fact that inputs are known to be λ-terms, allowing for a
 50% lower memory usage, and letting us avoid several impossible cases. This
 made the runtime 50x (!) faster, which finally allowed it to compete with GHC
