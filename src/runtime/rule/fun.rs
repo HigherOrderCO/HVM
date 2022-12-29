@@ -99,7 +99,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
                 =  get_tag(load_arg(ctx.heap, ctx.term, i)) == CTR
                 && arity_of(&ctx.prog.aris, load_arg(ctx.heap, ctx.term, i)) == 0;
 
-              // Matches KIND_ctx.term numbers and constructors
+              // Matches HOAS numbers and constructors
               let is_hoas_ctr_num
                 =  get_tag(load_arg(ctx.heap, ctx.term, i)) == CTR
                 && get_ext(load_arg(ctx.heap, ctx.term, i)) >= KIND_TERM_CT0
