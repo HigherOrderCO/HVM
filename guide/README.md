@@ -23,7 +23,7 @@ This will install HVM's command-line interface. Make sure it worked with:
 hvm --version
 ```
 
-You should see `hvm 1.0.5-beta`.
+You should see `hvm 1.0.VERSION-beta`.
 
 Basic Usage
 -----------
