@@ -246,7 +246,7 @@ Getting Started
 
     ```
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-    rustup default nightly
+    rustup toolchain install nightly
     ```
 
 2. Install HVM:
