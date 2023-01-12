@@ -1,0 +1,45 @@
+// Generates a random list
+(Rnd 0 s) = Nil
+(Rnd n s) = (Cons s (Rnd (- n 1) (% (+ (* s 1664525) 1013904223) 4294967296)))
+
+// Scale a list by 's'
+(Scale s Nil) = (0)
+(Scale s (Cons t Nil)) = (Cons (* s t) Nil)
+(Scale s (Cons u (Cons t Nil))) = (Cons (* s u) (Cons (* s t) Nil))
+
+// Multiply two 1D lists
+(Multiply Nil Nil) = Nil
+(Multiply a Nil) = (Cons 0 Nil)
+(Multiply Nil a) = (Cons Nil 0)
+(Multiply (Cons a Nil) (Cons b Nil)) = (* a b)
+(Multiply (Cons a Nil) (Cons c (Cons b Nil))) = (Scale a (Cons c (Cons b Nil)))
+(Multiply (Cons d (Cons a Nil)) (Cons c (Cons b Nil))) = (Cons (Scale d (Cons c (Cons b Nil))) (Scale a (Cons c (Cons b Nil))))
+
+// Sums a 1D list
+(Sum Nil)         = 0
+(Sum (Cons x xs)) = (+ x (Sum xs))
+
+//-- Mains --//
+// How to run?
+// prompt$ hvm run -f matrix-multiplication.hvm "(Main 2)"
+// ----------//
+
+// 1. Ensure we can print a random array
+//(Main n) = (Rnd (* n 10) 1)
+
+// 2. Ensure we can sum a list
+//(Main n) = (Sum (Rnd (* n 1000) 1))
+
+// 3. Ensure we can scale a list and sum it
+//(Main n) = (Sum (Scale (Rnd (* n 2) 1) (Rnd (* n 2) 1)))
+
+// 4. Ensure we can multiply two 1D lists of reasonable size
+(Main n) = (Sum (Multiply (Rnd (* n 1000) 1) (Rnd (* n 1000) 1)))
+
+// 5. This results in stack overflow :-/
+// --
+// thread 'main' has overflowed its stack
+// fatal runtime error: stack overflow
+// zsh: abort      hvm run -f matrix-multiplication.hvm "(Main 2)"
+// --
+//(Main n) = (Sum (Multiply (Rnd (* n 100000) 1) (Rnd (* n 100000) 1)))
