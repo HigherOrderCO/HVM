@@ -252,7 +252,7 @@ Getting Started
 2. Install HVM:
 
     ```
-    cargo install hvm
+    cargo +nightly install hvm
     ```
 
 3. Run an HVM expression:
