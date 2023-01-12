@@ -162,26 +162,6 @@ pub fn build_function(
     }
     line(&mut visit, 0, &format!("}}"));
 
-    //OLD_VISITER:
-    //let mut visit = String::new();
-    //line(&mut visit, 0, &format!("#[inline(always)]"));
-    //line(&mut visit, 0, &format!("pub fn {}_visit(ctx: ReduceCtx) -> bool {{", &build_name(fname)));
-    //if fn_visit.strict_idx.is_empty() {
-      //line(&mut visit, 1, "return false;");
-    //} else {
-      //line(&mut visit, 1, &format!("let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, {}));", fn_visit.strict_idx.len()));
-      //for (i, strict) in fn_visit.strict_idx.iter().enumerate() {
-        //if i < fn_visit.strict_idx.len() - 1 {
-          //line(&mut visit, 1, &format!("ctx.visit.push(new_visit(get_loc(ctx.term, {}), goup));", strict));
-        //} else {
-          //line(&mut visit, 1, &format!("*ctx.cont = goup;"));
-          //line(&mut visit, 1, &format!("*ctx.host = get_loc(ctx.term, {});", strict));
-          //line(&mut visit, 1, &format!("return true;"));
-        //}
-      //}
-    //}
-    //line(&mut visit, 0, "}");
-
     // Apply
     // -----
     
