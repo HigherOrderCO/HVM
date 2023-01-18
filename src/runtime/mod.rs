@@ -51,7 +51,7 @@ impl Runtime {
       heap: new_heap(size, tids),
       prog: Program::new(),
       book: language::rulebook::new_rulebook(),
-      tids: new_tids(size),
+      tids: new_tids(tids),
       dbug: dbug,
     }
   }
@@ -62,7 +62,7 @@ impl Runtime {
     let heap = new_heap(size, tids);
     let prog = Program::new();
     let book = language::rulebook::gen_rulebook(&file);
-    let tids = new_tids(size);
+    let tids = new_tids(tids);
     return Ok(Runtime { heap, prog, book, tids, dbug });
   }
 
