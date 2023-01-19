@@ -49,7 +49,7 @@ pub type Parser<'a, A> = Box<dyn Fn(State<'a>) -> Answer<'a, A>>;
 // =====
 
 pub fn find(text: &str, target: &str) -> usize {
-  text.find(target).unwrap_or_else(|| panic!("`{}` not in `{}`.", target, text))
+  text.find(target).unwrap_or_else(|| panic!("`{target}` not in `{text}`."))
 }
 
 pub fn read<'a, A>(parser: Parser<'a, A>, code: &'a str) -> Result<A, String> {
@@ -94,9 +94,9 @@ pub fn get_char(state: State) -> Answer<char> {
 pub fn peek_char(state: State) -> Answer<char> {
   let (state, _) = skip(state)?;
   if let Some(got) = head(state) {
-    return Ok((state, got));
+    Ok((state, got))
   } else {
-    return Ok((state, '\0'));
+    Ok((state, '\0'))
   }
 }
 
@@ -387,7 +387,11 @@ pub fn name1(state: State) -> Answer<String> {
 // ======
 
 pub fn expected<'a, A>(name: &str, size: usize, state: State<'a>) -> Answer<'a, A> {
-  Err(format!("Expected `{}`:\n{}", name, &highlight_error::highlight_error(state.index, state.index + size, state.code)))
+  Err(format!(
+    "Expected `{}`:\n{}",
+    name,
+    &highlight_error::highlight_error(state.index, state.index + size, state.code)
+  ))
 }
 
 // Tests
