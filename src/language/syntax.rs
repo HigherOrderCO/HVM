@@ -22,7 +22,7 @@ pub enum Term {
   Op2 { oper: Oper, val0: Box<Term>, val1: Box<Term> },
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Oper {
   Add, Sub, Mul, Div,
   Mod, And, Or,  Xor,
