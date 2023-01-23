@@ -8,7 +8,7 @@ pub mod base;
 pub mod data;
 pub mod rule;
 
-use sysinfo::{System, SystemExt};
+use sysinfo::{System, SystemExt, RefreshKind};
 
 pub use base::{*};
 pub use data::{*};
@@ -23,8 +23,7 @@ pub const CELLS_PER_GB: usize = 0x8000000;
 // If unspecified, allocates `max(16 GB, 75% free_sys_mem)` memory
 pub fn default_heap_size() -> usize {
   use sysinfo::SystemExt;
-  let system = System::new_all();
-  let available_memory = system.free_memory();
+  let available_memory = System::new_with_specifics(RefreshKind::new().with_memory()).free_memory();
   let heap_size = (available_memory * 3 / 4) / 8;
   let heap_size = std::cmp::min(heap_size as usize, 16 * CELLS_PER_GB);
   return heap_size as usize;
