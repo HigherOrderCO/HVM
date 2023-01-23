@@ -16,20 +16,20 @@ nix profile install .#hvm
 
 #### 2. Create an HVM file
 
-[Same as step 2 of the "Usage" section](./README.md#2-create-an-hvm-file).
+[An example program can be found here](./guide/README.md#first-program).
 
 #### 3. Run/compile it
 
 ```sh
-# Interpret the main.hvm file, passing "(Main 25)" as an argument.
-hvm run -f main.hvm "(Main 25)"
+# Interpret the hvm file while passing an argument.
+hvm run -f BMI.hvm "(BMI 62.0 1.70)"
 # Compile it to Rust.
-hvm compile main.hvm
-cd main
+hvm compile BMI.hvm
+cd BMI
 # Initialise the Nix development shell.
-nix develop .#hvm
+nix develop
 # Compile the resulting Rust code.
 cargo build --release
-# Run the resulting binary.
-./target/release/main run "(Main 25)"
+# Run the resulting binary with the same argument.
+./target/release/BMI run "(BMI 62.0 1.70)"
 ```
