@@ -96,13 +96,13 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
         }
         // Force strictness when pattern-matching
         if lhs_top {
-          for i in 0..args.len() {
-            let is_strict = match *args[i] {
-              language::syntax::Term::Ctr { .. } => true,
-              language::syntax::Term::U6O { .. } => true,
-              language::syntax::Term::F6O { .. } => true,
-              _ => false,
-            };
+          for (i, arg) in args.iter().enumerate() {
+            let is_strict = matches!(
+              **arg,
+              language::syntax::Term::Ctr { .. }
+                | language::syntax::Term::U6O { .. }
+                | language::syntax::Term::F6O { .. }
+            );
             if is_strict {
               book.id_to_smap.get_mut(&id).unwrap()[i] = true;
             }
@@ -305,7 +305,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
         if is_global_0 != is_global_1 {
           panic!("Both variables must be global: '{nam0}' and '{nam1}'.");
         }
-        if is_global_0 && &nam0[2..] != &nam1[2..] {
+        if is_global_0 && nam0[2..] != nam1[2..] {
           panic!("Global dup names must be identical: '{nam0}' and '{nam1}'.");
         }
         let new_nam0 = if is_global_0 { nam0.clone() } else { (ctx.fresh)() };
@@ -1042,7 +1042,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
 
   // For each group, split its internal rules
   let mut new_rules = Vec::new();
-  for (_name, rules) in &groups {
+  for rules in groups.values() {
     for rule in split_group(rules, &mut name_count) {
       new_rules.push(rule);
     }

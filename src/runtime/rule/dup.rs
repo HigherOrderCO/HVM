@@ -44,7 +44,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
     free(ctx.heap, ctx.tid, get_loc(arg0, 0), 2);
     true
-  }
+
   // dup x y = {a b}
   // --------------- DUP-SUP
   // if equal: | else:
@@ -52,7 +52,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // y <- b    | y <- {yA yB}
   //           | dup xA yA = a
   //           | dup xB yB = b
-  else if get_tag(arg0) == SUP {
+  } else if get_tag(arg0) == SUP {
     if tcol == get_ext(arg0) {
       inc_cost(ctx.heap, ctx.tid);
       atomic_subst(
@@ -107,19 +107,13 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // x <- N
   // y <- N
   // ~
-  else if get_tag(arg0) == U60 {
-    inc_cost(ctx.heap, ctx.tid);
-    atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), arg0);
-    atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), arg0);
-    free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
-    return true;
-  }
+  // ===== OR =====
   // dup x y = N
   // ----------- DUP-F60
   // x <- N
   // y <- N
   // ~
-  else if get_tag(arg0) == F60 {
+  else if get_tag(arg0) == U60 || get_tag(arg0) == F60 {
     inc_cost(ctx.heap, ctx.tid);
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), arg0);
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), arg0);

@@ -11,7 +11,7 @@ pub fn build_name(name: &str) -> String {
   // identifier character in C.
   //let name = name.replace('_', "__");
   let name = name.replace('.', "_").replace('$', "_S_");
-  format!("_{}_", name)
+  format!("_{name}_")
 }
 
 pub fn build_code(code: &str) -> Result<(String, String), String> {
@@ -35,19 +35,19 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   for id in itertools::sorted(book.id_to_name.keys()) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
-      line(&mut precomp_els, 0, &format!(r#"  Precomp {{"#));
-      line(&mut precomp_els, 0, &format!(r#"    id: {},"#, &build_name(&name)));
-      line(&mut precomp_els, 0, &format!(r#"    name: "{}","#, &name));
+      line(&mut precomp_els, 0, "  Precomp {");
+      line(&mut precomp_els, 0, &format!("    id: {},", &build_name(name)));
+      line(&mut precomp_els, 0, &format!(r#"    name: "{name}","#));
       line(&mut precomp_els, 0, &format!(r#"    smap: &{:?},"#, book.id_to_smap.get(id).unwrap()));
       if *book.ctr_is_fun.get(name).unwrap_or(&false) {
-        line(&mut precomp_els, 0, &format!(r#"    funs: Some(PrecompFuns {{"#));
-        line(&mut precomp_els, 0, &format!(r#"      visit: {}_visit,"#, &build_name(&name)));
-        line(&mut precomp_els, 0, &format!(r#"      apply: {}_apply,"#, &build_name(&name)));
-        line(&mut precomp_els, 0, &format!(r#"    }}),"#));
+        line(&mut precomp_els, 0, "    funs: Some(PrecompFuns {");
+        line(&mut precomp_els, 0, &format!("      visit: {}_visit,", &build_name(name)));
+        line(&mut precomp_els, 0, &format!("      apply: {}_apply,", &build_name(name)));
+        line(&mut precomp_els, 0, "    }),");
       } else {
-        line(&mut precomp_els, 0, &format!(r#"    funs: None,"#));
+        line(&mut precomp_els, 0, "    funs: None,");
       }
-      line(&mut precomp_els, 0, &format!(r#"  }},"#));
+      line(&mut precomp_els, 0, "  },");
     }
   }
 
@@ -57,52 +57,50 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       if let Some(rules) = book.rule_group.get(name) {
-        let (got_visit, got_apply) = build_function(book, &name, &rules.1);
-        line(&mut precomp_fns, 0, &format!("{}", got_visit));
-        line(&mut precomp_fns, 0, &format!("{}", got_apply));
+        let (got_visit, got_apply) = build_function(book, name, &rules.1);
+        line(&mut precomp_fns, 0, &got_visit);
+        line(&mut precomp_fns, 0, &got_apply);
       }
     }
   }
 
   // fast visit
   let mut fast_visit = String::new();
-  line(&mut fast_visit, 7, &format!("match fid {{"));
+  line(&mut fast_visit, 7, "match fid {");
   for id in itertools::sorted(book.id_to_name.keys()) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       if let Some(rules) = book.rule_group.get(name) {
-        line(&mut fast_visit, 8, &format!("{} => {{", &build_name(&name)));
-        line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
-        line(&mut fast_visit, 10, &format!("continue 'visit;"));
-        line(&mut fast_visit, 9, &format!("}} else {{"));
-        line(&mut fast_visit, 10, &format!("break 'visit;"));
-        line(&mut fast_visit, 9, &format!("}}"));
-        line(&mut fast_visit, 8, &format!("}}"));
+        line(&mut fast_visit, 8, &format!("{} => {{", &build_name(name)));
+        line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(name)));
+        line(&mut fast_visit, 10, "continue 'visit;");
+        line(&mut fast_visit, 9, "} else {");
+        line(&mut fast_visit, 10, "break 'visit;");
+        line(&mut fast_visit, 9, "}");
+        line(&mut fast_visit, 8, "}");
       };
     }
   }
-  line(&mut fast_visit, 8, &format!("_ => {{}}"));
-  line(&mut fast_visit, 7, &format!("}}"));
+  line(&mut fast_visit, 8, "_ => {}");
+  line(&mut fast_visit, 7, "}");
 
   // fast apply
   let mut fast_apply = String::new();
-  line(&mut fast_apply, 8, &format!("match fid {{"));
+  line(&mut fast_apply, 8, "match fid {");
   for id in itertools::sorted(book.id_to_name.keys()) {
     if id >= &runtime::PRECOMP_COUNT {
       let name = book.id_to_name.get(id).unwrap();
       if let Some(rules) = book.rule_group.get(name) {
-        line(&mut fast_apply, 9, &format!("{} => {{", &build_name(&name)));
-        line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
-        line(&mut fast_apply, 11, &format!("continue 'work;"));
-        line(&mut fast_apply, 10, &format!("}} else {{"));
-        line(&mut fast_apply, 11, &format!("break 'apply;"));
-        line(&mut fast_apply, 10, &format!("}}"));
-        line(&mut fast_apply, 9, &format!("}}"));
+        line(&mut fast_apply, 9, &format!("{} => {{", &build_name(name)));
+        line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(name)));
+        line(&mut fast_apply, 11, "continue 'work;");
+        line(&mut fast_apply, 10, "}");
+        line(&mut fast_apply, 9, "}");
       };
     }
   }
-  line(&mut fast_apply, 9, &format!("_ => {{}}"));
-  line(&mut fast_apply, 8, &format!("}}"));
+  line(&mut fast_apply, 9, "_ => {}");
+  line(&mut fast_apply, 8, "}");
 
   // precomp.rs
   let precomp_rs: &str = include_str!("./../runtime/base/precomp.rs");
@@ -115,7 +113,7 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
   let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-VISIT]]//\n", &fast_visit);
   let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-APPLY]]//\n", &fast_apply);
 
-  return (precomp_rs, reducer_rs);
+  (precomp_rs, reducer_rs)
 }
 
 pub fn build_function(
@@ -130,48 +128,42 @@ pub fn build_function(
     // -----
 
     let mut visit = String::new();
-    line(&mut visit, 0, &format!("#[inline(always)]"));
+    line(&mut visit, 0, "#[inline(always)]");
     line(&mut visit, 0, &format!("pub fn {}_visit(ctx: ReduceCtx) -> bool {{", &build_name(fname)));
     if fn_visit.strict_idx.is_empty() {
       line(&mut visit, 1, "return false;");
     } else {
-      line(&mut visit, 1, &format!("let mut vlen = 0;"));
-      line(
-        &mut visit,
-        1,
-        &format!("let vbuf = unsafe {{ ctx.heap.vbuf.get_unchecked(ctx.tid) }};"),
-      );
+      line(&mut visit, 1, "let mut vlen = 0;");
+      line(&mut visit, 1, "let vbuf = unsafe { ctx.heap.vbuf.get_unchecked(ctx.tid) };");
       for sidx in &fn_visit.strict_idx {
         line(&mut visit, 1, &format!("if !is_whnf(load_arg(ctx.heap, ctx.term, {})) {{", *sidx));
         line(&mut visit, 2, &format!("unsafe {{ vbuf.get_unchecked(vlen) }}.store(get_loc(ctx.term, {}), Ordering::Relaxed);", *sidx));
-        line(&mut visit, 2, &format!("vlen += 1"));
-        line(&mut visit, 1, &format!("}}"));
+        line(&mut visit, 2, "vlen += 1");
+        line(&mut visit, 1, "}");
       }
-      line(&mut visit, 1, &format!("if vlen == 0 {{"));
-      line(&mut visit, 2, &format!("return false;"));
-      line(&mut visit, 1, &format!("}} else {{"));
+      line(&mut visit, 1, "if vlen == 0 {");
+      line(&mut visit, 2, "return false;");
+      line(&mut visit, 1, "} else {");
       line(
         &mut visit,
         2,
-        &format!(
-          "let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));"
-        ),
+        "let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));",
       );
       for i in 0..fn_visit.strict_idx.len() {
-        line(&mut visit, 2, &format!("if {} < vlen - 1 {{", i));
-        line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({}).load(Ordering::Relaxed) }}, ctx.hold, goup));", i));
-        line(&mut visit, 2, &format!("}}"));
+        line(&mut visit, 2, &format!("if {i} < vlen - 1 {{"));
+        line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({i}).load(Ordering::Relaxed) }}, ctx.hold, goup));"));
+        line(&mut visit, 2, "}");
       }
-      line(&mut visit, 2, &format!("*ctx.cont = goup;"));
+      line(&mut visit, 2, "*ctx.cont = goup;");
       line(
         &mut visit,
         2,
-        &format!("*ctx.host = unsafe {{ vbuf.get_unchecked(vlen - 1).load(Ordering::Relaxed) }};"),
+        "*ctx.host = unsafe { vbuf.get_unchecked(vlen - 1).load(Ordering::Relaxed) };",
       );
-      line(&mut visit, 2, &format!("return true;"));
-      line(&mut visit, 1, &format!("}}"));
+      line(&mut visit, 2, "return true;");
+      line(&mut visit, 1, "}");
     }
-    line(&mut visit, 0, &format!("}}"));
+    line(&mut visit, 0, "}");
 
     // Apply
     // -----
@@ -205,9 +197,9 @@ pub fn build_function(
         break 'TransmuteOptimization;
       }
       // Checks if it returns the same variables in order
-      for i in 0..cell.len() {
-        if let runtime::RuleBodyCell::Var { index } = cell[i] {
-          if index != i as u64 {
+      for (i, cell) in cell.iter().enumerate() {
+        if let runtime::RuleBodyCell::Var { index } = cell {
+          if *index != i as u64 {
             break 'TransmuteOptimization;
           }
         } else {
@@ -222,7 +214,7 @@ pub fn build_function(
         break 'TransmuteOptimization;
       }
       // If all is true, compile as a transmuter
-      line(&mut apply, 0, &format!("#[inline(always)]"));
+      line(&mut apply, 0, "#[inline(always)]");
       line(
         &mut apply,
         0,
@@ -235,14 +227,14 @@ pub fn build_function(
       );
       line(&mut apply, 1, "link(ctx.heap, *ctx.host, done);");
       line(&mut apply, 1, "return false;");
-      line(&mut apply, 0, &format!("}}"));
+      line(&mut apply, 0, "}");
     }
 
     // Normal Function
     // ---------------
 
-    if apply.len() == 0 {
-      line(&mut apply, 0, &format!("#[inline(always)]"));
+    if apply.is_empty() {
+      line(&mut apply, 0, "#[inline(always)]");
       line(
         &mut apply,
         0,
@@ -251,19 +243,18 @@ pub fn build_function(
 
       // Loads strict arguments
       for i in 0..fn_smap.len() {
-        line(&mut apply, 1, &format!("let arg{} = load_arg(ctx.heap, ctx.term, {});", i, i));
+        line(&mut apply, 1, &format!("let arg{i} = load_arg(ctx.heap, ctx.term, {i});"));
       }
 
       // Applies the fun_sup rule to superposed args
       for (i, is_strict) in fn_visit.strict_map.iter().enumerate() {
         if *is_strict {
-          line(&mut apply, 1, &format!("if get_tag(arg{}) == SUP {{", i));
+          line(&mut apply, 1, &format!("if get_tag(arg{i}) == SUP {{"));
           line(
             &mut apply,
             2,
             &format!(
-              "fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg{}, {});",
-              i, i
+              "fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg{i}, {i});",
             ),
           );
           line(&mut apply, 1, "}");
@@ -278,60 +269,50 @@ pub fn build_function(
         for (i, cond) in rule.cond.iter().enumerate() {
           let i = i as u64;
           if runtime::get_tag(*cond) == runtime::U60 {
-            let same_tag = format!("get_tag(arg{}) == U60", i);
-            let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
-            matched.push(format!("({} && {})", same_tag, same_val));
+            let same_tag = format!("get_tag(arg{i}) == U60");
+            let same_val = format!("get_num(arg{i}) == {}", runtime::get_num(*cond));
+            matched.push(format!("({same_tag} && {same_val})"));
           }
           if runtime::get_tag(*cond) == runtime::F60 {
-            let same_tag = format!("get_tag(arg{}) == F60", i);
+            let same_tag = format!("get_tag(arg{i}) == F60");
             let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
-            matched.push(format!("({} && {})", same_tag, same_val));
+            matched.push(format!("({same_tag} && {same_val})"));
           }
           if runtime::get_tag(*cond) == runtime::CTR {
-            let some_tag = format!("get_tag(arg{}) == CTR", i);
-            let some_ext = format!("get_ext(arg{}) == {}", i, runtime::get_ext(*cond));
-            matched.push(format!("({} && {})", some_tag, some_ext));
+            let some_tag = format!("get_tag(arg{i}) == CTR");
+            let some_ext = format!("get_ext(arg{i}) == {}", runtime::get_ext(*cond));
+            matched.push(format!("({some_tag} && {some_ext})"));
           }
           // If this is a strict argument, then we're in a default variable
           if runtime::get_tag(*cond) == runtime::VAR && fn_visit.strict_map[i as usize] {
             // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
             if rule.hoas && r != fn_apply.rules.len() - 1 {
               // Matches number literals
-              let is_num = format!(
-                "({} || {})",
-                format!("get_tag(arg{}) == U60", i),
-                format!("get_tag(arg{}) == F60", i)
-              );
+              let is_num = format!("(get_tag(arg{i}) == U60 || get_tag(arg{i}) == F60)");
 
               // Matches constructor labels
-              let is_ctr = format!(
-                "({} && {})",
-                format!("get_tag(arg{}) == CTR", i),
-                format!("arity_of(heap, arg{}) == 0u", i)
-              );
+              let is_ctr =
+                format!("(arity_of(heap, arg{i}) == 0u && arity_of(heap, arg{i}) == 0u)",);
 
               // Matches HOAS numbers and constructors
               let is_hoas_ctr_num = format!(
-                "({} && {} && {})",
-                format!("get_tag(arg{}) == CTR", i),
-                format!("get_ext(arg{}) >= HOAS_CT0", i),
-                format!("get_ext(arg{}) <= HOAS_F60", i)
+                "(get_tag(arg{i}) == CTR && get_ext(arg{i}) >= HOAS_CT0 && get_ext(arg{i}) <= HOAS_F60)",
               );
 
-              matched.push(format!("({} || {} || {})", is_num, is_ctr, is_hoas_ctr_num));
+              matched.push(format!("({is_num} || {is_ctr} || {is_hoas_ctr_num})"));
 
             // Only match default variables on CTRs, U60s, F60s
             } else {
-              let is_ctr = format!("get_tag(arg{}) == CTR", i);
-              let is_u60 = format!("get_tag(arg{}) == U60", i);
-              let is_f60 = format!("get_tag(arg{}) == F60", i);
-              matched.push(format!("({} || {} || {})", is_ctr, is_u60, is_f60));
+              let is_ctr = format!("get_tag(arg{i}) == CTR");
+              let is_u60 = format!("get_tag(arg{i}) == U60");
+              let is_f60 = format!("get_tag(arg{i}) == F60");
+              matched.push(format!("({is_ctr} || {is_u60} || {is_f60})"));
             }
           }
         }
 
         let conds = if matched.is_empty() { String::from("true") } else { matched.join(" && ") };
-        line(&mut apply, 1, &format!("if {} {{", conds));
+        line(&mut apply, 1, &format!("if {conds} {{"));
 
         // Increments the gas count
         line(&mut apply, 2, "inc_cost(ctx.heap, ctx.tid);");
@@ -339,14 +320,14 @@ pub fn build_function(
         // Builds the free vector
         let mut free: Vec<Option<(String, u64)>> = vec![];
         for (idx, ari) in &rule.free {
-          free.push(Some((format!("get_loc(arg{}, 0)", idx), *ari)));
+          free.push(Some((format!("get_loc(arg{idx}, 0)"), *ari)));
         }
         free.push(Some(("get_loc(ctx.term, 0)".to_string(), fn_visit.strict_map.len() as u64)));
 
         // Builds the right-hand side term (ex: `(Succ (Add a b))`)
         //let done = build_function_rule_body(&mut apply, 2, &rule.body, &rule.vars);
         let done = build_function_rule_rhs(book, &mut apply, &mut free, 2, &rule.core, &rule.vars);
-        line(&mut apply, 2, &format!("let done = {};", done));
+        line(&mut apply, 2, &format!("let done = {done};"));
 
         // Links the host location to it
         line(&mut apply, 2, "link(ctx.heap, *ctx.host, done);");
@@ -363,10 +344,8 @@ pub fn build_function(
         }
 
         // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-        for must_free in &free {
-          if let Some((loc, ari)) = must_free {
-            line(&mut apply, 2, &format!("free(ctx.heap, ctx.tid, {}, {});", loc, ari));
-          }
+        for (loc, ari) in free.iter().flatten() {
+          line(&mut apply, 2, &format!("free(ctx.heap, ctx.tid, {loc}, {ari});"));
         }
 
         //for (i, arity) in &rule.free {
@@ -423,7 +402,7 @@ pub fn build_function_rule_rhs(
       if glob != 0 {
         // FIXME: sanitizer still can't detect if a scopeless lambda doesn't use its bound
         // variable, so we must write an Era() here. When it does, we can remove this line.
-        line(code, tab, &format!("link(heap, {} + 0, Era());", name));
+        line(code, tab, &format!("link(heap, {name} + 0, Era());"));
         lams.insert(glob, name.clone());
       }
       name
@@ -438,34 +417,35 @@ pub fn build_function_rule_rhs(
     glob: u64,
   ) -> (String, String) {
     if let Some(got) = dups.get(&glob) {
-      return got.clone();
+      got.clone()
     } else {
       let coln = fresh(nams, "col");
       let name = fresh(nams, "dup");
-      line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
-      line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, 3)));
-      line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name)); // FIXME: remove when possible (same as above)
-      line(code, tab, &format!("link(ctx.heap, {} + 1, Era());", name)); // FIXME: remove when possible (same as above)
+      line(code, tab + 1, &format!("let {coln} = gen_dup(ctx.heap, ctx.tid);"));
+      line(code, tab + 1, &format!("let {name} = {};", alloc_node(free, 3)));
+      line(code, tab, &format!("link(ctx.heap, {name} + 0, Era());")); // FIXME: remove when possible (same as above)
+      line(code, tab, &format!("link(ctx.heap, {name} + 1, Era());")); // FIXME: remove when possible (same as above)
       if glob != 0 {
         dups.insert(glob, (coln.clone(), name.clone()));
       }
-      return (coln, name);
+      (coln, name)
     }
   }
-  fn alloc_node(free: &mut Vec<Option<(String, u64)>>, arit: u64) -> String {
+  fn alloc_node(frees: &mut Vec<Option<(String, u64)>>, arit: u64) -> String {
     // This will avoid calls to alloc() by reusing nodes from the left-hand side. Sadly, this seems
     // to decrease HVM's performance in some cases, probably because of added cache misses. Perhaps
     // this should be turned off. I'll decide later.
-    for i in 0..free.len() {
-      if let Some((loc, ari)) = free[i].clone() {
+    for free in frees {
+      if let Some((loc, ari)) = free.clone() {
         if ari == arit {
-          free[i] = None;
-          return format!("{}/*reuse:{}*/", loc.clone(), arit);
+          *free = None;
+          return format!("{loc}/*reuse:{arit}*/");
         }
       }
     }
-    return format!("alloc(ctx.heap, ctx.tid, {})", arit);
+    format!("alloc(ctx.heap, ctx.tid, {arit})")
   }
+  #[allow(clippy::too_many_arguments)]
   fn build_term(
     book: &language::rulebook::RuleBook,
     code: &mut String,
@@ -491,15 +471,15 @@ pub fn build_function_rule_rhs(
       }
       runtime::Core::Glo { glob, misc } => match *misc {
         runtime::VAR => {
-          return format!("Var({})", alloc_lam(code, tab, free, nams, lams, *glob));
+          format!("Var({})", alloc_lam(code, tab, free, nams, lams, *glob))
         }
         runtime::DP0 => {
           let (coln, name) = alloc_dup(code, tab, free, nams, dups, *glob);
-          return format!("Dp0({}, {})", coln, name);
+          format!("Dp0({coln}, {name})")
         }
         runtime::DP1 => {
           let (coln, name) = alloc_dup(code, tab, free, nams, dups, *glob);
-          return format!("Dp1({}, {})", coln, name);
+          format!("Dp1({coln}, {name})")
         }
         _ => {
           panic!("Unexpected error.");
@@ -510,30 +490,26 @@ pub fn build_function_rule_rhs(
         let dup0 = fresh(nams, "dp0");
         let dup1 = fresh(nams, "dp1");
         let expr = build_term(book, code, tab, free, vars, nams, lams, dups, expr);
-        line(code, tab, &format!("let {} = {};", copy, expr));
-        line(code, tab, &format!("let {};", dup0));
-        line(code, tab, &format!("let {};", dup1));
+        line(code, tab, &format!("let {copy} = {expr};"));
+        line(code, tab, &format!("let {dup0};"));
+        line(code, tab, &format!("let {dup1};"));
         if INLINE_NUMBERS {
-          line(
-            code,
-            tab + 0,
-            &format!("if get_tag({}) == U60 || get_tag({}) == F60 {{", copy, copy),
-          );
+          line(code, tab + 0, &format!("if get_tag({copy}) == U60 || get_tag({copy}) == F60 {{"));
           line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
-          line(code, tab + 1, &format!("{} = {};", dup0, copy));
-          line(code, tab + 1, &format!("{} = {};", dup1, copy));
+          line(code, tab + 1, &format!("{dup0} = {copy};"));
+          line(code, tab + 1, &format!("{dup1} = {copy};"));
           line(code, tab + 0, "} else {");
         }
         let (coln, name) = alloc_dup(code, tab, &mut vec![], nams, dups, *glob);
         if eras.0 {
-          line(code, tab + 1, &format!("link(ctx.heap, {} + 0, Era());", name));
+          line(code, tab + 1, &format!("link(ctx.heap, {name} + 0, Era());"));
         }
         if eras.1 {
-          line(code, tab + 1, &format!("link(ctx.heap, {} + 1, Era());", name));
+          line(code, tab + 1, &format!("link(ctx.heap, {name} + 1, Era());"));
         }
-        line(code, tab + 1, &format!("link(ctx.heap, {} + 2, {});", name, copy));
-        line(code, tab + 1, &format!("{} = Dp0({}, {});", dup0, coln, name));
-        line(code, tab + 1, &format!("{} = Dp1({}, {});", dup1, coln, name));
+        line(code, tab + 1, &format!("link(ctx.heap, {name} + 2, {copy});"));
+        line(code, tab + 1, &format!("{dup0} = Dp0({coln}, {name});"));
+        line(code, tab + 1, &format!("{dup1} = Dp1({coln}, {name});"));
         if INLINE_NUMBERS {
           line(code, tab + 0, "}");
         }
@@ -549,11 +525,11 @@ pub fn build_function_rule_rhs(
         let val0 = build_term(book, code, tab, free, vars, nams, lams, dups, val0);
         let val1 = build_term(book, code, tab, free, vars, nams, lams, dups, val1);
         let coln = fresh(nams, "col");
-        line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
+        line(code, tab + 1, &format!("let {coln} = gen_dup(ctx.heap, ctx.tid);"));
         line(code, tab, &format!("let {} = {};", name, alloc_node(free, 2)));
-        line(code, tab, &format!("link(ctx.heap, {} + 0, {});", name, val0));
-        line(code, tab, &format!("link(ctx.heap, {} + 1, {});", name, val1));
-        format!("Sup({}, {})", coln, name)
+        line(code, tab, &format!("link(ctx.heap, {name} + 0, {val0});"));
+        line(code, tab, &format!("link(ctx.heap, {name} + 1, {val1});"));
+        format!("Sup({coln}, {name})")
       }
       runtime::Core::Let { expr, body } => {
         let expr = build_term(book, code, tab, free, vars, nams, lams, dups, expr);
@@ -564,23 +540,23 @@ pub fn build_function_rule_rhs(
       }
       runtime::Core::Lam { eras, glob, body } => {
         let name = alloc_lam(code, tab, free, nams, lams, *glob);
-        vars.push(format!("Var({})", name));
+        vars.push(format!("Var({name})"));
         let body = build_term(book, code, tab, free, vars, nams, lams, dups, body);
         vars.pop();
         if *eras {
-          line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name));
+          line(code, tab, &format!("link(ctx.heap, {name} + 0, Era());"));
         }
-        line(code, tab, &format!("link(ctx.heap, {} + 1, {});", name, body));
-        format!("Lam({})", name)
+        line(code, tab, &format!("link(ctx.heap, {name} + 1, {body});"));
+        format!("Lam({name})")
       }
       runtime::Core::App { func, argm } => {
         let name = fresh(nams, "app");
         let func = build_term(book, code, tab, free, vars, nams, lams, dups, func);
         let argm = build_term(book, code, tab, free, vars, nams, lams, dups, argm);
         line(code, tab, &format!("let {} = {};", name, alloc_node(free, 2)));
-        line(code, tab, &format!("link(ctx.heap, {} + 0, {});", name, func));
-        line(code, tab, &format!("link(ctx.heap, {} + 1, {});", name, argm));
-        format!("App({})", name)
+        line(code, tab, &format!("link(ctx.heap, {name} + 0, {func});"));
+        line(code, tab, &format!("link(ctx.heap, {name} + 1, {argm});"));
+        format!("App({name})")
       }
       runtime::Core::Ctr { func, args } => {
         let cargs: Vec<String> = args
@@ -590,10 +566,10 @@ pub fn build_function_rule_rhs(
         let name = fresh(nams, "ctr");
         line(code, tab, &format!("let {} = {};", name, alloc_node(free, cargs.len() as u64)));
         for (i, arg) in cargs.iter().enumerate() {
-          line(code, tab, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+          line(code, tab, &format!("link(ctx.heap, {name} + {i}, {arg});"));
         }
-        let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
-        format!("Ctr({}, {})", fnam, name)
+        let fnam = build_name(book.id_to_name.get(func).unwrap_or(&func.to_string()));
+        format!("Ctr({fnam}, {name})")
       }
       runtime::Core::Fun { func, args } => {
         let fargs: Vec<String> = args
@@ -603,7 +579,7 @@ pub fn build_function_rule_rhs(
         // Inlined U60.if
         if INLINE_NUMBERS && *func == runtime::U60_IF && fargs.len() == 3 {
           let ret = fresh(nams, "ret");
-          line(code, tab + 0, &format!("let {};", ret));
+          line(code, tab + 0, &format!("let {ret};"));
           line(code, tab + 0, &format!("if get_tag({}) == U60 {{", fargs[0]));
           line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
           line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
@@ -613,196 +589,132 @@ pub fn build_function_rule_rhs(
             &format!("collect(ctx.heap, &ctx.prog.aris, ctx.tid, {});", fargs[1]),
           );
           line(code, tab + 2, &format!("{} = {};", ret, fargs[2]));
-          line(code, tab + 1, &format!("}} else {{"));
+          line(code, tab + 1, "} else {");
           line(
             code,
             tab + 2,
             &format!("collect(ctx.heap, &ctx.prog.aris, ctx.tid, {});", fargs[2]),
           );
           line(code, tab + 2, &format!("{} = {};", ret, fargs[1]));
-          line(code, tab + 1, &format!("}}"));
-          line(code, tab + 0, &format!("}} else {{"));
+          line(code, tab + 1, "}");
+          line(code, tab + 0, "} else {");
           let name = fresh(nams, "cal");
           line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, fargs.len() as u64)));
           for (i, arg) in fargs.iter().enumerate() {
-            line(code, tab + 1, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+            line(code, tab + 1, &format!("link(ctx.heap, {name} + {i}, {arg});"));
           }
-          let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
-          line(code, tab + 1, &format!("{} = Fun({}, {})", ret, fnam, name));
-          line(code, tab + 0, &format!("}}"));
-          return ret;
+          let fnam = build_name(book.id_to_name.get(func).unwrap_or(&func.to_string()));
+          line(code, tab + 1, &format!("{ret} = Fun({fnam}, {name})"));
+          line(code, tab + 0, "}");
+          ret
         // Inlined U60.swap
         } else if INLINE_NUMBERS && *func == runtime::U60_SWAP && fargs.len() == 3 {
           let ret = fresh(nams, "ret");
-          line(code, tab + 0, &format!("let {};", ret));
+          line(code, tab + 0, &format!("let {ret};"));
           line(code, tab + 0, &format!("if get_tag({}) == U60 {{", fargs[0]));
           line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
           let both = fresh(nams, "both");
           line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
-          line(code, tab + 2, &format!("let {} = {};", both, alloc_node(free, 2)));
-          line(code, tab + 2, &format!("link(ctx.heap, {} + 0, {});", both, fargs[1]));
-          line(code, tab + 2, &format!("link(ctx.heap, {} + 1, {});", both, fargs[2]));
-          line(code, tab + 2, &format!("{} = Ctr(BOTH, {});", ret, both));
-          line(code, tab + 1, &format!("}} else {{"));
-          line(code, tab + 2, &format!("let {} = {};", both, alloc_node(free, 2)));
-          line(code, tab + 2, &format!("link(ctx.heap, {} + 0, {});", both, fargs[2]));
-          line(code, tab + 2, &format!("link(ctx.heap, {} + 1, {});", both, fargs[1]));
-          line(code, tab + 2, &format!("{} = Ctr(BOTH, {});", ret, both));
-          line(code, tab + 1, &format!("}}"));
-          line(code, tab + 0, &format!("}} else {{"));
+          line(code, tab + 2, &format!("let {both} = {};", alloc_node(free, 2)));
+          line(code, tab + 2, &format!("link(ctx.heap, {both} + 0, {});", fargs[1]));
+          line(code, tab + 2, &format!("link(ctx.heap, {both} + 1, {});", fargs[2]));
+          line(code, tab + 2, &format!("{ret} = Ctr(BOTH, {both});"));
+          line(code, tab + 1, "} else {");
+          line(code, tab + 2, &format!("let {both} = {};", alloc_node(free, 2)));
+          line(code, tab + 2, &format!("link(ctx.heap, {both} + 0, {});", fargs[2]));
+          line(code, tab + 2, &format!("link(ctx.heap, {both} + 1, {});", fargs[1]));
+          line(code, tab + 2, &format!("{ret} = Ctr(BOTH, {both});"));
+          line(code, tab + 1, "}");
+          line(code, tab + 0, "} else {");
           let name = fresh(nams, "cal");
-          line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, fargs.len() as u64)));
+          line(code, tab + 1, &format!("let {name} = {};", alloc_node(free, fargs.len() as u64)));
           for (i, arg) in fargs.iter().enumerate() {
-            line(code, tab + 1, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+            line(code, tab + 1, &format!("link(ctx.heap, {name} + {i}, {arg});"));
           }
-          let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
-          line(code, tab + 1, &format!("{} = Fun({}, {})", ret, fnam, name));
-          line(code, tab + 0, &format!("}}"));
+          let fnam = build_name(book.id_to_name.get(func).unwrap_or(&func.to_string()));
+          line(code, tab + 1, &format!("{ret} = Fun({fnam}, {name})"));
+          line(code, tab + 0, "}");
           return ret;
         // Other functions
         } else {
           let name = fresh(nams, "cal");
           line(code, tab, &format!("let {} = {};", name, alloc_node(free, fargs.len() as u64)));
           for (i, arg) in fargs.iter().enumerate() {
-            line(code, tab, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+            line(code, tab, &format!("link(ctx.heap, {name} + {i}, {arg});"));
           }
-          let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
-          return format!("Fun({}, {})", fnam, name);
+          let fnam = build_name(book.id_to_name.get(func).unwrap_or(&format!("{func}")));
+          return format!("Fun({fnam}, {name})");
         }
       }
       runtime::Core::U6O { numb } => {
-        format!("U6O({})", numb)
+        format!("U6O({numb})")
       }
       runtime::Core::F6O { numb } => {
-        format!("F6O({})", numb)
+        format!("F6O({numb})")
       }
       runtime::Core::Op2 { oper, val0, val1 } => {
         let retx = fresh(nams, "ret");
         let name = fresh(nams, "op2");
         let val0 = build_term(book, code, tab, free, vars, nams, lams, dups, val0);
         let val1 = build_term(book, code, tab, free, vars, nams, lams, dups, val1);
-        line(code, tab + 0, &format!("let {};", retx));
+        line(code, tab + 0, &format!("let {retx};"));
         // Optimization: do inline operation, avoiding Op2 allocation, when operands are already number
         if INLINE_NUMBERS {
-          line(
-            code,
-            tab + 0,
-            &format!("if get_tag({}) == U60 && get_tag({}) == U60 {{", val0, val1),
-          );
-          let a = format!("get_num({})", val0);
-          let b = format!("get_num({})", val1);
+          line(code, tab + 0, &format!("if get_tag({val0}) == U60 && get_tag({val1}) == U60 {{"));
+          let a = format!("get_num({val0})");
+          let b = format!("get_num({val1})");
           match *oper {
-            runtime::ADD => {
-              line(code, tab + 1, &format!("{} = U6O(u60::add({}, {}));", retx, a, b))
-            }
-            runtime::SUB => {
-              line(code, tab + 1, &format!("{} = U6O(u60::sub({}, {}));", retx, a, b))
-            }
-            runtime::MUL => {
-              line(code, tab + 1, &format!("{} = U6O(u60::mul({}, {}));", retx, a, b))
-            }
-            runtime::DIV => {
-              line(code, tab + 1, &format!("{} = U6O(u60::div({}, {}));", retx, a, b))
-            }
-            runtime::MOD => {
-              line(code, tab + 1, &format!("{} = U6O(u60::mdl({}, {}));", retx, a, b))
-            }
-            runtime::AND => {
-              line(code, tab + 1, &format!("{} = U6O(u60::and({}, {}));", retx, a, b))
-            }
-            runtime::OR => line(code, tab + 1, &format!("{} = U6O(u60::or({}, {}));", retx, a, b)),
-            runtime::XOR => {
-              line(code, tab + 1, &format!("{} = U6O(u60::xor({}, {}));", retx, a, b))
-            }
-            runtime::SHL => {
-              line(code, tab + 1, &format!("{} = U6O(u60::shl({}, {}));", retx, a, b))
-            }
-            runtime::SHR => {
-              line(code, tab + 1, &format!("{} = U6O(u60::shr({}, {}));", retx, a, b))
-            }
-            runtime::LTN => {
-              line(code, tab + 1, &format!("{} = U6O(u60::ltn({}, {}));", retx, a, b))
-            }
-            runtime::LTE => {
-              line(code, tab + 1, &format!("{} = U6O(u60::lte({}, {}));", retx, a, b))
-            }
-            runtime::EQL => {
-              line(code, tab + 1, &format!("{} = U6O(u60::eql({}, {}));", retx, a, b))
-            }
-            runtime::GTE => {
-              line(code, tab + 1, &format!("{} = U6O(u60::gte({}, {}));", retx, a, b))
-            }
-            runtime::GTN => {
-              line(code, tab + 1, &format!("{} = U6O(u60::gtn({}, {}));", retx, a, b))
-            }
-            runtime::NEQ => {
-              line(code, tab + 1, &format!("{} = U6O(u60::neq({}, {}));", retx, a, b))
-            }
-            _ => line(code, tab + 1, &format!("{} = 0;", retx)),
+            runtime::ADD => line(code, tab + 1, &format!("{retx} = U6O(u60::add({a}, {b}));")),
+            runtime::SUB => line(code, tab + 1, &format!("{retx} = U6O(u60::sub({a}, {b}));")),
+            runtime::MUL => line(code, tab + 1, &format!("{retx} = U6O(u60::mul({a}, {b}));")),
+            runtime::DIV => line(code, tab + 1, &format!("{retx} = U6O(u60::div({a}, {b}));")),
+            runtime::MOD => line(code, tab + 1, &format!("{retx} = U6O(u60::mdl({a}, {b}));")),
+            runtime::AND => line(code, tab + 1, &format!("{retx} = U6O(u60::and({a}, {b}));")),
+            runtime::OR => line(code, tab + 1, &format!("{retx} = U6O(u60::or({a}, {b}));")),
+            runtime::XOR => line(code, tab + 1, &format!("{retx} = U6O(u60::xor({a}, {b}));")),
+            runtime::SHL => line(code, tab + 1, &format!("{retx} = U6O(u60::shl({a}, {b}));")),
+            runtime::SHR => line(code, tab + 1, &format!("{retx} = U6O(u60::shr({a}, {b}));")),
+            runtime::LTN => line(code, tab + 1, &format!("{retx} = U6O(u60::ltn({a}, {b}));")),
+            runtime::LTE => line(code, tab + 1, &format!("{retx} = U6O(u60::lte({a}, {b}));")),
+            runtime::EQL => line(code, tab + 1, &format!("{retx} = U6O(u60::eql({a}, {b}));")),
+            runtime::GTE => line(code, tab + 1, &format!("{retx} = U6O(u60::gte({a}, {b}));")),
+            runtime::GTN => line(code, tab + 1, &format!("{retx} = U6O(u60::gtn({a}, {b}));")),
+            runtime::NEQ => line(code, tab + 1, &format!("{retx} = U6O(u60::neq({a}, {b}));")),
+            _ => line(code, tab + 1, &format!("{retx} = 0;")),
           }
           line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
           line(
             code,
             tab + 0,
-            &format!("}} else if get_tag({}) == F60 && get_tag({}) == F60 {{", val0, val1),
+            &format!("}} else if get_tag({val0}) == F60 && get_tag({val1}) == F60 {{"),
           );
-          let a = format!("get_num({})", val0);
-          let b = format!("get_num({})", val1);
+          let a = format!("get_num({val0})");
+          let b = format!("get_num({val1})");
           match *oper {
-            runtime::ADD => {
-              line(code, tab + 1, &format!("{} = F6O(f60::add({}, {}));", retx, a, b))
-            }
-            runtime::SUB => {
-              line(code, tab + 1, &format!("{} = F6O(f60::sub({}, {}));", retx, a, b))
-            }
-            runtime::MUL => {
-              line(code, tab + 1, &format!("{} = F6O(f60::mul({}, {}));", retx, a, b))
-            }
-            runtime::DIV => {
-              line(code, tab + 1, &format!("{} = F6O(f60::div({}, {}));", retx, a, b))
-            }
-            runtime::MOD => {
-              line(code, tab + 1, &format!("{} = F6O(f60::mdl({}, {}));", retx, a, b))
-            }
-            runtime::AND => {
-              line(code, tab + 1, &format!("{} = F6O(f60::and({}, {}));", retx, a, b))
-            }
-            runtime::OR => line(code, tab + 1, &format!("{} = F6O(f60::or({}, {}));", retx, a, b)),
-            runtime::XOR => {
-              line(code, tab + 1, &format!("{} = F6O(f60::xor({}, {}));", retx, a, b))
-            }
-            runtime::SHL => {
-              line(code, tab + 1, &format!("{} = F6O(f60::shl({}, {}));", retx, a, b))
-            }
-            runtime::SHR => {
-              line(code, tab + 1, &format!("{} = F6O(f60::shr({}, {}));", retx, a, b))
-            }
-            runtime::LTN => {
-              line(code, tab + 1, &format!("{} = F6O(f60::ltn({}, {}));", retx, a, b))
-            }
-            runtime::LTE => {
-              line(code, tab + 1, &format!("{} = F6O(f60::lte({}, {}));", retx, a, b))
-            }
-            runtime::EQL => {
-              line(code, tab + 1, &format!("{} = F6O(f60::eql({}, {}));", retx, a, b))
-            }
-            runtime::GTE => {
-              line(code, tab + 1, &format!("{} = F6O(f60::gte({}, {}));", retx, a, b))
-            }
-            runtime::GTN => {
-              line(code, tab + 1, &format!("{} = F6O(f60::gtn({}, {}));", retx, a, b))
-            }
-            runtime::NEQ => {
-              line(code, tab + 1, &format!("{} = F6O(f60::neq({}, {}));", retx, a, b))
-            }
-            _ => line(code, tab + 1, &format!("{} = 0;", retx)),
+            runtime::ADD => line(code, tab + 1, &format!("{retx} = F6O(f60::add({a}, {b}));")),
+            runtime::SUB => line(code, tab + 1, &format!("{retx} = F6O(f60::sub({a}, {b}));")),
+            runtime::MUL => line(code, tab + 1, &format!("{retx} = F6O(f60::mul({a}, {b}));")),
+            runtime::DIV => line(code, tab + 1, &format!("{retx} = F6O(f60::div({a}, {b}));")),
+            runtime::MOD => line(code, tab + 1, &format!("{retx} = F6O(f60::mdl({a}, {b}));")),
+            runtime::AND => line(code, tab + 1, &format!("{retx} = F6O(f60::and({a}, {b}));")),
+            runtime::OR => line(code, tab + 1, &format!("{retx} = F6O(f60::or({a}, {b}));")),
+            runtime::XOR => line(code, tab + 1, &format!("{retx} = F6O(f60::xor({a}, {b}));")),
+            runtime::SHL => line(code, tab + 1, &format!("{retx} = F6O(f60::shl({a}, {b}));")),
+            runtime::SHR => line(code, tab + 1, &format!("{retx} = F6O(f60::shr({a}, {b}));")),
+            runtime::LTN => line(code, tab + 1, &format!("{retx} = F6O(f60::ltn({a}, {b}));")),
+            runtime::LTE => line(code, tab + 1, &format!("{retx} = F6O(f60::lte({a}, {b}));")),
+            runtime::EQL => line(code, tab + 1, &format!("{retx} = F6O(f60::eql({a}, {b}));")),
+            runtime::GTE => line(code, tab + 1, &format!("{retx} = F6O(f60::gte({a}, {b}));")),
+            runtime::GTN => line(code, tab + 1, &format!("{retx} = F6O(f60::gtn({a}, {b}));")),
+            runtime::NEQ => line(code, tab + 1, &format!("{retx} = F6O(f60::neq({a}, {b}));")),
+            _ => line(code, tab + 1, &format!("{retx} = 0;")),
           }
           line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
           line(code, tab + 0, "} else {");
         }
         line(code, tab + 1, &format!("let {} = {};", name, alloc_node(&mut vec![], 2)));
-        line(code, tab + 1, &format!("link(ctx.heap, {} + 0, {});", name, val0));
-        line(code, tab + 1, &format!("link(ctx.heap, {} + 1, {});", name, val1));
+        line(code, tab + 1, &format!("link(ctx.heap, {name} + 0, {val0});"));
+        line(code, tab + 1, &format!("link(ctx.heap, {name} + 1, {val1});"));
         let oper_name = match *oper {
           runtime::ADD => "ADD",
           runtime::SUB => "SUB",
@@ -822,7 +734,7 @@ pub fn build_function_rule_rhs(
           runtime::NEQ => "NEQ",
           _ => "?",
         };
-        line(code, tab + 1, &format!("{} = Op2({}, {});", retx, oper_name, name));
+        line(code, tab + 1, &format!("{retx} = Op2({oper_name}, {name});"));
         if INLINE_NUMBERS {
           line(code, tab + 0, "}");
         }
@@ -831,7 +743,7 @@ pub fn build_function_rule_rhs(
     }
   }
   fn fresh(nams: &mut u64, name: &str) -> String {
-    let name = format!("{}_{}", name, nams);
+    let name = format!("{name}_{nams}");
     *nams += 1;
     name
   }
@@ -843,12 +755,12 @@ pub fn build_function_rule_rhs(
         line(
           code,
           tab + 0,
-          &format!("let arg{}_{} = load_arg(ctx.heap, arg{}, {});", param, field, param, field),
+          &format!("let arg{param}_{field} = load_arg(ctx.heap, arg{param}, {field});"),
         );
-        vars.push(format!("arg{}_{}", param, field));
+        vars.push(format!("arg{param}_{field}"));
       }
       None => {
-        vars.push(format!("arg{}", param));
+        vars.push(format!("arg{param}"));
       }
     }
   }
@@ -869,10 +781,10 @@ pub fn get_var(var: &runtime::RuleVar) -> String {
   let runtime::RuleVar { param, field, erase: _ } = var;
   match field {
     Some(i) => {
-      format!("arg{}_{}", param, i)
+      format!("arg{param}_{i}")
     }
     None => {
-      format!("arg{}", param)
+      format!("arg{param}")
     }
   }
 }

@@ -33,15 +33,7 @@ pub struct ReduceCtx<'a> {
 //   }
 
 pub fn is_whnf(term: Ptr) -> bool {
-  match get_tag(term) {
-    ERA => true,
-    LAM => true,
-    SUP => true,
-    CTR => true,
-    U60 => true,
-    F60 => true,
-    _ => false,
-  }
+  matches!(get_tag(term), ERA | LAM | SUP | CTR | U60 | F60)
 }
 
 pub fn reduce(
@@ -71,6 +63,7 @@ pub fn reduce(
   load_ptr(heap, root)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn reducer(
   heap: &Heap,
   prog: &Program,
@@ -231,98 +224,67 @@ pub fn reducer(
           }
         }
         'call: loop {
-          'apply: loop {
-            let term = load_ptr(heap, host);
-            if debug {
-              print(tid, host);
+          let term = load_ptr(heap, host);
+          if debug {
+            print(tid, host);
+          }
+          // Apply rewrite rules
+          match get_tag(term) {
+            APP => {
+              if app::apply(ReduceCtx {
+                heap,
+                prog,
+                tid,
+                hold,
+                term,
+                visit,
+                redex,
+                cont: &mut cont,
+                host: &mut host,
+              }) {
+                continue 'work;
+              }
             }
-            // Apply rewrite rules
-            match get_tag(term) {
-              APP => {
-                if app::apply(ReduceCtx {
-                  heap,
-                  prog,
-                  tid,
-                  hold,
-                  term,
-                  visit,
-                  redex,
-                  cont: &mut cont,
-                  host: &mut host,
-                }) {
-                  continue 'work;
-                } else {
-                  break 'apply;
-                }
+            DP0 | DP1 => {
+              if dup::apply(ReduceCtx {
+                heap,
+                prog,
+                tid,
+                hold,
+                term,
+                visit,
+                redex,
+                cont: &mut cont,
+                host: &mut host,
+              }) {
+                release_lock(heap, tid, term);
+                continue 'work;
+              } else {
+                release_lock(heap, tid, term);
               }
-              DP0 | DP1 => {
-                if dup::apply(ReduceCtx {
-                  heap,
-                  prog,
-                  tid,
-                  hold,
-                  term,
-                  visit,
-                  redex,
-                  cont: &mut cont,
-                  host: &mut host,
-                }) {
-                  release_lock(heap, tid, term);
-                  continue 'work;
-                } else {
-                  release_lock(heap, tid, term);
-                  break 'apply;
-                }
+            }
+            OP2 => {
+              if op2::apply(ReduceCtx {
+                heap,
+                prog,
+                tid,
+                hold,
+                term,
+                visit,
+                redex,
+                cont: &mut cont,
+                host: &mut host,
+              }) {
+                continue 'work;
               }
-              OP2 => {
-                if op2::apply(ReduceCtx {
-                  heap,
-                  prog,
-                  tid,
-                  hold,
-                  term,
-                  visit,
-                  redex,
-                  cont: &mut cont,
-                  host: &mut host,
-                }) {
-                  continue 'work;
-                } else {
-                  break 'apply;
-                }
-              }
-              FUN | CTR => {
-                let fid = get_ext(term);
-                //[[CODEGEN:FAST-APPLY]]//
-                match &prog.funs.get(&fid) {
-                  Some(Function::Interpreted {
-                    smap: fn_smap,
-                    visit: fn_visit,
-                    apply: fn_apply,
-                  }) => {
-                    if fun::apply(
-                      ReduceCtx {
-                        heap,
-                        prog,
-                        tid,
-                        hold,
-                        term,
-                        visit,
-                        redex,
-                        cont: &mut cont,
-                        host: &mut host,
-                      },
-                      fid,
-                      fn_visit,
-                      fn_apply,
-                    ) {
-                      continue 'work;
-                    } else {
-                      break 'apply;
-                    }
-                  }
-                  Some(Function::Compiled { smap: fn_smap, visit: fn_visit, apply: fn_apply }) => {
-                    if fn_apply(ReduceCtx {
+            }
+            FUN | CTR => {
+              let fid = get_ext(term);
+              //[[CODEGEN:FAST-APPLY]]//
+              match &prog.funs.get(&fid) {
+                Some(Function::Interpreted { smap: fn_smap, visit: fn_visit, apply: fn_apply }) => {
+                  if fun::apply(
+                    ReduceCtx {
                       heap,
                       prog,
                       tid,
@@ -332,21 +294,33 @@ pub fn reducer(
                       redex,
                       cont: &mut cont,
                       host: &mut host,
-                    }) {
-                      continue 'work;
-                    } else {
-                      break 'apply;
-                    }
-                  }
-                  None => {
-                    break 'apply;
+                    },
+                    fid,
+                    fn_visit,
+                    fn_apply,
+                  ) {
+                    continue 'work;
                   }
                 }
-              }
-              _ => {
-                break 'apply;
+                Some(Function::Compiled { smap: fn_smap, visit: fn_visit, apply: fn_apply }) => {
+                  if fn_apply(ReduceCtx {
+                    heap,
+                    prog,
+                    tid,
+                    hold,
+                    term,
+                    visit,
+                    redex,
+                    cont: &mut cont,
+                    host: &mut host,
+                  }) {
+                    continue 'work;
+                  }
+                }
+                None => (),
               }
             }
+            _ => (),
           }
           // If root is on WHNF, halt
           if cont == REDEX_CONT_RET {
@@ -402,17 +376,11 @@ pub fn reducer(
           break 'work;
         }
       }
-      'blink: loop {
-        // If available, visit a new location
-        if let Some((new_cont, new_host)) = visit.pop() {
-          cont = new_cont;
-          host = new_host;
-          continue 'main;
-        }
-        // Otherwise, we have nothing to do
-        else {
-          break 'blink;
-        }
+      // If available, visit a new location
+      if let Some((new_cont, new_host)) = visit.pop() {
+        cont = new_cont;
+        host = new_host;
+        continue 'main;
       }
     }
     'steal: loop {

@@ -22,7 +22,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
     seen: &'a mut HashSet<Ptr>,
   }
 
-  fn gen_var_names(heap: &Heap, prog: &Program, ctx: &mut CtxName, term: Ptr, depth: u32) {
+  fn gen_var_names(ctx: &mut CtxName, term: Ptr) {
     if ctx.seen.contains(&term) {
       return;
     };
@@ -37,33 +37,33 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           let var = runtime::Var(runtime::get_loc(term, 0));
           ctx.names.insert(var, format!("x{}", ctx.names.len()));
         };
-        gen_var_names(heap, prog, ctx, body, depth + 1);
+        gen_var_names(ctx, body);
       }
       runtime::APP => {
         let lam = runtime::load_arg(ctx.heap, term, 0);
         let arg = runtime::load_arg(ctx.heap, term, 1);
-        gen_var_names(heap, prog, ctx, lam, depth + 1);
-        gen_var_names(heap, prog, ctx, arg, depth + 1);
+        gen_var_names(ctx, lam);
+        gen_var_names(ctx, arg);
       }
       runtime::SUP => {
         let arg0 = runtime::load_arg(ctx.heap, term, 0);
         let arg1 = runtime::load_arg(ctx.heap, term, 1);
-        gen_var_names(heap, prog, ctx, arg0, depth + 1);
-        gen_var_names(heap, prog, ctx, arg1, depth + 1);
+        gen_var_names(ctx, arg0);
+        gen_var_names(ctx, arg1);
       }
       runtime::DP0 => {
         let arg = runtime::load_arg(ctx.heap, term, 2);
-        gen_var_names(heap, prog, ctx, arg, depth + 1);
+        gen_var_names(ctx, arg);
       }
       runtime::DP1 => {
         let arg = runtime::load_arg(ctx.heap, term, 2);
-        gen_var_names(heap, prog, ctx, arg, depth + 1);
+        gen_var_names(ctx, arg);
       }
       runtime::OP2 => {
         let arg0 = runtime::load_arg(ctx.heap, term, 0);
         let arg1 = runtime::load_arg(ctx.heap, term, 1);
-        gen_var_names(heap, prog, ctx, arg0, depth + 1);
-        gen_var_names(heap, prog, ctx, arg1, depth + 1);
+        gen_var_names(ctx, arg0);
+        gen_var_names(ctx, arg1);
       }
       runtime::U60 => {}
       runtime::F60 => {}
@@ -71,7 +71,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         let arity = runtime::arity_of(&ctx.prog.aris, term);
         for i in 0..arity {
           let arg = runtime::load_arg(ctx.heap, term, i);
-          gen_var_names(heap, prog, ctx, arg, depth + 1);
+          gen_var_names(ctx, arg);
         }
       }
       _ => {}
@@ -107,18 +107,11 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
     }
   }
 
-  fn readback(
-    heap: &Heap,
-    prog: &Program,
-    ctx: &mut CtxGo,
-    stacks: &mut Stacks,
-    term: Ptr,
-    depth: u32,
-  ) -> Box<language::syntax::Term> {
+  fn readback(ctx: &mut CtxGo, stacks: &mut Stacks, term: Ptr) -> Box<language::syntax::Term> {
     match runtime::get_tag(term) {
       runtime::LAM => {
         let body = runtime::load_arg(ctx.heap, term, 1);
-        let body = readback(heap, prog, ctx, stacks, body, depth + 1);
+        let body = readback(ctx, stacks, body);
         let bind = runtime::load_arg(ctx.heap, term, 0);
         let name = if runtime::get_tag(bind) == runtime::ERA {
           "*".to_string()
@@ -131,8 +124,8 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
       runtime::APP => {
         let func = runtime::load_arg(ctx.heap, term, 0);
         let argm = runtime::load_arg(ctx.heap, term, 1);
-        let func = readback(heap, prog, ctx, stacks, func, depth + 1);
-        let argm = readback(heap, prog, ctx, stacks, argm, depth + 1);
+        let func = readback(ctx, stacks, func);
+        let argm = readback(ctx, stacks, argm);
         Box::new(language::syntax::Term::App { func, argm })
       }
       runtime::SUP => {
@@ -143,14 +136,14 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           let arg_idx = *val as u64;
           let val = runtime::load_arg(ctx.heap, term, arg_idx);
           let old = stacks.pop(col);
-          let got = readback(heap, prog, ctx, stacks, val, depth + 1);
+          let got = readback(ctx, stacks, val);
           stacks.push(col, old);
           got
         } else {
           let val0 = runtime::load_arg(ctx.heap, term, 0);
           let val1 = runtime::load_arg(ctx.heap, term, 1);
-          let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
-          let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
+          let val0 = readback(ctx, stacks, val0);
+          let val1 = readback(ctx, stacks, val1);
           Box::new(language::syntax::Term::Sup { val0, val1 })
         }
       }
@@ -158,7 +151,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         let col = runtime::get_ext(term);
         let val = runtime::load_arg(ctx.heap, term, 2);
         stacks.push(col, false);
-        let result = readback(heap, prog, ctx, stacks, val, depth + 1);
+        let result = readback(ctx, stacks, val);
         stacks.pop(col);
         result
       }
@@ -166,7 +159,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         let col = runtime::get_ext(term);
         let val = runtime::load_arg(ctx.heap, term, 2);
         stacks.push(col, true);
-        let result = readback(heap, prog, ctx, stacks, val, depth + 1);
+        let result = readback(ctx, stacks, val);
         stacks.pop(col);
         result
       }
@@ -192,8 +185,8 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         };
         let val0 = runtime::load_arg(ctx.heap, term, 0);
         let val1 = runtime::load_arg(ctx.heap, term, 1);
-        let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
-        let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
+        let val0 = readback(ctx, stacks, val0);
+        let val1 = readback(ctx, stacks, val1);
         Box::new(language::syntax::Term::Op2 { oper, val0, val1 })
       }
       runtime::U60 => {
@@ -210,7 +203,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         let mut args = Vec::new();
         for i in 0..arit {
           let arg = runtime::load_arg(ctx.heap, term, i);
-          args.push(readback(heap, prog, ctx, stacks, arg, depth + 1));
+          args.push(readback(ctx, stacks, arg));
         }
         let name =
           ctx.prog.nams.get(&func).map(String::to_string).unwrap_or_else(|| format!("${func}"));
@@ -224,12 +217,8 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           .unwrap_or_else(|| format!("^{}", runtime::get_loc(term, 0)));
         Box::new(language::syntax::Term::Var { name }) // ............... /\ why this sounds so threatening?
       }
-      runtime::ARG => {
-        Box::new(language::syntax::Term::Var { name: "<arg>".to_string() })
-      }
-      runtime::ERA => {
-        Box::new(language::syntax::Term::Var { name: "<era>".to_string() })
-      }
+      runtime::ARG => Box::new(language::syntax::Term::Var { name: "<arg>".to_string() }),
+      runtime::ERA => Box::new(language::syntax::Term::Var { name: "<era>".to_string() }),
       _ => {
         return Box::new(language::syntax::Term::Var {
           name: format!("<unknown_tag_{}>", runtime::get_tag(term)),
@@ -244,11 +233,11 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
   let mut seen = HashSet::<Ptr>::new();
 
   let ctx = &mut CtxName { heap, prog, names: &mut names, seen: &mut seen };
-  gen_var_names(heap, prog, ctx, term, 0);
+  gen_var_names(ctx, term);
 
   let ctx = &mut CtxGo { heap, prog, names: &names, seen: &seen };
   let mut stacks = Stacks::new();
-  readback(heap, prog, ctx, &mut stacks, term, 0)
+  readback(ctx, &mut stacks, term)
 }
 
 // Reads a term linearly, i.e., preserving dups

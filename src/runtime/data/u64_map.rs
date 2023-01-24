@@ -4,6 +4,12 @@ pub struct U64Map<A> {
   pub data: Vec<Option<A>>,
 }
 
+impl<A> Default for U64Map<A> {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl<A> U64Map<A> {
   pub fn new() -> U64Map<A> {
     // std::collections::HashMap::with_hasher(std::hash::BuildHasherDefault::default());

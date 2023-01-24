@@ -10,16 +10,48 @@ use crate::runtime::data::u60;
 
 #[derive(Clone, Debug)]
 pub enum Term {
-  Var { name: String }, // TODO: add `global: bool`
-  Dup { nam0: String, nam1: String, expr: Box<Term>, body: Box<Term> },
-  Sup { val0: Box<Term>, val1: Box<Term> },
-  Let { name: String, expr: Box<Term>, body: Box<Term> },
-  Lam { name: String, body: Box<Term> },
-  App { func: Box<Term>, argm: Box<Term> },
-  Ctr { name: String, args: Vec<Box<Term>> },
-  U6O { numb: u64 },
-  F6O { numb: u64 },
-  Op2 { oper: Oper, val0: Box<Term>, val1: Box<Term> },
+  Var {
+    name: String,
+  }, // TODO: add `global: bool`
+  Dup {
+    nam0: String,
+    nam1: String,
+    expr: Box<Term>,
+    body: Box<Term>,
+  },
+  Sup {
+    val0: Box<Term>,
+    val1: Box<Term>,
+  },
+  Let {
+    name: String,
+    expr: Box<Term>,
+    body: Box<Term>,
+  },
+  Lam {
+    name: String,
+    body: Box<Term>,
+  },
+  App {
+    func: Box<Term>,
+    argm: Box<Term>,
+  },
+  #[allow(clippy::vec_box)]
+  Ctr {
+    name: String,
+    args: Vec<Box<Term>>,
+  },
+  U6O {
+    numb: u64,
+  },
+  F6O {
+    numb: u64,
+  },
+  Op2 {
+    oper: Oper,
+    val0: Box<Term>,
+    val1: Box<Term>,
+  },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -328,21 +360,15 @@ pub fn parse_num(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
     Box::new(|state| {
       let (state, text) = parser::name1(state)?;
       if !text.is_empty() {
-        if text.starts_with("0x") {
+        if let Some(text) = text.strip_prefix("0x") {
           Ok((
             state,
-            Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(&text[2..], 16).unwrap()) }),
+            Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(text, 16).unwrap()) }),
           ))
         } else if text.find('.').is_some() {
-          Ok((
-            state,
-            Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) }),
-          ))
+          Ok((state, Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) })))
         } else {
-          Ok((
-            state,
-            Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) }),
-          ))
+          Ok((state, Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) })))
         }
       } else {
         Ok((state, Box::new(Term::U6O { numb: 0 })))

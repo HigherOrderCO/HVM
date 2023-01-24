@@ -80,6 +80,12 @@ pub struct Program {
   pub nams: Nams,
 }
 
+impl Default for Program {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl Program {
   pub fn new() -> Program {
     let mut funs = U64Map::new();
@@ -340,7 +346,6 @@ pub fn term_to_core(
   fn convert_term(
     term: &language::syntax::Term,
     book: &language::rulebook::RuleBook,
-    depth: u64,
     vars: &mut Vec<String>,
   ) -> Core {
     match term {
@@ -360,43 +365,43 @@ pub fn term_to_core(
         let eras = (nam0 == "*", nam1 == "*");
         let glob =
           if get_global_name_misc(nam0).is_some() { hash(&nam0[2..].to_string()) } else { 0 };
-        let expr = Box::new(convert_term(expr, book, depth + 0, vars));
+        let expr = Box::new(convert_term(expr, book, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
-        let body = Box::new(convert_term(body, book, depth + 2, vars));
+        let body = Box::new(convert_term(body, book, vars));
         vars.pop();
         vars.pop();
         Core::Dup { eras, glob, expr, body }
       }
       language::syntax::Term::Sup { val0, val1 } => {
-        let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
-        let val1 = Box::new(convert_term(val1, book, depth + 0, vars));
+        let val0 = Box::new(convert_term(val0, book, vars));
+        let val1 = Box::new(convert_term(val1, book, vars));
         Core::Sup { val0, val1 }
       }
       language::syntax::Term::Lam { name, body } => {
         let glob = if get_global_name_misc(name).is_some() { hash(name) } else { 0 };
         let eras = name == "*";
         vars.push(name.clone());
-        let body = Box::new(convert_term(body, book, depth + 1, vars));
+        let body = Box::new(convert_term(body, book, vars));
         vars.pop();
         Core::Lam { eras, glob, body }
       }
       language::syntax::Term::Let { name, expr, body } => {
-        let expr = Box::new(convert_term(expr, book, depth + 0, vars));
+        let expr = Box::new(convert_term(expr, book, vars));
         vars.push(name.clone());
-        let body = Box::new(convert_term(body, book, depth + 1, vars));
+        let body = Box::new(convert_term(body, book, vars));
         vars.pop();
         Core::Let { expr, body }
       }
       language::syntax::Term::App { func, argm } => {
-        let func = Box::new(convert_term(func, book, depth + 0, vars));
-        let argm = Box::new(convert_term(argm, book, depth + 0, vars));
+        let func = Box::new(convert_term(func, book, vars));
+        let argm = Box::new(convert_term(argm, book, vars));
         Core::App { func, argm }
       }
       language::syntax::Term::Ctr { name, args } => {
         let term_func =
           *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {name}"));
-        let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
+        let term_args = args.iter().map(|arg| convert_term(arg, book, vars)).collect();
         if *book.ctr_is_fun.get(name).unwrap_or(&false) {
           Core::Fun { func: term_func, args: term_args }
         } else {
@@ -407,15 +412,15 @@ pub fn term_to_core(
       language::syntax::Term::F6O { numb } => Core::F6O { numb: *numb },
       language::syntax::Term::Op2 { oper, val0, val1 } => {
         let oper = convert_oper(oper);
-        let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
-        let val1 = Box::new(convert_term(val1, book, depth + 1, vars));
+        let val0 = Box::new(convert_term(val0, book, vars));
+        let val1 = Box::new(convert_term(val1, book, vars));
         Core::Op2 { oper, val0, val1 }
       }
     }
   }
 
   let mut vars = inps.to_vec();
-  convert_term(term, book, 0, &mut vars)
+  convert_term(term, book, &mut vars)
 }
 
 pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {

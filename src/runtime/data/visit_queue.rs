@@ -33,6 +33,12 @@ pub fn get_visit_cont(visit: Visit) -> u64 {
   visit & 0x3FFFFFF
 }
 
+impl Default for VisitQueue {
+  fn default() -> Self {
+    Self::new()
+  }
+}
+
 impl VisitQueue {
   pub fn new() -> VisitQueue {
     VisitQueue {

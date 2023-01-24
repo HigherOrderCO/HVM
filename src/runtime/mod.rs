@@ -25,8 +25,7 @@ pub fn default_heap_size() -> usize {
   use sysinfo::SystemExt;
   let available_memory = System::new_with_specifics(RefreshKind::new().with_memory()).free_memory();
   let heap_size = (available_memory * 3 / 4) / 8;
-  let heap_size = std::cmp::min(heap_size as usize, 16 * CELLS_PER_GB);
-  heap_size
+  std::cmp::min(heap_size as usize, 16 * CELLS_PER_GB)
 }
 
 // If unspecified, spawns 1 thread for each available core

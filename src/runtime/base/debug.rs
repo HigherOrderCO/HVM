@@ -116,11 +116,10 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     tlocs: &[AtomicU64],
   ) -> String {
     let term = load_ptr(heap, host);
-    let done;
-    if term == 0 {
-      done = "<>".to_string();
+    let done = if term == 0 {
+      "<>".to_string()
     } else {
-      done = match get_tag(term) {
+      match get_tag(term) {
         DP0 => {
           if let Some(name) = names.get(&get_loc(term, 0)) {
             format!("a{name}")
@@ -198,8 +197,9 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
         }
         ERA => "*".to_string(),
         _ => format!("<era:{}>", get_tag(term)),
-      };
-    }
+      }
+    };
+
     for (tid, tid_loc) in tlocs.iter().enumerate() {
       if host == tid_loc.load(Ordering::Relaxed) {
         return format!("<{tid}>{done}");

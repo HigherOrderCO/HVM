@@ -11,7 +11,7 @@ pub fn eval(
   dbug: bool,
 ) -> Result<(String, u64, u64), String> {
   // Parses and reads the input file
-  let file = language::syntax::read_file(&format!("{}\nHVM_MAIN_CALL = {}", file, term))?;
+  let file = language::syntax::read_file(&format!("{file}\nHVM_MAIN_CALL = {term}"))?;
 
   // Converts the file to a Rulebook
   let book = language::rulebook::gen_rulebook(&file);
