@@ -301,7 +301,7 @@ in your system and run it from the command line. It will work exactly like the
 ```
 cd summation
 cargo install --path .
-summation run -c true "(Sum 0 0 100000000)"
+summation -c true "(Sum 0 0 100000000)"
 ```
 
 Moreover, it will be much faster. On my computer, the command below outputs:

@@ -9,6 +9,7 @@
 #![allow(unused_labels)]
 #![allow(non_upper_case_globals)]
 
+mod cli;
 mod language;
 mod runtime;
 mod compiler;
@@ -31,32 +32,32 @@ enum Command {
 
   Run { 
     /// Set the heap size (in 64-bit nodes).
-    #[clap(short = 's', long, default_value = "auto", parse(try_from_str=parse_size))]
+    #[arg(short = 's', long, default_value = "auto", value_parser = cli::parse_size)]
     size: usize,
-
+  
     /// Set the number of threads to use.
-    #[clap(short = 't', long, default_value = "auto", parse(try_from_str=parse_tids))]
+    #[arg(short = 't', long, default_value = "auto", value_parser = cli::parse_tids)]
     tids: usize,
-
+  
     /// Shows the number of graph rewrites performed.
-    #[clap(short = 'c', long, default_value = "false", default_missing_value = "true", parse(try_from_str=parse_bool))]
+    #[arg(short = 'c', long, default_value = "false", value_parser = cli::parse_bool)]
     cost: bool,
-
+  
     /// Toggles debug mode, showing each reduction step.
-    #[clap(short = 'd', long, default_value = "false", default_missing_value = "true", parse(try_from_str=parse_bool))]
+    #[arg(short = 'd', long, default_value = "false", value_parser = cli::parse_bool)]
     debug: bool,
 
     /// A "file.hvm" to load.
-    #[clap(short = 'f', long, default_value = "")]
+    #[arg(short = 'f', long, default_value = "")]
     file: String,
 
     /// The expression to run.
-    #[clap(default_value = "Main")]
+    #[arg(default_value = "Main")]
     expr: String,
   },
 
   /// Compile a file to Rust
-  #[clap(aliases = &["c"])]
+  #[command(aliases = &["c"])]
   Compile {
     /// A "file.hvm" to load.
     file: String
@@ -76,7 +77,7 @@ fn run_cli() -> Result<(), String> {
   match cli.command {
     Command::Run { size, tids, cost: show_cost, debug, file, expr } => {
       let tids = if debug { 1 } else { tids };
-      let (norm, cost, time) = api::eval(&load_code(&file)?, &expr, Vec::new(), size, tids, debug)?;
+      let (norm, cost, time) = api::eval(&cli::load_code(&file)?, &expr, Vec::new(), size, tids, debug)?;
       println!("{}", norm);
       if show_cost {
         eprintln!();
@@ -85,39 +86,11 @@ fn run_cli() -> Result<(), String> {
       Ok(())
     }
     Command::Compile { file } => {
-      let code = load_code(&file)?;
+      let code = cli::load_code(&file)?;
       let name = file.replace(".hvm", "");
       compiler::compile(&code, &name).map_err(|x| x.to_string())?;
       println!("Compiled definitions to '/{}'.", name);
       Ok(())
     }
-  }
-}
-
-fn parse_size(text: &str) -> Result<usize, String> {
-  if text == "auto" {
-    return Ok(runtime::default_heap_size());
-  } else {
-    return text.parse::<usize>().map_err(|x| format!("{}", x));
-  }
-}
-
-fn parse_tids(text: &str) -> Result<usize, String> {
-  if text == "auto" {
-    return Ok(runtime::default_heap_tids());
-  } else {
-    return text.parse::<usize>().map_err(|x| format!("{}", x));
-  }
-}
-
-fn parse_bool(text: &str) -> Result<bool, String> {
-  return text.parse::<bool>().map_err(|x| format!("{}", x));
-}
-
-fn load_code(file: &str) -> Result<String, String> {
-  if file.is_empty() {
-    return Ok(String::new());
-  } else {
-    return std::fs::read_to_string(file).map_err(|err| err.to_string());
   }
 }

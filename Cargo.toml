@@ -22,7 +22,7 @@ opt-level = 3
 [dependencies]
 backtrace = "0.3.66"
 sysinfo = "0.26.7"
-clap = { version = "3.1.8", features = ["derive"] }
+clap = { version = "4.1", features = ["derive"] }
 crossbeam = "0.8.2"
 highlight_error = "0.1.1"
 instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }

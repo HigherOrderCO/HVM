@@ -31,5 +31,5 @@ nix develop
 # Compile the resulting Rust code.
 cargo build --release
 # Run the resulting binary with the same argument.
-./target/release/BMI run "(BMI 62.0 1.70)"
+./target/release/BMI "(BMI 62.0 1.70)"
 ```
