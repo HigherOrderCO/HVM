@@ -35,13 +35,13 @@ pub fn new_rulebook() -> RuleBook {
     ctr_is_fun: HashMap::new(),
   };
   for precomp in runtime::PRECOMP {
-    book.name_count = book.name_count + 1;
+    book.name_count += 1;
     book.name_to_id.insert(precomp.name.to_string(), precomp.id);
     book.id_to_name.insert(precomp.id, precomp.name.to_string());
     book.id_to_smap.insert(precomp.id, precomp.smap.to_vec());
     book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
   }
-  return book;
+  book
 }
 
 // Adds a group to a rulebook
@@ -90,7 +90,7 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
           }
           Some(smap) => {
             if smap.len() != args.len() {
-              panic!("inconsistent arity on: '{}'", term);
+              panic!("inconsistent arity on: '{term}'");
             }
           }
         }
@@ -261,7 +261,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
     ctx: &mut CtxSanitizeTerm,
   ) -> Result<Box<language::syntax::Term>, String> {
     fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
-      if !runtime::get_global_name_misc(name).is_some() && uses.get(name).copied() <= Some(0) {
+      if runtime::get_global_name_misc(name).is_none() && uses.get(name).copied() <= Some(0) {
         *name = "*".to_string();
       }
     }
@@ -289,7 +289,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
           // println!("Allowed unbound variable: {}", name);
           // Box::new(language::syntax::Term::Var { name: name.clone() })
           } else {
-            return Err(format!("Unbound variable: `{}`.", name));
+            return Err(format!("Unbound variable: `{name}`."));
           }
         }
       }
@@ -297,16 +297,16 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
         let is_global_0 = runtime::get_global_name_misc(nam0).is_some();
         let is_global_1 = runtime::get_global_name_misc(nam1).is_some();
         if is_global_0 && runtime::get_global_name_misc(nam0) != Some(runtime::DP0) {
-          panic!("The name of the global dup var '{}' must start with '$0'.", nam0);
+          panic!("The name of the global dup var '{nam0}' must start with '$0'.");
         }
         if is_global_1 && runtime::get_global_name_misc(nam1) != Some(runtime::DP1) {
-          panic!("The name of the global dup var '{}' must start with '$1'.", nam1);
+          panic!("The name of the global dup var '{nam1}' must start with '$1'.");
         }
         if is_global_0 != is_global_1 {
-          panic!("Both variables must be global: '{}' and '{}'.", nam0, nam1);
+          panic!("Both variables must be global: '{nam0}' and '{nam1}'.");
         }
         if is_global_0 && &nam0[2..] != &nam1[2..] {
-          panic!("Global dup names must be identical: '{}' and '{}'.", nam0, nam1);
+          panic!("Global dup names must be identical: '{nam0}' and '{nam1}'.");
         }
         let new_nam0 = if is_global_0 { nam0.clone() } else { (ctx.fresh)() };
         let new_nam1 = if is_global_1 { nam1.clone() } else { (ctx.fresh)() };
@@ -345,7 +345,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
       }
       language::syntax::Term::Let { name, expr, body } => {
         if runtime::get_global_name_misc(name).is_some() {
-          panic!("Global variable '{}' not allowed on let. Use dup instead.", name);
+          panic!("Global variable '{name}' not allowed on let. Use dup instead.");
         }
         let new_name = (ctx.fresh)();
         let expr = sanitize_term(expr, lhs, tbl, ctx)?;
@@ -432,7 +432,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
           std::cmp::Ordering::Less => body,
           // if used once just make a let then
           std::cmp::Ordering::Equal => {
-            let term = language::syntax::Term::Let { name: format!("{}.0", name), expr, body };
+            let term = language::syntax::Term::Let { name: format!("{name}.0"), expr, body };
             Box::new(term)
           }
           // if used more then once duplicate
@@ -445,13 +445,13 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
             // generate name for duplicated variables
             for i in (aux_qtt..duplicated_times * 2).rev() {
               let i = i - aux_qtt; // moved to 0,1,..
-              let key = format!("{}.{}", name, i);
+              let key = format!("{name}.{i}");
               vars.push(key);
             }
 
             // generate name for aux variables
             for i in (0..aux_qtt).rev() {
-              let key = format!("c.{}", i);
+              let key = format!("c.{i}");
               vars.push(key);
             }
 
@@ -499,7 +499,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
   // creates a new name for a variable
   // the first will receive x0, second x1, ...
   let mut fresh = || {
-    let key = format!("x{}", size);
+    let key = format!("x{size}");
     size += 1;
     key
   };
@@ -533,8 +533,8 @@ pub fn sanitize_rules(rules: &[language::syntax::Rule]) -> Vec<language::syntax:
       match sanitize_rule(rule) {
         Ok(rule) => rule,
         Err(err) => {
-          println!("{}", err);
-          println!("On rule: `{}`.", rule);
+          println!("{err}");
+          println!("On rule: `{rule}`.");
           std::process::exit(0); // FIXME: avoid this, propagate this error upwards
         }
       }
@@ -909,7 +909,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
             let new_rule = language::syntax::Rule { lhs: new_lhs, rhs: new_rhs };
             new_group.push(new_rule);
             for (j, other) in rules.iter().enumerate().skip(i) {
-              let (compatible, same_shape) = matches_together(&rule, &other);
+              let (compatible, same_shape) = matches_together(rule, other);
               if compatible {
                 if let (
                   language::syntax::Term::Ctr { name: ref _rule_name, args: ref rule_args },
@@ -976,7 +976,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                             }
                           }
                           language::syntax::Term::Var { name: ref other_arg_name } => {
-                            subst(&mut other_new_rhs, other_arg_name, &rule_arg);
+                            subst(&mut other_new_rhs, other_arg_name, rule_arg);
                           }
                           _ => {
                             panic!("Internal error. Please report."); // not possible since it matches
@@ -993,7 +993,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                             }
                           }
                           language::syntax::Term::Var { name: ref other_arg_name } => {
-                            subst(&mut other_new_rhs, other_arg_name, &rule_arg);
+                            subst(&mut other_new_rhs, other_arg_name, rule_arg);
                           }
                           _ => {
                             panic!("Internal error. Please report."); // not possible since it matches

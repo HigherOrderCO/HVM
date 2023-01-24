@@ -5,7 +5,7 @@ pub fn visit(ctx: ReduceCtx) -> bool {
   let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
   *ctx.cont = goup;
   *ctx.host = get_loc(ctx.term, 2);
-  return true;
+  true
 }
 
 #[inline(always)]
@@ -43,7 +43,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     link(ctx.heap, *ctx.host, done);
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
     free(ctx.heap, ctx.tid, get_loc(arg0, 0), 2);
-    return true;
+    true
   }
   // dup x y = {a b}
   // --------------- DUP-SUP

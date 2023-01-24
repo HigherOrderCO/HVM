@@ -148,13 +148,13 @@ impl std::fmt::Display for Term {
       Some(result)
     }
     match self {
-      Self::Var { name } => write!(f, "{}", name),
+      Self::Var { name } => write!(f, "{name}"),
       Self::Dup { nam0, nam1, expr, body } => {
-        write!(f, "dup {} {} = {}; {}", nam0, nam1, expr, body)
+        write!(f, "dup {nam0} {nam1} = {expr}; {body}")
       }
-      Self::Sup { val0, val1 } => write!(f, "{{{} {}}}", val0, val1),
-      Self::Let { name, expr, body } => write!(f, "let {} = {}; {}", name, expr, body),
-      Self::Lam { name, body } => write!(f, "λ{} {}", name, body),
+      Self::Sup { val0, val1 } => write!(f, "{{{val0} {val1}}}"),
+      Self::Let { name, expr, body } => write!(f, "let {name} = {expr}; {body}"),
+      Self::Lam { name, body } => write!(f, "λ{name} {body}"),
       Self::App { func, argm } => {
         let mut args = vec![argm];
         let mut expr = func;
@@ -167,7 +167,7 @@ impl std::fmt::Display for Term {
           f,
           "({} {})",
           expr,
-          args.iter().map(|x| format!("{}", x)).collect::<Vec<String>>().join(" ")
+          args.iter().map(|x| format!("{x}")).collect::<Vec<String>>().join(" ")
         )
       }
       Self::Ctr { name, args } => {
@@ -175,15 +175,15 @@ impl std::fmt::Display for Term {
         let sugars = [str_sugar, lst_sugar];
         for sugar in sugars {
           if let Some(term) = sugar(self) {
-            return write!(f, "{}", term);
+            return write!(f, "{term}");
           }
         }
 
-        write!(f, "({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
+        write!(f, "({}{})", name, args.iter().map(|x| format!(" {x}")).collect::<String>())
       }
       Self::U6O { numb } => write!(f, "{}", &u60::show(*numb)),
       Self::F6O { numb } => write!(f, "{}", &f60::show(*numb)),
-      Self::Op2 { oper, val0, val1 } => write!(f, "({} {} {})", oper, val0, val1),
+      Self::Op2 { oper, val0, val1 } => write!(f, "({oper} {val0} {val1})"),
     }
   }
 }
@@ -205,7 +205,7 @@ impl std::fmt::Display for File {
     write!(
       f,
       "{}",
-      self.rules.iter().map(|rule| format!("{}", rule)).collect::<Vec<String>>().join("\n")
+      self.rules.iter().map(|rule| format!("{rule}")).collect::<Vec<String>>().join("\n")
     )
   }
 }
@@ -303,7 +303,7 @@ pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
     Box::new(|state| {
       let (state, _) = parser::text("(", state)?;
       let (state, head) = parser::get_char(state)?;
-      Ok((state, ('A'..='Z').contains(&head)))
+      Ok((state, head.is_ascii_uppercase()))
     }),
     Box::new(|state| {
       let (state, open) = parser::text("(", state)?;
@@ -323,28 +323,26 @@ pub fn parse_num(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
-      Ok((state, ('0'..='9').contains(&head)))
+      Ok((state, head.is_ascii_digit()))
     }),
     Box::new(|state| {
       let (state, text) = parser::name1(state)?;
       if !text.is_empty() {
         if text.starts_with("0x") {
-          return Ok((
+          Ok((
             state,
             Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(&text[2..], 16).unwrap()) }),
-          ));
+          ))
+        } else if text.find('.').is_some() {
+          Ok((
+            state,
+            Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) }),
+          ))
         } else {
-          if text.find(".").is_some() {
-            return Ok((
-              state,
-              Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) }),
-            ));
-          } else {
-            return Ok((
-              state,
-              Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) }),
-            ));
-          }
+          Ok((
+            state,
+            Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) }),
+          ))
         }
       } else {
         Ok((state, Box::new(Term::U6O { numb: 0 })))
@@ -410,7 +408,7 @@ pub fn parse_var(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   parser::guard(
     Box::new(|state| {
       let (state, head) = parser::get_char(state)?;
-      Ok((state, ('a'..='z').contains(&head) || head == '_' || head == '$'))
+      Ok((state, head.is_ascii_lowercase() || head == '_' || head == '$'))
     }),
     Box::new(|state| {
       let (state, name) = parser::name(state)?;
@@ -447,7 +445,7 @@ pub fn parse_ask_sugar_named(state: parser::State) -> parser::Answer<Option<Box<
       let (state, asks) = parser::text("ask ", state)?;
       let (state, name) = parser::name(state)?;
       let (state, eqls) = parser::text("=", state)?;
-      Ok((state, asks && name.len() > 0 && eqls))
+      Ok((state, asks && !name.is_empty() && eqls))
     }),
     Box::new(|state| {
       let (state, _) = parser::consume("ask ", state)?;
@@ -644,9 +642,9 @@ pub fn parse_smap(state: parser::State) -> parser::Answer<Option<SMap>> {
   if init {
     let (state, name) = parser::name1(state)?;
     let (state, args) = parser::until(parser::text_parser(")"), Box::new(parse_stct), state)?;
-    return Ok((state, Some((name, args))));
+    Ok((state, Some((name, args))))
   } else {
-    return Ok((state, None));
+    Ok((state, None))
   }
 }
 

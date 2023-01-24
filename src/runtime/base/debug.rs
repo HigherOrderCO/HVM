@@ -28,7 +28,7 @@ pub fn show_ptr(x: Ptr) -> String {
       F60 => "F60",
       _ => "?",
     };
-    format!("{}({:07x}, {:08x})", tgs, ext, val)
+    format!("{tgs}({ext:07x}, {val:08x})")
   }
 }
 
@@ -37,7 +37,7 @@ pub fn show_heap(heap: &Heap) -> String {
   for idx in 0..heap.node.len() {
     let ptr = load_ptr(heap, idx as u64);
     if ptr != 0 {
-      text.push_str(&format!("{:04x} | ", idx));
+      text.push_str(&format!("{idx:04x} | "));
       text.push_str(&show_ptr(ptr));
       text.push('\n');
     }
@@ -65,7 +65,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     }
     match get_tag(term) {
       LAM => {
-        names.insert(get_loc(term, 0), format!("{}", count));
+        names.insert(get_loc(term, 0), format!("{count}"));
         *count += 1;
         find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
       }
@@ -79,7 +79,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
       }
       DP0 => {
         if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
-          names.insert(get_loc(term, 0), format!("{}", count));
+          names.insert(get_loc(term, 0), format!("{count}"));
           *count += 1;
           kinds.insert(get_loc(term, 0), get_ext(term));
           e.insert(get_loc(term, 0));
@@ -88,7 +88,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
       }
       DP1 => {
         if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
-          names.insert(get_loc(term, 0), format!("{}", count));
+          names.insert(get_loc(term, 0), format!("{count}"));
           *count += 1;
           kinds.insert(get_loc(term, 0), get_ext(term));
           e.insert(get_loc(term, 0));
@@ -118,26 +118,26 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     let term = load_ptr(heap, host);
     let done;
     if term == 0 {
-      done = format!("<>");
+      done = "<>".to_string();
     } else {
       done = match get_tag(term) {
         DP0 => {
           if let Some(name) = names.get(&get_loc(term, 0)) {
-            format!("a{}", name)
+            format!("a{name}")
           } else {
             format!("a^{}", get_loc(term, 0))
           }
         }
         DP1 => {
           if let Some(name) = names.get(&get_loc(term, 0)) {
-            format!("b{}", name)
+            format!("b{name}")
           } else {
             format!("b^{}", get_loc(term, 0))
           }
         }
         VAR => {
           if let Some(name) = names.get(&get_loc(term, 0)) {
-            format!("x{}", name)
+            format!("x{name}")
           } else {
             format!("x^{}", get_loc(term, 0))
           }
@@ -149,13 +149,13 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
         APP => {
           let func = go(heap, prog, get_loc(term, 0), names, tlocs);
           let argm = go(heap, prog, get_loc(term, 1), names, tlocs);
-          format!("({} {})", func, argm)
+          format!("({func} {argm})")
         }
         SUP => {
           //let kind = get_ext(term);
           let func = go(heap, prog, get_loc(term, 0), names, tlocs);
           let argm = go(heap, prog, get_loc(term, 1), names, tlocs);
-          format!("{{{} {}}}", func, argm)
+          format!("{{{func} {argm}}}")
         }
         OP2 => {
           let oper = get_ext(term);
@@ -180,7 +180,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
             0xF => "!=",
             _ => "<oper>",
           };
-          format!("({} {} {})", symb, val0, val1)
+          format!("({symb} {val0} {val1})")
         }
         U60 => {
           format!("{}", u60::val(get_val(term)))
@@ -194,7 +194,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
           let args: Vec<String> =
             (0..arit).map(|i| go(heap, prog, get_loc(term, i), names, tlocs)).collect();
           let name = &prog.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
-          format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
+          format!("({}{})", name, args.iter().map(|x| format!(" {x}")).collect::<String>())
         }
         ERA => "*".to_string(),
         _ => format!("<era:{}>", get_tag(term)),
@@ -202,10 +202,10 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     }
     for (tid, tid_loc) in tlocs.iter().enumerate() {
       if host == tid_loc.load(Ordering::Relaxed) {
-        return format!("<{}>{}", tid, done);
+        return format!("<{tid}>{done}");
       }
     }
-    return done;
+    done
   }
   find_lets(heap, prog, host, &mut lets, &mut kinds, &mut names, &mut count);
   let mut text = go(heap, prog, host, &names, tlocs);
@@ -213,11 +213,11 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     // todo: reverse
     let what = String::from("?h");
     //let kind = kinds.get(&pos).unwrap_or(&0);
-    let name = names.get(&pos).unwrap_or(&what);
+    let name = names.get(pos).unwrap_or(&what);
     let nam0 =
-      if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+      if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{name}") };
     let nam1 =
-      if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+      if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{name}") };
     text.push_str(&format!(
       "\ndup {} {} = {};",
       nam0,

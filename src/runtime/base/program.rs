@@ -102,12 +102,12 @@ impl Program {
         aris.insert(fid as u64, precomp.smap.len() as u64);
       }
     }
-    return Program { funs, aris, nams };
+    Program { funs, aris, nams }
   }
 
   pub fn add_book(&mut self, book: &language::rulebook::RuleBook) {
-    let funs: &mut Funs = &mut gen_functions(&book);
-    let nams: &mut Nams = &mut gen_names(&book);
+    let funs: &mut Funs = &mut gen_functions(book);
+    let nams: &mut Nams = &mut gen_names(book);
     let aris: &mut Aris = &mut U64Map::new();
     for (fid, fun) in funs.data.drain(0..).enumerate() {
       if let Some(fun) = fun {
@@ -120,7 +120,7 @@ impl Program {
       }
     }
     for (fid, smp) in &book.id_to_smap {
-      self.aris.insert(*fid as u64, smp.len() as u64);
+      self.aris.insert(*fid, smp.len() as u64);
     }
   }
 
@@ -197,21 +197,21 @@ pub fn alloc_body(
     let done = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
     *lvar.dups.as_mut_ptr() += dupk;
     //println!("result: {}\n{}\n", show_ptr(done), show_term(heap, prog, done, 0));
-    return done;
+    done
   }
 }
 
 pub fn get_global_name_misc(name: &str) -> Option<u64> {
-  if !name.is_empty() && name.starts_with(&"$") {
-    if name.starts_with(&"$0") {
+  if !name.is_empty() && name.starts_with('$') {
+    if name.starts_with("$0") {
       return Some(DP0);
-    } else if name.starts_with(&"$1") {
+    } else if name.starts_with("$1") {
       return Some(DP1);
     } else {
       return Some(VAR);
     }
   }
-  return None;
+  None
 }
 
 // todo: "dups" still needs to be moved out on `alloc_body` etc.
@@ -232,7 +232,7 @@ pub fn build_function(
         for (i, arg) in args.iter().enumerate() {
           match &**arg {
             language::syntax::Term::Ctr { name, args } => {
-              cond.push(Ctr(*book.name_to_id.get(&*name).unwrap_or(&0), 0));
+              cond.push(Ctr(*book.name_to_id.get(name).unwrap_or(&0), 0));
               free.push((i as u64, args.len() as u64));
               for (j, arg) in args.iter().enumerate() {
                 if let language::syntax::Term::Var { ref name } = **arg {
@@ -244,10 +244,10 @@ pub fn build_function(
               }
             }
             language::syntax::Term::U6O { numb } => {
-              cond.push(U6O(*numb as u64));
+              cond.push(U6O(*numb));
             }
             language::syntax::Term::F6O { numb } => {
-              cond.push(F6O(*numb as u64));
+              cond.push(F6O(*numb));
             }
             language::syntax::Term::Var { name } => {
               cond.push(Var(0));
@@ -299,14 +299,14 @@ pub fn gen_functions(book: &language::rulebook::RuleBook) -> U64Map<Function> {
   let mut funs: U64Map<Function> = U64Map::new();
   for (name, rules_info) in &book.rule_group {
     let fnid = book.name_to_id.get(name).unwrap_or(&0);
-    let func = build_function(book, &name, &rules_info.1);
+    let func = build_function(book, name, &rules_info.1);
     funs.insert(*fnid, func);
   }
   funs
 }
 
 pub fn gen_names(book: &language::rulebook::RuleBook) -> U64Map<String> {
-  return U64Map::from_hashmap(&mut book.id_to_name.clone());
+  U64Map::from_hashmap(&mut book.id_to_name.clone())
 }
 
 /// converts a language term to a runtime term
@@ -395,7 +395,7 @@ pub fn term_to_core(
       }
       language::syntax::Term::Ctr { name, args } => {
         let term_func =
-          *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
+          *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {name}"));
         let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
         if *book.ctr_is_fun.get(name).unwrap_or(&false) {
           Core::Fun { func: term_func, args: term_args }
@@ -443,7 +443,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       if glob != 0 {
         lams.insert(glob, targ);
       }
-      return targ;
+      targ
     }
   }
   fn alloc_dup(
@@ -454,7 +454,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
     glob: u64,
   ) -> (u64, u64) {
     if let Some(got) = dups.get(&glob) {
-      return got.clone();
+      *got
     } else {
       let dupc = *dupk;
       let targ = nodes.len() as u64;
@@ -465,7 +465,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       if glob != 0 {
         dups.insert(glob, (targ, dupc));
       }
-      return (targ, dupc);
+      (targ, dupc)
     }
   }
   fn gen_elems(
@@ -488,15 +488,15 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       Core::Glo { glob, misc } => match *misc {
         VAR => {
           let targ = alloc_lam(lams, nodes, *glob);
-          return RuleBodyCell::Ptr { value: Var(0), targ, slot: 0 };
+          RuleBodyCell::Ptr { value: Var(0), targ, slot: 0 }
         }
         DP0 => {
           let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
-          return RuleBodyCell::Ptr { value: Dp0(dupc, 0), targ, slot: 0 };
+          RuleBodyCell::Ptr { value: Dp0(dupc, 0), targ, slot: 0 }
         }
         DP1 => {
           let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
-          return RuleBodyCell::Ptr { value: Dp1(dupc, 0), targ, slot: 0 };
+          RuleBodyCell::Ptr { value: Dp1(dupc, 0), targ, slot: 0 }
         }
         _ => {
           panic!("Unexpected error.");
@@ -554,7 +554,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       Core::Fun { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
-          nodes.push(vec![RuleBodyCell::Val { value: 0 }; args.len() as usize]);
+          nodes.push(vec![RuleBodyCell::Val { value: 0 }; args.len()]);
           for (i, arg) in args.iter().enumerate() {
             let arg = gen_elems(arg, dupk, vars, lams, dups, nodes, links);
             links.push((targ, i as u64, arg));
@@ -567,7 +567,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       Core::Ctr { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
-          nodes.push(vec![RuleBodyCell::Val { value: 0 }; args.len() as usize]);
+          nodes.push(vec![RuleBodyCell::Val { value: 0 }; args.len()]);
           for (i, arg) in args.iter().enumerate() {
             let arg = gen_elems(arg, dupk, vars, lams, dups, nodes, links);
             links.push((targ, i as u64, arg));
@@ -577,8 +577,8 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
           RuleBodyCell::Val { value: Ctr(*func, 0) }
         }
       }
-      Core::U6O { numb } => RuleBodyCell::Val { value: U6O(*numb as u64) },
-      Core::F6O { numb } => RuleBodyCell::Val { value: F6O(*numb as u64) },
+      Core::U6O { numb } => RuleBodyCell::Val { value: U6O(*numb) },
+      Core::F6O { numb } => RuleBodyCell::Val { value: F6O(*numb) },
       Core::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
         nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);
@@ -622,7 +622,7 @@ pub fn alloc_term(
   book: &language::rulebook::RuleBook,
   term: &language::syntax::Term,
 ) -> u64 {
-  alloc_closed_core(heap, prog, tid, &term_to_core(book, term, &vec![]))
+  alloc_closed_core(heap, prog, tid, &term_to_core(book, term, &[]))
 }
 
 pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
@@ -634,5 +634,5 @@ pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
     link(heap, ctr0 + 1, term);
     term = Ctr(STRING_CONS, ctr0);
   }
-  return term;
+  term
 }

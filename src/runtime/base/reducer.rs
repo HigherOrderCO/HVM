@@ -68,7 +68,7 @@ pub fn reduce(
   });
 
   // Return whnf term ptr
-  return load_ptr(heap, root);
+  load_ptr(heap, root)
 }
 
 pub fn reducer(
@@ -144,22 +144,20 @@ pub fn reducer(
                   if term != load_ptr(heap, host) {
                     release_lock(heap, tid, term);
                     continue 'visit;
+                  } else if dup::visit(ReduceCtx {
+                    heap,
+                    prog,
+                    tid,
+                    hold,
+                    term,
+                    visit,
+                    redex,
+                    cont: &mut cont,
+                    host: &mut host,
+                  }) {
+                    continue 'visit;
                   } else {
-                    if dup::visit(ReduceCtx {
-                      heap,
-                      prog,
-                      tid,
-                      hold,
-                      term,
-                      visit,
-                      redex,
-                      cont: &mut cont,
-                      host: &mut host,
-                    }) {
-                      continue 'visit;
-                    } else {
-                      break 'work;
-                    }
+                    break 'work;
                   }
                 }
               }
