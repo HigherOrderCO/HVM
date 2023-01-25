@@ -9,12 +9,12 @@
 #![allow(unused_labels)]
 #![allow(non_upper_case_globals)]
 
+use clap::Parser;
+
 mod cli;
 mod language;
 mod runtime;
 mod api;
-
-use clap::Parser;
 
 #[derive(Parser)]
 struct Cli {

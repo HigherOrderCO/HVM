@@ -36,7 +36,7 @@ pub fn compile(code: &str, name: &str) -> std::io::Result<()> {
     .replace("name = \"hvm\"", &format!("name = \"{name}\""))
     .replace("name = \"hvm\"", &format!("name = \"{name}\""));
   fs::write(format!("{output}/Cargo.toml"), cargo_rs)?;
-  fs::write(format!("{output}/rust-toolchain.toml"), include_str!("./../../rust-toolchain.toml"))?;
+  copy("./rust-toolchain.toml", &format!("{output}/rust-toolchain.toml"))?;
   copy("./src/language", &format!("{output}/src/language"))?;
   copy("./src/runtime", &format!("{output}/src/runtime"))?;
   copy("./src/api.rs", &format!("{output}/src/api.rs"))?;
