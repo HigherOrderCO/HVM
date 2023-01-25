@@ -1,4 +1,5 @@
 use crate::language;
+use crate::polyfills::PolyfillAtomicAsMutPtr;
 use crate::runtime::*;
 use std::collections::{hash_map, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -166,10 +167,10 @@ pub fn alloc_body(
         RuleBodyCell::Val { value } => *value,
         RuleBodyCell::Var { index } => get_var(heap, term, vars.get_unchecked(*index as usize)),
         RuleBodyCell::Ptr { value, targ, slot } => {
-          let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
+          let mut val = value + *aloc.get_unchecked(*targ as usize).polyfill_as_mut_ptr() + slot;
           // should be changed if the pointer format changes
           if get_tag(*value) <= DP1 {
-            val += (*lvar.dups.as_mut_ptr() & 0xFFF_FFFF) * EXT;
+            val += (*lvar.dups.polyfill_as_mut_ptr() & 0xFFF_FFFF) * EXT;
           }
           val
         }
@@ -182,26 +183,26 @@ pub fn alloc_body(
     let aloc = &heap.aloc[tid];
     let lvar = &heap.lvar[tid];
     for i in 0..nodes.len() {
-      *aloc.get_unchecked(i).as_mut_ptr() =
+      *aloc.get_unchecked(i).polyfill_as_mut_ptr() =
         alloc(heap, tid, (*nodes.get_unchecked(i)).len() as u64);
     }
-    if *lvar.dups.as_mut_ptr() + dupk >= (1 << 28) {
-      *lvar.dups.as_mut_ptr() = 0;
+    if *lvar.dups.polyfill_as_mut_ptr() + dupk >= (1 << 28) {
+      *lvar.dups.polyfill_as_mut_ptr() = 0;
     }
     for i in 0..nodes.len() {
-      let host = *aloc.get_unchecked(i).as_mut_ptr() as usize;
+      let host = *aloc.get_unchecked(i).polyfill_as_mut_ptr() as usize;
       for j in 0..(*nodes.get_unchecked(i)).len() {
         let cell = (*nodes.get_unchecked(i)).get_unchecked(j);
         let ptr = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
         if let RuleBodyCell::Var { .. } = cell {
           link(heap, (host + j) as u64, ptr);
         } else {
-          *heap.node.get_unchecked(host + j).as_mut_ptr() = ptr;
+          *heap.node.get_unchecked(host + j).polyfill_as_mut_ptr() = ptr;
         }
       }
     }
     let done = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
-    *lvar.dups.as_mut_ptr() += dupk;
+    *lvar.dups.polyfill_as_mut_ptr() += dupk;
     //println!("result: {}\n{}\n", show_ptr(done), show_term(heap, prog, done, 0));
     done
   }

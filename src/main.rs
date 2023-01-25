@@ -1,5 +1,3 @@
-#![feature(atomic_from_mut)]
-#![feature(atomic_mut_ptr)]
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
@@ -11,6 +9,7 @@
 mod api;
 mod compiler;
 mod language;
+mod polyfills;
 mod runtime;
 
 use clap::{Parser, Subcommand};

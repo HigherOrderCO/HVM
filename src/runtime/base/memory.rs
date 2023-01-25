@@ -169,6 +169,7 @@
 //     7. A lambda uses 2 memory slots, a duplication uses 3, an operator uses 2. Total: 112 bytes.
 //     8. In-memory size is different to, and larger than, serialization size.
 
+use crate::polyfills::{PolyfillAtomicAsMutPtr, PolyfillAtomicFromMutSlice};
 pub use crate::runtime::*;
 
 use crossbeam::utils::{Backoff, CachePadded};
@@ -387,13 +388,17 @@ pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
 
 pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
   return unsafe {
-    Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice())))
+    Box::from_raw(AtomicU8::polyfill_from_mut_slice(Box::leak(
+      vec![0xFFu8; size].into_boxed_slice(),
+    )))
   };
 }
 
 pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
   return unsafe {
-    Box::from_raw(AtomicU64::from_mut_slice(Box::leak(vec![0u64; size].into_boxed_slice())))
+    Box::from_raw(AtomicU64::polyfill_from_mut_slice(Box::leak(
+      vec![0u64; size].into_boxed_slice(),
+    )))
   };
 }
 
@@ -444,10 +449,13 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
       loop {
         //count += 1;
         //if tid == 9 && count > 5000000 {
-        //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
+        //println!("[9] slow-alloc {} | {}", count, *lvar.next.polyfill_as_mut_ptr());
         //}
         // Loads value on cursor
-        let val = heap.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
+        let val = heap
+          .node
+          .get_unchecked(*lvar.next.polyfill_as_mut_ptr() as usize)
+          .load(Ordering::Relaxed);
         // If it is empty, increment length
         if val == 0 {
           length += 1;
@@ -456,11 +464,11 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
           length = 0;
         };
         // Moves cursor right
-        *lvar.next.as_mut_ptr() += 1;
+        *lvar.next.polyfill_as_mut_ptr() += 1;
         // If it is out of bounds, warp around
-        if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
+        if *lvar.next.polyfill_as_mut_ptr() >= *lvar.amax.polyfill_as_mut_ptr() {
           length = 0;
-          *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
+          *lvar.next.polyfill_as_mut_ptr() = *lvar.amin.polyfill_as_mut_ptr();
         }
         // If length equals arity, allocate that space
         if length == arity {
@@ -468,9 +476,9 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
           //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
           //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
           //if tid == 9 && count > 50000 {
-          //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
+          //println!("[{}] allocated {}! {}", 9, length, *lvar.next.polyfill_as_mut_ptr() - length);
           //}
-          return *lvar.next.as_mut_ptr() - length;
+          return *lvar.next.polyfill_as_mut_ptr() - length;
         }
       }
     }
