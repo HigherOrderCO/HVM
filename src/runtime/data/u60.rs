@@ -68,56 +68,32 @@ pub fn shr(a: U60, b: U60) -> U60 {
 
 #[inline(always)]
 pub fn ltn(a: U60, b: U60) -> U60 {
-  if a < b {
-    1
-  } else {
-    0
-  }
+  u64::from(a < b)
 }
 
 #[inline(always)]
 pub fn lte(a: U60, b: U60) -> U60 {
-  if a <= b {
-    1
-  } else {
-    0
-  }
+  u64::from(a <= b)
 }
 
 #[inline(always)]
 pub fn eql(a: U60, b: U60) -> U60 {
-  if a == b {
-    1
-  } else {
-    0
-  }
+  u64::from(a == b)
 }
 
 #[inline(always)]
 pub fn gte(a: U60, b: U60) -> U60 {
-  if a >= b {
-    1
-  } else {
-    0
-  }
+  u64::from(a >= b)
 }
 
 #[inline(always)]
 pub fn gtn(a: U60, b: U60) -> U60 {
-  if a > b {
-    1
-  } else {
-    0
-  }
+  u64::from(a > b)
 }
 
 #[inline(always)]
 pub fn neq(a: U60, b: U60) -> U60 {
-  if a != b {
-    1
-  } else {
-    0
-  }
+  u64::from(a != b)
 }
 
 #[inline(always)]

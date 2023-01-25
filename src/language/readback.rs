@@ -117,7 +117,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           "*".to_string()
         } else {
           let var = runtime::Var(runtime::get_loc(term, 0));
-          ctx.names.get(&var).cloned().unwrap_or("?".to_string())
+          ctx.names.get(&var).cloned().unwrap_or_else(|| "?".to_string())
         };
         Box::new(language::syntax::Term::Lam { name, body })
       }
