@@ -66,7 +66,7 @@
 //   - [2] => pointer to the duplicated expression
 //
 //   Lambda Node:
-//   - [0] => either and ERA or an ERA pointing to the variable location
+//   - [0] => either and ERA or an ARG pointing to the variable location
 //   - [1] => pointer to the lambda's body
 //
 //   Application Node:
