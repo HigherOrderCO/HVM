@@ -16,7 +16,7 @@ insert v (Cons x xs) = swapGT (if v > x then 1 else 0) v x xs
 
 swapGT :: Word64 -> Word64 -> Word64 -> List -> List
 swapGT 0 v x xs = Cons v (Cons x xs)
-swapGT 1 v x xs = Cons x (insert v xs)
+swapGT 1 v x xs = Cons x $! insert v xs
 
 -- Generates a random list
 rnd' :: Word64 -> Word64 -> List
