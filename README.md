@@ -272,6 +272,12 @@ More Information
 
 - To **contact the author** directly, send an email to <taelin@kindelia.org>.
 
+Disclaimers
+===========
+
+While HVM aims to be the ultimate functional runtime, it, at this point, is to be seen as a prototype. It still doesn't cover all the lambda terms - we plan to do so by adding an optimized version of brackets/croissants (page 40 of [The Optimal Implementation Of Functional Programming Languages](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages)), together with [EAL Inference](https://arxiv.org/pdf/cs/0305011.pdf) to avoid the associated overhead - but we still don't have that yet. As such, HVM won't soundly evaluate certain λ-terms, such as `λx.(x x) λf.λx.(f (f x))` - see HOW.md for more info. Furthermore, while HVM can be exponentially faster than GHC and other functional runtimes, it was noted that HVM can be quadratic in some programs where Haskell is linear. We're still not sure of the source of this issue, but have plans to research, and have candidate solutions on the pipeline ("safe pointers", as proposed on the cited book, and used on [BOHM](https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=351703af066fd2e65ad64c63108672d960b9d8fb); a linearizing pass; or Haskell-like shared references). Moreover, note that HVM is still a prototype and it doesn't include several low-level optimizations, so, it won't have the best performance in all cases. As an example, Haskell programs that use mutability, state monads, or that compile to tight loops, will behave much more efficiently. Finally, while we do our best to create faithful and representative benchmarks (by choosing real-world algorithms like sorting, and by making a 1-by-1 translation from Haskell to HVM - notice how similar the files are), doing so is very hard and could not always be the case. We're working hard to address all these points and turn HVM from a promising tech demo into a production ready runtime that can be targeted by most programming languages.
+
+
 Related Work
 ============
 
