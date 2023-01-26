@@ -89,7 +89,7 @@ number of graph rewrites. You can ask HVM to display it with the `-c` option.
 Save the program above as `summation.hvm` and run:
 
 ```bash
-time hvm run -c -f summation.hvm "(Sum 0 0 5000000)"
+time hvm run -c true -f summation.hvm "(Sum 0 0 5000000)"
 ```
 
 This will make HVM output:
@@ -189,7 +189,7 @@ The way this function branches generates independent additions: it is
 significantly boosting the performance. If we run it:
 
 ```
-time hvm run -c -f summation.hvm "(Sum 0 0 5000000)"
+time hvm run -c true-f summation.hvm "(Sum 0 0 5000000)"
 ```
 
 It will output:
