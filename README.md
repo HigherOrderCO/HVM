@@ -471,6 +471,27 @@ but I believe the non-linearity of the STG model would make the problem much
 more complex than it is for the HVM, making it hard to not lose too much
 performance due to synchronization overhead.
 
+## How is the memory footprint of HVM, compared to other runtimes?
+
+It is a common misconception that an "interactional" runtime would somehow
+consume more memory than a "procedural" runtime like Rust's. That's not the
+case. Interaction nets, as implemented on HVM, add no overhead, and HVM
+instantly collects any piece of data that becomes unreachable, just like Rust,
+so there are no accumulating thunks that result in world-stopping garbage
+collection, as happens in Haskell currently.
+
+That said, currently, HVM doesn't implement memory-efficient features like
+references, loops and local mutability. As such, to do anything on HVM today,
+you need to use immutable datatypes and recursion, which are naturally
+memory-hungry. Thus, HVM programs today will have increased memory footprint, in
+relation to C and Rust programs. Thankfully, there is no theoretical limitation
+preventing us from adding loops and local mutability, and, once/if we do, one
+can expect the same memory footprint as Rust. The only caveat, though, is shared
+references: we're not sure if we want to add these, as they might impact
+parallelism. As such, it is posible that we choose to let lazy clones to be the
+only form of non-linearity, which would preserve parallelism, at the cost of
+making some algorithms more memory-hungry.
+
 ### Is HVM meant to replace GHC?
 
 No. GHC is actually a superb, glorious runtime that is very hard to match. HVM
