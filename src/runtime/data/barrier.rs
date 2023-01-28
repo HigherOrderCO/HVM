@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering, fence};
+use std::sync::atomic::{fence, AtomicBool, AtomicUsize, Ordering};
 
 pub struct Barrier {
   pub done: AtomicUsize,
@@ -8,11 +8,7 @@ pub struct Barrier {
 
 impl Barrier {
   pub fn new(tids: usize) -> Barrier {
-    Barrier {
-      done: AtomicUsize::new(0),
-      pass: AtomicUsize::new(0),
-      tids: tids,
-    }
+    Barrier { done: AtomicUsize::new(0), pass: AtomicUsize::new(0), tids }
   }
 
   pub fn wait(&self, stop: &AtomicUsize) {
