@@ -329,7 +329,7 @@ datatypes (both native and scott encoded) and recursion.
 
 ### Will HVM support the full λ-Calculus, or System-F?
 
-Yes! We plan to, by implementing the full-algorithm described on the
+Yes! We plan to, by implementing the full algorithm described on the
 [TOIOFPL](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages),
 i.e., after page 40. Sadly, this results in an overhead that affects
 the performance of beta-reduction by about 10x. As such, we want to
@@ -511,7 +511,7 @@ compiler and runtimes like GHC and V8.
 
 HVM is a prototype. Bugs are expected. Please, open an issue!
 
-### I've used HVM in production and now my company is bankrupt
+### I've used HVM in production and now my company is bankrupt.
 
 I quit.
 
