@@ -505,7 +505,7 @@ maturity, as well as provide support for full lambdas, which it doesn't do yet.
 
 No. HVM is still to be considered a prototype. Right now, I had less than
 3 months to work on it directly. It is considerably less mature than other
-compiler and runtimes like GHC and V8.
+compilers and runtimes like GHC and V8.
 
 ### I've ran an HVM program and it consumed 1950 GB and my computer exploded.
 
