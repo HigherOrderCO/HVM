@@ -354,14 +354,15 @@ trees, recursion) aren't affected.
 ### Are unsupported terms "Undefined Behavior"?
 
 No! Unsupported λ-terms like `λx.(x x) λf.λx.(f (f x))` don't cause HVM to
-display undefined behavior. HVM has no UB, and it will always give you a correct
-result, except in terms of [Interaction
+display undefined behavior. HVM will always behave deterministically, and give
+you a correct result to any input, except it will be in terms of [Interaction
 Calculus](https://github.com/Kindelia/Wikind/blob/master/IC/_.kind2) (IC)
-semantics. The IC is an alternative to the Lambda Calculus which differs
+semantics. The IC is an alternative to the Lambda Calculus (LC) which differs
 slightly in how non-linear variables are treated. As such, these "unsupported"
-terms are just cases where the LC and the IC evaluation disagree. In theory, one
-could use the HVM as a Interaction Net runtime, and it would always give they
-perfectly correct answers in relation to these semantics - but that's not usual.
+terms are just cases where the LC and the IC evaluation disagree. In theory, you
+could use the HVM as a Interaction Net runtime, and it would always give you
+perfectly correct answers under relation to these semantics - but that's not
+usual, so we don't talk about it often.
 
 ### What is HVM's main innovation, in simple terms?
 
