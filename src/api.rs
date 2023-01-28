@@ -10,7 +10,6 @@ pub fn eval(
   tids: usize,
   dbug: bool,
 ) -> Result<(String, u64, u64), String> {
-
   // Parses and reads the input file
   let file = language::syntax::read_file(&format!("{}\nHVM_MAIN_CALL = {}", file, term))?;
 
