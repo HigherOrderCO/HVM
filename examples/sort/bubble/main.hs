@@ -30,5 +30,6 @@ sum' (Cons x xs) = x + sum' xs
 
 main :: IO ()
 main = do
-  n <- read . head <$> getArgs :: IO Word64
+  -- n <- read . head <$> getArgs :: IO Word64
+  let n = 30
   print $ sum' (sort' (rnd' (n * 1000) 1))

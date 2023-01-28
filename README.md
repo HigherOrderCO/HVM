@@ -2,8 +2,8 @@ High-order Virtual Machine (HVM)
 =================================
 
 **High-order Virtual Machine (HVM)** is a pure functional runtime that is **lazy**, **non-garbage-collected** and
-**massively parallel**. It is also **beta-optimal**, meaning that, for higher-order computations, it can be
-exponentially faster than alternatives, including Haskell's GHC.
+**massively parallel**. It is also **beta-optimal**, meaning that, for higher-order computations, it can, in
+some cases, be up to exponentially faster than alternatives, including Haskell's GHC.
 
 That is possible due to a new model of computation, the **Interaction Net**, which supersedes the **Turing Machine** and
 the **Lambda Calculus**. Previous implementations of this model have been inefficient in practice, however, a recent
@@ -296,7 +296,8 @@ same underlying core as Rust (an affine λ-calculus), has great memory managemen
 (no thunks, no garbage-collection). Some people think interaction nets are an
 overhead, but that's not the case - they're the *lack* of overhead. For example,
 a lambda on HVM uses only 2 64-bit pointer, which is about as lightweight as it
-gets. So, given enough optimizations, I believe HVM could compare to GHC and
+gets. So, given enough optimizations, from proper inlining, to real loops, to
+inner mutability (FBIP-like?), I believe HVM could one day compare to GHC and
 even Rust or C. But we're still far from that.
 
 ### Why do the benchmarks compare single-thread vs multi-core?
@@ -360,21 +361,6 @@ terms are just cases where the LC and the IC evaluation disagree. In theory, one
 could use the HVM as a Interaction Net runtime, and it would always give they
 perfectly correct answers in relation to these semantics - but that's not usual.
 
-### Is HVM always *asymptotically* faster than GHC?
-
-No. In [this issue](https://github.com/Kindelia/HVM/issues/60), an user noticed
-that HVM displays quadratic asymptotics for certain functions that GHC computes
-in linear time. That was a surprise to me, and, as far as I can tell, despite
-the "optimal" brand, seems to be a limitation of the underlying theory. That
-said, there are multiple ways to alleviate, or solve, this problem. One approach
-would be to implement "safe pointers", also described on the book, which would
-reduce the cloning overhead and make some quadratic cases linear. But that
-wouldn't work for all cases. A complimentary approach would be to do linearity
-analysis, converting problematic quadratic programs in faster, linear versions.
-Finally, in the worst case, we could add references just like Haskell, but that
-should be made with a lot of caution, in order not to break the assumptions made
-by the parallel execution engine.
-
 ### What is HVM's main innovation, in simple terms?
 
 In complex terms, HVM's main innovation is that it is an efficient
@@ -417,6 +403,52 @@ The solution to that question is the main insight that the Interaction Net model
 bought to the table, and it is described in more details on the
 [HOW.md](https://github.com/Kindelia/HVM/blob/master/guide/HOW.md) document.
 
+### Is HVM always *asymptotically* faster than GHC?
+
+No. In most common cases, it will have the same asymptotics. In some cases, it
+is exponentially faster. In [this
+issue](https://github.com/Kindelia/HVM/issues/60), an user noticed that HVM
+displays quadratic asymptotics for certain functions that GHC computes in linear
+time. That was a surprise to me, and, as far as I can tell, despite the
+"optimal" brand, seems to be a limitation of the underlying theory. That said,
+there are multiple ways to alleviate, or solve, this problem. One approach would
+be to implement "safe pointers", also described on the book, which would reduce
+the cloning overhead and make some quadratic cases linear. But that wouldn't
+work for all cases. A complimentary approach would be to do linearity analysis,
+converting problematic quadratic programs in faster, linear versions.  Finally,
+in the worst case, we could add references just like Haskell, but that should be
+made with a lot of caution, in order not to break the assumptions made by the
+parallel execution engine.
+
+### Is HVM's optimality only relevant for weird, academic λ-encoded terms?
+
+No. HVM's optimality has some very practical benefits. For example, all the
+"deforesting" techniques that Haskell employs as compile-time rewrite rules,
+happen naturally, at runtime, on the HVM. For example, Haskell optimizes:
+
+`map f .  map g`
+
+Into:
+
+`map (f . g)`
+
+This is a hardcoded optimization. On HVM, that occurs naturally, at runtime,
+in a very general and pervasive way. So, for example, if you have something
+like:
+
+```
+foldr (.) id funcs :: [Int -> Int]
+```
+
+GHC won't be able to "fuse" the functions on the `funcs` list, since they're
+not known at compile time. HVM will do that just fine.
+
+Another practical application for λ-encodings is for monads. On Haskell, the
+Free Monad library uses Church encodings as an important optimization. Without
+it, the asymptotics of binding make free monads much less practical. HVM has
+optimal asymptotics for Church encoded data, making it great for these problems.
+
+
 ### Why is HVM so parallelizable?
 
 Because it is fully linear: every piece of data only occurs in one place at the
@@ -436,6 +468,12 @@ In theory, Haskell could be parallelized too, and GHC devs tried it at a point,
 but I believe the non-linearity of the STG model would make the problem much
 more complex than it is for the HVM, making it hard to not lose too much
 performance due to synchronization overhead.
+
+### Is HVM production-ready?
+
+No. HVM is still to be considered a prototype. Right now, I had less than
+3 months to work on it directly. It is considerably less mature than other
+compiler and runtimes like GHC and V8.
 
 Disclaimers
 ===========
