@@ -325,7 +325,7 @@ book, up to page 40. As such, it doesn't support some λ-terms, such as:
 It is, though, Turing complete, and covers a wide subset of the λ-calculus,
 including terms such as the Y-combinator, church encodings (including algorithms
 like addition, multiplication and exponentiation), as well as arbitrary
-datatypes (through scott encoding) and recursion.
+datatypes (both native and scott encoded) and recursion.
 
 ### Will HVM support the full λ-Calculus, or System-F?
 
