@@ -443,8 +443,9 @@ like:
 foldr (.) id funcs :: [Int -> Int]
 ```
 
-GHC won't be able to "fuse" the functions on the `funcs` list, since they're
-not known at compile time. HVM will do that just fine.
+GHC won't be able to "fuse" the functions on the `funcs` list, since they're not
+known at compile time. HVM will do that just fine. See [this
+issue](https://github.com/Kindelia/HVM/issues/167) for a practical example.
 
 Another practical application for λ-encodings is for monads. On Haskell, the
 Free Monad library uses Church encodings as an important optimization. Without
