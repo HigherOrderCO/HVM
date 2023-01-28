@@ -292,13 +292,15 @@ No!
 ### Can HVM be faster than these one day? 
 
 Hard question. Perhaps! The underlying model is very efficient. HVM shares the
-same underlying core as Rust (an affine λ-calculus), has great memory management
+same initial core as Rust (an affine λ-calculus), has great memory management
 (no thunks, no garbage-collection). Some people think interaction nets are an
 overhead, but that's not the case - they're the *lack* of overhead. For example,
 a lambda on HVM uses only 2 64-bit pointer, which is about as lightweight as it
-gets. So, given enough optimizations, from proper inlining, to real loops, to
-inner mutability (FBIP-like?), I believe HVM could one day compare to GHC and
-even Rust or C. But we're still far from that.
+gets. Furthermore, every reduction rule of HVM is a lightweight, constant-time
+operation that can be compiled to very fast machine code. As such, given enough
+optimizations, from proper inlining, to real loops, to inner mutability
+(FBIP-like?), I believe HVM could one day compare to GHC and even Rust or C. But
+we're still far from that.
 
 ### Why do the benchmarks compare single-thread vs multi-core?
 
@@ -327,7 +329,7 @@ datatypes (through scott encoding) and recursion.
 
 ### Will HVM support the full λ-Calculus, or System-F?
 
-Yes, we plan to, by implementing the full-algorithm described on the
+Yes! We plan to, by implementing the full-algorithm described on the
 [TOIOFPL](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages),
 i.e., after page 40. Sadly, this results in an overhead that affects
 the performance of beta-reduction by about 10x. As such, we want to
@@ -474,6 +476,14 @@ performance due to synchronization overhead.
 No. HVM is still to be considered a prototype. Right now, I had less than
 3 months to work on it directly. It is considerably less mature than other
 compiler and runtimes like GHC and V8.
+
+### Is HVM meant to replace GHC?
+
+No. GHC is actually a superb, glorious runtime that is very hard to match. HVM
+is meant to be a lightweight, massively parallel runtime for functional, and
+even imperative, languages, from Elm to JavaScript. That said, we do want to
+support Haskell, but that will require HVM being in a much later stage of
+maturity, as well as provide support for full lambdas, which it doesn't do yet.
 
 Disclaimers
 ===========
