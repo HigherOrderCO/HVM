@@ -35,11 +35,11 @@ pub fn default_heap_tids() -> usize {
 }
 
 pub struct Runtime {
-  heap: Heap,
-  prog: Program,
-  book: language::rulebook::RuleBook,
-  tids: Box<[usize]>,
-  dbug: bool,
+  pub heap: Heap,
+  pub prog: Program,
+  pub book: language::rulebook::RuleBook,
+  pub tids: Box<[usize]>,
+  pub dbug: bool,
 }
 
 impl Runtime {
