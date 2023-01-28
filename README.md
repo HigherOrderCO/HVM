@@ -471,12 +471,6 @@ but I believe the non-linearity of the STG model would make the problem much
 more complex than it is for the HVM, making it hard to not lose too much
 performance due to synchronization overhead.
 
-### Is HVM production-ready?
-
-No. HVM is still to be considered a prototype. Right now, I had less than
-3 months to work on it directly. It is considerably less mature than other
-compiler and runtimes like GHC and V8.
-
 ### Is HVM meant to replace GHC?
 
 No. GHC is actually a superb, glorious runtime that is very hard to match. HVM
@@ -484,6 +478,20 @@ is meant to be a lightweight, massively parallel runtime for functional, and
 even imperative, languages, from Elm to JavaScript. That said, we do want to
 support Haskell, but that will require HVM being in a much later stage of
 maturity, as well as provide support for full lambdas, which it doesn't do yet.
+
+### Is HVM production-ready?
+
+No. HVM is still to be considered a prototype. Right now, I had less than
+3 months to work on it directly. It is considerably less mature than other
+compiler and runtimes like GHC and V8.
+
+### I've ran an HVM program and it consumed 1950 GB and my computer exploded.
+
+HVM is a prototype. Bugs are expected. Please, open an issue!
+
+### I've used HVM in production and now my company is bankrupt
+
+I quit.
 
 Disclaimers
 ===========
