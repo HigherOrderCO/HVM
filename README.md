@@ -339,7 +339,7 @@ do so with caution to keep HVM efficient. Currently, the plan is:
 
     - Light lambdas are what HVM has today. They're fast, but don't support the full λ-Calculus.
 
-    - Full lambdas will be slower, but support the full λ-Calculus.
+    - Full lambdas will be slower, but support the full λ-Calculus, via "internal brackets/croissants".
 
 2. To decrease the overhead, convert full-lambdas to light-lambdas using EAL inference
 
