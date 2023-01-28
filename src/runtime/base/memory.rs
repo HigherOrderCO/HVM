@@ -1,23 +1,23 @@
 // HVM's memory model
 // ------------------
-// 
+//
 // The runtime memory consists of just a vector of u64 pointers. That is:
 //
 //   Mem ::= Vec<Ptr>
-// 
+//
 // A pointer has 3 parts:
 //
 //   Ptr ::= 0xTAAAAAAABBBBBBBB
 //
 // Where:
 //
-//   T : u4  is the pointer tag 
+//   T : u4  is the pointer tag
 //   A : u28 is the 1st value
 //   B : u32 is the 2nd value
 //
 // There are 12 possible tags:
 //
-//   Tag | Val | Meaning  
+//   Tag | Val | Meaning
 //   ----| --- | -------------------------------
 //   DP0 |   0 | a variable, bound to the 1st argument of a duplication
 //   DP1 |   1 | a variable, bound to the 2nd argument of a duplication
@@ -33,7 +33,7 @@
 //   U60 |  11 | a 60-bit unsigned integer
 //   F60 |  12 | a 60-bit floating point
 //
-// The semantics of the 1st and 2nd values depend on the pointer tag. 
+// The semantics of the 1st and 2nd values depend on the pointer tag.
 //
 //   Tag | 1st ptr value                | 2nd ptr value
 //   --- | ---------------------------- | ---------------------------------
@@ -66,9 +66,9 @@
 //   - [2] => pointer to the duplicated expression
 //
 //   Lambda Node:
-//   - [0] => either and ERA or an ERA pointing to the variable location
+//   - [0] => either and ERA or an ARG pointing to the variable location
 //   - [1] => pointer to the lambda's body
-//   
+//
 //   Application Node:
 //   - [0] => pointer to the lambda
 //   - [1] => pointer to the argument
@@ -102,7 +102,7 @@
 //   5. Function and Constructor arities depends on the user-provided definition.
 //
 // Example 0:
-// 
+//
 //   Core:
 //
 //    {Tuple2 #7 #8}
@@ -114,7 +114,7 @@
 //     0x01 | Ptr(U60, 0x0000000, 0x00000008) // the tuple's 2nd field
 //
 //   Notes:
-//     
+//
 //     1. This is just a pair with two numbers.
 //     2. The root pointer is not stored on memory.
 //     3. The 'Tuple2' name was encoded as the ID 1.
@@ -140,11 +140,11 @@
 //     2. The 1st lambda's argument not used, thus, an ERA pointer.
 //     3. The 2nd lambda's argument points to its variable, and vice-versa.
 //     4. Each lambda uses 2 memory slots. This term uses 64 bytes in total.
-//     
+//
 // Example 2:
 //
 //   Core:
-//     
+//
 //     λx dup x0 x1 = x; (* x0 x1)
 //
 //   Memory:
@@ -159,7 +159,7 @@
 //     0x06 | Ptr(DP1, 0xa31fb21, 0x00000002) // the operator's 2st operand
 //
 //   Notes:
-//     
+//
 //     1. This is a lambda function that squares a number.
 //     2. Notice how every ARGs point to a VAR/DP0/DP1, that points back its source node.
 //     3. DP1 does not point to its ARG. It points to the duplication node, which is at 0x02.
@@ -169,10 +169,10 @@
 //     7. A lambda uses 2 memory slots, a duplication uses 3, an operator uses 2. Total: 112 bytes.
 //     8. In-memory size is different to, and larger than, serialization size.
 
-pub use crate::runtime::{*};
+pub use crate::runtime::*;
 
-use std::sync::atomic::{AtomicU8, AtomicU64, AtomicI64, Ordering};
-use crossbeam::utils::{CachePadded, Backoff};
+use crossbeam::utils::{Backoff, CachePadded};
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
 
 // Types
 // -----
@@ -233,7 +233,7 @@ pub const MUL: u64 = 0x2;
 pub const DIV: u64 = 0x3;
 pub const MOD: u64 = 0x4;
 pub const AND: u64 = 0x5;
-pub const OR : u64 = 0x6;
+pub const OR: u64 = 0x6;
 pub const XOR: u64 = 0x7;
 pub const SHL: u64 = 0x8;
 pub const SHR: u64 = 0x9;
@@ -386,20 +386,24 @@ pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
 // -----------------
 
 pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
-  return unsafe { Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice()))) }
+  return unsafe {
+    Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice())))
+  };
 }
 
 pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
-  return unsafe { Box::from_raw(AtomicU64::from_mut_slice(Box::leak(vec![0u64; size].into_boxed_slice()))) }
+  return unsafe {
+    Box::from_raw(AtomicU64::from_mut_slice(Box::leak(vec![0u64; size].into_boxed_slice())))
+  };
 }
 
 pub fn new_tids(tids: usize) -> Box<[usize]> {
-  return (0 .. tids).collect::<Vec<usize>>().into_boxed_slice();
+  return (0..tids).collect::<Vec<usize>>().into_boxed_slice();
 }
 
 pub fn new_heap(size: usize, tids: usize) -> Heap {
   let mut lvar = vec![];
-  for tid in 0 .. tids {
+  for tid in 0..tids {
     lvar.push(CachePadded::new(LocalVars {
       tid: tid,
       used: AtomicI64::new(0),
@@ -414,9 +418,15 @@ pub fn new_heap(size: usize, tids: usize) -> Heap {
   let lock = new_atomic_u8_array(size);
   let lvar = lvar.into_boxed_slice();
   let rbag = RedexBag::new(tids);
-  let aloc = (0 .. tids).map(|x| new_atomic_u64_array(1 << 20)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
-  let vbuf = (0 .. tids).map(|x| new_atomic_u64_array(1 << 16)).collect::<Vec<Box<[AtomicU64]>>>().into_boxed_slice();
-  let vstk = (0 .. tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
+  let aloc = (0..tids)
+    .map(|x| new_atomic_u64_array(1 << 20))
+    .collect::<Vec<Box<[AtomicU64]>>>()
+    .into_boxed_slice();
+  let vbuf = (0..tids)
+    .map(|x| new_atomic_u64_array(1 << 16))
+    .collect::<Vec<Box<[AtomicU64]>>>()
+    .into_boxed_slice();
+  let vstk = (0..tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
   return Heap { tids, node, lock, lvar, rbag, aloc, vbuf, vstk };
 }
 
@@ -434,7 +444,7 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
       loop {
         //count += 1;
         //if tid == 9 && count > 5000000 {
-          //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
+        //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
         //}
         // Loads value on cursor
         let val = heap.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
@@ -458,7 +468,7 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
           //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
           //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
           //if tid == 9 && count > 50000 {
-            //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
+          //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
           //}
           return *lvar.next.as_mut_ptr() - length;
         }
@@ -468,7 +478,7 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
 }
 
 pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
-  for i in 0 .. arity {
+  for i in 0..arity {
     unsafe { heap.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
   }
 }
@@ -479,7 +489,12 @@ pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
 // Atomically replaces a ptr by another. Updates binders.
 pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, Ptr> {
   unsafe {
-    let got = heap.node.get_unchecked(loc as usize).compare_exchange_weak(old, neo, Ordering::Relaxed, Ordering::Relaxed)?;
+    let got = heap.node.get_unchecked(loc as usize).compare_exchange_weak(
+      old,
+      neo,
+      Ordering::Relaxed,
+      Ordering::Relaxed,
+    )?;
     if get_tag(neo) <= VAR {
       let arg_loc = get_loc(neo, get_tag(neo) & 0x01);
       heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
@@ -514,7 +529,7 @@ pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr
 // Locks
 // -----
 
-pub const LOCK_OPEN : u8 = 0xFF;
+pub const LOCK_OPEN: u8 = 0xFF;
 
 pub fn acquire_lock(heap: &Heap, tid: usize, term: Ptr) -> Result<u8, u8> {
   let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
@@ -576,7 +591,7 @@ pub fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
 // λf λx b0
 // dup f0 f1 = f
 // dup b0 b1 = (f0 (f1 {b1 x}))
-// 
+//
 // If we attempt to collect it with the algorithm above, we'll have:
 //
 // dup f0 f1 = ~
@@ -623,7 +638,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         link(heap, get_loc(term, 0), Era());
       }
       LAM => {
-        atomic_subst(heap, arit, tid, Var(get_loc(term,0)), Era());
+        atomic_subst(heap, arit, tid, Var(get_loc(term, 0)), Era());
         next = take_arg(heap, term, 1);
         free(heap, tid, get_loc(term, 0), 2);
         continue;
@@ -650,7 +665,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
       F60 => {}
       CTR | FUN => {
         let arity = arity_of(arit, term);
-        for i in 0 .. arity {
+        for i in 0..arity {
           if i < arity - 1 {
             coll.push(take_arg(heap, term, i));
           } else {
