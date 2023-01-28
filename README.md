@@ -471,7 +471,7 @@ but I believe the non-linearity of the STG model would make the problem much
 more complex than it is for the HVM, making it hard to not lose too much
 performance due to synchronization overhead.
 
-## How is the memory footprint of HVM, compared to other runtimes?
+### How is the memory footprint of HVM, compared to other runtimes?
 
 It is a common misconception that an "interactional" runtime would somehow
 consume more memory than a "procedural" runtime like Rust's. That's not the
