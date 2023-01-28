@@ -410,7 +410,7 @@ bought to the table, and it is described in more details on the
 
 No. In most common cases, it will have the same asymptotics. In some cases, it
 is exponentially faster. In [this
-issue](https://github.com/Kindelia/HVM/issues/60), an user noticed that HVM
+issue](https://github.com/Kindelia/HVM/issues/60), a user noticed that HVM
 displays quadratic asymptotics for certain functions that GHC computes in linear
 time. That was a surprise to me, and, as far as I can tell, despite the
 "optimal" brand, seems to be a limitation of the underlying theory. That said,
