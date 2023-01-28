@@ -295,7 +295,7 @@ Hard question. Perhaps! The underlying model is very efficient. HVM shares the
 same initial core as Rust (an affine λ-calculus), has great memory management
 (no thunks, no garbage-collection). Some people think interaction nets are an
 overhead, but that's not the case - they're the *lack* of overhead. For example,
-a lambda on HVM uses only 2 64-bit pointer, which is about as lightweight as it
+a lambda on HVM uses only 2 64-bit pointers, which is about as lightweight as it
 gets. Furthermore, every reduction rule of HVM is a lightweight, constant-time
 operation that can be compiled to very fast machine code. As such, given enough
 optimizations, from proper inlining, to real loops, to inner mutability
