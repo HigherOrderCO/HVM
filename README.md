@@ -272,15 +272,175 @@ More Information
 
 - To **contact the author** directly, send an email to <taelin@kindelia.org>.
 
+FAQ
+===
+
+### Is HVM faster than GHC in a single core today?
+
+No. For now, HVM seems to be from 50% faster to 3x slower in single thread
+performance, to even worse if the Haskell code exploits optimizations that
+HVM doesn't have yet (ST Monad, mutable arrays, inlining, loops).
+
+### Is HVM faster than Rust today?
+
+No.
+
+### Is HVM faster than C today?
+
+No!
+
+### Can HVM be faster than these one day? 
+
+Hard question. Perhaps! The underlying model is very efficient. HVM shares the
+same underlying core as Rust (an affine λ-calculus), has great memory management
+(no thunks, no garbage-collection). Some people think interaction nets are an
+overhead, but that's not the case - they're the *lack* of overhead. For example,
+a lambda on HVM uses only 2 64-bit pointer, which is about as lightweight as it
+gets. So, given enough optimizations, I believe HVM could compare to GHC and
+even Rust or C. But we're still far from that.
+
+### Why do the benchmarks compare single-thread vs multi-core?
+
+They do not! Notice all benchmarks include a line for single-threaded HVM
+execution, which is usually 3x slower than GHC. We do include multi-core HVM
+execution to let us visualize how its performance scales with added cores,
+without any change of the code. We do not include multi-core GHC execution
+because GHC doesn't support automatic parallelism, so it is not possible to make
+use of threads without changing the code. Keep in mind, once again, the
+benchmarks are NOT claiming that HVM is faster than GHC today.
+
+### Does HVM support the full λ-Calculus, or System-F?
+
+Not yet! HVM is an impementation of the bookkeeping-free version of the
+reduction algorithm proposed on [TOIOFPL](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages)
+book, up to page 40. As such, it doesn't support some λ-terms, such as:
+
+```
+(λx.(x x) λf.λx.(f (f x)))
+```
+
+It is, though, Turing complete, and covers a wide subset of the λ-calculus,
+including terms such as the Y-combinator, church encodings (including algorithms
+like addition, multiplication and exponentiation), as well as arbitrary
+datatypes (through scott encoding) and recursion.
+
+### Will HVM support the full λ-Calculus, or System-F?
+
+Yes, we plan to, by implementing the full-algorithm described on the
+[TOIOFPL](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages),
+i.e., after page 40. Sadly, this results in an overhead that affects
+the performance of beta-reduction by about 10x. As such, we want to
+do so with caution to keep HVM efficient. Currently, the plan is:
+
+1. Split lambdas into full-lambdas and light-lambdas
+
+    - Light lambdas are what HVM has today. They're fast, but don't support the full λ-Calculus.
+
+    - Full lambdas will be slower, but support the full λ-Calculus.
+
+2. To decrease the overhead, convert full-lambdas to light-lambdas using EAL inference
+
+    Elementary Affine Logic is a substructural logic that rejects the structural
+    rule of contraction, replacing it by a controlled form of duplication. By
+    extending HVM with EAL inference, we'll be able to convert most full-lambdas
+    into lightweight lambdas, greatly reducing the associated slowdown.
+
+Finally, keep in mind this only concerns lambdas. Low-order terms (constructors,
+trees, recursion) aren't affected.
+
+### Are unsupported terms "Undefined Behavior"?
+
+No! Unsupported λ-terms like `λx.(x x) λf.λx.(f (f x))` don't cause HVM to
+display undefined behavior. HVM has no UB, and it will always give you a correct
+result, except in terms of [Interaction
+Calculus](https://github.com/Kindelia/Wikind/blob/master/IC/_.kind2) (IC)
+semantics. The IC is an alternative to the Lambda Calculus which differs
+slightly in how non-linear variables are treated. As such, these "unsupported"
+terms are just cases where the LC and the IC evaluation disagree. In theory, one
+could use the HVM as a Interaction Net runtime, and it would always give they
+perfectly correct answers in relation to these semantics - but that's not usual.
+
+### Is HVM always *asymptotically* faster than GHC?
+
+No. In [this issue](https://github.com/Kindelia/HVM/issues/60), an user noticed
+that HVM displays quadratic asymptotics for certain functions that GHC computes
+in linear time. That was a surprise to me, and, as far as I can tell, despite
+the "optimal" brand, seems to be a limitation of the underlying theory. That
+said, there are multiple ways to alleviate, or solve, this problem. One approach
+would be to implement "safe pointers", also described on the book, which would
+reduce the cloning overhead and make some quadratic cases linear. But that
+wouldn't work for all cases. A complimentary approach would be to do linearity
+analysis, converting problematic quadratic programs in faster, linear versions.
+Finally, in the worst case, we could add references just like Haskell, but that
+should be made with a lot of caution, in order not to break the assumptions made
+by the parallel execution engine.
+
+### What is HVM's main innovation, in simple terms?
+
+In complex terms, HVM's main innovation is that it is an efficient
+implementation of the Interaction Net, which is a concurrent model of
+computation. But there is a way to translate it to more familiar terms. HVM's
+performance, parallelism and GC-freedom all come from the fact it is based on a
+linear core - just like Rust!  But, on top of it, instead of adding loops and
+references (plus a "borrow checker"), HVM adds recursion and a *lazy,
+incremental cloning primitive*. For example, the expression below:
+
+```
+let xs = (Cons 1 (Cons 2 (Cons 3 Nil))) in [xs, xs]
+```
+
+Computes to:
+
+```
+let xs = (Cons 2 (Cons 3 Nil)) in [(Cons 1 xs), (Cons 1 xs)]
+```
+
+
+Notice the first `Cons 1` layer was cloned incrementally. This makes cloning
+essentially free, for the same reason Haskell's lazy evaluator allows you to
+make infinite lists: there is no cost until you actually read the copy! That
+lazy-cloning primitive is pervasive, and covers all primitives of HVM's runtime:
+constructors, numbers and lambdas. This idea, though, breaks down for lambdas:
+how do you incrementally copy a lambda?
+
+```
+let f = λx. (2 + x) in [f, f]
+```
+
+If you try it, you'll realize why that's not possible:
+
+```
+let f = (2 + x) in [λx. f, λx. f]
+```
+
+The solution to that question is the main insight that the Interaction Net model
+bought to the table, and it is described in more details on the
+[HOW.md](https://github.com/Kindelia/HVM/blob/master/guide/HOW.md) document.
+
+### Why is HVM so parallelizable?
+
+Because it is fully linear: every piece of data only occurs in one place at the
+same time, which reduces need for synchronization. Furthermore, it is pure, so
+there are no global side effects that demand communication. Because of that,
+reducing HVM expressions in parallel is actually quite simple: we just keep a
+work strealing queue of redexes, and let a pool of threads computing them. That
+said, there are two places where HVM needs synchronization:
+
+- On dup nodes, used by lazy cloning: a lock is needed to prevent threads from
+  passing through, and, thus, accessing the same data
+
+- On the substitution operation: that's because substitution could send data
+  from one thread to another, so it must be done atomically
+
+In theory, Haskell could be parallelized too, and GHC devs tried it at a point,
+but I believe the non-linearity of the STG model would make the problem much
+more complex than it is for the HVM, making it hard to not lose too much
+performance due to synchronization overhead.
+
 Disclaimers
 ===========
 
-While HVM aims to be the ultimate functional runtime, it, at this point, is to be seen as a prototype. It still doesn't cover all the lambda terms - we plan to do so by adding an optimized version of brackets/croissants (page 40 of [The Optimal Implementation Of Functional Programming Languages](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages)), together with [EAL Inference](https://arxiv.org/pdf/cs/0305011.pdf) to avoid the associated overhead - but we still don't have that yet. As such, HVM won't soundly evaluate certain λ-terms, such as `λx.(x x) λf.λx.(f (f x))` - see HOW.md for more info.
-
-Regarding performance, while HVM can be exponentially faster than GHC and other functional runtimes, it was noted that HVM can be quadratic in some programs where Haskell is linear. We're still researching the source, and working on solutions to this issue (candidates: "safe pointers", as proposed on the book, and used on [BOHM](https://citeseerx.ist.psu.edu/document?repid=rep1&type=pdf&doi=351703af066fd2e65ad64c63108672d960b9d8fb); a linearizing pass; or Haskell-like shared references). Moreover, note that HVM is still a prototype and it doesn't include several low-level optimizations, so, it won't have the best performance in all cases. As an example, Haskell programs that use mutability, state monads, or that compile to tight loops, will behave much more efficiently. Finally, keep in mind that, while we do our best to create faithful and representative benchmarks (by choosing real-world algorithms like sorting, and by making a 1-by-1 translation from Haskell to HVM - notice how similar the files are), doing so is very hard and error-prone. 
-
-We're working hard to address all these points and turn HVM from a promising tech demo into a production ready runtime that can be targeted by most programming languages.
-
+(Removed in favor of the FAQ above!)
 
 Related Work
 ============
