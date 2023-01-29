@@ -403,7 +403,7 @@ let f = (2 + x) in [λx. f, λx. f]
 ```
 
 The solution to that question is the main insight that the Interaction Net model
-bought to the table, and it is described in more details on the
+brought to the table, and it is described in more details on the
 [HOW.md](https://github.com/Kindelia/HVM/blob/master/guide/HOW.md) document.
 
 ### Is HVM always *asymptotically* faster than GHC?
