@@ -1,5 +1,5 @@
-use crate::runtime::{*};
 use crate::language;
+use crate::runtime::*;
 use std::collections::{hash_map, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -66,16 +66,8 @@ pub struct ApplyObj {
 }
 
 pub enum Function {
-  Interpreted {
-    smap: Box<[bool]>,
-    visit: VisitObj,
-    apply: ApplyObj,
-  },
-  Compiled {
-    smap: Box<[bool]>,
-    visit: VisitFun,
-    apply: ApplyFun,
-  }
+  Interpreted { smap: Box<[bool]>, visit: VisitObj, apply: ApplyObj },
+  Compiled { smap: Box<[bool]>, visit: VisitFun, apply: ApplyFun },
 }
 
 pub type Funs = U64Map<Function>;
@@ -94,14 +86,17 @@ impl Program {
     let mut aris = U64Map::new();
     let mut nams = U64Map::new();
     // Adds the built-in functions
-    for fid in 0 .. crate::runtime::precomp::PRECOMP_COUNT as usize {
+    for fid in 0..crate::runtime::precomp::PRECOMP_COUNT as usize {
       if let Some(precomp) = PRECOMP.get(fid) {
         if let Some(fs) = &precomp.funs {
-          funs.insert(fid as u64, Function::Compiled {
-            smap: precomp.smap.to_vec().into_boxed_slice(),
-            visit: fs.visit,
-            apply: fs.apply,
-          });
+          funs.insert(
+            fid as u64,
+            Function::Compiled {
+              smap: precomp.smap.to_vec().into_boxed_slice(),
+              visit: fs.visit,
+              apply: fs.apply,
+            },
+          );
         }
         nams.insert(fid as u64, precomp.name.to_string());
         aris.insert(fid as u64, precomp.smap.len() as u64);
@@ -111,9 +106,9 @@ impl Program {
   }
 
   pub fn add_book(&mut self, book: &language::rulebook::RuleBook) {
-    let funs : &mut Funs = &mut gen_functions(&book);
-    let nams : &mut Nams = &mut gen_names(&book);
-    let aris : &mut Aris = &mut U64Map::new();
+    let funs: &mut Funs = &mut gen_functions(&book);
+    let nams: &mut Nams = &mut gen_names(&book);
+    let aris: &mut Aris = &mut U64Map::new();
     for (fid, fun) in funs.data.drain(0..).enumerate() {
       if let Some(fun) = fun {
         self.funs.insert(fid as u64, fun);
@@ -139,21 +134,31 @@ pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
   let RuleVar { param, field, erase: _ } = var;
   match field {
     Some(i) => take_arg(heap, load_arg(heap, term, *param), *i),
-    None    => take_arg(heap, term, *param),
+    None => take_arg(heap, term, *param),
   }
 }
 
-pub fn alloc_body(heap: &Heap, prog: &Program, tid: usize, term: Ptr, vars: &[RuleVar], body: &RuleBody) -> Ptr {
+pub fn alloc_body(
+  heap: &Heap,
+  prog: &Program,
+  tid: usize,
+  term: Ptr,
+  vars: &[RuleVar],
+  body: &RuleBody,
+) -> Ptr {
   //#[inline(always)]
-  fn cell_to_ptr(heap: &Heap, lvar: &LocalVars, aloc: &[AtomicU64], term: Ptr, vars: &[RuleVar], cell: &RuleBodyCell) -> Ptr {
+  fn cell_to_ptr(
+    heap: &Heap,
+    lvar: &LocalVars,
+    aloc: &[AtomicU64],
+    term: Ptr,
+    vars: &[RuleVar],
+    cell: &RuleBodyCell,
+  ) -> Ptr {
     unsafe {
       match cell {
-        RuleBodyCell::Val { value } => {
-          *value
-        },
-        RuleBodyCell::Var { index } => {
-          get_var(heap, term, vars.get_unchecked(*index as usize))
-        },
+        RuleBodyCell::Val { value } => *value,
+        RuleBodyCell::Var { index } => get_var(heap, term, vars.get_unchecked(*index as usize)),
         RuleBodyCell::Ptr { value, targ, slot } => {
           let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
           // should be changed if the pointer format changes
@@ -170,15 +175,16 @@ pub fn alloc_body(heap: &Heap, prog: &Program, tid: usize, term: Ptr, vars: &[Ru
     let (cell, nodes, dupk) = body;
     let aloc = &heap.aloc[tid];
     let lvar = &heap.lvar[tid];
-    for i in 0 .. nodes.len() {
-      *aloc.get_unchecked(i).as_mut_ptr() = alloc(heap, tid, (*nodes.get_unchecked(i)).len() as u64);
-    };
+    for i in 0..nodes.len() {
+      *aloc.get_unchecked(i).as_mut_ptr() =
+        alloc(heap, tid, (*nodes.get_unchecked(i)).len() as u64);
+    }
     if *lvar.dups.as_mut_ptr() + dupk >= (1 << 28) {
       *lvar.dups.as_mut_ptr() = 0;
     }
-    for i in 0 .. nodes.len() {
+    for i in 0..nodes.len() {
       let host = *aloc.get_unchecked(i).as_mut_ptr() as usize;
-      for j in 0 .. (*nodes.get_unchecked(i)).len() {
+      for j in 0..(*nodes.get_unchecked(i)).len() {
         let cell = (*nodes.get_unchecked(i)).get_unchecked(j);
         let ptr = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
         if let RuleBodyCell::Var { .. } = cell {
@@ -209,53 +215,60 @@ pub fn get_global_name_misc(name: &str) -> Option<u64> {
 }
 
 // todo: "dups" still needs to be moved out on `alloc_body` etc.
-pub fn build_function(book: &language::rulebook::RuleBook, fn_name: &str, rules: &[language::syntax::Rule]) -> Function {
+pub fn build_function(
+  book: &language::rulebook::RuleBook,
+  fn_name: &str,
+  rules: &[language::syntax::Rule],
+) -> Function {
   let hoas = fn_name.starts_with("F$");
-  let dynrules = rules.iter().filter_map(|rule| {
-    if let language::syntax::Term::Ctr { ref name, ref args } = *rule.lhs {
-      let mut cond = Vec::new();
-      let mut vars = Vec::new();
-      let mut inps = Vec::new();
-      let mut free = Vec::new();
-      for (i, arg) in args.iter().enumerate() {
-        match &**arg {
-          language::syntax::Term::Ctr { name, args } => {
-            cond.push(Ctr(*book.name_to_id.get(&*name).unwrap_or(&0), 0));
-            free.push((i as u64, args.len() as u64));
-            for (j, arg) in args.iter().enumerate() {
-              if let language::syntax::Term::Var { ref name } = **arg {
-                vars.push(RuleVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
-                inps.push(name.clone());
-              } else {
-                panic!("sorry, left-hand sides can't have nested constructors yet.");
+  let dynrules = rules
+    .iter()
+    .filter_map(|rule| {
+      if let language::syntax::Term::Ctr { ref name, ref args } = *rule.lhs {
+        let mut cond = Vec::new();
+        let mut vars = Vec::new();
+        let mut inps = Vec::new();
+        let mut free = Vec::new();
+        for (i, arg) in args.iter().enumerate() {
+          match &**arg {
+            language::syntax::Term::Ctr { name, args } => {
+              cond.push(Ctr(*book.name_to_id.get(&*name).unwrap_or(&0), 0));
+              free.push((i as u64, args.len() as u64));
+              for (j, arg) in args.iter().enumerate() {
+                if let language::syntax::Term::Var { ref name } = **arg {
+                  vars.push(RuleVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
+                  inps.push(name.clone());
+                } else {
+                  panic!("sorry, left-hand sides can't have nested constructors yet.");
+                }
               }
             }
-          }
-          language::syntax::Term::U6O { numb } => {
-            cond.push(U6O(*numb as u64));
-          }
-          language::syntax::Term::F6O { numb } => {
-            cond.push(F6O(*numb as u64));
-          }
-          language::syntax::Term::Var { name } => {
-            cond.push(Var(0));
-            vars.push(RuleVar { param: i as u64, field: None, erase: name == "*" });
-            inps.push(name.clone());
-          }
-          _ => {
-            panic!("invalid left-hand side.");
+            language::syntax::Term::U6O { numb } => {
+              cond.push(U6O(*numb as u64));
+            }
+            language::syntax::Term::F6O { numb } => {
+              cond.push(F6O(*numb as u64));
+            }
+            language::syntax::Term::Var { name } => {
+              cond.push(Var(0));
+              vars.push(RuleVar { param: i as u64, field: None, erase: name == "*" });
+              inps.push(name.clone());
+            }
+            _ => {
+              panic!("invalid left-hand side.");
+            }
           }
         }
+
+        let core = term_to_core(book, &rule.rhs, &inps);
+        let body = build_body(&core, vars.len() as u64);
+
+        Some(Rule { hoas, cond, vars, core, body, free })
+      } else {
+        None
       }
-
-      let core = term_to_core(book, &rule.rhs, &inps);
-      let body = build_body(&core, vars.len() as u64);
-
-      Some(Rule { hoas, cond, vars, core, body, free })
-    } else {
-      None
-    }
-  }).collect();
+    })
+    .collect();
 
   let fnid = book.name_to_id.get(fn_name).unwrap();
   let smap = book.id_to_smap.get(fnid).unwrap().clone().into_boxed_slice();
@@ -297,7 +310,11 @@ pub fn gen_names(book: &language::rulebook::RuleBook) -> U64Map<String> {
 }
 
 /// converts a language term to a runtime term
-pub fn term_to_core(book: &language::rulebook::RuleBook, term: &language::syntax::Term, inps: &[String]) -> Core {
+pub fn term_to_core(
+  book: &language::rulebook::RuleBook,
+  term: &language::syntax::Term,
+  inps: &[String],
+) -> Core {
   fn convert_oper(oper: &language::syntax::Oper) -> u64 {
     match oper {
       language::syntax::Oper::Add => ADD,
@@ -306,7 +323,7 @@ pub fn term_to_core(book: &language::rulebook::RuleBook, term: &language::syntax
       language::syntax::Oper::Div => DIV,
       language::syntax::Oper::Mod => MOD,
       language::syntax::Oper::And => AND,
-      language::syntax::Oper::Or  => OR,
+      language::syntax::Oper::Or => OR,
       language::syntax::Oper::Xor => XOR,
       language::syntax::Oper::Shl => SHL,
       language::syntax::Oper::Shr => SHR,
@@ -341,7 +358,8 @@ pub fn term_to_core(book: &language::rulebook::RuleBook, term: &language::syntax
       }
       language::syntax::Term::Dup { nam0, nam1, expr, body } => {
         let eras = (nam0 == "*", nam1 == "*");
-        let glob = if get_global_name_misc(nam0).is_some() { hash(&nam0[2..].to_string()) } else { 0 };
+        let glob =
+          if get_global_name_misc(nam0).is_some() { hash(&nam0[2..].to_string()) } else { 0 };
         let expr = Box::new(convert_term(expr, book, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
@@ -376,7 +394,8 @@ pub fn term_to_core(book: &language::rulebook::RuleBook, term: &language::syntax
         Core::App { func, argm }
       }
       language::syntax::Term::Ctr { name, args } => {
-        let term_func = *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
+        let term_func =
+          *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
         let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
         if *book.ctr_is_fun.get(name).unwrap_or(&false) {
           Core::Fun { func: term_func, args: term_args }
@@ -405,11 +424,16 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
     if let RuleBodyCell::Ptr { value, targ: var_targ, slot: var_slot } = elem {
       let tag = get_tag(value);
       if tag <= VAR {
-        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] = RuleBodyCell::Ptr { value: Arg(0), targ, slot };
+        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] =
+          RuleBodyCell::Ptr { value: Arg(0), targ, slot };
       }
     }
   }
-  fn alloc_lam(lams: &mut std::collections::HashMap<u64, u64>, nodes: &mut Vec<RuleBodyNode>, glob: u64) -> u64 {
+  fn alloc_lam(
+    lams: &mut std::collections::HashMap<u64, u64>,
+    nodes: &mut Vec<RuleBodyNode>,
+    glob: u64,
+  ) -> u64 {
     if let Some(targ) = lams.get(&glob) {
       *targ
     } else {
@@ -422,7 +446,13 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       return targ;
     }
   }
-  fn alloc_dup(dups: &mut HashMap<u64, (u64,u64)>, nodes: &mut Vec<RuleBodyNode>, links: &mut Vec<(u64, u64, RuleBodyCell)>, dupk: &mut u64, glob: u64) -> (u64, u64) {
+  fn alloc_dup(
+    dups: &mut HashMap<u64, (u64, u64)>,
+    nodes: &mut Vec<RuleBodyNode>,
+    links: &mut Vec<(u64, u64, RuleBodyCell)>,
+    dupk: &mut u64,
+    glob: u64,
+  ) -> (u64, u64) {
     if let Some(got) = dups.get(&glob) {
       return got.clone();
     } else {
@@ -443,7 +473,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
     dupk: &mut u64,
     vars: &mut Vec<RuleBodyCell>,
     lams: &mut HashMap<u64, u64>,
-    dups: &mut HashMap<u64, (u64,u64)>,
+    dups: &mut HashMap<u64, (u64, u64)>,
     nodes: &mut Vec<RuleBodyNode>,
     links: &mut Vec<(u64, u64, RuleBodyCell)>,
   ) -> RuleBodyCell {
@@ -455,25 +485,23 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
           panic!("unbound variable.");
         }
       }
-      Core::Glo { glob, misc } => {
-        match *misc {
-          VAR => {
-            let targ = alloc_lam(lams, nodes, *glob);
-            return RuleBodyCell::Ptr { value: Var(0), targ, slot: 0 };
-          }
-          DP0 => {
-            let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
-            return RuleBodyCell::Ptr { value: Dp0(dupc, 0), targ, slot: 0 };
-          }
-          DP1 => {
-            let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
-            return RuleBodyCell::Ptr { value: Dp1(dupc, 0), targ, slot: 0 };
-          }
-          _ => {
-            panic!("Unexpected error.");
-          }
+      Core::Glo { glob, misc } => match *misc {
+        VAR => {
+          let targ = alloc_lam(lams, nodes, *glob);
+          return RuleBodyCell::Ptr { value: Var(0), targ, slot: 0 };
         }
-      }
+        DP0 => {
+          let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
+          return RuleBodyCell::Ptr { value: Dp0(dupc, 0), targ, slot: 0 };
+        }
+        DP1 => {
+          let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
+          return RuleBodyCell::Ptr { value: Dp1(dupc, 0), targ, slot: 0 };
+        }
+        _ => {
+          panic!("Unexpected error.");
+        }
+      },
       Core::Dup { eras: _, glob, expr, body } => {
         let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
         let expr = gen_elems(expr, dupk, vars, lams, dups, nodes, links);
@@ -566,8 +594,9 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
   let mut links: Vec<(u64, u64, RuleBodyCell)> = Vec::new();
   let mut nodes: Vec<RuleBodyNode> = Vec::new();
   let mut lams: HashMap<u64, u64> = HashMap::new();
-  let mut dups: HashMap<u64, (u64,u64)> = HashMap::new();
-  let mut vars: Vec<RuleBodyCell> = (0..free_vars).map(|i| RuleBodyCell::Var { index: i }).collect();
+  let mut dups: HashMap<u64, (u64, u64)> = HashMap::new();
+  let mut vars: Vec<RuleBodyCell> =
+    (0..free_vars).map(|i| RuleBodyCell::Var { index: i }).collect();
   let mut dupk: u64 = 0;
 
   let elem = gen_elems(term, &mut dupk, &mut vars, &mut lams, &mut dups, &mut nodes, &mut links);
@@ -586,13 +615,20 @@ pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -
   host
 }
 
-pub fn alloc_term(heap: &Heap, prog: &Program, tid: usize, book: &language::rulebook::RuleBook, term: &language::syntax::Term) -> u64 {
+pub fn alloc_term(
+  heap: &Heap,
+  prog: &Program,
+  tid: usize,
+  book: &language::rulebook::RuleBook,
+  term: &language::syntax::Term,
+) -> u64 {
   alloc_closed_core(heap, prog, tid, &term_to_core(book, term, &vec![]))
 }
 
 pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
   let mut term = Ctr(STRING_NIL, 0);
-  for chr in text.chars().rev() { // TODO: reverse
+  for chr in text.chars().rev() {
+    // TODO: reverse
     let ctr0 = alloc(heap, tid, 2);
     link(heap, ctr0 + 0, U6O(chr as u64));
     link(heap, ctr0 + 1, term);

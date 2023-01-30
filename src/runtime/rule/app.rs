@@ -1,4 +1,4 @@
-use crate::runtime::{*};
+use crate::runtime::*;
 
 #[inline(always)]
 pub fn visit(ctx: ReduceCtx) -> bool {
@@ -18,7 +18,13 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // body
   if get_tag(arg0) == LAM {
     inc_cost(ctx.heap, ctx.tid);
-    atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Var(get_loc(arg0, 0)), take_arg(ctx.heap, ctx.term, 1));
+    atomic_subst(
+      ctx.heap,
+      &ctx.prog.aris,
+      ctx.tid,
+      Var(get_loc(arg0, 0)),
+      take_arg(ctx.heap, ctx.term, 1),
+    );
     link(ctx.heap, *ctx.host, take_arg(ctx.heap, arg0, 1));
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
     free(ctx.heap, ctx.tid, get_loc(arg0, 0), 2);

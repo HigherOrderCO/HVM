@@ -1,6 +1,5 @@
 #![feature(atomic_from_mut)]
 #![feature(atomic_mut_ptr)]
-
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
@@ -9,10 +8,10 @@
 #![allow(unused_labels)]
 #![allow(non_upper_case_globals)]
 
+mod api;
+mod compiler;
 mod language;
 mod runtime;
-mod compiler;
-mod api;
 
 use clap::{Parser, Subcommand};
 
@@ -28,8 +27,7 @@ struct Cli {
 enum Command {
   /// Load a file and run an expression
   #[clap(aliases = &["r"])]
-
-  Run { 
+  Run {
     /// Set the heap size (in 64-bit nodes).
     #[clap(short = 's', long, default_value = "auto", parse(try_from_str=parse_size))]
     size: usize,
@@ -59,7 +57,7 @@ enum Command {
   #[clap(aliases = &["c"])]
   Compile {
     /// A "file.hvm" to load.
-    file: String
+    file: String,
   },
 }
 
@@ -80,7 +78,12 @@ fn run_cli() -> Result<(), String> {
       println!("{}", norm);
       if show_cost {
         eprintln!();
-        eprintln!("\x1b[32m[TIME: {:.2}s | COST: {} | RPS: {:.2}m]\x1b[0m", ((time as f64)/1000.0), cost - 1, (cost as f64) / (time as f64) / 1000.0);
+        eprintln!(
+          "\x1b[32m[TIME: {:.2}s | COST: {} | RPS: {:.2}m]\x1b[0m",
+          ((time as f64) / 1000.0),
+          cost - 1,
+          (cost as f64) / (time as f64) / 1000.0
+        );
       }
       Ok(())
     }

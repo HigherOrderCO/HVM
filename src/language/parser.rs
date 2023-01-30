@@ -387,7 +387,11 @@ pub fn name1(state: State) -> Answer<String> {
 // ======
 
 pub fn expected<'a, A>(name: &str, size: usize, state: State<'a>) -> Answer<'a, A> {
-  Err(format!("Expected `{}`:\n{}", name, &highlight_error::highlight_error(state.index, state.index + size, state.code)))
+  Err(format!(
+    "Expected `{}`:\n{}",
+    name,
+    &highlight_error::highlight_error(state.index, state.index + size, state.code)
+  ))
 }
 
 // Tests

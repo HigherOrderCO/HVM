@@ -1,7 +1,7 @@
 // std::collections::HashMap<u64, A, std::hash::BuildHasherDefault<nohash_hasher::NoHashHasher<u64>>>;
 
 pub struct U64Map<A> {
-  pub data: Vec<Option<A>>
+  pub data: Vec<Option<A>>,
 }
 
 impl<A> U64Map<A> {
@@ -11,7 +11,7 @@ impl<A> U64Map<A> {
   }
 
   pub fn from_hashmap(old_map: &mut std::collections::HashMap<u64, A>) -> U64Map<A> {
-    let mut new_map : U64Map<A> = U64Map::new();
+    let mut new_map: U64Map<A> = U64Map::new();
     for (key, val) in old_map.drain() {
       new_map.insert(key, val);
     }
