@@ -1,7 +1,7 @@
-High-order Virtual Machine (HVM)
-=================================
+Higher-order Virtual Machine (HVM)
+==================================
 
-**High-order Virtual Machine (HVM)** is a pure functional runtime that is **lazy**, **non-garbage-collected** and
+**Higher-order Virtual Machine (HVM)** is a pure functional runtime that is **lazy**, **non-garbage-collected** and
 **massively parallel**. It is also **beta-optimal**, meaning that, for higher-order computations, it can, in
 some cases, be up to exponentially faster than alternatives, including Haskell's GHC.
 
