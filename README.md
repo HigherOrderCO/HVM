@@ -361,7 +361,7 @@ semantics. The IC is an alternative to the Lambda Calculus (LC) which differs
 slightly in how non-linear variables are treated. As such, these "unsupported"
 terms are just cases where the LC and the IC evaluation disagree. In theory, you
 could use the HVM as a Interaction Net runtime, and it would always give you
-perfectly correct answers under relation to these semantics - but that's not
+perfectly correct answers under these semantics - but that's not
 usual, so we don't talk about it often.
 
 ### What is HVM's main innovation, in simple terms?
@@ -496,17 +496,25 @@ making some algorithms more memory-hungry.
 
 ### Is HVM meant to replace GHC?
 
-No. GHC is actually a superb, glorious runtime that is very hard to match. HVM
+No! GHC is actually a superb, glorious runtime that is very hard to match. HVM
 is meant to be a lightweight, massively parallel runtime for functional, and
 even imperative, languages, from Elm to JavaScript. That said, we do want to
 support Haskell, but that will require HVM being in a much later stage of
 maturity, as well as provide support for full lambdas, which it doesn't do yet.
+Once we do, HVM could be a great alternative for GHC, giving the Haskell
+community an option to run it in a runtime with automatic parallelism, no
+slow garbage-collector and beta-optimality. Which will be the best option
+will likely depend on the type of application you're compiling, but having
+more choices is generally good and, as such, HVM can be a great tool for
+the Haskell community.
 
 ### Is HVM production-ready?
 
 No. HVM is still to be considered a prototype. Right now, I had less than
 3 months to work on it directly. It is considerably less mature than other
-compilers and runtimes like GHC and V8.
+compilers and runtimes like GHC and V8. That said, we're raising funds to
+have a proper team of engineers working on the HVM. If all goes well, we
+can expect a production-ready release by Q1 2024.
 
 ### I've ran an HVM program and it consumed 1950 GB and my computer exploded.
 
