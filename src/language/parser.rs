@@ -1,10 +1,11 @@
-// This parse library is more high-level and functional than existing alternatives.
+// This parse library is more highoer-order and functional than existing alternatives.
+// It explores the `?` syntax of `Result` to have a do-block-like monadic notation.
 // A Parser is defined as (with details omitted):
 //
 //   Answer<A> = Result<(State, A), String>
 //   Parser<A> = Fn(State) -> Answer<A>>
 //
-// Similarly to https://github.com/AndrasKovacs/flatparse, there are 2 ways to fail.
+// There are 2 ways to fail:
 //
 // 1. Recoverable. Use Parser<Option<A>>, and return:
 //    - Ok((new_state, Some(result))) if it succeeds
@@ -77,10 +78,11 @@ pub fn tail(state: State) -> State {
   State { code: state.code, index: state.index + add }
 }
 
-/// Skips comments and whitespace, then returns the next `char`, or the null
-/// character if this doesn't exist.
-pub fn get_char(state: State) -> Answer<char> {
-  let (state, _) = skip(state)?;
+// Heads
+// =====
+
+/// Returns and consumes the next char, or '\0'.
+pub fn here_take_head(state: State) -> Answer<char> {
   if let Some(got) = head(state) {
     let state = State { code: state.code, index: state.index + got.len_utf8() };
     Ok((state, got))
@@ -89,10 +91,24 @@ pub fn get_char(state: State) -> Answer<char> {
   }
 }
 
-/// Skips comments and whitespace, then returns the next `char`, or the null
-/// character if this doesn't exist.
-pub fn peek_char(state: State) -> Answer<char> {
+/// Monadic here_take_head.
+pub fn do_here_take_head<'a>() -> Parser<'a, char> {
+  Box::new(here_take_head)
+}
+
+/// Skip, then here_take_head.
+pub fn there_take_head(state: State) -> Answer<char> {
   let (state, _) = skip(state)?;
+  here_take_head(state)
+}
+
+/// Monadic there_take_head.
+pub fn do_there_take_head<'a>() -> Parser<'a, char> {
+  Box::new(there_take_head)
+}
+
+/// Returns, without consuming, the next char, or '\0'.
+pub fn here_peek_head(state: State) -> Answer<char> {
   if let Some(got) = head(state) {
     return Ok((state, got));
   } else {
@@ -100,13 +116,38 @@ pub fn peek_char(state: State) -> Answer<char> {
   }
 }
 
-pub fn get_char_parser<'a>() -> Parser<'a, char> {
-  Box::new(get_char)
+/// Monadic here_peek_head.
+pub fn do_here_peek_head<'a>() -> Parser<'a, char> {
+  Box::new(here_peek_head)
+}
+
+/// Skip, then here_peek_head.
+pub fn there_peek_head(state: State) -> Answer<char> {
+  let (state, _) = skip(state)?;
+  here_peek_head(state)
+}
+
+/// Monadic peek_symol.
+pub fn do_there_peek_head<'a>() -> Parser<'a, char> {
+  Box::new(there_peek_head)
 }
 
 // Skippers
 // ========
 
+/// Skips characters until a condition is false.
+pub fn skip_while(mut state: State, cond: Box<dyn Fn(&char) -> bool>) -> Answer<bool> {
+  if let Some(rest) = state.rest() {
+    let add: usize = rest.chars().take_while(cond).map(|a| a.len_utf8()).sum();
+    state.index += add;
+    if add > 0 {
+      return Ok((state, true));
+    }
+  }
+  Ok((state, false))
+}
+
+/// Skips C-like comments, starting with '//'.
 pub fn skip_comment(mut state: State) -> Answer<bool> {
   const COMMENT: &str = "//";
   if let Some(rest) = state.rest() {
@@ -120,21 +161,12 @@ pub fn skip_comment(mut state: State) -> Answer<bool> {
   Ok((state, false))
 }
 
-pub fn skip_comment_parser<'a>() -> Parser<'a, bool> {
+/// Monadic skip_comment.
+pub fn do_skip_comment<'a>() -> Parser<'a, bool> {
   Box::new(skip_comment)
 }
 
-pub fn skip_while(mut state: State, cond: Box<dyn Fn(&char) -> bool>) -> Answer<bool> {
-  if let Some(rest) = state.rest() {
-    let add: usize = rest.chars().take_while(cond).map(|a| a.len_utf8()).sum();
-    state.index += add;
-    if add > 0 {
-      return Ok((state, true));
-    }
-  }
-  Ok((state, false))
-}
-
+/// Skips whitespaces.
 pub fn skip_spaces(mut state: State) -> Answer<bool> {
   if let Some(rest) = state.rest() {
     let add: usize = rest.chars().take_while(|a| a.is_whitespace()).map(|a| a.len_utf8()).sum();
@@ -146,7 +178,8 @@ pub fn skip_spaces(mut state: State) -> Answer<bool> {
   Ok((state, false))
 }
 
-pub fn skip_spaces_parser<'a>() -> Parser<'a, bool> {
+/// Monadic skip_spaces.
+pub fn do_skip_spaces<'a>() -> Parser<'a, bool> {
   Box::new(skip_spaces)
 }
 
@@ -172,16 +205,17 @@ pub fn skip(mut state: State) -> Answer<bool> {
   Ok((state, false))
 }
 
-pub fn skip_parser<'a>() -> Parser<'a, bool> {
+/// Monadic skip.
+pub fn do_skip<'a>() -> Parser<'a, bool> {
   Box::new(skip)
 }
 
-// Strings
-// =======
+// Exacts
+// ======
 
 /// Attempts to match a string right after the cursor.
 /// Returns `true` if successful. Consumes string.
-pub fn text_here<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
+pub fn here_take_exact<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
   if let Some(rest) = state.rest() {
     if rest.starts_with(pat) {
       let state = State { code: state.code, index: state.index + pat.len() };
@@ -191,24 +225,42 @@ pub fn text_here<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
   Ok((state, false))
 }
 
-pub fn text_here_parser<'a>(pat: &'static str) -> Parser<'a, bool> {
-  Box::new(move |x| text_here(pat, x))
+/// Monadic 'here_take_exact'.
+pub fn do_here_take_exact<'a>(pat: &'static str) -> Parser<'a, bool> {
+  Box::new(move |x| here_take_exact(pat, x))
 }
 
-/// Like 'text_here', but skips whitespace and comments first.
-pub fn text<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
+/// Skip, then 'here_take_exact'.
+pub fn there_take_exact<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
   let (state, _) = skip(state)?;
-  let (state, matched) = text_here(pat, state)?;
+  let (state, matched) = here_take_exact(pat, state)?;
   Ok((state, matched))
 }
 
-pub fn text_parser<'a>(pat: &'static str) -> Parser<'a, bool> {
-  Box::new(move |x| text(pat, x))
+/// Monadic 'there_take_exact'.
+pub fn do_there_take_exact<'a>(pat: &'static str) -> Parser<'a, bool> {
+  Box::new(move |x| there_take_exact(pat, x))
 }
 
-/// Like 'text', but aborts if there is no match.
-pub fn consume<'a>(pat: &str, state: State<'a>) -> Answer<'a, ()> {
-  let (state, matched) = text(pat, state)?;
+/// Attempts to match a string right after the cursor.
+/// Returns `true` if successful. Doesn't consume it.
+pub fn here_peek_exact<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
+  if let Some(rest) = state.rest() {
+    if rest.starts_with(pat) {
+      return Ok((state, true));
+    }
+  }
+  Ok((state, false))
+}
+
+/// Monadic 'here_take_exact'.
+pub fn do_here_peek_exact<'a>(pat: &'static str) -> Parser<'a, bool> {
+  Box::new(move |x| here_peek_exact(pat, x))
+}
+
+/// Perform `there_take_exact`. Abort if not possible.
+pub fn force_there_take_exact<'a>(pat: &str, state: State<'a>) -> Answer<'a, ()> {
+  let (state, matched) = there_take_exact(pat, state)?;
   if matched {
     Ok((state, ()))
   } else {
@@ -216,18 +268,45 @@ pub fn consume<'a>(pat: &str, state: State<'a>) -> Answer<'a, ()> {
   }
 }
 
-pub fn consume_parser<'a>(pat: &'static str) -> Parser<'a, ()> {
-  Box::new(move |x| consume(pat, x))
+/// Skip, then 'here_peek_exact'.
+pub fn there_peek_exact<'a>(pat: &str, state: State<'a>) -> Answer<'a, bool> {
+  let (state, _) = skip(state)?;
+  let (state, matched) = here_peek_exact(pat, state)?;
+  Ok((state, matched))
 }
 
-/// Returns `true` if cursor will be at the end of the file after skipping whitespace and comments.
-pub fn done(state: State) -> Answer<bool> {
+/// Monadic 'there_peek_exact'.
+pub fn do_there_peek_exact<'a>(pat: &'static str) -> Parser<'a, bool> {
+  Box::new(move |x| there_peek_exact(pat, x))
+}
+
+/// Monadic `force_there_take_exact`.
+pub fn do_force_there_take_exact<'a>(pat: &'static str) -> Parser<'a, ()> {
+  Box::new(move |x| force_there_take_exact(pat, x))
+}
+
+// End
+// ===
+
+/// Returns `true` if cursor will be at the end of the file.
+pub fn here_end(state: State) -> Answer<bool> {
+  Ok((state, state.index == state.code.len()))
+}
+
+/// Monadic `here_end`.
+pub fn do_here_end<'a>() -> Parser<'a, bool> {
+  Box::new(there_end)
+}
+
+/// Skip, then `here_end`.
+pub fn there_end(state: State) -> Answer<bool> {
   let (state, _) = skip(state)?;
   Ok((state, state.index == state.code.len()))
 }
 
-pub fn done_parser<'a>() -> Parser<'a, bool> {
-  Box::new(done)
+/// Monadic `there_end`.
+pub fn do_there_end<'a>() -> Parser<'a, bool> {
+  Box::new(there_end)
 }
 
 // Blocks
@@ -251,7 +330,9 @@ pub fn guard<'a, A: 'a>(
   }
 }
 
-pub fn parser_or<'a>(parsers: &[Parser<'a, bool>], state: State<'a>) -> Answer<'a, bool> {
+/// Attempts several parsers.
+/// Returns true if at least one succeeds.
+pub fn any<'a>(parsers: &[Parser<'a, bool>], state: State<'a>) -> Answer<'a, bool> {
   for parser in parsers {
     let (state, matched) = parser(state)?;
     if matched {
@@ -261,10 +342,10 @@ pub fn parser_or<'a>(parsers: &[Parser<'a, bool>], state: State<'a>) -> Answer<'
   Ok((state, false))
 }
 
-// Applies optional parsers in sequence.
-// Returns the first that succeeds.
-// If none succeeds, aborts.
-pub fn grammar<'a, A: 'a>(
+/// Applies optional parsers in sequence.
+/// Returns the first that succeeds.
+/// If none succeeds, aborts.
+pub fn attempt<'a, A: 'a>(
   name: &'static str,
   choices: &[Parser<'a, Option<A>>],
   state: State<'a>,
@@ -281,6 +362,8 @@ pub fn grammar<'a, A: 'a>(
 // Combinators
 // ===========
 
+/// Takes a parser that can abort, and transforms it into a non abortive parser
+/// that returns Some if it succeeds, and None if it fails.
 pub fn maybe<'a, A: 'a>(parser: Parser<'a, A>, state: State<'a>) -> Answer<'a, Option<A>> {
   let result = parser(state);
   match result {
@@ -353,7 +436,7 @@ fn is_letter(chr: char) -> bool {
 }
 
 /// Parses a name right after the parsing cursor.
-pub fn name_here(state: State) -> Answer<String> {
+pub fn here_name(state: State) -> Answer<String> {
   let mut name: String = String::new();
   let mut state = state;
   while let Some(got) = head(state) {
@@ -368,14 +451,14 @@ pub fn name_here(state: State) -> Answer<String> {
 }
 
 /// Parses a name after skipping comments and whitespace.
-pub fn name(state: State) -> Answer<String> {
+pub fn there_name(state: State) -> Answer<String> {
   let (state, _) = skip(state)?;
-  name_here(state)
+  here_name(state)
 }
 
 /// Parses a non-empty name after skipping.
-pub fn name1(state: State) -> Answer<String> {
-  let (state, name1) = name(state)?;
+pub fn there_nonempty_name(state: State) -> Answer<String> {
+  let (state, name1) = there_name(state)?;
   if !name1.is_empty() {
     Ok((state, name1))
   } else {
@@ -408,12 +491,12 @@ pub fn testree_show(tt: &Testree) -> String {
 pub fn node_parser<'a>() -> Parser<'a, Option<Box<Testree>>> {
   Box::new(|state| {
     guard(
-      text_parser("("),
+      do_there_take_exact("("),
       Box::new(|state| {
-        let (state, _) = consume("(", state)?;
+        let (state, _) = force_there_take_exact("(", state)?;
         let (state, lft) = testree_parser()(state)?;
         let (state, rgt) = testree_parser()(state)?;
-        let (state, _) = consume(")", state)?;
+        let (state, _) = force_there_take_exact(")", state)?;
         Ok((state, Box::new(Testree::Node { lft, rgt })))
       }),
       state,
@@ -424,9 +507,9 @@ pub fn node_parser<'a>() -> Parser<'a, Option<Box<Testree>>> {
 pub fn leaf_parser<'a>() -> Parser<'a, Option<Box<Testree>>> {
   Box::new(|state| {
     guard(
-      text_parser(""),
+      do_there_take_exact(""),
       Box::new(|state| {
-        let (state, val) = name(state)?;
+        let (state, val) = there_name(state)?;
         Ok((state, Box::new(Testree::Leaf { val })))
       }),
       state,
@@ -436,7 +519,7 @@ pub fn leaf_parser<'a>() -> Parser<'a, Option<Box<Testree>>> {
 
 pub fn testree_parser<'a>() -> Parser<'a, Box<Testree>> {
   Box::new(|state| {
-    let (state, tree) = grammar("Testree", &[node_parser(), leaf_parser()], state)?;
+    let (state, tree) = attempt("Testree", &[node_parser(), leaf_parser()], state)?;
     Ok((state, tree))
   })
 }
