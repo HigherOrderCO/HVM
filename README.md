@@ -361,7 +361,7 @@ semantics. The IC is an alternative to the Lambda Calculus (LC) which differs
 slightly in how non-linear variables are treated. As such, these "unsupported"
 terms are just cases where the LC and the IC evaluation disagree. In theory, you
 could use the HVM as a Interaction Net runtime, and it would always give you
-perfectly correct answers under relation to these semantics - but that's not
+perfectly correct answers under these semantics - but that's not
 usual, so we don't talk about it often.
 
 ### What is HVM's main innovation, in simple terms?
