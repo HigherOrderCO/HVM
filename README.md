@@ -512,7 +512,9 @@ the Haskell community.
 
 No. HVM is still to be considered a prototype. Right now, I had less than
 3 months to work on it directly. It is considerably less mature than other
-compilers and runtimes like GHC and V8.
+compilers and runtimes like GHC and V8. That said, we're raising funds to
+have a proper team of engineers working on the HVM. If all goes well, we
+can expect a production-ready release by Q1 2024.
 
 ### I've ran an HVM program and it consumed 1950 GB and my computer exploded.
 
