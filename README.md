@@ -1,7 +1,7 @@
-High-order Virtual Machine (HVM)
-=================================
+Higher-order Virtual Machine (HVM)
+==================================
 
-**High-order Virtual Machine (HVM)** is a pure functional runtime that is **lazy**, **non-garbage-collected** and
+**Higher-order Virtual Machine (HVM)** is a pure functional runtime that is **lazy**, **non-garbage-collected** and
 **massively parallel**. It is also **beta-optimal**, meaning that, for higher-order computations, it can, in
 some cases, be up to exponentially faster than alternatives, including Haskell's GHC.
 
@@ -403,7 +403,7 @@ let f = (2 + x) in [λx. f, λx. f]
 ```
 
 The solution to that question is the main insight that the Interaction Net model
-bought to the table, and it is described in more details on the
+brought to the table, and it is described in more details on the
 [HOW.md](https://github.com/Kindelia/HVM/blob/master/guide/HOW.md) document.
 
 ### Is HVM always *asymptotically* faster than GHC?
