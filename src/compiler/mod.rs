@@ -28,7 +28,6 @@ pub fn compile(code: &str, name: &str) -> std::io::Result<()> {
   // hvm/src/language
   std::fs::create_dir(format!("./{}/src/language",name)).ok();
   std::fs::write(format!("./{}/src/language/mod.rs",name)      , include_str!("./../language/mod.rs"))?;
-  std::fs::write(format!("./{}/src/language/parser.rs",name)   , include_str!("./../language/parser.rs"))?;
   std::fs::write(format!("./{}/src/language/readback.rs",name) , include_str!("./../language/readback.rs"))?;
   std::fs::write(format!("./{}/src/language/rulebook.rs",name) , include_str!("./../language/rulebook.rs"))?;
   std::fs::write(format!("./{}/src/language/syntax.rs",name)   , include_str!("./../language/syntax.rs"))?;
