@@ -490,7 +490,7 @@ relation to C and Rust programs. Thankfully, there is no theoretical limitation
 preventing us from adding loops and local mutability, and, once/if we do, one
 can expect the same memory footprint as Rust. The only caveat, though, is shared
 references: we're not sure if we want to add these, as they might impact
-parallelism. As such, it is posible that we choose to let lazy clones to be the
+parallelism. As such, it is possible that we choose to let lazy clones to be the
 only form of non-linearity, which would preserve parallelism, at the cost of
 making some algorithms more memory-hungry.
 
