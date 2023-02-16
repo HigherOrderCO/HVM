@@ -271,9 +271,7 @@ fn hvm_print_visit(ctx: ReduceCtx) -> bool {
 
 fn hvm_print_apply(ctx: ReduceCtx) -> bool {
   //normalize(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), false);
-  if let Some(text) =
-    crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0))
-  {
+  if let Some(text) = ctx.heap.as_string(ctx.prog, &[ctx.tid], get_loc(ctx.term, 0)) {
     println!("{}", text);
   }
   ctx.heap.link(*ctx.host, ctx.heap.load_arg(ctx.term, 1));
@@ -305,12 +303,8 @@ fn hvm_store_visit(ctx: ReduceCtx) -> bool {
 }
 
 fn hvm_store_apply(ctx: ReduceCtx) -> bool {
-  if let Some(key) =
-    crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0))
-  {
-    if let Some(val) =
-      crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 1))
-    {
+  if let Some(key) = ctx.heap.as_string(ctx.prog, &[ctx.tid], get_loc(ctx.term, 0)) {
+    if let Some(val) = ctx.heap.as_string(ctx.prog, &[ctx.tid], get_loc(ctx.term, 1)) {
       if std::fs::write(key, val).is_ok() {
         //let app0 = ctx.heap.alloc(ctx.tid, 2);
         //ctx.heap.link(app0 + 0, cont);
@@ -337,9 +331,7 @@ fn hvm_load_visit(ctx: ReduceCtx) -> bool {
 }
 
 fn hvm_load_apply(ctx: ReduceCtx) -> bool {
-  if let Some(key) =
-    crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0))
-  {
+  if let Some(key) = ctx.heap.as_string(ctx.prog, &[ctx.tid], get_loc(ctx.term, 0)) {
     if let Ok(file) = std::fs::read(key) {
       if let Ok(file) = std::str::from_utf8(&file) {
         let cont = ctx.heap.load_arg(ctx.term, 1);

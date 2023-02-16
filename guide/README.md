@@ -428,7 +428,7 @@ let funs = vec![
       let arg1 = runtime::get_loc(ctx.term, 1);
 
       // Converts the argument #0 to a Rust string
-      if let Some(text) = crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], arg0) {
+      if let Some(text) = ctx.heap.as_string(ctx.prog, &[ctx.tid], arg0) {
         // Prints it
         println!("{}", text);
       }
