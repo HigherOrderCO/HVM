@@ -25,7 +25,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     let par0 = alloc(ctx.heap, ctx.tid, 2);
     let lam0 = alloc(ctx.heap, ctx.tid, 2);
     let lam1 = alloc(ctx.heap, ctx.tid, 2);
-    ctx.heap.link(let0 + 2, take_arg(ctx.heap, arg0, 1));
+    ctx.heap.link(let0 + 2, ctx.heap.take_arg(arg0, 1));
     ctx.heap.link(par0 + 1, Var(lam1));
     ctx.heap.link(par0 + 0, Var(lam0));
     ctx.heap.link(lam0 + 1, Dp0(get_ext(ctx.term), let0));
@@ -60,14 +60,14 @@ pub fn apply(ctx: ReduceCtx) -> bool {
         &ctx.prog.aris,
         ctx.tid,
         Dp0(tcol, get_loc(ctx.term, 0)),
-        take_arg(ctx.heap, arg0, 0),
+        ctx.heap.take_arg(arg0, 0),
       );
       atomic_subst(
         ctx.heap,
         &ctx.prog.aris,
         ctx.tid,
         Dp1(tcol, get_loc(ctx.term, 0)),
-        take_arg(ctx.heap, arg0, 1),
+        ctx.heap.take_arg(arg0, 1),
       );
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       free(ctx.heap, ctx.tid, get_loc(arg0, 0), 2);
@@ -78,8 +78,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
       let let0 = alloc(ctx.heap, ctx.tid, 3);
       let par1 = get_loc(arg0, 0);
       let let1 = alloc(ctx.heap, ctx.tid, 3);
-      ctx.heap.link(let0 + 2, take_arg(ctx.heap, arg0, 0));
-      ctx.heap.link(let1 + 2, take_arg(ctx.heap, arg0, 1));
+      ctx.heap.link(let0 + 2, ctx.heap.take_arg(arg0, 0));
+      ctx.heap.link(let1 + 2, ctx.heap.take_arg(arg0, 1));
       ctx.heap.link(par1 + 0, Dp1(tcol, let0));
       ctx.heap.link(par1 + 1, Dp1(tcol, let1));
       ctx.heap.link(par0 + 0, Dp0(tcol, let0));
@@ -160,12 +160,12 @@ pub fn apply(ctx: ReduceCtx) -> bool {
       let ctr1 = alloc(ctx.heap, ctx.tid, fari);
       for i in 0..fari - 1 {
         let leti = alloc(ctx.heap, ctx.tid, 3);
-        ctx.heap.link(leti + 2, take_arg(ctx.heap, arg0, i));
+        ctx.heap.link(leti + 2, ctx.heap.take_arg(arg0, i));
         ctx.heap.link(ctr0 + i, Dp0(get_ext(ctx.term), leti));
         ctx.heap.link(ctr1 + i, Dp1(get_ext(ctx.term), leti));
       }
       let leti = alloc(ctx.heap, ctx.tid, 3);
-      ctx.heap.link(leti + 2, take_arg(ctx.heap, arg0, fari - 1));
+      ctx.heap.link(leti + 2, ctx.heap.take_arg(arg0, fari - 1));
       ctx.heap.link(ctr0 + fari - 1, Dp0(get_ext(ctx.term), leti));
       ctx.heap.link(ctr1 + fari - 1, Dp1(get_ext(ctx.term), leti));
       atomic_subst(

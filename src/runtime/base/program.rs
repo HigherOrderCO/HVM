@@ -139,8 +139,8 @@ impl Program {
 pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
   let RuleVar { param, field, erase: _ } = var;
   match field {
-    Some(i) => take_arg(heap, heap.load_arg(term, *param), *i),
-    None => take_arg(heap, term, *param),
+    Some(i) => heap.take_arg(heap.load_arg(term, *param), *i),
+    None => heap.take_arg(term, *param),
   }
 }
 

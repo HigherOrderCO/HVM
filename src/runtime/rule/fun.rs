@@ -177,13 +177,13 @@ pub fn superpose(
   for i in 0..arit {
     if i != n {
       let leti = alloc(heap, tid, 3);
-      let argi = take_arg(heap, term, i);
+      let argi = heap.take_arg(term, i);
       heap.link(fun0 + i, Dp0(get_ext(argn), leti));
       heap.link(fun1 + i, Dp1(get_ext(argn), leti));
       heap.link(leti + 2, argi);
     } else {
-      heap.link(fun0 + i, take_arg(heap, argn, 0));
-      heap.link(fun1 + i, take_arg(heap, argn, 1));
+      heap.link(fun0 + i, heap.take_arg(argn, 0));
+      heap.link(fun1 + i, heap.take_arg(argn, 1));
     }
   }
   heap.link(par0 + 0, Fun(func, fun0));

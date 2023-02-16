@@ -355,22 +355,23 @@ impl Heap {
 
   // Moves a pointer to another location
   pub fn move_ptr(&self, old_loc: u64, new_loc: u64) -> Ptr {
-    self.link(new_loc, take_ptr(self, old_loc))
+    self.link(new_loc, self.take_ptr(old_loc))
   }
 
   // Given a pointer to a node, loads its nth arg
   pub fn load_arg(&self, term: Ptr, arg: u64) -> Ptr {
     self.load_ptr(get_loc(term, arg))
   }
-}
-// Given a location, takes the ptr stored on it
-pub fn take_ptr(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { heap.node.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
-}
 
-// Given a pointer to a node, takes its nth arg
-pub fn take_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
-  take_ptr(heap, get_loc(term, arg))
+  // Given a location, takes the ptr stored on it
+  pub fn take_ptr(&self, loc: u64) -> Ptr {
+    unsafe { self.node.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
+  }
+
+  // Given a pointer to a node, takes its nth arg
+  pub fn take_arg(&self, term: Ptr, arg: u64) -> Ptr {
+    self.take_ptr(get_loc(term, arg))
+  }
 }
 
 impl Heap {
@@ -621,7 +622,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         heap.link(get_loc(term, 0), Era());
         if acquire_lock(heap, tid, term).is_ok() {
           if get_tag(heap.load_arg(term, 1)) == ERA {
-            coll.push(take_arg(heap, term, 2));
+            coll.push(heap.take_arg(term, 2));
             free(heap, tid, get_loc(term, 0), 3);
           }
           release_lock(heap, tid, term);
@@ -631,7 +632,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         heap.link(get_loc(term, 1), Era());
         if acquire_lock(heap, tid, term).is_ok() {
           if get_tag(heap.load_arg(term, 0)) == ERA {
-            coll.push(take_arg(heap, term, 2));
+            coll.push(heap.take_arg(term, 2));
             free(heap, tid, get_loc(term, 0), 3);
           }
           release_lock(heap, tid, term);
@@ -642,25 +643,25 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
       }
       LAM => {
         atomic_subst(heap, arit, tid, Var(get_loc(term, 0)), Era());
-        next = take_arg(heap, term, 1);
+        next = heap.take_arg(term, 1);
         free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
       APP => {
-        coll.push(take_arg(heap, term, 0));
-        next = take_arg(heap, term, 1);
+        coll.push(heap.take_arg(term, 0));
+        next = heap.take_arg(term, 1);
         free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
       SUP => {
-        coll.push(take_arg(heap, term, 0));
-        next = take_arg(heap, term, 1);
+        coll.push(heap.take_arg(term, 0));
+        next = heap.take_arg(term, 1);
         free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
       OP2 => {
-        coll.push(take_arg(heap, term, 0));
-        next = take_arg(heap, term, 1);
+        coll.push(heap.take_arg(term, 0));
+        next = heap.take_arg(term, 1);
         free(heap, tid, get_loc(term, 0), 2);
         continue;
       }
@@ -670,9 +671,9 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         let arity = arity_of(arit, term);
         for i in 0..arity {
           if i < arity - 1 {
-            coll.push(take_arg(heap, term, i));
+            coll.push(heap.take_arg(term, i));
           } else {
-            next = take_arg(heap, term, i);
+            next = heap.take_arg(term, i);
           }
         }
         free(heap, tid, get_loc(term, 0), arity);
