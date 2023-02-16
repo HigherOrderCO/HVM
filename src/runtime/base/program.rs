@@ -87,7 +87,7 @@ impl Default for Program {
 }
 
 impl Program {
-  pub fn new() -> Program {
+  pub fn new() -> Self {
     let mut funs = U64Map::new();
     let mut aris = U64Map::new();
     let mut nams = U64Map::new();
@@ -108,7 +108,7 @@ impl Program {
         aris.insert(fid as u64, precomp.smap.len() as u64);
       }
     }
-    Program { funs, aris, nams }
+    Self { funs, aris, nams }
   }
 
   pub fn add_book(&mut self, book: &language::rulebook::RuleBook) {
@@ -315,33 +315,34 @@ pub fn gen_names(book: &language::rulebook::RuleBook) -> U64Map<String> {
   U64Map::from_hashmap(&mut book.id_to_name.clone())
 }
 
+impl language::syntax::Oper {
+  fn raw(&self) -> u64 {
+    match self {
+      Self::Add => ADD,
+      Self::Sub => SUB,
+      Self::Mul => MUL,
+      Self::Div => DIV,
+      Self::Mod => MOD,
+      Self::And => AND,
+      Self::Or => OR,
+      Self::Xor => XOR,
+      Self::Shl => SHL,
+      Self::Shr => SHR,
+      Self::Ltn => LTN,
+      Self::Lte => LTE,
+      Self::Eql => EQL,
+      Self::Gte => GTE,
+      Self::Gtn => GTN,
+      Self::Neq => NEQ,
+    }
+  }
+}
 /// converts a language term to a runtime term
 pub fn term_to_core(
   book: &language::rulebook::RuleBook,
   term: &language::syntax::Term,
   inps: &[String],
 ) -> Core {
-  fn convert_oper(oper: &language::syntax::Oper) -> u64 {
-    match oper {
-      language::syntax::Oper::Add => ADD,
-      language::syntax::Oper::Sub => SUB,
-      language::syntax::Oper::Mul => MUL,
-      language::syntax::Oper::Div => DIV,
-      language::syntax::Oper::Mod => MOD,
-      language::syntax::Oper::And => AND,
-      language::syntax::Oper::Or => OR,
-      language::syntax::Oper::Xor => XOR,
-      language::syntax::Oper::Shl => SHL,
-      language::syntax::Oper::Shr => SHR,
-      language::syntax::Oper::Ltn => LTN,
-      language::syntax::Oper::Lte => LTE,
-      language::syntax::Oper::Eql => EQL,
-      language::syntax::Oper::Gte => GTE,
-      language::syntax::Oper::Gtn => GTN,
-      language::syntax::Oper::Neq => NEQ,
-    }
-  }
-
   #[allow(clippy::identity_op)]
   fn convert_term(
     term: &language::syntax::Term,
@@ -412,7 +413,7 @@ pub fn term_to_core(
       language::syntax::Term::U6O { numb } => Core::U6O { numb: *numb },
       language::syntax::Term::F6O { numb } => Core::F6O { numb: *numb },
       language::syntax::Term::Op2 { oper, val0, val1 } => {
-        let oper = convert_oper(oper);
+        let oper = oper.raw();
         let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
         let val1 = Box::new(convert_term(val1, book, depth + 1, vars));
         Core::Op2 { oper, val0, val1 }
