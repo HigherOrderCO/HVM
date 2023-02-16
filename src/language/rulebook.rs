@@ -171,9 +171,9 @@ pub fn group_rules(rules: &[language::syntax::Rule]) -> HashMap<String, RuleGrou
       let group = groups.get_mut(name);
       match group {
         None => {
-          groups.insert(name.clone(), (args.len(), Vec::from([rule.clone()])));
+          groups.insert(name.clone(), (args.len(), vec![rule.clone()]));
         }
-        Some((_arity, rules)) => {
+        Some((_, rules)) => {
           rules.push(rule.clone());
         }
       }
