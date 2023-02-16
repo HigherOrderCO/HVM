@@ -399,13 +399,12 @@ impl language::syntax::Term {
         Core::App { func, argm }
       }
       Self::Ctr { name, args } => {
-        let term_func =
-          *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
-        let term_args = args.iter().map(|arg| arg.convert_term(book, depth + 0, vars)).collect();
+        let func = *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
+        let args = args.iter().map(|arg| arg.convert_term(book, depth + 0, vars)).collect();
         if *book.ctr_is_fun.get(name).unwrap_or(&false) {
-          Core::Fun { func: term_func, args: term_args }
+          Core::Fun { func, args }
         } else {
-          Core::Ctr { func: term_func, args: term_args }
+          Core::Ctr { func, args }
         }
       }
       Self::U6O { numb } => Core::U6O { numb: *numb },

@@ -39,7 +39,7 @@ pub fn eval(
 
   // Normalizes it
   let init = instant::Instant::now();
-  runtime::normalize(&heap, &prog, &tids, host, dbug);
+  heap.normalize(&prog, &tids, host, dbug);
   let time = init.elapsed().as_millis() as u64;
 
   // Reads it back to a string

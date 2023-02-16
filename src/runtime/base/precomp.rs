@@ -222,7 +222,7 @@ fn hvm_log_visit(ctx: ReduceCtx) -> bool {
 }
 
 fn hvm_log_apply(ctx: ReduceCtx) -> bool {
-  normalize(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), false);
+  ctx.heap.normalize(ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), false);
   let code = crate::language::readback::as_code(ctx.heap, ctx.prog, get_loc(ctx.term, 0));
   println!("{}", code);
   ctx.heap.link(*ctx.host, ctx.heap.load_arg(ctx.term, 1));

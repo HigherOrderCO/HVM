@@ -434,20 +434,21 @@ pub fn reducer(
   }
 }
 
-pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
-  let mut cost = heap.get_cost();
-  loop {
-    reduce(heap, prog, tids, host, true, debug);
-    let new_cost = heap.get_cost();
-    if new_cost != cost {
-      cost = new_cost;
-    } else {
-      break;
+impl Heap {
+  pub fn normalize(&self, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
+    let mut cost = self.get_cost();
+    loop {
+      reduce(self, prog, tids, host, true, debug);
+      let new_cost = self.get_cost();
+      if new_cost != cost {
+        cost = new_cost;
+      } else {
+        break;
+      }
     }
+    self.load_ptr(host)
   }
-  heap.load_ptr(host)
 }
-
 //pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut im::HashSet<u64>, debug: bool) -> Ptr {
 //let term = heap.load_ptr( host);
 //if seen.contains(&host) {
