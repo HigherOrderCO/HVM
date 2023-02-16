@@ -369,7 +369,7 @@ impl Runtime {
   }
 
   pub fn collect(&mut self, term: Ptr) {
-    collect(&self.heap, &self.prog.aris, 0, term) // FIXME tid?
+    self.heap.collect(&self.prog.aris, 0, term) // FIXME tid?
   }
 }
 

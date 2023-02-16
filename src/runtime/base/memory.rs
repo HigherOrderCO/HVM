@@ -524,7 +524,7 @@ impl Heap {
         }
       }
       if get_tag(arg_ptr) == ERA {
-        collect(self, arit, tid, val); // safe, since `val` is owned by this thread
+        self.collect(arit, tid, val); // safe, since `val` is owned by this thread
         return;
       }
     }
@@ -615,81 +615,83 @@ impl Heap {
 // system. Sadly, it is an issue that exists, and, for the time being, I'm not aware of a good
 // solution that maintains HVM philosophy of only including constant-time compute primitives.
 
-pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
-  let mut coll = vec![];
-  let mut next = term;
-  loop {
-    let term = next;
-    match get_tag(term) {
-      DP0 => {
-        heap.link(get_loc(term, 0), Era());
-        if heap.acquire_lock(tid, term).is_ok() {
-          if get_tag(heap.load_arg(term, 1)) == ERA {
-            coll.push(heap.take_arg(term, 2));
-            heap.free(tid, get_loc(term, 0), 3);
-          }
-          heap.release_lock(tid, term);
-        }
-      }
-      DP1 => {
-        heap.link(get_loc(term, 1), Era());
-        if heap.acquire_lock(tid, term).is_ok() {
-          if get_tag(heap.load_arg(term, 0)) == ERA {
-            coll.push(heap.take_arg(term, 2));
-            heap.free(tid, get_loc(term, 0), 3);
-          }
-          heap.release_lock(tid, term);
-        }
-      }
-      VAR => {
-        heap.link(get_loc(term, 0), Era());
-      }
-      LAM => {
-        heap.atomic_subst(arit, tid, Var(get_loc(term, 0)), Era());
-        next = heap.take_arg(term, 1);
-        heap.free(tid, get_loc(term, 0), 2);
-        continue;
-      }
-      APP => {
-        coll.push(heap.take_arg(term, 0));
-        next = heap.take_arg(term, 1);
-        heap.free(tid, get_loc(term, 0), 2);
-        continue;
-      }
-      SUP => {
-        coll.push(heap.take_arg(term, 0));
-        next = heap.take_arg(term, 1);
-        heap.free(tid, get_loc(term, 0), 2);
-        continue;
-      }
-      OP2 => {
-        coll.push(heap.take_arg(term, 0));
-        next = heap.take_arg(term, 1);
-        heap.free(tid, get_loc(term, 0), 2);
-        continue;
-      }
-      U60 => {}
-      F60 => {}
-      CTR | FUN => {
-        let arity = arity_of(arit, term);
-        for i in 0..arity {
-          if i < arity - 1 {
-            coll.push(heap.take_arg(term, i));
-          } else {
-            next = heap.take_arg(term, i);
+impl Heap {
+  pub fn collect(&self, arit: &ArityMap, tid: usize, term: Ptr) {
+    let mut coll = vec![];
+    let mut next = term;
+    loop {
+      let term = next;
+      match get_tag(term) {
+        DP0 => {
+          self.link(get_loc(term, 0), Era());
+          if self.acquire_lock(tid, term).is_ok() {
+            if get_tag(self.load_arg(term, 1)) == ERA {
+              coll.push(self.take_arg(term, 2));
+              self.free(tid, get_loc(term, 0), 3);
+            }
+            self.release_lock(tid, term);
           }
         }
-        heap.free(tid, get_loc(term, 0), arity);
-        if arity > 0 {
+        DP1 => {
+          self.link(get_loc(term, 1), Era());
+          if self.acquire_lock(tid, term).is_ok() {
+            if get_tag(self.load_arg(term, 0)) == ERA {
+              coll.push(self.take_arg(term, 2));
+              self.free(tid, get_loc(term, 0), 3);
+            }
+            self.release_lock(tid, term);
+          }
+        }
+        VAR => {
+          self.link(get_loc(term, 0), Era());
+        }
+        LAM => {
+          self.atomic_subst(arit, tid, Var(get_loc(term, 0)), Era());
+          next = self.take_arg(term, 1);
+          self.free(tid, get_loc(term, 0), 2);
           continue;
         }
+        APP => {
+          coll.push(self.take_arg(term, 0));
+          next = self.take_arg(term, 1);
+          self.free(tid, get_loc(term, 0), 2);
+          continue;
+        }
+        SUP => {
+          coll.push(self.take_arg(term, 0));
+          next = self.take_arg(term, 1);
+          self.free(tid, get_loc(term, 0), 2);
+          continue;
+        }
+        OP2 => {
+          coll.push(self.take_arg(term, 0));
+          next = self.take_arg(term, 1);
+          self.free(tid, get_loc(term, 0), 2);
+          continue;
+        }
+        U60 => {}
+        F60 => {}
+        CTR | FUN => {
+          let arity = arity_of(arit, term);
+          for i in 0..arity {
+            if i < arity - 1 {
+              coll.push(self.take_arg(term, i));
+            } else {
+              next = self.take_arg(term, i);
+            }
+          }
+          self.free(tid, get_loc(term, 0), arity);
+          if arity > 0 {
+            continue;
+          }
+        }
+        _ => {}
       }
-      _ => {}
-    }
-    if let Some(got) = coll.pop() {
-      next = got;
-    } else {
-      break;
+      if let Some(got) = coll.pop() {
+        next = got;
+      } else {
+        break;
+      }
     }
   }
 }

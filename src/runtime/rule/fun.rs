@@ -141,7 +141,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
       // Collects unused variables
       for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
         if *erase {
-          collect(ctx.heap, &ctx.prog.aris, ctx.tid, get_var(ctx.heap, ctx.term, var));
+          ctx.heap.collect(&ctx.prog.aris, ctx.tid, get_var(ctx.heap, ctx.term, var));
         }
       }
 

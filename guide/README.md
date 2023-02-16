@@ -437,7 +437,7 @@ let funs = vec![
       ctx.heap.link(*ctx.host, arg1);
 
       // Collects the argument #0
-      hvm::runtime::collect(ctx.heap, &ctx.prog.arit, ctx.tid, ctx.heap.load_ptr(arg0));
+      ctx.heap.collect(&ctx.prog.arit, ctx.tid, ctx.heap.load_ptr(arg0));
 
       // Frees the memory used by this function call
       ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);

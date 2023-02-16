@@ -357,7 +357,7 @@ pub fn build_function(
             line(
               &mut apply,
               2,
-              &format!("collect(ctx.heap, &ctx.prog.aris, ctx.tid, {});", get_var(dynvar)),
+              &format!("ctx.heap.collect(&ctx.prog.aris, ctx.tid, {});", get_var(dynvar)),
             );
           }
         }
@@ -607,18 +607,10 @@ pub fn build_function_rule_rhs(
           line(code, tab + 0, &format!("if get_tag({}) == U60 {{", fargs[0]));
           line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
-          line(
-            code,
-            tab + 2,
-            &format!("collect(ctx.heap, &ctx.prog.aris, ctx.tid, {});", fargs[1]),
-          );
+          line(code, tab + 2, &format!("ctx.heap.collect(&ctx.prog.aris, ctx.tid, {});", fargs[1]));
           line(code, tab + 2, &format!("{} = {};", ret, fargs[2]));
           line(code, tab + 1, &format!("}} else {{"));
-          line(
-            code,
-            tab + 2,
-            &format!("collect(ctx.heap, &ctx.prog.aris, ctx.tid, {});", fargs[2]),
-          );
+          line(code, tab + 2, &format!("ctx.heap.collect(&ctx.prog.aris, ctx.tid, {});", fargs[2]));
           line(code, tab + 2, &format!("{} = {};", ret, fargs[1]));
           line(code, tab + 1, &format!("}}"));
           line(code, tab + 0, &format!("}} else {{"));

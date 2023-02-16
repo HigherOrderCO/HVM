@@ -417,7 +417,7 @@ pub use language::syntax::{
 //}
 
 //pub fn collect(&mut self, term: Ptr) {
-//return runtime::collect(&self.heap, &self.prog.arit, 0, term); // FIXME tid?
+//return self.heap.collect(&self.prog.arit, 0, term); // FIXME tid?
 //}
 
 //}

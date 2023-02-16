@@ -152,14 +152,14 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
       ctx.heap.inc_cost(ctx.tid);
       let done = arg2;
       ctx.heap.link(*ctx.host, done);
-      collect(ctx.heap, &ctx.prog.aris, ctx.tid, arg1);
+      ctx.heap.collect(&ctx.prog.aris, ctx.tid, arg1);
       ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     } else {
       ctx.heap.inc_cost(ctx.tid);
       let done = arg1;
       ctx.heap.link(*ctx.host, done);
-      collect(ctx.heap, &ctx.prog.aris, ctx.tid, arg2);
+      ctx.heap.collect(&ctx.prog.aris, ctx.tid, arg2);
       ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     }
@@ -226,7 +226,7 @@ fn hvm_log_apply(ctx: ReduceCtx) -> bool {
   let code = crate::language::readback::as_code(ctx.heap, ctx.prog, get_loc(ctx.term, 0));
   println!("{}", code);
   ctx.heap.link(*ctx.host, ctx.heap.load_arg(ctx.term, 1));
-  collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_ptr(get_loc(ctx.term, 0)));
+  ctx.heap.collect(&ctx.prog.aris, ctx.tid, ctx.heap.load_ptr(get_loc(ctx.term, 0)));
   ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
   true
 }
@@ -277,7 +277,7 @@ fn hvm_print_apply(ctx: ReduceCtx) -> bool {
     println!("{}", text);
   }
   ctx.heap.link(*ctx.host, ctx.heap.load_arg(ctx.term, 1));
-  collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_ptr(get_loc(ctx.term, 0)));
+  ctx.heap.collect(&ctx.prog.aris, ctx.tid, ctx.heap.load_ptr(get_loc(ctx.term, 0)));
   ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
   true
 }
@@ -318,8 +318,8 @@ fn hvm_store_apply(ctx: ReduceCtx) -> bool {
         //ctx.heap.free(0, get_loc(ctx.term, 0), 2);
         let done = ctx.heap.load_arg(ctx.term, 2);
         ctx.heap.link(*ctx.host, done);
-        collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_arg(ctx.term, 0));
-        collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_arg(ctx.term, 1));
+        ctx.heap.collect(&ctx.prog.aris, ctx.tid, ctx.heap.load_arg(ctx.term, 0));
+        ctx.heap.collect(&ctx.prog.aris, ctx.tid, ctx.heap.load_arg(ctx.term, 1));
         ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 3);
         return true;
       }
