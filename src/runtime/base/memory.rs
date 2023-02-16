@@ -536,14 +536,16 @@ impl Heap {
 
 pub const LOCK_OPEN: u8 = 0xFF;
 
-pub fn acquire_lock(heap: &Heap, tid: usize, term: Ptr) -> Result<u8, u8> {
-  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
-  locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
-}
+impl Heap {
+  pub fn acquire_lock(&self, tid: usize, term: Ptr) -> Result<u8, u8> {
+    let locker = unsafe { self.lock.get_unchecked(get_loc(term, 0) as usize) };
+    locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
+  }
 
-pub fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
-  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
-  locker.store(LOCK_OPEN, Ordering::Release)
+  pub fn release_lock(&self, tid: usize, term: Ptr) {
+    let locker = unsafe { self.lock.get_unchecked(get_loc(term, 0) as usize) };
+    locker.store(LOCK_OPEN, Ordering::Release)
+  }
 }
 
 // Garbage Collection
@@ -621,22 +623,22 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
     match get_tag(term) {
       DP0 => {
         heap.link(get_loc(term, 0), Era());
-        if acquire_lock(heap, tid, term).is_ok() {
+        if heap.acquire_lock(tid, term).is_ok() {
           if get_tag(heap.load_arg(term, 1)) == ERA {
             coll.push(heap.take_arg(term, 2));
             heap.free(tid, get_loc(term, 0), 3);
           }
-          release_lock(heap, tid, term);
+          heap.release_lock(tid, term);
         }
       }
       DP1 => {
         heap.link(get_loc(term, 1), Era());
-        if acquire_lock(heap, tid, term).is_ok() {
+        if heap.acquire_lock(tid, term).is_ok() {
           if get_tag(heap.load_arg(term, 0)) == ERA {
             coll.push(heap.take_arg(term, 2));
             heap.free(tid, get_loc(term, 0), 3);
           }
-          release_lock(heap, tid, term);
+          heap.release_lock(tid, term);
         }
       }
       VAR => {

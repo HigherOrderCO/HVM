@@ -127,14 +127,14 @@ pub fn reducer(
               }
             }
             DP0 | DP1 => {
-              match acquire_lock(heap, tid, term) {
+              match heap.acquire_lock(tid, term) {
                 Err(locker_tid) => {
                   continue 'work;
                 }
                 Ok(_) => {
                   // If the term changed, release lock and try again
                   if term != heap.load_ptr(host) {
-                    release_lock(heap, tid, term);
+                    heap.release_lock(tid, term);
                     continue 'visit;
                   } else if dup::visit(ReduceCtx {
                     heap,
@@ -259,10 +259,10 @@ pub fn reducer(
                   cont: &mut cont,
                   host: &mut host,
                 }) {
-                  release_lock(heap, tid, term);
+                  heap.release_lock(tid, term);
                   continue 'work;
                 } else {
-                  release_lock(heap, tid, term);
+                  heap.release_lock(tid, term);
                   break 'apply;
                 }
               }
