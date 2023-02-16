@@ -51,6 +51,69 @@ pub struct Rule {
   pub rhs: Box<Term>,
 }
 
+impl Rule {
+  pub fn matches_together(&self, b: &Self) -> (bool, bool) {
+    let mut same_shape = true;
+    if let (
+      Term::Ctr { name: ref _a_name, args: ref a_args },
+      Term::Ctr { name: ref _b_name, args: ref b_args },
+    ) = (&*self.lhs, &*b.lhs)
+    {
+      for (a_arg, b_arg) in a_args.iter().zip(b_args) {
+        match **a_arg {
+          Term::Ctr { name: ref a_arg_name, args: ref a_arg_args } => match **b_arg {
+            Term::Ctr { name: ref b_arg_name, args: ref b_arg_args } => {
+              if a_arg_name != b_arg_name || a_arg_args.len() != b_arg_args.len() {
+                return (false, false);
+              }
+            }
+            Term::U6O { .. } => {
+              return (false, false);
+            }
+            Term::F6O { .. } => {
+              return (false, false);
+            }
+            Term::Var { .. } => {
+              same_shape = false;
+            }
+            _ => {}
+          },
+          Term::U6O { numb: a_arg_numb } => match **b_arg {
+            Term::U6O { numb: b_arg_numb } => {
+              if a_arg_numb != b_arg_numb {
+                return (false, false);
+              }
+            }
+            Term::Ctr { .. } => {
+              return (false, false);
+            }
+            Term::Var { .. } => {
+              same_shape = false;
+            }
+            _ => {}
+          },
+          Term::F6O { numb: a_arg_numb } => match **b_arg {
+            Term::F6O { numb: b_arg_numb } => {
+              if a_arg_numb != b_arg_numb {
+                return (false, false);
+              }
+            }
+            Term::Ctr { .. } => {
+              return (false, false);
+            }
+            Term::Var { .. } => {
+              same_shape = false;
+            }
+            _ => {}
+          },
+          _ => {}
+        }
+      }
+    }
+    (true, same_shape)
+  }
+}
+
 // SMap
 // ----
 

@@ -760,68 +760,6 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
   //}
 
   // Checks true if every time that `a` matches, `b` will match too
-  fn matches_together(a: &language::syntax::Rule, b: &language::syntax::Rule) -> (bool, bool) {
-    let mut same_shape = true;
-    if let (
-      language::syntax::Term::Ctr { name: ref _a_name, args: ref a_args },
-      language::syntax::Term::Ctr { name: ref _b_name, args: ref b_args },
-    ) = (&*a.lhs, &*b.lhs)
-    {
-      for (a_arg, b_arg) in a_args.iter().zip(b_args) {
-        match **a_arg {
-          language::syntax::Term::Ctr { name: ref a_arg_name, args: ref a_arg_args } => {
-            match **b_arg {
-              language::syntax::Term::Ctr { name: ref b_arg_name, args: ref b_arg_args } => {
-                if a_arg_name != b_arg_name || a_arg_args.len() != b_arg_args.len() {
-                  return (false, false);
-                }
-              }
-              language::syntax::Term::U6O { .. } => {
-                return (false, false);
-              }
-              language::syntax::Term::F6O { .. } => {
-                return (false, false);
-              }
-              language::syntax::Term::Var { .. } => {
-                same_shape = false;
-              }
-              _ => {}
-            }
-          }
-          language::syntax::Term::U6O { numb: a_arg_numb } => match **b_arg {
-            language::syntax::Term::U6O { numb: b_arg_numb } => {
-              if a_arg_numb != b_arg_numb {
-                return (false, false);
-              }
-            }
-            language::syntax::Term::Ctr { .. } => {
-              return (false, false);
-            }
-            language::syntax::Term::Var { .. } => {
-              same_shape = false;
-            }
-            _ => {}
-          },
-          language::syntax::Term::F6O { numb: a_arg_numb } => match **b_arg {
-            language::syntax::Term::F6O { numb: b_arg_numb } => {
-              if a_arg_numb != b_arg_numb {
-                return (false, false);
-              }
-            }
-            language::syntax::Term::Ctr { .. } => {
-              return (false, false);
-            }
-            language::syntax::Term::Var { .. } => {
-              same_shape = false;
-            }
-            _ => {}
-          },
-          _ => {}
-        }
-      }
-    }
-    (true, same_shape)
-  }
 
   fn split_group(
     rules: &[language::syntax::Rule],
@@ -909,7 +847,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
             let new_rule = language::syntax::Rule { lhs: new_lhs, rhs: new_rhs };
             new_group.push(new_rule);
             for (j, other) in rules.iter().enumerate().skip(i) {
-              let (compatible, same_shape) = matches_together(&rule, &other);
+              let (compatible, same_shape) = rule.matches_together(&other);
               if compatible {
                 if let (
                   language::syntax::Term::Ctr { name: ref _rule_name, args: ref rule_args },
