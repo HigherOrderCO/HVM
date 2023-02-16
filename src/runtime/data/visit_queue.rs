@@ -2,10 +2,10 @@
 // -----------
 // A concurrent task-stealing queue featuring push, pop and steal.
 
-use crossbeam::utils::{CachePadded};
+use crossbeam::utils::CachePadded;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-pub const VISIT_QUEUE_SIZE : usize = 1 << 24;
+pub const VISIT_QUEUE_SIZE: usize = 1 << 24;
 
 // - 32 bits: host
 // - 32 bits: cont
@@ -26,7 +26,7 @@ pub fn get_visit_host(visit: Visit) -> u64 {
 }
 
 pub fn get_visit_hold(visit: Visit) -> bool {
-  return (visit >> 31) & 1 == 1; 
+  return (visit >> 31) & 1 == 1;
 }
 
 pub fn get_visit_cont(visit: Visit) -> u64 {
@@ -34,13 +34,12 @@ pub fn get_visit_cont(visit: Visit) -> u64 {
 }
 
 impl VisitQueue {
-
   pub fn new() -> VisitQueue {
     return VisitQueue {
       init: CachePadded::new(AtomicUsize::new(0)),
       last: CachePadded::new(AtomicUsize::new(0)),
       data: crate::runtime::new_atomic_u64_array(VISIT_QUEUE_SIZE),
-    }
+    };
   }
 
   pub fn push(&self, value: u64) {
@@ -72,12 +71,16 @@ impl VisitQueue {
     let index = self.init.load(Ordering::Relaxed);
     let visit = unsafe { self.data.get_unchecked(index) }.load(Ordering::Relaxed);
     if visit != 0 && !get_visit_hold(visit) {
-      if let Ok(visit) = unsafe { self.data.get_unchecked(index) }.compare_exchange(visit, 0, Ordering::Relaxed, Ordering::Relaxed) {
+      if let Ok(visit) = unsafe { self.data.get_unchecked(index) }.compare_exchange(
+        visit,
+        0,
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+      ) {
         self.init.fetch_add(1, Ordering::Relaxed);
         return Some((get_visit_cont(visit), get_visit_host(visit)));
       }
     }
     return None;
   }
-
 }

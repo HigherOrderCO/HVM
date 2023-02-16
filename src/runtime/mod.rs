@@ -8,11 +8,11 @@ pub mod base;
 pub mod data;
 pub mod rule;
 
-use sysinfo::{System, SystemExt, RefreshKind};
+use sysinfo::{RefreshKind, System, SystemExt};
 
-pub use base::{*};
-pub use data::{*};
-pub use rule::{*};
+pub use base::*;
+pub use data::*;
+pub use rule::*;
 
 use crate::language;
 
@@ -43,7 +43,6 @@ pub struct Runtime {
 }
 
 impl Runtime {
-
   /// Creates a new, empty runtime
   pub fn new(size: usize, tids: usize, dbug: bool) -> Runtime {
     Runtime {
@@ -56,7 +55,12 @@ impl Runtime {
   }
 
   /// Creates a runtime from source code, given a max number of nodes
-  pub fn from_code_with(code: &str, size: usize, tids: usize, dbug: bool) -> Result<Runtime, String> {
+  pub fn from_code_with(
+    code: &str,
+    size: usize,
+    tids: usize,
+    dbug: bool,
+  ) -> Result<Runtime, String> {
     let file = language::syntax::read_file(code)?;
     let heap = new_heap(size, tids);
     let prog = Program::new();
@@ -66,7 +70,7 @@ impl Runtime {
   }
 
   ////fn get_area(&mut self) -> runtime::Area {
-    ////return runtime::get_area(&mut self.heap, 0)
+  ////return runtime::get_area(&mut self.heap, 0)
   ////}
 
   /// Creates a runtime from a source code
@@ -77,7 +81,7 @@ impl Runtime {
 
   ///// Extends a runtime with new definitions
   //pub fn define(&mut self, _code: &str) {
-    //todo!()
+  //todo!()
   //}
 
   /// Allocates a new term, returns its location
@@ -121,7 +125,7 @@ impl Runtime {
   //// /// Given a location, runs side-effective actions
   ////#[cfg(not(target_arch = "wasm32"))]
   ////pub fn run_io(&mut self, host: u64) {
-    ////runtime::run_io(&mut self.heap, &self.prog, &[0], host)
+  ////runtime::run_io(&mut self.heap, &self.prog, &[0], host)
   ////}
 
   /// Given a location, recovers the lambda Term stored on it, as code
@@ -155,7 +159,7 @@ impl Runtime {
   }
 
   //// WASM re-exports
-  
+
   pub fn DP0() -> u64 {
     return DP0;
   }
@@ -277,11 +281,11 @@ impl Runtime {
   }
 
   pub fn CELLS_PER_MB() -> usize {
-    return CELLS_PER_MB; 
+    return CELLS_PER_MB;
   }
 
   pub fn CELLS_PER_GB() -> usize {
-    return CELLS_PER_GB; 
+    return CELLS_PER_GB;
   }
 
   pub fn get_tag(lnk: Ptr) -> u64 {
@@ -371,7 +375,6 @@ impl Runtime {
   pub fn collect(&mut self, term: Ptr) {
     return collect(&self.heap, &self.prog.aris, 0, term); // FIXME tid?
   }
-
 }
 
 // Methods that aren't compiled to JS

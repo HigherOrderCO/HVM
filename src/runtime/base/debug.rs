@@ -1,4 +1,4 @@
-use crate::runtime::{*};
+use crate::runtime::*;
 use std::collections::{hash_map, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -26,7 +26,7 @@ pub fn show_ptr(x: Ptr) -> String {
       OP2 => "Op2",
       U60 => "U60",
       F60 => "F60",
-      _   => "?",
+      _ => "?",
     };
     format!("{}({:07x}, {:08x})", tgs, ext, val)
   }
@@ -34,7 +34,7 @@ pub fn show_ptr(x: Ptr) -> String {
 
 pub fn show_heap(heap: &Heap) -> String {
   let mut text: String = String::new();
-  for idx in 0 .. heap.node.len() {
+  for idx in 0..heap.node.len() {
     let ptr = load_ptr(heap, idx as u64);
     if ptr != 0 {
       text.push_str(&format!("{:04x} | ", idx));
@@ -178,7 +178,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
             0xD => ">=",
             0xE => ">",
             0xF => "!=",
-            _   => "<oper>",
+            _ => "<oper>",
           };
           format!("({} {} {})", symb, val0, val1)
         }
@@ -191,7 +191,8 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
         CTR | FUN => {
           let func = get_ext(term);
           let arit = arity_of(&prog.aris, term);
-          let args: Vec<String> = (0..arit).map(|i| go(heap, prog, get_loc(term, i), names, tlocs)).collect();
+          let args: Vec<String> =
+            (0..arit).map(|i| go(heap, prog, get_loc(term, i), names, tlocs)).collect();
           let name = &prog.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
           format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
         }
@@ -213,24 +214,31 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     let what = String::from("?h");
     //let kind = kinds.get(&pos).unwrap_or(&0);
     let name = names.get(&pos).unwrap_or(&what);
-    let nam0 = if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
-    let nam1 = if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
-    text.push_str(&format!("\ndup {} {} = {};", nam0, nam1, go(heap, prog, pos + 2, &names, tlocs)));
+    let nam0 =
+      if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+    let nam1 =
+      if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+    text.push_str(&format!(
+      "\ndup {} {} = {};",
+      nam0,
+      nam1,
+      go(heap, prog, pos + 2, &names, tlocs)
+    ));
   }
   text
 }
 
 pub fn validate_heap(heap: &Heap) {
-  for idx in 0 .. heap.node.len() {
+  for idx in 0..heap.node.len() {
     // If it is an ARG, it must be pointing to a VAR/DP0/DP1 that points to it
     let arg = load_ptr(heap, idx as u64);
     if get_tag(arg) == ARG {
       let var = load_ptr(heap, get_loc(arg, 0));
       let oks = match get_tag(var) {
-        VAR => { get_loc(var, 0) == idx as u64 }
-        DP0 => { get_loc(var, 0) == idx as u64 }
-        DP1 => { get_loc(var, 0) == idx as u64 - 1 }
-        _   => { false }
+        VAR => get_loc(var, 0) == idx as u64,
+        DP0 => get_loc(var, 0) == idx as u64,
+        DP1 => get_loc(var, 0) == idx as u64 - 1,
+        _ => false,
       };
       if !oks {
         panic!("Invalid heap state, due to arg at '{:04x}' of:\n{}", idx, show_heap(heap));

@@ -1,5 +1,5 @@
-use crate::language as language;
-use crate::runtime as runtime;
+use crate::language;
+use crate::runtime;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 // RuleBook
@@ -71,7 +71,7 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
         register(book, val0, false);
         register(book, val1, false);
       }
-      term@language::syntax::Term::Ctr { name, args } => {
+      term @ language::syntax::Term::Ctr { name, args } => {
         // Registers id
         let id = match book.name_to_id.get(name) {
           None => {
@@ -81,9 +81,7 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
             book.name_count += 1;
             id
           }
-          Some(id) => {
-            *id
-          }
+          Some(id) => *id,
         };
         // Registers smap
         match book.id_to_smap.get(&id) {
@@ -98,7 +96,7 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
         }
         // Force strictness when pattern-matching
         if lhs_top {
-          for i in 0 .. args.len() {
+          for i in 0..args.len() {
             let is_strict = match *args[i] {
               language::syntax::Term::Ctr { .. } => true,
               language::syntax::Term::U6O { .. } => true,
@@ -154,7 +152,7 @@ pub fn gen_rulebook(file: &language::syntax::File) -> RuleBook {
       book.id_to_smap.insert(*id, vec![false; rule_smap.len()]);
     }
     let smap = book.id_to_smap.get_mut(id).unwrap();
-    for i in 0 .. smap.len() {
+    for i in 0..smap.len() {
       if rule_smap[i] {
         smap[i] = true;
       }
@@ -735,30 +733,31 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
 
   // Returns true if a rule is a global default case (all args are vars)
   //fn is_default(lhs: &language::syntax::Term) -> bool {
-///**/if let language::syntax::Term::Ctr { ref args, .. } = *lhs {
-///*  */for arg in args {
-///*  H */if let language::syntax::Term::Ctr { args: ref arg_args, .. } = **arg {
-///*   A  */for field in arg_args {
-///*    D   */if !is_variable(field) {
-///* ─=≡ΣO)   */return false;
-///*    U   */}
-///*   K  */}
-///*  E */}
-///* N*/}
-///**/} true
+  ///**/if let language::syntax::Term::Ctr { ref args, .. } = *lhs {
+  ///*  */for arg in args {
+  ///*  H */if let language::syntax::Term::Ctr { args: ref arg_args, .. } = **arg {
+  ///*   A  */for field in arg_args {
+  ///*    D   */if !is_variable(field) {
+  ///* ─=≡ΣO)   */return false;
+  ///*    U   */}
+  ///*   K  */}
+  ///*  E */}
+  ///* N*/}
+  ///**/} true
   //}
 
   fn is_matchable(term: &language::syntax::Term) -> bool {
-    matches!(term,
-        language::syntax::Term::Ctr { .. }
-      | language::syntax::Term::U6O { .. }
-      | language::syntax::Term::F6O { .. })
+    matches!(
+      term,
+      language::syntax::Term::Ctr { .. }
+        | language::syntax::Term::U6O { .. }
+        | language::syntax::Term::F6O { .. }
+    )
   }
 
   //fn is_variable(term: &language::syntax::Term) -> bool {
-    //matches!(term, language::syntax::Term::Var { .. })
+  //matches!(term, language::syntax::Term::Var { .. })
   //}
-
 
   // Checks true if every time that `a` matches, `b` will match too
   fn matches_together(a: &language::syntax::Rule, b: &language::syntax::Rule) -> (bool, bool) {
@@ -766,26 +765,29 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
     if let (
       language::syntax::Term::Ctr { name: ref _a_name, args: ref a_args },
       language::syntax::Term::Ctr { name: ref _b_name, args: ref b_args },
-    ) = (&*a.lhs, &*b.lhs) {
+    ) = (&*a.lhs, &*b.lhs)
+    {
       for (a_arg, b_arg) in a_args.iter().zip(b_args) {
         match **a_arg {
-          language::syntax::Term::Ctr { name: ref a_arg_name, args: ref a_arg_args } => match **b_arg {
-            language::syntax::Term::Ctr { name: ref b_arg_name, args: ref b_arg_args } => {
-              if a_arg_name != b_arg_name || a_arg_args.len() != b_arg_args.len() {
+          language::syntax::Term::Ctr { name: ref a_arg_name, args: ref a_arg_args } => {
+            match **b_arg {
+              language::syntax::Term::Ctr { name: ref b_arg_name, args: ref b_arg_args } => {
+                if a_arg_name != b_arg_name || a_arg_args.len() != b_arg_args.len() {
+                  return (false, false);
+                }
+              }
+              language::syntax::Term::U6O { .. } => {
                 return (false, false);
               }
+              language::syntax::Term::F6O { .. } => {
+                return (false, false);
+              }
+              language::syntax::Term::Var { .. } => {
+                same_shape = false;
+              }
+              _ => {}
             }
-            language::syntax::Term::U6O { .. } => {
-              return (false, false);
-            }
-            language::syntax::Term::F6O { .. } => {
-              return (false, false);
-            }
-            language::syntax::Term::Var { .. } => {
-              same_shape = false;
-            }
-            _ => {}
-          },
+          }
           language::syntax::Term::U6O { numb: a_arg_numb } => match **b_arg {
             language::syntax::Term::U6O { numb: b_arg_numb } => {
               if a_arg_numb != b_arg_numb {
@@ -821,7 +823,10 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
     (true, same_shape)
   }
 
-  fn split_group(rules: &[language::syntax::Rule], name_count: &mut u64) -> Vec<language::syntax::Rule> {
+  fn split_group(
+    rules: &[language::syntax::Rule],
+    name_count: &mut u64,
+  ) -> Vec<language::syntax::Rule> {
     // println!("\n[split_group]");
     // for rule in rules {
     //   println!("{}", rule);
@@ -847,18 +852,24 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                     match &**field {
                       language::syntax::Term::Ctr { .. } => {
                         let var_name = format!(".{}", fresh(name_count));
-                        new_arg_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
-                        new_rhs_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
+                        new_arg_args
+                          .push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
+                        new_rhs_args
+                          .push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
                       }
                       language::syntax::Term::U6O { .. } => {
                         let var_name = format!(".{}", fresh(name_count));
-                        new_arg_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
-                        new_rhs_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
+                        new_arg_args
+                          .push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
+                        new_rhs_args
+                          .push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
                       }
                       language::syntax::Term::F6O { .. } => {
                         let var_name = format!(".{}", fresh(name_count));
-                        new_arg_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
-                        new_rhs_args.push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
+                        new_arg_args
+                          .push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
+                        new_rhs_args
+                          .push(Box::new(language::syntax::Term::Var { name: var_name.clone() }));
                       }
                       language::syntax::Term::Var { .. } => {
                         new_arg_args.push(field.clone());
@@ -869,7 +880,10 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                       }
                     }
                   }
-                  new_lhs_args.push(Box::new(language::syntax::Term::Ctr { name: new_arg_name, args: new_arg_args }));
+                  new_lhs_args.push(Box::new(language::syntax::Term::Ctr {
+                    name: new_arg_name,
+                    args: new_arg_args,
+                  }));
                 }
                 language::syntax::Term::Var { .. } => {
                   new_lhs_args.push(Box::new(*arg.clone()));
@@ -884,8 +898,14 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
             //(Foo Tic (Bar a b) (Haz c d)) = B[x <- (Bar a b), y <- (Haz c d)]
             //
             //(Foo.0 a b c d) = ...
-            let new_lhs = Box::new(language::syntax::Term::Ctr { name: new_lhs_name, args: new_lhs_args.clone() });
-            let new_rhs = Box::new(language::syntax::Term::Ctr { name: new_rhs_name.clone(), args: new_rhs_args });
+            let new_lhs = Box::new(language::syntax::Term::Ctr {
+              name: new_lhs_name,
+              args: new_lhs_args.clone(),
+            });
+            let new_rhs = Box::new(language::syntax::Term::Ctr {
+              name: new_rhs_name.clone(),
+              args: new_rhs_args,
+            });
             let new_rule = language::syntax::Rule { lhs: new_lhs, rhs: new_rhs };
             new_group.push(new_rule);
             for (j, other) in rules.iter().enumerate().skip(i) {
@@ -893,8 +913,9 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
               if compatible {
                 if let (
                   language::syntax::Term::Ctr { name: ref _rule_name, args: ref rule_args },
-                  language::syntax::Term::Ctr { name: ref _other_name, args: ref other_args }, 
-                ) = (&*rule.lhs, &*other.lhs) {
+                  language::syntax::Term::Ctr { name: ref _other_name, args: ref other_args },
+                ) = (&*rule.lhs, &*other.lhs)
+                {
                   // (Foo a     (B x P) (C y0 y1)) = F
                   // (Foo (A k) (B x Q) y        ) = G
                   // -----------------------------
@@ -909,21 +930,32 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                   let mut other_new_rhs = other.rhs.clone();
                   for (rule_arg, other_arg) in rule_args.iter().zip(other_args) {
                     match &**rule_arg {
-                      language::syntax::Term::Ctr { name: ref rule_arg_name, args: ref rule_arg_args } => {
+                      language::syntax::Term::Ctr {
+                        name: ref rule_arg_name,
+                        args: ref rule_arg_args,
+                      } => {
                         match &**other_arg {
-                          language::syntax::Term::Ctr { name: ref _other_arg_name, args: ref other_arg_args } => {
+                          language::syntax::Term::Ctr {
+                            name: ref _other_arg_name,
+                            args: ref other_arg_args,
+                          } => {
                             for other_field in other_arg_args {
                               other_new_lhs_args.push(other_field.clone());
                             }
                           }
                           language::syntax::Term::Var { name: ref other_arg_name } => {
                             let mut new_ctr_args = vec![];
-                            for _ in 0 .. rule_arg_args.len() {
-                              let new_arg = language::syntax::Term::Var { name: format!(".{}", fresh(name_count)) };
+                            for _ in 0..rule_arg_args.len() {
+                              let new_arg = language::syntax::Term::Var {
+                                name: format!(".{}", fresh(name_count)),
+                              };
                               new_ctr_args.push(Box::new(new_arg.clone()));
                               other_new_lhs_args.push(Box::new(new_arg));
                             }
-                            let new_ctr = language::syntax::Term::Ctr { name: rule_arg_name.clone(), args: new_ctr_args };
+                            let new_ctr = language::syntax::Term::Ctr {
+                              name: rule_arg_name.clone(),
+                              args: new_ctr_args,
+                            };
                             subst(&mut other_new_rhs, other_arg_name, &new_ctr);
                           }
                           _ => {
