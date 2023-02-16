@@ -133,7 +133,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
       ctx.heap.inc_cost(ctx.tid);
 
       // Builds the right-hand side ctx.term
-      let done = alloc_body(ctx.heap, ctx.prog, ctx.tid, ctx.term, &rule.vars, &rule.body);
+      let done = ctx.heap.alloc_body(ctx.prog, ctx.tid, ctx.term, &rule.vars, &rule.body);
 
       // Links the *ctx.host location to it
       ctx.heap.link(*ctx.host, done);

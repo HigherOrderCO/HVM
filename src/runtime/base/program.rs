@@ -146,68 +146,70 @@ impl Heap {
   }
 }
 
-pub fn alloc_body(
-  heap: &Heap,
-  prog: &Program,
-  tid: usize,
-  term: Ptr,
-  vars: &[RuleVar],
-  body: &RuleBody,
-) -> Ptr {
-  //#[inline(always)]
-  fn cell_to_ptr(
-    heap: &Heap,
-    lvar: &LocalVars,
-    aloc: &[AtomicU64],
+impl Heap {
+  pub fn alloc_body(
+    &self,
+    prog: &Program,
+    tid: usize,
     term: Ptr,
     vars: &[RuleVar],
-    cell: &RuleBodyCell,
+    body: &RuleBody,
   ) -> Ptr {
-    unsafe {
-      match cell {
-        RuleBodyCell::Val { value } => *value,
-        RuleBodyCell::Var { index } => heap.get_var(term, vars.get_unchecked(*index as usize)),
-        RuleBodyCell::Ptr { value, targ, slot } => {
-          let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
-          // should be changed if the pointer format changes
-          if get_tag(*value) <= DP1 {
-            val += (*lvar.dups.as_mut_ptr() & 0xFFF_FFFF) * EXT;
+    //#[inline(always)]
+    fn cell_to_ptr(
+      heap: &Heap,
+      lvar: &LocalVars,
+      aloc: &[AtomicU64],
+      term: Ptr,
+      vars: &[RuleVar],
+      cell: &RuleBodyCell,
+    ) -> Ptr {
+      unsafe {
+        match cell {
+          RuleBodyCell::Val { value } => *value,
+          RuleBodyCell::Var { index } => heap.get_var(term, vars.get_unchecked(*index as usize)),
+          RuleBodyCell::Ptr { value, targ, slot } => {
+            let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
+            // should be changed if the pointer format changes
+            if get_tag(*value) <= DP1 {
+              val += (*lvar.dups.as_mut_ptr() & 0xFFF_FFFF) * EXT;
+            }
+            val
           }
-          val
         }
       }
     }
-  }
-  // FIXME: verify the use of get_unchecked
-  unsafe {
-    let (cell, nodes, dupk) = body;
-    let aloc = &heap.aloc[tid];
-    let lvar = &heap.lvar[tid];
-    for i in 0..nodes.len() {
-      *aloc.get_unchecked(i).as_mut_ptr() = heap.alloc(tid, (*nodes.get_unchecked(i)).len() as u64);
-    }
-    if *lvar.dups.as_mut_ptr() + dupk >= (1 << 28) {
-      *lvar.dups.as_mut_ptr() = 0;
-    }
-    for i in 0..nodes.len() {
-      let host = *aloc.get_unchecked(i).as_mut_ptr() as usize;
-      for j in 0..(*nodes.get_unchecked(i)).len() {
-        let cell = (*nodes.get_unchecked(i)).get_unchecked(j);
-        let ptr = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
-        if let RuleBodyCell::Var { .. } = cell {
-          heap.link((host + j) as u64, ptr);
-        } else {
-          *heap.node.get_unchecked(host + j).as_mut_ptr() = ptr;
+    // FIXME: verify the use of get_unchecked
+    unsafe {
+      let (cell, nodes, dupk) = body;
+      let aloc = &self.aloc[tid];
+      let lvar = &self.lvar[tid];
+      for i in 0..nodes.len() {
+        *aloc.get_unchecked(i).as_mut_ptr() =
+          self.alloc(tid, (*nodes.get_unchecked(i)).len() as u64);
+      }
+      if *lvar.dups.as_mut_ptr() + dupk >= (1 << 28) {
+        *lvar.dups.as_mut_ptr() = 0;
+      }
+      for i in 0..nodes.len() {
+        let host = *aloc.get_unchecked(i).as_mut_ptr() as usize;
+        for j in 0..(*nodes.get_unchecked(i)).len() {
+          let cell = (*nodes.get_unchecked(i)).get_unchecked(j);
+          let ptr = cell_to_ptr(self, lvar, aloc, term, vars, cell);
+          if let RuleBodyCell::Var { .. } = cell {
+            self.link((host + j) as u64, ptr);
+          } else {
+            *self.node.get_unchecked(host + j).as_mut_ptr() = ptr;
+          }
         }
       }
+      let done = cell_to_ptr(self, lvar, aloc, term, vars, cell);
+      *lvar.dups.as_mut_ptr() += dupk;
+      //println!("result: {}\n{}\n", show_ptr(done), show_term(heap, prog, done, 0));
+      done
     }
-    let done = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
-    *lvar.dups.as_mut_ptr() += dupk;
-    //println!("result: {}\n{}\n", show_ptr(done), show_term(heap, prog, done, 0));
-    done
   }
 }
-
 pub fn get_global_name_misc(name: &str) -> Option<u64> {
   if !name.is_empty() && name.starts_with("$") {
     if name.starts_with("$0") {
@@ -617,7 +619,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
 pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -> u64 {
   let host = heap.alloc(tid, 1);
   let body = build_body(term, 0);
-  let term = alloc_body(heap, prog, tid, 0, &[], &body);
+  let term = heap.alloc_body(prog, tid, 0, &[], &body);
   heap.link(host, term);
   host
 }
