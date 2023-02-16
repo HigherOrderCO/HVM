@@ -42,6 +42,52 @@ impl Term {
 /* N*/}
 /**/} false
   }
+
+  pub fn subst(&mut self, sub_name: &str, value: &Self) {
+    match self {
+      Self::Var { name } => {
+        if sub_name == name {
+          *self = value.clone();
+        }
+      }
+      Self::Dup { nam0, nam1, expr, body } => {
+        expr.subst(sub_name, value);
+        if nam0 != sub_name && nam1 != sub_name {
+          body.subst(sub_name, value);
+        }
+      }
+      Self::Sup { val0, val1 } => {
+        val0.subst(sub_name, value);
+        val1.subst(sub_name, value);
+      }
+      Self::Let { name, expr, body } => {
+        expr.subst(sub_name, value);
+        if name != sub_name {
+          body.subst(sub_name, value);
+        }
+      }
+      Self::Lam { name, body } => {
+        if name != sub_name {
+          body.subst(sub_name, value);
+        }
+      }
+      Self::App { func, argm } => {
+        func.subst(sub_name, value);
+        argm.subst(sub_name, value);
+      }
+      Self::Ctr { args, .. } => {
+        for arg in args {
+          arg.subst(sub_name, value);
+        }
+      }
+      Self::U6O { .. } => {}
+      Self::F6O { .. } => {}
+      Self::Op2 { val0, val1, .. } => {
+        val0.subst(sub_name, value);
+        val1.subst(sub_name, value);
+      }
+    }
+  }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

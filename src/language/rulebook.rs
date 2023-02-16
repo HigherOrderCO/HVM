@@ -658,52 +658,6 @@ mod tests {
   }
 }
 
-pub fn subst(term: &mut language::syntax::Term, sub_name: &str, value: &language::syntax::Term) {
-  match term {
-    language::syntax::Term::Var { name } => {
-      if sub_name == name {
-        *term = value.clone();
-      }
-    }
-    language::syntax::Term::Dup { nam0, nam1, expr, body } => {
-      subst(&mut *expr, sub_name, value);
-      if nam0 != sub_name && nam1 != sub_name {
-        subst(&mut *body, sub_name, value);
-      }
-    }
-    language::syntax::Term::Sup { val0, val1 } => {
-      subst(&mut *val0, sub_name, value);
-      subst(&mut *val1, sub_name, value);
-    }
-    language::syntax::Term::Let { name, expr, body } => {
-      subst(&mut *expr, sub_name, value);
-      if name != sub_name {
-        subst(&mut *body, sub_name, value);
-      }
-    }
-    language::syntax::Term::Lam { name, body } => {
-      if name != sub_name {
-        subst(&mut *body, sub_name, value);
-      }
-    }
-    language::syntax::Term::App { func, argm } => {
-      subst(&mut *func, sub_name, value);
-      subst(&mut *argm, sub_name, value);
-    }
-    language::syntax::Term::Ctr { args, .. } => {
-      for arg in args {
-        subst(&mut *arg, sub_name, value);
-      }
-    }
-    language::syntax::Term::U6O { .. } => {}
-    language::syntax::Term::F6O { .. } => {}
-    language::syntax::Term::Op2 { val0, val1, .. } => {
-      subst(&mut *val0, sub_name, value);
-      subst(&mut *val1, sub_name, value);
-    }
-  }
-}
-
 // Split rules that have nested cases, flattening them.
 // I'm not proud of this code. Must improve considerably.
 pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> {
@@ -867,7 +821,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                               name: rule_arg_name.clone(),
                               args: new_ctr_args,
                             };
-                            subst(&mut other_new_rhs, other_arg_name, &new_ctr);
+                            other_new_rhs.subst(other_arg_name, &new_ctr);
                           }
                           _ => {
                             panic!("Internal error. Please report."); // not possible since it matches
@@ -887,7 +841,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                             }
                           }
                           language::syntax::Term::Var { name: ref other_arg_name } => {
-                            subst(&mut other_new_rhs, other_arg_name, &rule_arg);
+                            other_new_rhs.subst(other_arg_name, &rule_arg);
                           }
                           _ => {
                             panic!("Internal error. Please report."); // not possible since it matches
@@ -904,7 +858,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                             }
                           }
                           language::syntax::Term::Var { name: ref other_arg_name } => {
-                            subst(&mut other_new_rhs, other_arg_name, &rule_arg);
+                            other_new_rhs.subst(other_arg_name, &rule_arg);
                           }
                           _ => {
                             panic!("Internal error. Please report."); // not possible since it matches
