@@ -91,8 +91,8 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
   }
 
   impl Stacks {
-    fn new() -> Stacks {
-      Stacks { stacks: HashMap::new() }
+    fn new() -> Self {
+      Self { stacks: HashMap::new() }
     }
     fn get(&self, col: Ptr) -> Option<&Vec<bool>> {
       self.stacks.get(&col)
@@ -126,14 +126,14 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           let var = runtime::Var(runtime::get_loc(term, 0));
           ctx.names.get(&var).map(|s| s.clone()).unwrap_or("?".to_string())
         };
-        return Box::new(language::syntax::Term::Lam { name, body });
+        Box::new(language::syntax::Term::Lam { name, body })
       }
       runtime::APP => {
         let func = runtime::load_arg(&ctx.heap, term, 0);
         let argm = runtime::load_arg(&ctx.heap, term, 1);
         let func = readback(heap, prog, ctx, stacks, func, depth + 1);
         let argm = readback(heap, prog, ctx, stacks, argm, depth + 1);
-        return Box::new(language::syntax::Term::App { func, argm });
+        Box::new(language::syntax::Term::App { func, argm })
       }
       runtime::SUP => {
         let col = runtime::get_ext(term);
@@ -151,7 +151,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           let val1 = runtime::load_arg(&ctx.heap, term, 1);
           let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
           let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
-          return Box::new(language::syntax::Term::Sup { val0, val1 });
+          Box::new(language::syntax::Term::Sup { val0, val1 })
         }
       }
       runtime::DP0 => {
@@ -194,15 +194,15 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         let val1 = runtime::load_arg(&ctx.heap, term, 1);
         let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
         let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
-        return Box::new(language::syntax::Term::Op2 { oper, val0, val1 });
+        Box::new(language::syntax::Term::Op2 { oper, val0, val1 })
       }
       runtime::U60 => {
         let numb = runtime::get_num(term);
-        return Box::new(language::syntax::Term::U6O { numb });
+        Box::new(language::syntax::Term::U6O { numb })
       }
       runtime::F60 => {
         let numb = runtime::get_num(term);
-        return Box::new(language::syntax::Term::F6O { numb });
+        Box::new(language::syntax::Term::F6O { numb })
       }
       runtime::CTR | runtime::FUN => {
         let func = runtime::get_ext(term);
@@ -214,7 +214,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         }
         let name =
           ctx.prog.nams.get(&func).map(String::to_string).unwrap_or_else(|| format!("${}", func));
-        return Box::new(language::syntax::Term::Ctr { name, args });
+        Box::new(language::syntax::Term::Ctr { name, args })
       }
       runtime::VAR => {
         let name = ctx
@@ -222,19 +222,13 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           .get(&term)
           .map(String::to_string)
           .unwrap_or_else(|| format!("^{}", runtime::get_loc(term, 0)));
-        return Box::new(language::syntax::Term::Var { name }); // ............... /\ why this sounds so threatening?
+        Box::new(language::syntax::Term::Var { name }) // ............... /\ why this sounds so threatening?
       }
-      runtime::ARG => {
-        return Box::new(language::syntax::Term::Var { name: "<arg>".to_string() });
-      }
-      runtime::ERA => {
-        return Box::new(language::syntax::Term::Var { name: "<era>".to_string() });
-      }
-      _ => {
-        return Box::new(language::syntax::Term::Var {
-          name: format!("<unknown_tag_{}>", runtime::get_tag(term)),
-        });
-      }
+      runtime::ARG => Box::new(language::syntax::Term::Var { name: "<arg>".to_string() }),
+      runtime::ERA => Box::new(language::syntax::Term::Var { name: "<era>".to_string() }),
+      _ => Box::new(language::syntax::Term::Var {
+        name: format!("<unknown_tag_{}>", runtime::get_tag(term)),
+      }),
     }
   }
 

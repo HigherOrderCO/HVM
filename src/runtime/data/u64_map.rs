@@ -11,13 +11,13 @@ impl<A> Default for U64Map<A> {
 }
 
 impl<A> U64Map<A> {
-  pub fn new() -> U64Map<A> {
+  pub fn new() -> Self {
     // std::collections::HashMap::with_hasher(std::hash::BuildHasherDefault::default());
     Self { data: vec![] }
   }
 
-  pub fn from_hashmap(old_map: &mut std::collections::HashMap<u64, A>) -> U64Map<A> {
-    let mut new_map: U64Map<A> = U64Map::new();
+  pub fn from_hashmap(old_map: &mut std::collections::HashMap<u64, A>) -> Self {
+    let mut new_map = Self::new();
     for (key, val) in old_map.drain() {
       new_map.insert(key, val);
     }
