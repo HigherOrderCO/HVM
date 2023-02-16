@@ -149,14 +149,14 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
   }
   if (get_tag(arg0) == U60) {
     if (get_num(arg0) == 0) {
-      inc_cost(ctx.heap, ctx.tid);
+      ctx.heap.inc_cost(ctx.tid);
       let done = arg2;
       link(ctx.heap, *ctx.host, done);
       collect(ctx.heap, &ctx.prog.aris, ctx.tid, arg1);
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     } else {
-      inc_cost(ctx.heap, ctx.tid);
+      ctx.heap.inc_cost(ctx.tid);
       let done = arg1;
       link(ctx.heap, *ctx.host, done);
       collect(ctx.heap, &ctx.prog.aris, ctx.tid, arg2);
@@ -192,7 +192,7 @@ pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
   }
   if (get_tag(arg0) == U60) {
     if (get_num(arg0) == 0) {
-      inc_cost(ctx.heap, ctx.tid);
+      ctx.heap.inc_cost(ctx.tid);
       let ctr_0 = alloc(ctx.heap, ctx.tid, 2);
       link(ctx.heap, ctr_0 + 0, arg1);
       link(ctx.heap, ctr_0 + 1, arg2);
@@ -201,7 +201,7 @@ pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     } else {
-      inc_cost(ctx.heap, ctx.tid);
+      ctx.heap.inc_cost(ctx.tid);
       let ctr_0 = alloc(ctx.heap, ctx.tid, 2);
       link(ctx.heap, ctr_0 + 0, arg2);
       link(ctx.heap, ctr_0 + 1, arg1);

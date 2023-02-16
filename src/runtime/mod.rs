@@ -136,7 +136,7 @@ impl Runtime {
 
   /// Return the total number of graph rewrites computed
   pub fn get_rewrites(&self) -> u64 {
-    get_cost(&self.heap)
+    self.heap.get_cost()
   }
 
   /// Returns the name of a given id

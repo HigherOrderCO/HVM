@@ -17,7 +17,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // x <- a
   // body
   if get_tag(arg0) == LAM {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     atomic_subst(
       ctx.heap,
       &ctx.prog.aris,
@@ -36,7 +36,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // dup x0 x1 = c
   // {(a x0) (b x1)}
   if get_tag(arg0) == SUP {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     let app0 = get_loc(ctx.term, 0);
     let app1 = get_loc(arg0, 0);
     let let0 = alloc(ctx.heap, ctx.tid, 3);

@@ -20,7 +20,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // s <- λx1(f1)
   // x <- {x0 x1}
   if get_tag(arg0) == LAM {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     let let0 = alloc(ctx.heap, ctx.tid, 3);
     let par0 = alloc(ctx.heap, ctx.tid, 2);
     let lam0 = alloc(ctx.heap, ctx.tid, 2);
@@ -54,7 +54,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   //           | dup xB yB = b
   else if get_tag(arg0) == SUP {
     if tcol == get_ext(arg0) {
-      inc_cost(ctx.heap, ctx.tid);
+      ctx.heap.inc_cost(ctx.tid);
       atomic_subst(
         ctx.heap,
         &ctx.prog.aris,
@@ -73,7 +73,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
       free(ctx.heap, ctx.tid, get_loc(arg0, 0), 2);
       return true;
     } else {
-      inc_cost(ctx.heap, ctx.tid);
+      ctx.heap.inc_cost(ctx.tid);
       let par0 = alloc(ctx.heap, ctx.tid, 2);
       let let0 = alloc(ctx.heap, ctx.tid, 3);
       let par1 = get_loc(arg0, 0);
@@ -108,7 +108,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // y <- N
   // ~
   else if get_tag(arg0) == U60 {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), arg0);
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), arg0);
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
@@ -120,7 +120,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // y <- N
   // ~
   else if get_tag(arg0) == F60 {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), arg0);
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), arg0);
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
@@ -135,7 +135,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // x <- (K a0 b0 c0 ...)
   // y <- (K a1 b1 c1 ...)
   else if get_tag(arg0) == CTR {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     let fnum = get_ext(arg0);
     let fari = arity_of(&ctx.prog.aris, arg0);
     if fari == 0 {
@@ -191,7 +191,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // x <- *
   // y <- *
   else if get_tag(arg0) == ERA {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), Era());
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), Era());
     link(ctx.heap, *ctx.host, Era());

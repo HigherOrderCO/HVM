@@ -334,7 +334,7 @@ pub fn build_function(
         line(&mut apply, 1, &format!("if {} {{", conds));
 
         // Increments the gas count
-        line(&mut apply, 2, "inc_cost(ctx.heap, ctx.tid);");
+        line(&mut apply, 2, "ctx.heap.inc_cost(ctx.tid);");
 
         // Builds the free vector
         let mut free: Vec<Option<(String, u64)>> = vec![];
@@ -519,7 +519,7 @@ pub fn build_function_rule_rhs(
             tab + 0,
             &format!("if get_tag({}) == U60 || get_tag({}) == F60 {{", copy, copy),
           );
-          line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
+          line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(code, tab + 1, &format!("{} = {};", dup0, copy));
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
           line(code, tab + 0, "} else {");
@@ -605,7 +605,7 @@ pub fn build_function_rule_rhs(
           let ret = fresh(nams, "ret");
           line(code, tab + 0, &format!("let {};", ret));
           line(code, tab + 0, &format!("if get_tag({}) == U60 {{", fargs[0]));
-          line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
+          line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
           line(
             code,
@@ -636,7 +636,7 @@ pub fn build_function_rule_rhs(
           let ret = fresh(nams, "ret");
           line(code, tab + 0, &format!("let {};", ret));
           line(code, tab + 0, &format!("if get_tag({}) == U60 {{", fargs[0]));
-          line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
+          line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           let both = fresh(nams, "both");
           line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
           line(code, tab + 2, &format!("let {} = {};", both, alloc_node(free, 2)));
@@ -740,7 +740,7 @@ pub fn build_function_rule_rhs(
             }
             _ => line(code, tab + 1, &format!("{} = 0;", retx)),
           }
-          line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
+          line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(
             code,
             tab + 0,
@@ -797,7 +797,7 @@ pub fn build_function_rule_rhs(
             }
             _ => line(code, tab + 1, &format!("{} = 0;", retx)),
           }
-          line(code, tab + 1, "inc_cost(ctx.heap, ctx.tid);");
+          line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(code, tab + 0, "} else {");
         }
         line(code, tab + 1, &format!("let {} = {};", name, alloc_node(&mut vec![], 2)));

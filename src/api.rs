@@ -50,5 +50,5 @@ pub fn eval(
   runtime::free(&heap, 0, 0, 1);
 
   // Returns the result, rewrite cost and time elapsed
-  Ok((code, runtime::get_cost(&heap), time))
+  Ok((code, heap.get_cost(), time))
 }

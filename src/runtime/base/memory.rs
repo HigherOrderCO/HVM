@@ -322,16 +322,18 @@ pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
   get_val(lnk) + arg
 }
 
-pub fn get_cost(heap: &Heap) -> u64 {
-  heap.lvar.iter().map(|x| x.cost.load(Ordering::Relaxed)).sum()
-}
+impl Heap {
+  pub fn get_cost(&self) -> u64 {
+    self.lvar.iter().map(|x| x.cost.load(Ordering::Relaxed)).sum()
+  }
 
-pub fn get_used(heap: &Heap) -> i64 {
-  heap.lvar.iter().map(|x| x.used.load(Ordering::Relaxed)).sum()
-}
+  pub fn get_used(&self) -> i64 {
+    self.lvar.iter().map(|x| x.used.load(Ordering::Relaxed)).sum()
+  }
 
-pub fn inc_cost(heap: &Heap, tid: usize) {
-  unsafe { heap.lvar.get_unchecked(tid) }.cost.fetch_add(1, Ordering::Relaxed);
+  pub fn inc_cost(&self, tid: usize) {
+    unsafe { self.lvar.get_unchecked(tid) }.cost.fetch_add(1, Ordering::Relaxed);
+  }
 }
 
 pub fn gen_dup(heap: &Heap, tid: usize) -> u64 {

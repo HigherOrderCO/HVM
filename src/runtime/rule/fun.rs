@@ -130,7 +130,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
     // If all conditions are satisfied, the rule matched, so we must apply it
     if matched {
       // Increments the gas count
-      inc_cost(ctx.heap, ctx.tid);
+      ctx.heap.inc_cost(ctx.tid);
 
       // Builds the right-hand side ctx.term
       let done = alloc_body(ctx.heap, ctx.prog, ctx.tid, ctx.term, &rule.vars, &rule.body);
@@ -168,7 +168,7 @@ pub fn superpose(
   argn: Ptr,
   n: u64,
 ) -> Ptr {
-  inc_cost(heap, tid);
+  heap.inc_cost(tid);
   let arit = arity_of(aris, term);
   let func = get_ext(term);
   let fun0 = get_loc(term, 0);

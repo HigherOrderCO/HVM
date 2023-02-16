@@ -20,7 +20,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   if get_tag(arg0) == U60 && get_tag(arg1) == U60 {
     //operate(ctx.heap, ctx.tid, ctx.term, arg0, arg1, *ctx.host);
 
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     let a = get_num(arg0);
     let b = get_num(arg1);
     let c = match get_ext(ctx.term) {
@@ -54,7 +54,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   else if get_tag(arg0) == F60 && get_tag(arg1) == F60 {
     //operate(ctx.heap, ctx.tid, ctx.term, arg0, arg1, *ctx.host);
 
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     let a = get_num(arg0);
     let b = get_num(arg1);
     let c = match get_ext(ctx.term) {
@@ -87,7 +87,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // dup b0 b1 = b
   // {(+ a0 b0) (+ a1 b1)}
   else if get_tag(arg0) == SUP {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     let op20 = get_loc(ctx.term, 0);
     let op21 = get_loc(arg0, 0);
     let let0 = alloc(ctx.heap, ctx.tid, 3);
@@ -108,7 +108,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // dup a0 a1 = a
   // {(+ a0 b0) (+ a1 b1)}
   else if get_tag(arg1) == SUP {
-    inc_cost(ctx.heap, ctx.tid);
+    ctx.heap.inc_cost(ctx.tid);
     let op20 = get_loc(ctx.term, 0);
     let op21 = get_loc(arg1, 0);
     let let0 = alloc(ctx.heap, ctx.tid, 3);
