@@ -131,7 +131,7 @@ impl Runtime {
 
   /// Given a location, recovers the linear Term stored on it, as code
   pub fn show_linear(&self, host: u64) -> String {
-    language::readback::as_linear_code(&self.heap, &self.prog, host)
+    self.heap.as_linear_code(&self.prog, host)
   }
 
   /// Return the total number of graph rewrites computed
@@ -387,6 +387,6 @@ impl Runtime {
 
   /// Given a location, recovers the Term stored on it
   pub fn linear_readback(&self, host: u64) -> Box<language::syntax::Term> {
-    language::readback::as_linear_term(&self.heap, &self.prog, host)
+    self.heap.as_linear_term(&self.prog, host)
   }
 }
