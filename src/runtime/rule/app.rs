@@ -5,7 +5,7 @@ pub fn visit(ctx: ReduceCtx) -> bool {
   let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
   *ctx.cont = goup;
   *ctx.host = get_loc(ctx.term, 0);
-  return true;
+  true
 }
 
 #[inline(always)]
@@ -53,5 +53,5 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     return false;
   }
 
-  return false;
+  false
 }

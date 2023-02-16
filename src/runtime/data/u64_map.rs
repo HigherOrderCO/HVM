@@ -4,10 +4,16 @@ pub struct U64Map<A> {
   pub data: Vec<Option<A>>,
 }
 
+impl<A> Default for U64Map<A> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<A> U64Map<A> {
   pub fn new() -> U64Map<A> {
     // std::collections::HashMap::with_hasher(std::hash::BuildHasherDefault::default());
-    return U64Map { data: Vec::new() };
+    U64Map { data: Vec::new() }
   }
 
   pub fn from_hashmap(old_map: &mut std::collections::HashMap<u64, A>) -> U64Map<A> {
@@ -15,13 +21,13 @@ impl<A> U64Map<A> {
     for (key, val) in old_map.drain() {
       new_map.insert(key, val);
     }
-    return new_map;
+    new_map
   }
 
   pub fn push(&mut self, val: A) -> u64 {
     let key = self.data.len() as u64;
     self.insert(key, val);
-    return key;
+    key
   }
 
   pub fn insert(&mut self, key: u64, val: A) {
@@ -35,6 +41,6 @@ impl<A> U64Map<A> {
     if let Some(Some(got)) = self.data.get(*key as usize) {
       return Some(got);
     }
-    return None;
+    None
   }
 }

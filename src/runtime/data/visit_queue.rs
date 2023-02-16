@@ -18,28 +18,34 @@ pub struct VisitQueue {
 }
 
 pub fn new_visit(host: u64, hold: bool, cont: u64) -> Visit {
-  return (host << 32) | (if hold { 0x80000000 } else { 0 }) | cont;
+  (host << 32) | (if hold { 0x80000000 } else { 0 }) | cont
 }
 
 pub fn get_visit_host(visit: Visit) -> u64 {
-  return visit >> 32;
+  visit >> 32
 }
 
 pub fn get_visit_hold(visit: Visit) -> bool {
-  return (visit >> 31) & 1 == 1;
+  (visit >> 31) & 1 == 1
 }
 
 pub fn get_visit_cont(visit: Visit) -> u64 {
-  return visit & 0x3FFFFFF;
+  visit & 0x3FFFFFF
+}
+
+impl Default for VisitQueue {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl VisitQueue {
   pub fn new() -> VisitQueue {
-    return VisitQueue {
+    VisitQueue {
       init: CachePadded::new(AtomicUsize::new(0)),
       last: CachePadded::new(AtomicUsize::new(0)),
       data: crate::runtime::new_atomic_u64_array(VISIT_QUEUE_SIZE),
-    };
+    }
   }
 
   pub fn push(&self, value: u64) {
@@ -81,6 +87,6 @@ impl VisitQueue {
         return Some((get_visit_cont(visit), get_visit_host(visit)));
       }
     }
-    return None;
+    None
   }
 }

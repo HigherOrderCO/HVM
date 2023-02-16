@@ -33,15 +33,7 @@ pub struct ReduceCtx<'a> {
 //   }
 
 pub fn is_whnf(term: Ptr) -> bool {
-  match get_tag(term) {
-    ERA => true,
-    LAM => true,
-    SUP => true,
-    CTR => true,
-    U60 => true,
-    F60 => true,
-    _ => false,
-  }
+  matches!(get_tag(term), ERA | LAM | SUP | CTR | U60 | F60)
 }
 
 pub fn reduce(
@@ -68,7 +60,7 @@ pub fn reduce(
   });
 
   // Return whnf term ptr
-  return load_ptr(heap, root);
+  load_ptr(heap, root)
 }
 
 pub fn reducer(
@@ -144,22 +136,20 @@ pub fn reducer(
                   if term != load_ptr(heap, host) {
                     release_lock(heap, tid, term);
                     continue 'visit;
+                  } else if dup::visit(ReduceCtx {
+                    heap,
+                    prog,
+                    tid,
+                    hold,
+                    term,
+                    visit,
+                    redex,
+                    cont: &mut cont,
+                    host: &mut host,
+                  }) {
+                    continue 'visit;
                   } else {
-                    if dup::visit(ReduceCtx {
-                      heap,
-                      prog,
-                      tid,
-                      hold,
-                      term,
-                      visit,
-                      redex,
-                      cont: &mut cont,
-                      host: &mut host,
-                    }) {
-                      continue 'visit;
-                    } else {
-                      break 'work;
-                    }
+                    break 'work;
                   }
                 }
               }
