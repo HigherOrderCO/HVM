@@ -136,11 +136,13 @@ impl Program {
   }
 }
 
-pub fn get_var(heap: &Heap, term: Ptr, var: &RuleVar) -> Ptr {
-  let RuleVar { param, field, erase: _ } = var;
-  match field {
-    Some(i) => heap.take_arg(heap.load_arg(term, *param), *i),
-    None => heap.take_arg(term, *param),
+impl Heap {
+  pub fn get_var(&self, term: Ptr, var: &RuleVar) -> Ptr {
+    let RuleVar { param, field, erase: _ } = var;
+    match field {
+      Some(i) => self.take_arg(self.load_arg(term, *param), *i),
+      None => self.take_arg(term, *param),
+    }
   }
 }
 
@@ -164,7 +166,7 @@ pub fn alloc_body(
     unsafe {
       match cell {
         RuleBodyCell::Val { value } => *value,
-        RuleBodyCell::Var { index } => get_var(heap, term, vars.get_unchecked(*index as usize)),
+        RuleBodyCell::Var { index } => heap.get_var(term, vars.get_unchecked(*index as usize)),
         RuleBodyCell::Ptr { value, targ, slot } => {
           let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
           // should be changed if the pointer format changes
