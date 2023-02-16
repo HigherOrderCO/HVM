@@ -92,12 +92,12 @@ impl Runtime {
 
   /// Given a location, evaluates a term to head normal form
   pub fn reduce(&mut self, host: u64) {
-    reduce(&self.heap, &self.prog, &self.tids, host, false, self.dbug);
+    self.heap.reduce(&self.prog, &self.tids, host, false, self.dbug);
   }
 
   /// Given a location, evaluates a term to full normal form
   pub fn normalize(&mut self, host: u64) {
-    reduce(&self.heap, &self.prog, &self.tids, host, true, self.dbug);
+    self.heap.reduce(&self.prog, &self.tids, host, true, self.dbug);
   }
 
   /// Evaluates a code, allocs and evaluates to full normal form. Returns its location.

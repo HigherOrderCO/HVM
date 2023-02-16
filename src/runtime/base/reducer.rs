@@ -36,34 +36,29 @@ pub fn is_whnf(term: Ptr) -> bool {
   matches!(get_tag(term), ERA | LAM | SUP | CTR | U60 | F60)
 }
 
-pub fn reduce(
-  heap: &Heap,
-  prog: &Program,
-  tids: &[usize],
-  root: u64,
-  full: bool,
-  debug: bool,
-) -> Ptr {
-  // Halting flag
-  let stop = &AtomicUsize::new(1);
-  let barr = &Barrier::new(tids.len());
-  let locs = &tids.iter().map(|x| AtomicU64::new(u64::MAX)).collect::<Vec<AtomicU64>>();
+impl Heap {
+  pub fn reduce(&self, prog: &Program, tids: &[usize], root: u64, full: bool, debug: bool) -> Ptr {
+    // Halting flag
+    let stop = &AtomicUsize::new(1);
+    let barr = &Barrier::new(tids.len());
+    let locs = &tids.iter().map(|x| AtomicU64::new(u64::MAX)).collect::<Vec<AtomicU64>>();
 
-  // Spawn a thread for each worker
-  std::thread::scope(|s| {
-    for tid in tids {
-      s.spawn(move || {
-        reducer(heap, prog, tids, stop, barr, locs, root, *tid, full, debug);
-        //println!("[{}] done", tid);
-      });
-    }
-  });
+    // Spawn a thread for each worker
+    std::thread::scope(|s| {
+      for tid in tids {
+        s.spawn(move || {
+          reducer(self, prog, tids, stop, barr, locs, root, *tid, full, debug);
+          //println!("[{}] done", tid);
+        });
+      }
+    });
 
-  // Return whnf term ptr
-  heap.load_ptr(root)
+    // Return whnf term ptr
+    self.load_ptr(root)
+  }
 }
 
-pub fn reducer(
+fn reducer(
   heap: &Heap,
   prog: &Program,
   tids: &[usize],
@@ -438,7 +433,7 @@ impl Heap {
   pub fn normalize(&self, prog: &Program, tids: &[usize], host: u64, debug: bool) -> Ptr {
     let mut cost = self.get_cost();
     loop {
-      reduce(self, prog, tids, host, true, debug);
+      self.reduce(prog, tids, host, true, debug);
       let new_cost = self.get_cost();
       if new_cost != cost {
         cost = new_cost;

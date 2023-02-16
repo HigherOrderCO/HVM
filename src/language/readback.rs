@@ -505,7 +505,7 @@ impl Heap {
   pub fn as_string(&self, prog: &Program, tids: &[usize], host: u64) -> Option<String> {
     let mut host = host;
     let mut text = String::new();
-    runtime::reduce(self, prog, tids, host, true, false);
+    self.reduce(prog, tids, host, true, false);
     loop {
       let term = self.load_ptr(host);
       if runtime::get_tag(term) == runtime::CTR {
