@@ -221,7 +221,7 @@ impl Term {
           }
         }
       }
-      Term::Dup { expr, body, nam0, nam1 } => {
+      Self::Dup { expr, body, nam0, nam1 } => {
         let is_global_0 = crate::runtime::get_global_name_misc(nam0).is_some();
         let is_global_1 = crate::runtime::get_global_name_misc(nam1).is_some();
         if is_global_0 && crate::runtime::get_global_name_misc(nam0) != Some(crate::runtime::DP0) {
@@ -262,16 +262,16 @@ impl Term {
         }
         let nam0 = format!("{}{}", new_nam0, if !is_global_0 { ".0" } else { "" });
         let nam1 = format!("{}{}", new_nam1, if !is_global_0 { ".0" } else { "" });
-        let term = Term::Dup { nam0, nam1, expr, body };
+        let term = Self::Dup { nam0, nam1, expr, body };
         Box::new(term)
       }
-      Term::Sup { val0, val1 } => {
+      Self::Sup { val0, val1 } => {
         let val0 = val0.sanitize_term(lhs, tbl, ctx)?;
         let val1 = val1.sanitize_term(lhs, tbl, ctx)?;
-        let term = Term::Sup { val0, val1 };
+        let term = Self::Sup { val0, val1 };
         Box::new(term)
       }
-      Term::Let { name, expr, body } => {
+      Self::Let { name, expr, body } => {
         if crate::runtime::get_global_name_misc(name).is_some() {
           panic!("Global variable '{}' not allowed on let. Use dup instead.", name);
         }
@@ -286,7 +286,7 @@ impl Term {
         }
         duplicator(&new_name, expr, body, ctx.uses)
       }
-      Term::Lam { name, body } => {
+      Self::Lam { name, body } => {
         let is_global = crate::runtime::get_global_name_misc(name).is_some();
         let mut new_name = if is_global { name.clone() } else { (ctx.fresh)() };
         let got_name = tbl.remove(name);
@@ -303,36 +303,36 @@ impl Term {
         let expr = Box::new(Term::Var { name: new_name.clone() });
         let body = duplicator(&new_name, expr, body, ctx.uses);
         rename_erased(&mut new_name, ctx.uses);
-        let term = Term::Lam { name: new_name, body };
+        let term = Self::Lam { name: new_name, body };
         Box::new(term)
       }
-      Term::App { func, argm } => {
+      Self::App { func, argm } => {
         let func = func.sanitize_term(lhs, tbl, ctx)?;
         let argm = argm.sanitize_term(lhs, tbl, ctx)?;
-        let term = Term::App { func, argm };
+        let term = Self::App { func, argm };
         Box::new(term)
       }
-      Term::Ctr { name, args } => {
+      Self::Ctr { name, args } => {
         let mut n_args = Vec::with_capacity(args.len());
         for arg in args {
           let arg = arg.sanitize_term(lhs, tbl, ctx)?;
           n_args.push(arg);
         }
-        let term = Term::Ctr { name: name.clone(), args: n_args };
+        let term = Self::Ctr { name: name.clone(), args: n_args };
         Box::new(term)
       }
-      Term::Op2 { oper, val0, val1 } => {
+      Self::Op2 { oper, val0, val1 } => {
         let val0 = val0.sanitize_term(lhs, tbl, ctx)?;
         let val1 = val1.sanitize_term(lhs, tbl, ctx)?;
-        let term = Term::Op2 { oper: *oper, val0, val1 };
+        let term = Self::Op2 { oper: *oper, val0, val1 };
         Box::new(term)
       }
-      Term::U6O { numb } => {
-        let term = Term::U6O { numb: *numb };
+      Self::U6O { numb } => {
+        let term = Self::U6O { numb: *numb };
         Box::new(term)
       }
-      Term::F6O { numb } => {
-        let term = Term::F6O { numb: *numb };
+      Self::F6O { numb } => {
+        let term = Self::F6O { numb: *numb };
         Box::new(term)
       }
     };
@@ -445,7 +445,7 @@ impl Rule {
   // Example:
   //   - sanitizing: `(Foo a b) = (+ a a)`
   //   - results in: `(Foo x0 *) = dup x0.0 x0.1 = x0; (+ x0.0 x0.1)`
-  pub fn sanitize_rule(&self) -> Result<Rule, String> {
+  pub fn sanitize_rule(&self) -> Result<Self, String> {
     // Pass through the lhs of the function generating new names
     // for every variable found in the style described before with
     // the fresh function. Also checks if rule's left side is valid.
