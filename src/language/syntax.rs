@@ -2,6 +2,93 @@ use crate::runtime::data::f60;
 use crate::runtime::data::u60;
 use HOPA;
 
+use std::collections::{BTreeMap, HashMap};
+
+type NameTable = BTreeMap<String, String>;
+
+struct CtxSanitizeTerm<'a> {
+  uses: &'a mut HashMap<String, u64>,
+  fresh: &'a mut dyn FnMut() -> String,
+}
+// Recursive aux function to duplicate one variable
+// an amount of times
+fn duplicator_go(
+  i: u64,
+  duplicated_times: u64,
+  body: Box<Term>,
+  vars: &mut Vec<String>,
+) -> Box<Term> {
+  if i == duplicated_times {
+    body
+  } else {
+    let nam0 = vars.pop().unwrap();
+    let nam1 = vars.pop().unwrap();
+    let exp0 = Box::new(Term::Var { name: format!("c.{}", i - 1) });
+    Box::new(Term::Dup {
+      nam0,
+      nam1,
+      expr: exp0,
+      body: duplicator_go(i + 1, duplicated_times, body, vars),
+    })
+  }
+}
+// Duplicates all variables that are used more than once.
+// The process is done generating auxiliary variables and
+// applying dup on them.
+fn duplicator(
+  name: &str,
+  expr: Box<Term>,
+  body: Box<Term>,
+  uses: &HashMap<String, u64>,
+) -> Box<Term> {
+  let amount = uses.get(name).copied();
+
+  match amount {
+    // if not used nothing is done
+    None => body,
+    Some(x) => {
+      match x.cmp(&1) {
+        // if not used nothing is done
+        std::cmp::Ordering::Less => body,
+        // if used once just make a let then
+        std::cmp::Ordering::Equal => {
+          let term = Term::Let { name: format!("{}.0", name), expr, body };
+          Box::new(term)
+        }
+        // if used more then once duplicate
+        std::cmp::Ordering::Greater => {
+          let amount = amount.unwrap(); // certainly is not None
+          let duplicated_times = amount - 1; // times that name is duplicated
+          let aux_qtt = amount - 2; // quantity of aux variables
+          let mut vars = vec![];
+
+          // generate name for duplicated variables
+          for i in (aux_qtt..duplicated_times * 2).rev() {
+            let i = i - aux_qtt; // moved to 0,1,..
+            let key = format!("{}.{}", name, i);
+            vars.push(key);
+          }
+
+          // generate name for aux variables
+          for i in (0..aux_qtt).rev() {
+            let key = format!("c.{}", i);
+            vars.push(key);
+          }
+
+          // use aux variables to duplicate the variable
+          let dup = Term::Dup {
+            nam0: vars.pop().unwrap(),
+            nam1: vars.pop().unwrap(),
+            expr,
+            body: duplicator_go(1, duplicated_times, body, &mut vars),
+          };
+
+          Box::new(dup)
+        }
+      }
+    }
+  }
+}
 // Types
 // =====
 
@@ -87,6 +174,166 @@ impl Term {
         val1.subst(sub_name, value);
       }
     }
+  }
+
+  // Sanitize one term, following the described in main function
+  fn sanitize_term(
+    &self,
+    lhs: bool,
+    tbl: &mut NameTable,
+    ctx: &mut CtxSanitizeTerm,
+  ) -> Result<Box<Self>, String> {
+    fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
+      if !crate::runtime::get_global_name_misc(name).is_some() && uses.get(name).copied() <= Some(0)
+      {
+        *name = "*".to_string();
+      }
+    }
+    let term = match self {
+      Term::Var { name } => {
+        if lhs {
+          let mut name = tbl.get(name).unwrap_or(name).clone();
+          rename_erased(&mut name, ctx.uses);
+          Box::new(Term::Var { name })
+        } else if crate::runtime::get_global_name_misc(name).is_some() {
+          if tbl.get(name).is_some() {
+            panic!("Using a global variable more than once isn't supported yet. Use an explicit 'let' to clone it. {} {:?}", name, tbl.get(name));
+          } else {
+            tbl.insert(name.clone(), String::new());
+            Box::new(Term::Var { name: name.clone() })
+          }
+        } else {
+          // create a var with the name generated before
+          // concatenated with '.{{times_used}}'
+          if let Some(name) = tbl.get(name) {
+            let used = { *ctx.uses.entry(name.clone()).and_modify(|x| *x += 1).or_insert(1) };
+            let name = format!("{}.{}", name, used - 1);
+            Box::new(Term::Var { name })
+          //} else if get_global_name_misc(&name) {
+          // println!("Allowed unbound variable: {}", name);
+          // Box::new(Term::Var { name: name.clone() })
+          } else {
+            return Err(format!("Unbound variable: `{}`.", name));
+          }
+        }
+      }
+      Term::Dup { expr, body, nam0, nam1 } => {
+        let is_global_0 = crate::runtime::get_global_name_misc(nam0).is_some();
+        let is_global_1 = crate::runtime::get_global_name_misc(nam1).is_some();
+        if is_global_0 && crate::runtime::get_global_name_misc(nam0) != Some(crate::runtime::DP0) {
+          panic!("The name of the global dup var '{}' must start with '$0'.", nam0);
+        }
+        if is_global_1 && crate::runtime::get_global_name_misc(nam1) != Some(crate::runtime::DP1) {
+          panic!("The name of the global dup var '{}' must start with '$1'.", nam1);
+        }
+        if is_global_0 != is_global_1 {
+          panic!("Both variables must be global: '{}' and '{}'.", nam0, nam1);
+        }
+        if is_global_0 && &nam0[2..] != &nam1[2..] {
+          panic!("Global dup names must be identical: '{}' and '{}'.", nam0, nam1);
+        }
+        let new_nam0 = if is_global_0 { nam0.clone() } else { (ctx.fresh)() };
+        let new_nam1 = if is_global_1 { nam1.clone() } else { (ctx.fresh)() };
+        let expr = expr.sanitize_term(lhs, tbl, ctx)?;
+        let got_nam0 = tbl.remove(nam0);
+        let got_nam1 = tbl.remove(nam1);
+        if !is_global_0 {
+          tbl.insert(nam0.clone(), new_nam0.clone());
+        }
+        if !is_global_1 {
+          tbl.insert(nam1.clone(), new_nam1.clone());
+        }
+        let body = body.sanitize_term(lhs, tbl, ctx)?;
+        if !is_global_0 {
+          tbl.remove(nam0);
+        }
+        if let Some(x) = got_nam0 {
+          tbl.insert(nam0.clone(), x);
+        }
+        if !is_global_1 {
+          tbl.remove(nam1);
+        }
+        if let Some(x) = got_nam1 {
+          tbl.insert(nam1.clone(), x);
+        }
+        let nam0 = format!("{}{}", new_nam0, if !is_global_0 { ".0" } else { "" });
+        let nam1 = format!("{}{}", new_nam1, if !is_global_0 { ".0" } else { "" });
+        let term = Term::Dup { nam0, nam1, expr, body };
+        Box::new(term)
+      }
+      Term::Sup { val0, val1 } => {
+        let val0 = val0.sanitize_term(lhs, tbl, ctx)?;
+        let val1 = val1.sanitize_term(lhs, tbl, ctx)?;
+        let term = Term::Sup { val0, val1 };
+        Box::new(term)
+      }
+      Term::Let { name, expr, body } => {
+        if crate::runtime::get_global_name_misc(name).is_some() {
+          panic!("Global variable '{}' not allowed on let. Use dup instead.", name);
+        }
+        let new_name = (ctx.fresh)();
+        let expr = expr.sanitize_term(lhs, tbl, ctx)?;
+        let got_name = tbl.remove(name);
+        tbl.insert(name.clone(), new_name.clone());
+        let body = body.sanitize_term(lhs, tbl, ctx)?;
+        tbl.remove(name);
+        if let Some(x) = got_name {
+          tbl.insert(name.clone(), x);
+        }
+        duplicator(&new_name, expr, body, ctx.uses)
+      }
+      Term::Lam { name, body } => {
+        let is_global = crate::runtime::get_global_name_misc(name).is_some();
+        let mut new_name = if is_global { name.clone() } else { (ctx.fresh)() };
+        let got_name = tbl.remove(name);
+        if !is_global {
+          tbl.insert(name.clone(), new_name.clone());
+        }
+        let body = body.sanitize_term(lhs, tbl, ctx)?;
+        if !is_global {
+          tbl.remove(name);
+        }
+        if let Some(x) = got_name {
+          tbl.insert(name.clone(), x);
+        }
+        let expr = Box::new(Term::Var { name: new_name.clone() });
+        let body = duplicator(&new_name, expr, body, ctx.uses);
+        rename_erased(&mut new_name, ctx.uses);
+        let term = Term::Lam { name: new_name, body };
+        Box::new(term)
+      }
+      Term::App { func, argm } => {
+        let func = func.sanitize_term(lhs, tbl, ctx)?;
+        let argm = argm.sanitize_term(lhs, tbl, ctx)?;
+        let term = Term::App { func, argm };
+        Box::new(term)
+      }
+      Term::Ctr { name, args } => {
+        let mut n_args = Vec::with_capacity(args.len());
+        for arg in args {
+          let arg = arg.sanitize_term(lhs, tbl, ctx)?;
+          n_args.push(arg);
+        }
+        let term = Term::Ctr { name: name.clone(), args: n_args };
+        Box::new(term)
+      }
+      Term::Op2 { oper, val0, val1 } => {
+        let val0 = val0.sanitize_term(lhs, tbl, ctx)?;
+        let val1 = val1.sanitize_term(lhs, tbl, ctx)?;
+        let term = Term::Op2 { oper: *oper, val0, val1 };
+        Box::new(term)
+      }
+      Term::U6O { numb } => {
+        let term = Term::U6O { numb: *numb };
+        Box::new(term)
+      }
+      Term::F6O { numb } => {
+        let term = Term::F6O { numb: *numb };
+        Box::new(term)
+      }
+    };
+
+    Ok(term)
   }
 }
 
@@ -180,6 +427,88 @@ impl Rule {
       }
     }
     (true, same_shape)
+  }
+
+  // FIXME: right now, the sanitizer isn't able to identify if a scopeless lambda doesn't use its
+  // bound variable, so it won't set the "eras" flag to "true" in this case, but it should.
+
+  // This big function sanitizes a rule. That has the following effect:
+  // - All variables are renamed to have a global unique name.
+  // - All variables are linearized.
+  //   - If they're used more than once, dups are inserted.
+  //   - If they're used once, nothing changes.
+  //   - If they're never used, their name is changed to "*"
+  // Example:
+  //   - sanitizing: `(Foo a b) = (+ a a)`
+  //   - results in: `(Foo x0 *) = dup x0.0 x0.1 = x0; (+ x0.0 x0.1)`
+  pub fn sanitize_rule(&self) -> Result<Rule, String> {
+    // Pass through the lhs of the function generating new names
+    // for every variable found in the style described before with
+    // the fresh function. Also checks if rule's left side is valid.
+    // BTree is used here for determinism (HashMap does not maintain
+    // order among executions)
+
+    fn create_fresh(rule: &Rule, fresh: &mut dyn FnMut() -> String) -> Result<NameTable, String> {
+      let mut table = BTreeMap::new();
+
+      let lhs = &rule.lhs;
+      if let Term::Ctr { name: _, ref args } = **lhs {
+        for arg in args {
+          match &**arg {
+            Term::Var { name, .. } => {
+              table.insert(name.clone(), fresh());
+            }
+            Term::Ctr { args, .. } => {
+              for arg in args {
+                if let Term::Var { name } = &**arg {
+                  table.insert(name.clone(), fresh());
+                }
+              }
+            }
+            Term::U6O { .. } => {}
+            Term::F6O { .. } => {}
+            _ => {
+              return Err("Invalid left-hand side".to_owned());
+            }
+          }
+        }
+      } else {
+        return Err("Invalid left-hand side".to_owned());
+      }
+
+      Ok(table)
+    }
+
+    let mut size = 0;
+    let mut uses: HashMap<String, u64> = HashMap::new();
+
+    // creates a new name for a variable
+    // the first will receive x0, second x1, ...
+    let mut fresh = || {
+      let key = format!("x{}", size);
+      size += 1;
+      key
+    };
+
+    // generate table containing the new_names following
+    // pattern described before
+    let table = create_fresh(&self, &mut fresh)?;
+
+    // create context for sanitize_term
+    let mut ctx = CtxSanitizeTerm { uses: &mut uses, fresh: &mut fresh };
+
+    // sanitize left and right sides
+    let mut rhs = self.rhs.sanitize_term(false, &mut table.clone(), &mut ctx)?;
+    let lhs = self.lhs.sanitize_term(true, &mut table.clone(), &mut ctx)?;
+
+    // duplicate right side variables that are used more than once
+    for (_key, value) in table {
+      let expr = Box::new(Term::Var { name: value.clone() });
+      rhs = duplicator(&value, expr, rhs, &uses);
+    }
+
+    // returns the sanitized rule
+    Ok(Rule { lhs, rhs })
   }
 }
 
