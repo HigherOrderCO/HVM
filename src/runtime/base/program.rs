@@ -266,7 +266,7 @@ pub fn build_function(
           }
         }
 
-        let core = term_to_core(book, &rule.rhs, &inps);
+        let core = rule.rhs.to_core(book, &inps);
         let body = build_body(&core, vars.len() as u64);
 
         Some(Rule { hoas, cond, vars, core, body, free })
@@ -337,21 +337,16 @@ impl language::syntax::Oper {
     }
   }
 }
-/// converts a language term to a runtime term
-pub fn term_to_core(
-  book: &language::rulebook::RuleBook,
-  term: &language::syntax::Term,
-  inps: &[String],
-) -> Core {
-  #[allow(clippy::identity_op)]
+
+impl language::syntax::Term {
   fn convert_term(
-    term: &language::syntax::Term,
+    &self,
     book: &language::rulebook::RuleBook,
     depth: u64,
     vars: &mut Vec<String>,
   ) -> Core {
-    match term {
-      language::syntax::Term::Var { name } => {
+    match self {
+      Self::Var { name } => {
         if let Some((idx, _)) = vars.iter().enumerate().rev().find(|(_, var)| var == &name) {
           Core::Var { bidx: idx as u64 }
         } else {
@@ -363,67 +358,71 @@ pub fn term_to_core(
           }
         }
       }
-      language::syntax::Term::Dup { nam0, nam1, expr, body } => {
+      Self::Dup { nam0, nam1, expr, body } => {
         let eras = (nam0 == "*", nam1 == "*");
         let glob =
           if get_global_name_misc(nam0).is_some() { hash(&nam0[2..].to_string()) } else { 0 };
-        let expr = Box::new(convert_term(expr, book, depth + 0, vars));
+        let expr = Box::new(expr.convert_term(book, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
-        let body = Box::new(convert_term(body, book, depth + 2, vars));
+        let body = Box::new(body.convert_term(book, depth + 2, vars));
         vars.pop();
         vars.pop();
         Core::Dup { eras, glob, expr, body }
       }
-      language::syntax::Term::Sup { val0, val1 } => {
-        let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
-        let val1 = Box::new(convert_term(val1, book, depth + 0, vars));
+      Self::Sup { val0, val1 } => {
+        let val0 = Box::new(val0.convert_term(book, depth + 0, vars));
+        let val1 = Box::new(val1.convert_term(book, depth + 0, vars));
         Core::Sup { val0, val1 }
       }
-      language::syntax::Term::Lam { name, body } => {
+      Self::Lam { name, body } => {
         let glob = if get_global_name_misc(name).is_some() { hash(name) } else { 0 };
         let eras = name == "*";
         vars.push(name.clone());
-        let body = Box::new(convert_term(body, book, depth + 1, vars));
+        let body = Box::new(body.convert_term(book, depth + 1, vars));
         vars.pop();
         Core::Lam { eras, glob, body }
       }
-      language::syntax::Term::Let { name, expr, body } => {
-        let expr = Box::new(convert_term(expr, book, depth + 0, vars));
+      Self::Let { name, expr, body } => {
+        let expr = Box::new(expr.convert_term(book, depth + 0, vars));
         vars.push(name.clone());
-        let body = Box::new(convert_term(body, book, depth + 1, vars));
+        let body = Box::new(body.convert_term(book, depth + 1, vars));
         vars.pop();
         Core::Let { expr, body }
       }
-      language::syntax::Term::App { func, argm } => {
-        let func = Box::new(convert_term(func, book, depth + 0, vars));
-        let argm = Box::new(convert_term(argm, book, depth + 0, vars));
+      Self::App { func, argm } => {
+        let func = Box::new(func.convert_term(book, depth + 0, vars));
+        let argm = Box::new(argm.convert_term(book, depth + 0, vars));
         Core::App { func, argm }
       }
-      language::syntax::Term::Ctr { name, args } => {
+      Self::Ctr { name, args } => {
         let term_func =
           *book.name_to_id.get(name).unwrap_or_else(|| panic!("unbound symbol: {}", name));
-        let term_args = args.iter().map(|arg| convert_term(arg, book, depth + 0, vars)).collect();
+        let term_args = args.iter().map(|arg| arg.convert_term(book, depth + 0, vars)).collect();
         if *book.ctr_is_fun.get(name).unwrap_or(&false) {
           Core::Fun { func: term_func, args: term_args }
         } else {
           Core::Ctr { func: term_func, args: term_args }
         }
       }
-      language::syntax::Term::U6O { numb } => Core::U6O { numb: *numb },
-      language::syntax::Term::F6O { numb } => Core::F6O { numb: *numb },
-      language::syntax::Term::Op2 { oper, val0, val1 } => {
+      Self::U6O { numb } => Core::U6O { numb: *numb },
+      Self::F6O { numb } => Core::F6O { numb: *numb },
+      Self::Op2 { oper, val0, val1 } => {
         let oper = oper.raw();
-        let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
-        let val1 = Box::new(convert_term(val1, book, depth + 1, vars));
+        let val0 = Box::new(val0.convert_term(book, depth + 0, vars));
+        let val1 = Box::new(val1.convert_term(book, depth + 1, vars));
         Core::Op2 { oper, val0, val1 }
       }
     }
   }
 
-  let mut vars = inps.to_vec();
-  convert_term(term, book, 0, &mut vars)
+  pub fn to_core(&self, book: &language::rulebook::RuleBook, inps: &[String]) -> Core {
+    #[allow(clippy::identity_op)]
+    let mut vars = inps.to_vec();
+    self.convert_term(book, 0, &mut vars)
+  }
 }
+/// converts a language term to a runtime term
 
 pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
   fn link(nodes: &mut [RuleBodyNode], targ: u64, slot: u64, elem: RuleBodyCell) {
@@ -629,7 +628,7 @@ pub fn alloc_term(
   book: &language::rulebook::RuleBook,
   term: &language::syntax::Term,
 ) -> u64 {
-  alloc_closed_core(heap, prog, tid, &term_to_core(book, term, &[]))
+  alloc_closed_core(heap, prog, tid, &term.to_core(book, &[]))
 }
 
 pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
