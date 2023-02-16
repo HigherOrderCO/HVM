@@ -128,7 +128,7 @@ impl RuleBook {
 impl From<&language::syntax::File> for RuleBook {
   fn from(file: &language::syntax::File) -> Self {
     // Creates an empty rulebook
-    let mut book = RuleBook::new();
+    let mut book = Self::new();
 
     // Flattens, sanitizes and groups this file's rules
     let groups = group_rules(&sanitize_rules(&flatten(&file.rules)));
@@ -212,7 +212,7 @@ pub fn sanitize_rules(rules: &[language::syntax::Rule]) -> Vec<language::syntax:
 mod tests {
   use core::panic;
 
-  use super::{gen_rulebook, sanitize_rule};
+  use super::RuleBook;
   use crate::language::syntax::{read_file, read_rule};
 
   #[test]
@@ -244,7 +244,7 @@ mod tests {
       match rule {
         None => panic!("Rule not parsed"),
         Some(v) => {
-          let result = sanitize_rule(&v);
+          let result = v.sanitize_rule();
           match result {
             Ok(rule) => assert_eq!(rule.to_string(), expected),
             Err(_) => panic!("Rule not sanitized"),
@@ -270,7 +270,7 @@ mod tests {
       match rule {
         None => panic!("Rule not parsed"),
         Some(v) => {
-          let result = sanitize_rule(&v);
+          let result = v.sanitize_rule();
           assert!(matches!(result, Err(_)));
         }
       }
@@ -285,7 +285,7 @@ mod tests {
     ";
 
     let file = read_file(file).unwrap();
-    let rulebook = gen_rulebook(&file);
+    let rulebook: RuleBook = (&file).into();
 
     // rule_group testing
     // contains expected key
