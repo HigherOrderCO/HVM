@@ -42,8 +42,8 @@ impl Default for VisitQueue {
 impl VisitQueue {
   pub fn new() -> Self {
     Self {
-      init: CachePadded::new(AtomicUsize::new(0)),
-      last: CachePadded::new(AtomicUsize::new(0)),
+      init: CachePadded::new(0.into()),
+      last: CachePadded::new(0.into()),
       data: crate::runtime::new_atomic_u64_array(VISIT_QUEUE_SIZE),
     }
   }

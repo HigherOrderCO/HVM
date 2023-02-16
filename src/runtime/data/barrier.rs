@@ -8,7 +8,7 @@ pub struct Barrier {
 
 impl Barrier {
   pub fn new(tids: usize) -> Self {
-    Self { done: AtomicUsize::new(0), pass: AtomicUsize::new(0), tids }
+    Self { done: 0.into(), pass: 0.into(), tids }
   }
 
   pub fn wait(&self, stop: &AtomicUsize) {

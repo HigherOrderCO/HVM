@@ -39,7 +39,7 @@ impl RedexBag {
   pub fn new(tids: usize) -> Self {
     let mut next = vec![];
     for _ in 0..tids {
-      next.push(CachePadded::new(AtomicUsize::new(0)));
+      next.push(CachePadded::new(0.into()));
     }
     let next = next.into_boxed_slice();
     let data = crate::runtime::new_atomic_u64_array(REDEX_BAG_SIZE);
