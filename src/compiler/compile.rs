@@ -272,7 +272,7 @@ pub fn build_function(
 
       // For each rule condition vector
       for (r, rule) in fn_apply.rules.iter().enumerate() {
-        let mut matched: Vec<String> = Vec::new();
+        let mut matched: Vec<String> = vec![];
 
         // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
         for (i, cond) in rule.cond.iter().enumerate() {

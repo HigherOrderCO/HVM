@@ -607,7 +607,7 @@ pub fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
 // solution that maintains HVM philosophy of only including constant-time compute primitives.
 
 pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
-  let mut coll = Vec::new();
+  let mut coll = vec![];
   let mut next = term;
   loop {
     let term = next;

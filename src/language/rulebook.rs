@@ -832,22 +832,22 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
     //   println!("{}", rule);
     // }
     let mut skip: HashSet<usize> = HashSet::new();
-    let mut new_rules: Vec<language::syntax::Rule> = Vec::new();
+    let mut new_rules: Vec<language::syntax::Rule> = vec![];
     for i in 0..rules.len() {
       if !skip.contains(&i) {
         let rule = &rules[i];
         if must_split(&rule.lhs) {
           if let language::syntax::Term::Ctr { ref name, ref args } = *rule.lhs {
-            let mut new_group: Vec<language::syntax::Rule> = Vec::new();
+            let mut new_group: Vec<language::syntax::Rule> = vec![];
             let new_lhs_name: String = name.clone();
             let new_rhs_name: String = format!("{}.{}", name, fresh(name_count));
-            let mut new_lhs_args: Vec<Box<language::syntax::Term>> = Vec::new();
-            let mut new_rhs_args: Vec<Box<language::syntax::Term>> = Vec::new();
+            let mut new_lhs_args: Vec<Box<language::syntax::Term>> = vec![];
+            let mut new_rhs_args: Vec<Box<language::syntax::Term>> = vec![];
             for arg in args {
               match &**arg {
                 language::syntax::Term::Ctr { name: ref arg_name, args: ref arg_args } => {
                   let new_arg_name = arg_name.clone();
-                  let mut new_arg_args = Vec::new();
+                  let mut new_arg_args = vec![];
                   for field in arg_args {
                     match &**field {
                       language::syntax::Term::Ctr { .. } => {
@@ -926,7 +926,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                     skip.insert(j); // avoids identical, duplicated clauses
                   }
                   let other_new_lhs_name = new_rhs_name.clone();
-                  let mut other_new_lhs_args = Vec::new();
+                  let mut other_new_lhs_args = vec![];
                   let mut other_new_rhs = other.rhs.clone();
                   for (rule_arg, other_arg) in rule_args.iter().zip(other_args) {
                     match &**rule_arg {
@@ -1041,7 +1041,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
   }
 
   // For each group, split its internal rules
-  let mut new_rules = Vec::new();
+  let mut new_rules = vec![];
   for (_name, rules) in &groups {
     for rule in split_group(rules, &mut name_count) {
       new_rules.push(rule);

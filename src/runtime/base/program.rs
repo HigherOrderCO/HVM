@@ -231,10 +231,10 @@ pub fn build_function(
     .iter()
     .filter_map(|rule| {
       if let language::syntax::Term::Ctr { ref name, ref args } = *rule.lhs {
-        let mut cond = Vec::new();
-        let mut vars = Vec::new();
-        let mut inps = Vec::new();
-        let mut free = Vec::new();
+        let mut cond = vec![];
+        let mut vars = vec![];
+        let mut inps = vec![];
+        let mut free = vec![];
         for (i, arg) in args.iter().enumerate() {
           match &**arg {
             language::syntax::Term::Ctr { name, args } => {
@@ -280,7 +280,7 @@ pub fn build_function(
   let smap = book.id_to_smap.get(fnid).unwrap().clone().into_boxed_slice();
 
   let strict_map = smap.to_vec();
-  let mut strict_idx = Vec::new();
+  let mut strict_idx = vec![];
   for (i, is_strict) in smap.iter().enumerate() {
     if *is_strict {
       strict_idx.push(i as u64);
@@ -597,8 +597,8 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
     }
   }
 
-  let mut links: Vec<(u64, u64, RuleBodyCell)> = Vec::new();
-  let mut nodes: Vec<RuleBodyNode> = Vec::new();
+  let mut links: Vec<(u64, u64, RuleBodyCell)> = vec![];
+  let mut nodes: Vec<RuleBodyNode> = vec![];
   let mut lams: HashMap<u64, u64> = HashMap::new();
   let mut dups: HashMap<u64, (u64, u64)> = HashMap::new();
   let mut vars: Vec<RuleBodyCell> =

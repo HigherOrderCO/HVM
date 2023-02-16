@@ -74,7 +74,7 @@ fn run_cli() -> Result<(), String> {
   match cli.command {
     Command::Run { size, tids, cost: show_cost, debug, file, expr } => {
       let tids = if debug { 1 } else { tids };
-      let (norm, cost, time) = api::eval(&load_code(&file)?, &expr, Vec::new(), size, tids, debug)?;
+      let (norm, cost, time) = api::eval(&load_code(&file)?, &expr, vec![], size, tids, debug)?;
       println!("{}", norm);
       if show_cost {
         eprintln!();

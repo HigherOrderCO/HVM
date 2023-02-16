@@ -312,7 +312,7 @@ pub fn parse_ctr(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
       let (state, args) = if open {
         HOPA::until(HOPA::do_there_take_exact(")"), Box::new(parse_term), state)?
       } else {
-        (state, Vec::new())
+        (state, vec![])
       };
       Ok((state, Box::new(Term::Ctr { name, args })))
     }),
@@ -510,7 +510,7 @@ pub fn parse_str_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
     Box::new(|state| {
       let delim = HOPA::head(state).unwrap_or('\0');
       let state = HOPA::tail(state);
-      let mut chars: Vec<char> = Vec::new();
+      let mut chars: Vec<char> = vec![];
       let mut state = state;
       loop {
         if let Some(next) = HOPA::head(state) {
@@ -523,7 +523,7 @@ pub fn parse_str_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
           }
         }
       }
-      let empty = Term::Ctr { name: "String.nil".to_string(), args: Vec::new() };
+      let empty = Term::Ctr { name: "String.nil".to_string(), args: vec![] };
       let list = Box::new(chars.iter().rfold(empty, |t, h| Term::Ctr {
         name: "String.cons".to_string(),
         args: vec![Box::new(Term::U6O { numb: *h as u64 }), Box::new(t)],
@@ -542,7 +542,7 @@ pub fn parse_lst_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
     }),
     Box::new(|state| {
       let (state, _head) = HOPA::there_take_exact("[", state)?;
-      // let mut elems: Vec<Box<Term>> = Vec::new();
+      // let mut elems: Vec<Box<Term>> = vec![];
       let state = state;
       let (state, elems) = HOPA::until(
         Box::new(|x| HOPA::there_take_exact("]", x)),
@@ -553,7 +553,7 @@ pub fn parse_lst_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
         }),
         state,
       )?;
-      let empty = Term::Ctr { name: "List.nil".to_string(), args: Vec::new() };
+      let empty = Term::Ctr { name: "List.nil".to_string(), args: vec![] };
       let list = Box::new(elems.iter().rfold(empty, |t, h| Term::Ctr {
         name: "List.cons".to_string(),
         args: vec![h.clone(), Box::new(t)],
@@ -652,8 +652,8 @@ pub fn parse_smap(state: HOPA::State) -> HOPA::Answer<Option<SMap>> {
 }
 
 pub fn parse_file(state: HOPA::State) -> HOPA::Answer<File> {
-  let mut rules = Vec::new();
-  let mut smaps = Vec::new();
+  let mut rules = vec![];
+  let mut smaps = vec![];
   let mut state = state;
   loop {
     let (new_state, done) = HOPA::there_end(state)?;

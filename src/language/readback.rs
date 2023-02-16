@@ -137,7 +137,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
       }
       runtime::SUP => {
         let col = runtime::get_ext(term);
-        let empty = &Vec::new();
+        let empty = &vec![];
         let stack = stacks.get(col).unwrap_or(empty);
         if let Some(val) = stack.last() {
           let arg_idx = *val as u64;
@@ -207,7 +207,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
       runtime::CTR | runtime::FUN => {
         let func = runtime::get_ext(term);
         let arit = runtime::arity_of(&ctx.prog.aris, term);
-        let mut args = Vec::new();
+        let mut args = vec![];
         for i in 0..arit {
           let arg = runtime::load_arg(&ctx.heap, term, i);
           args.push(readback(heap, prog, ctx, stacks, arg, depth + 1));
@@ -367,7 +367,7 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
     names: &HashMap<u64, String>,
   ) -> language::syntax::Term {
     let mut stack = vec![StackItem::Term(term)];
-    let mut output: Vec<language::syntax::Term> = Vec::new();
+    let mut output: Vec<language::syntax::Term> = vec![];
     while !stack.is_empty() {
       let item = stack.pop().unwrap();
       match item {
@@ -375,7 +375,7 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
           runtime::CTR => {
             let func = runtime::get_ext(term);
             let arit = runtime::arity_of(&prog.aris, term);
-            let mut args = Vec::new();
+            let mut args = vec![];
             for _ in 0..arit {
               args.push(Box::new(output.pop().unwrap()));
             }
@@ -385,7 +385,7 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
           runtime::FUN => {
             let func = runtime::get_ext(term);
             let arit = runtime::arity_of(&prog.aris, term);
-            let mut args = Vec::new();
+            let mut args = vec![];
             for _ in 0..arit {
               args.push(Box::new(output.pop().unwrap()));
             }

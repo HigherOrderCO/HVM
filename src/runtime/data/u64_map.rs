@@ -5,15 +5,15 @@ pub struct U64Map<A> {
 }
 
 impl<A> Default for U64Map<A> {
-    fn default() -> Self {
-        Self::new()
-    }
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl<A> U64Map<A> {
   pub fn new() -> U64Map<A> {
     // std::collections::HashMap::with_hasher(std::hash::BuildHasherDefault::default());
-    U64Map { data: Vec::new() }
+    Self { data: vec![] }
   }
 
   pub fn from_hashmap(old_map: &mut std::collections::HashMap<u64, A>) -> U64Map<A> {
