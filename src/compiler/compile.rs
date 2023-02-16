@@ -233,7 +233,7 @@ pub fn build_function(
         1,
         &format!("let done = Ctr({}, get_loc(ctx.term, 0));", runtime::get_ext(ptr)),
       );
-      line(&mut apply, 1, "link(ctx.heap, *ctx.host, done);");
+      line(&mut apply, 1, "ctx.heap.link(*ctx.host, done);");
       line(&mut apply, 1, "return false;");
       line(&mut apply, 0, &format!("}}"));
     }
@@ -349,7 +349,7 @@ pub fn build_function(
         line(&mut apply, 2, &format!("let done = {};", done));
 
         // Links the host location to it
-        line(&mut apply, 2, "link(ctx.heap, *ctx.host, done);");
+        line(&mut apply, 2, "ctx.heap.link(*ctx.host, done);");
 
         // Collects unused variables (none in this example)
         for dynvar @ runtime::RuleVar { param: _, field: _, erase } in rule.vars.iter() {
@@ -423,7 +423,7 @@ pub fn build_function_rule_rhs(
       if glob != 0 {
         // FIXME: sanitizer still can't detect if a scopeless lambda doesn't use its bound
         // variable, so we must write an Era() here. When it does, we can remove this line.
-        line(code, tab, &format!("link(heap, {} + 0, Era());", name));
+        line(code, tab, &format!("heap.link({} + 0, Era());", name));
         lams.insert(glob, name.clone());
       }
       name
@@ -444,8 +444,8 @@ pub fn build_function_rule_rhs(
       let name = fresh(nams, "dup");
       line(code, tab + 1, &format!("let {} = ctx.heap.gen_dup(ctx.tid);", coln));
       line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, 3)));
-      line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name)); // FIXME: remove when possible (same as above)
-      line(code, tab, &format!("link(ctx.heap, {} + 1, Era());", name)); // FIXME: remove when possible (same as above)
+      line(code, tab, &format!("ctx.heap.link({} + 0, Era());", name)); // FIXME: remove when possible (same as above)
+      line(code, tab, &format!("ctx.heap.link({} + 1, Era());", name)); // FIXME: remove when possible (same as above)
       if glob != 0 {
         dups.insert(glob, (coln.clone(), name.clone()));
       }
@@ -526,12 +526,12 @@ pub fn build_function_rule_rhs(
         }
         let (coln, name) = alloc_dup(code, tab, &mut vec![], nams, dups, *glob);
         if eras.0 {
-          line(code, tab + 1, &format!("link(ctx.heap, {} + 0, Era());", name));
+          line(code, tab + 1, &format!("ctx.heap.link({} + 0, Era());", name));
         }
         if eras.1 {
-          line(code, tab + 1, &format!("link(ctx.heap, {} + 1, Era());", name));
+          line(code, tab + 1, &format!("ctx.heap.link({} + 1, Era());", name));
         }
-        line(code, tab + 1, &format!("link(ctx.heap, {} + 2, {});", name, copy));
+        line(code, tab + 1, &format!("ctx.heap.link({} + 2, {});", name, copy));
         line(code, tab + 1, &format!("{} = Dp0({}, {});", dup0, coln, name));
         line(code, tab + 1, &format!("{} = Dp1({}, {});", dup1, coln, name));
         if INLINE_NUMBERS {
@@ -551,8 +551,8 @@ pub fn build_function_rule_rhs(
         let coln = fresh(nams, "col");
         line(code, tab + 1, &format!("let {} = ctx.heap.gen_dup(ctx.tid);", coln));
         line(code, tab, &format!("let {} = {};", name, alloc_node(free, 2)));
-        line(code, tab, &format!("link(ctx.heap, {} + 0, {});", name, val0));
-        line(code, tab, &format!("link(ctx.heap, {} + 1, {});", name, val1));
+        line(code, tab, &format!("ctx.heap.link({} + 0, {});", name, val0));
+        line(code, tab, &format!("ctx.heap.link({} + 1, {});", name, val1));
         format!("Sup({}, {})", coln, name)
       }
       runtime::Core::Let { expr, body } => {
@@ -568,9 +568,9 @@ pub fn build_function_rule_rhs(
         let body = build_term(book, code, tab, free, vars, nams, lams, dups, body);
         vars.pop();
         if *eras {
-          line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name));
+          line(code, tab, &format!("ctx.heap.link({} + 0, Era());", name));
         }
-        line(code, tab, &format!("link(ctx.heap, {} + 1, {});", name, body));
+        line(code, tab, &format!("ctx.heap.link({} + 1, {});", name, body));
         format!("Lam({})", name)
       }
       runtime::Core::App { func, argm } => {
@@ -578,8 +578,8 @@ pub fn build_function_rule_rhs(
         let func = build_term(book, code, tab, free, vars, nams, lams, dups, func);
         let argm = build_term(book, code, tab, free, vars, nams, lams, dups, argm);
         line(code, tab, &format!("let {} = {};", name, alloc_node(free, 2)));
-        line(code, tab, &format!("link(ctx.heap, {} + 0, {});", name, func));
-        line(code, tab, &format!("link(ctx.heap, {} + 1, {});", name, argm));
+        line(code, tab, &format!("ctx.heap.link({} + 0, {});", name, func));
+        line(code, tab, &format!("ctx.heap.link({} + 1, {});", name, argm));
         format!("App({})", name)
       }
       runtime::Core::Ctr { func, args } => {
@@ -590,7 +590,7 @@ pub fn build_function_rule_rhs(
         let name = fresh(nams, "ctr");
         line(code, tab, &format!("let {} = {};", name, alloc_node(free, cargs.len() as u64)));
         for (i, arg) in cargs.iter().enumerate() {
-          line(code, tab, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+          line(code, tab, &format!("ctx.heap.link({} + {}, {});", name, i, arg));
         }
         let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
         format!("Ctr({}, {})", fnam, name)
@@ -625,7 +625,7 @@ pub fn build_function_rule_rhs(
           let name = fresh(nams, "cal");
           line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, fargs.len() as u64)));
           for (i, arg) in fargs.iter().enumerate() {
-            line(code, tab + 1, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+            line(code, tab + 1, &format!("ctx.heap.link({} + {}, {});", name, i, arg));
           }
           let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
           line(code, tab + 1, &format!("{} = Fun({}, {})", ret, fnam, name));
@@ -640,20 +640,20 @@ pub fn build_function_rule_rhs(
           let both = fresh(nams, "both");
           line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
           line(code, tab + 2, &format!("let {} = {};", both, alloc_node(free, 2)));
-          line(code, tab + 2, &format!("link(ctx.heap, {} + 0, {});", both, fargs[1]));
-          line(code, tab + 2, &format!("link(ctx.heap, {} + 1, {});", both, fargs[2]));
+          line(code, tab + 2, &format!("ctx.heap.link({} + 0, {});", both, fargs[1]));
+          line(code, tab + 2, &format!("ctx.heap.link({} + 1, {});", both, fargs[2]));
           line(code, tab + 2, &format!("{} = Ctr(BOTH, {});", ret, both));
           line(code, tab + 1, &format!("}} else {{"));
           line(code, tab + 2, &format!("let {} = {};", both, alloc_node(free, 2)));
-          line(code, tab + 2, &format!("link(ctx.heap, {} + 0, {});", both, fargs[2]));
-          line(code, tab + 2, &format!("link(ctx.heap, {} + 1, {});", both, fargs[1]));
+          line(code, tab + 2, &format!("ctx.heap.link({} + 0, {});", both, fargs[2]));
+          line(code, tab + 2, &format!("ctx.heap.link({} + 1, {});", both, fargs[1]));
           line(code, tab + 2, &format!("{} = Ctr(BOTH, {});", ret, both));
           line(code, tab + 1, &format!("}}"));
           line(code, tab + 0, &format!("}} else {{"));
           let name = fresh(nams, "cal");
           line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, fargs.len() as u64)));
           for (i, arg) in fargs.iter().enumerate() {
-            line(code, tab + 1, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+            line(code, tab + 1, &format!("ctx.heap.link({} + {}, {});", name, i, arg));
           }
           let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
           line(code, tab + 1, &format!("{} = Fun({}, {})", ret, fnam, name));
@@ -664,7 +664,7 @@ pub fn build_function_rule_rhs(
           let name = fresh(nams, "cal");
           line(code, tab, &format!("let {} = {};", name, alloc_node(free, fargs.len() as u64)));
           for (i, arg) in fargs.iter().enumerate() {
-            line(code, tab, &format!("link(ctx.heap, {} + {}, {});", name, i, arg));
+            line(code, tab, &format!("ctx.heap.link({} + {}, {});", name, i, arg));
           }
           let fnam = build_name(book.id_to_name.get(&func).unwrap_or(&format!("{}", func)));
           return format!("Fun({}, {})", fnam, name);
@@ -801,8 +801,8 @@ pub fn build_function_rule_rhs(
           line(code, tab + 0, "} else {");
         }
         line(code, tab + 1, &format!("let {} = {};", name, alloc_node(&mut vec![], 2)));
-        line(code, tab + 1, &format!("link(ctx.heap, {} + 0, {});", name, val0));
-        line(code, tab + 1, &format!("link(ctx.heap, {} + 1, {});", name, val1));
+        line(code, tab + 1, &format!("ctx.heap.link({} + 0, {});", name, val0));
+        line(code, tab + 1, &format!("ctx.heap.link({} + 1, {});", name, val1));
         let oper_name = match *oper {
           runtime::ADD => "ADD",
           runtime::SUB => "SUB",

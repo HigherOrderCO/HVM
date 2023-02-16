@@ -151,14 +151,14 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
     if (get_num(arg0) == 0) {
       ctx.heap.inc_cost(ctx.tid);
       let done = arg2;
-      link(ctx.heap, *ctx.host, done);
+      ctx.heap.link(*ctx.host, done);
       collect(ctx.heap, &ctx.prog.aris, ctx.tid, arg1);
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     } else {
       ctx.heap.inc_cost(ctx.tid);
       let done = arg1;
-      link(ctx.heap, *ctx.host, done);
+      ctx.heap.link(*ctx.host, done);
       collect(ctx.heap, &ctx.prog.aris, ctx.tid, arg2);
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
@@ -194,19 +194,19 @@ pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
     if (get_num(arg0) == 0) {
       ctx.heap.inc_cost(ctx.tid);
       let ctr_0 = alloc(ctx.heap, ctx.tid, 2);
-      link(ctx.heap, ctr_0 + 0, arg1);
-      link(ctx.heap, ctr_0 + 1, arg2);
+      ctx.heap.link(ctr_0 + 0, arg1);
+      ctx.heap.link(ctr_0 + 1, arg2);
       let done = Ctr(BOTH, ctr_0);
-      link(ctx.heap, *ctx.host, done);
+      ctx.heap.link(*ctx.host, done);
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     } else {
       ctx.heap.inc_cost(ctx.tid);
       let ctr_0 = alloc(ctx.heap, ctx.tid, 2);
-      link(ctx.heap, ctr_0 + 0, arg2);
-      link(ctx.heap, ctr_0 + 1, arg1);
+      ctx.heap.link(ctr_0 + 0, arg2);
+      ctx.heap.link(ctr_0 + 1, arg1);
       let done = Ctr(BOTH, ctr_0);
-      link(ctx.heap, *ctx.host, done);
+      ctx.heap.link(*ctx.host, done);
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
     }
@@ -225,7 +225,7 @@ fn hvm_log_apply(ctx: ReduceCtx) -> bool {
   normalize(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), false);
   let code = crate::language::readback::as_code(ctx.heap, ctx.prog, get_loc(ctx.term, 0));
   println!("{}", code);
-  link(ctx.heap, *ctx.host, ctx.heap.load_arg(ctx.term, 1));
+  ctx.heap.link(*ctx.host, ctx.heap.load_arg(ctx.term, 1));
   collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_ptr(get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   true
@@ -254,11 +254,11 @@ fn hvm_query_apply(ctx: ReduceCtx) -> bool {
   let cont = ctx.heap.load_arg(ctx.term, 0);
   let text = make_string(ctx.heap, ctx.tid, &read_input());
   let app0 = alloc(ctx.heap, ctx.tid, 2);
-  link(ctx.heap, app0 + 0, cont);
-  link(ctx.heap, app0 + 1, text);
+  ctx.heap.link(app0 + 0, cont);
+  ctx.heap.link(app0 + 1, text);
   free(ctx.heap, 0, get_loc(ctx.term, 0), 1);
   let done = App(app0);
-  link(ctx.heap, *ctx.host, done);
+  ctx.heap.link(*ctx.host, done);
   true
 }
 
@@ -276,7 +276,7 @@ fn hvm_print_apply(ctx: ReduceCtx) -> bool {
   {
     println!("{}", text);
   }
-  link(ctx.heap, *ctx.host, ctx.heap.load_arg(ctx.term, 1));
+  ctx.heap.link(*ctx.host, ctx.heap.load_arg(ctx.term, 1));
   collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_ptr(get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   true
@@ -292,7 +292,7 @@ fn hvm_sleep_visit(ctx: ReduceCtx) -> bool {
 fn hvm_sleep_apply(ctx: ReduceCtx) -> bool {
   let time = reduce(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), true, false);
   std::thread::sleep(std::time::Duration::from_nanos(get_num(time)));
-  link(ctx.heap, *ctx.host, ctx.heap.load_ptr(get_loc(ctx.term, 1)));
+  ctx.heap.link(*ctx.host, ctx.heap.load_ptr(get_loc(ctx.term, 1)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   true
 }
@@ -313,11 +313,11 @@ fn hvm_store_apply(ctx: ReduceCtx) -> bool {
     {
       if std::fs::write(key, val).is_ok() {
         //let app0 = alloc(ctx.heap, ctx.tid, 2);
-        //link(ctx.heap, app0 + 0, cont);
-        //link(ctx.heap, app0 + 1, U6O(0));
+        //ctx.heap.link(app0 + 0, cont);
+        //ctx.heap.link(app0 + 1, U6O(0));
         //free(ctx.heap, 0, get_loc(ctx.term, 0), 2);
         let done = ctx.heap.load_arg(ctx.term, 2);
-        link(ctx.heap, *ctx.host, done);
+        ctx.heap.link(*ctx.host, done);
         collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_arg(ctx.term, 0));
         collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_arg(ctx.term, 1));
         free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
@@ -345,11 +345,11 @@ fn hvm_load_apply(ctx: ReduceCtx) -> bool {
         let cont = ctx.heap.load_arg(ctx.term, 1);
         let text = make_string(ctx.heap, ctx.tid, file);
         let app0 = alloc(ctx.heap, ctx.tid, 2);
-        link(ctx.heap, app0 + 0, cont);
-        link(ctx.heap, app0 + 1, text);
+        ctx.heap.link(app0 + 0, cont);
+        ctx.heap.link(app0 + 1, text);
         free(ctx.heap, 0, get_loc(ctx.term, 0), 2);
         let done = App(app0);
-        link(ctx.heap, *ctx.host, done);
+        ctx.heap.link(*ctx.host, done);
         return true;
       }
     }

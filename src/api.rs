@@ -34,7 +34,7 @@ pub fn eval(
   let tids = runtime::new_tids(tids);
 
   // Allocates the main term
-  runtime::link(&heap, 0, runtime::Fun(*book.name_to_id.get("HVM_MAIN_CALL").unwrap(), 0));
+  heap.link(0, runtime::Fun(*book.name_to_id.get("HVM_MAIN_CALL").unwrap(), 0));
   let host = 0;
 
   // Normalizes it

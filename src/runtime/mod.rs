@@ -357,7 +357,7 @@ impl Runtime {
   }
 
   pub fn link(&mut self, loc: u64, lnk: Ptr) -> Ptr {
-    link(&self.heap, loc, lnk)
+    self.heap.link(loc, lnk)
   }
 
   pub fn alloc(&mut self, size: u64) -> u64 {

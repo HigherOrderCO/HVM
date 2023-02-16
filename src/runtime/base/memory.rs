@@ -355,7 +355,7 @@ impl Heap {
 
   // Moves a pointer to another location
   pub fn move_ptr(&self, old_loc: u64, new_loc: u64) -> Ptr {
-    link(self, new_loc, take_ptr(self, old_loc))
+    self.link(new_loc, take_ptr(self, old_loc))
   }
 
   // Given a pointer to a node, loads its nth arg
@@ -373,16 +373,18 @@ pub fn take_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
   take_ptr(heap, get_loc(term, arg))
 }
 
-// Writes a ptr to memory. Updates binders.
-pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
-  unsafe {
-    heap.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
-    if get_tag(ptr) <= VAR {
-      let arg_loc = get_loc(ptr, get_tag(ptr) & 0x01);
-      heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+impl Heap {
+  // Writes a ptr to memory. Updates binders.
+  pub fn link(&self, loc: u64, ptr: Ptr) -> Ptr {
+    unsafe {
+      self.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
+      if get_tag(ptr) <= VAR {
+        let arg_loc = get_loc(ptr, get_tag(ptr) & 0x01);
+        self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+      }
     }
+    ptr
   }
-  ptr
 }
 
 // Heap Constructors
@@ -512,7 +514,7 @@ pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr
     let arg_ptr = heap.load_ptr(get_loc(var, get_tag(var) & 0x01));
     if get_tag(arg_ptr) == ARG {
       if heap.tids == 1 {
-        link(heap, get_loc(arg_ptr, 0), val);
+        heap.link(get_loc(arg_ptr, 0), val);
         return;
       } else if atomic_relink(heap, get_loc(arg_ptr, 0), var, val).is_ok() {
         return;
@@ -616,7 +618,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
     let term = next;
     match get_tag(term) {
       DP0 => {
-        link(heap, get_loc(term, 0), Era());
+        heap.link(get_loc(term, 0), Era());
         if acquire_lock(heap, tid, term).is_ok() {
           if get_tag(heap.load_arg(term, 1)) == ERA {
             coll.push(take_arg(heap, term, 2));
@@ -626,7 +628,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         }
       }
       DP1 => {
-        link(heap, get_loc(term, 1), Era());
+        heap.link(get_loc(term, 1), Era());
         if acquire_lock(heap, tid, term).is_ok() {
           if get_tag(heap.load_arg(term, 0)) == ERA {
             coll.push(take_arg(heap, term, 2));
@@ -636,7 +638,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         }
       }
       VAR => {
-        link(heap, get_loc(term, 0), Era());
+        heap.link(get_loc(term, 0), Era());
       }
       LAM => {
         atomic_subst(heap, arit, tid, Var(get_loc(term, 0)), Era());

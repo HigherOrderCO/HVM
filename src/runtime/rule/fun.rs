@@ -136,7 +136,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
       let done = alloc_body(ctx.heap, ctx.prog, ctx.tid, ctx.term, &rule.vars, &rule.body);
 
       // Links the *ctx.host location to it
-      link(ctx.heap, *ctx.host, done);
+      ctx.heap.link(*ctx.host, done);
 
       // Collects unused variables
       for var @ RuleVar { param: _, field: _, erase } in rule.vars.iter() {
@@ -178,17 +178,17 @@ pub fn superpose(
     if i != n {
       let leti = alloc(heap, tid, 3);
       let argi = take_arg(heap, term, i);
-      link(heap, fun0 + i, Dp0(get_ext(argn), leti));
-      link(heap, fun1 + i, Dp1(get_ext(argn), leti));
-      link(heap, leti + 2, argi);
+      heap.link(fun0 + i, Dp0(get_ext(argn), leti));
+      heap.link(fun1 + i, Dp1(get_ext(argn), leti));
+      heap.link(leti + 2, argi);
     } else {
-      link(heap, fun0 + i, take_arg(heap, argn, 0));
-      link(heap, fun1 + i, take_arg(heap, argn, 1));
+      heap.link(fun0 + i, take_arg(heap, argn, 0));
+      heap.link(fun1 + i, take_arg(heap, argn, 1));
     }
   }
-  link(heap, par0 + 0, Fun(func, fun0));
-  link(heap, par0 + 1, Fun(func, fun1));
+  heap.link(par0 + 0, Fun(func, fun0));
+  heap.link(par0 + 1, Fun(func, fun1));
   let done = Sup(get_ext(argn), par0);
-  link(heap, host, done);
+  heap.link(host, done);
   done
 }

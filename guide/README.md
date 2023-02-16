@@ -434,7 +434,7 @@ let funs = vec![
       }
 
       // Sets the returned result to be the argument #1
-      hvm::runtime::link(ctx.heap, *ctx.host, arg1);
+      ctx.heap.link(*ctx.host, arg1);
 
       // Collects the argument #0
       hvm::runtime::collect(ctx.heap, &ctx.prog.arit, ctx.tid, ctx.heap.load_ptr(arg0));

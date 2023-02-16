@@ -25,11 +25,11 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     let par0 = alloc(ctx.heap, ctx.tid, 2);
     let lam0 = alloc(ctx.heap, ctx.tid, 2);
     let lam1 = alloc(ctx.heap, ctx.tid, 2);
-    link(ctx.heap, let0 + 2, take_arg(ctx.heap, arg0, 1));
-    link(ctx.heap, par0 + 1, Var(lam1));
-    link(ctx.heap, par0 + 0, Var(lam0));
-    link(ctx.heap, lam0 + 1, Dp0(get_ext(ctx.term), let0));
-    link(ctx.heap, lam1 + 1, Dp1(get_ext(ctx.term), let0));
+    ctx.heap.link(let0 + 2, take_arg(ctx.heap, arg0, 1));
+    ctx.heap.link(par0 + 1, Var(lam1));
+    ctx.heap.link(par0 + 0, Var(lam0));
+    ctx.heap.link(lam0 + 1, Dp0(get_ext(ctx.term), let0));
+    ctx.heap.link(lam1 + 1, Dp1(get_ext(ctx.term), let0));
     atomic_subst(
       ctx.heap,
       &ctx.prog.aris,
@@ -40,7 +40,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), Lam(lam0));
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), Lam(lam1));
     let done = Lam(if get_tag(ctx.term) == DP0 { lam0 } else { lam1 });
-    link(ctx.heap, *ctx.host, done);
+    ctx.heap.link(*ctx.host, done);
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
     free(ctx.heap, ctx.tid, get_loc(arg0, 0), 2);
     true
@@ -78,12 +78,12 @@ pub fn apply(ctx: ReduceCtx) -> bool {
       let let0 = alloc(ctx.heap, ctx.tid, 3);
       let par1 = get_loc(arg0, 0);
       let let1 = alloc(ctx.heap, ctx.tid, 3);
-      link(ctx.heap, let0 + 2, take_arg(ctx.heap, arg0, 0));
-      link(ctx.heap, let1 + 2, take_arg(ctx.heap, arg0, 1));
-      link(ctx.heap, par1 + 0, Dp1(tcol, let0));
-      link(ctx.heap, par1 + 1, Dp1(tcol, let1));
-      link(ctx.heap, par0 + 0, Dp0(tcol, let0));
-      link(ctx.heap, par0 + 1, Dp0(tcol, let1));
+      ctx.heap.link(let0 + 2, take_arg(ctx.heap, arg0, 0));
+      ctx.heap.link(let1 + 2, take_arg(ctx.heap, arg0, 1));
+      ctx.heap.link(par1 + 0, Dp1(tcol, let0));
+      ctx.heap.link(par1 + 1, Dp1(tcol, let1));
+      ctx.heap.link(par0 + 0, Dp0(tcol, let0));
+      ctx.heap.link(par0 + 1, Dp0(tcol, let1));
       atomic_subst(
         ctx.heap,
         &ctx.prog.aris,
@@ -153,21 +153,21 @@ pub fn apply(ctx: ReduceCtx) -> bool {
         Dp1(tcol, get_loc(ctx.term, 0)),
         Ctr(fnum, 0),
       );
-      link(ctx.heap, *ctx.host, Ctr(fnum, 0));
+      ctx.heap.link(*ctx.host, Ctr(fnum, 0));
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
     } else {
       let ctr0 = get_loc(arg0, 0);
       let ctr1 = alloc(ctx.heap, ctx.tid, fari);
       for i in 0..fari - 1 {
         let leti = alloc(ctx.heap, ctx.tid, 3);
-        link(ctx.heap, leti + 2, take_arg(ctx.heap, arg0, i));
-        link(ctx.heap, ctr0 + i, Dp0(get_ext(ctx.term), leti));
-        link(ctx.heap, ctr1 + i, Dp1(get_ext(ctx.term), leti));
+        ctx.heap.link(leti + 2, take_arg(ctx.heap, arg0, i));
+        ctx.heap.link(ctr0 + i, Dp0(get_ext(ctx.term), leti));
+        ctx.heap.link(ctr1 + i, Dp1(get_ext(ctx.term), leti));
       }
       let leti = alloc(ctx.heap, ctx.tid, 3);
-      link(ctx.heap, leti + 2, take_arg(ctx.heap, arg0, fari - 1));
-      link(ctx.heap, ctr0 + fari - 1, Dp0(get_ext(ctx.term), leti));
-      link(ctx.heap, ctr1 + fari - 1, Dp1(get_ext(ctx.term), leti));
+      ctx.heap.link(leti + 2, take_arg(ctx.heap, arg0, fari - 1));
+      ctx.heap.link(ctr0 + fari - 1, Dp0(get_ext(ctx.term), leti));
+      ctx.heap.link(ctr1 + fari - 1, Dp1(get_ext(ctx.term), leti));
       atomic_subst(
         ctx.heap,
         &ctx.prog.aris,
@@ -194,7 +194,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     ctx.heap.inc_cost(ctx.tid);
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), Era());
     atomic_subst(ctx.heap, &ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), Era());
-    link(ctx.heap, *ctx.host, Era());
+    ctx.heap.link(*ctx.host, Era());
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
     return true;
   } else {

@@ -511,7 +511,7 @@ pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: 
 ////if thd_len == rec_len {
 ////move_ptr(heap, new_loc, *rec_loc);
 ////}
-//link(heap, *rec_loc, ptr);
+//heap.link(*rec_loc, ptr);
 //});
 //tids = new_tids;
 //}
@@ -527,7 +527,7 @@ pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: 
 //for idx in min_idx .. max_idx {
 //let loc = rec_loc[idx];
 //let lnk = normal(heap, prog, std::slice::from_ref(tid), loc, &mut seen, debug);
-//link(heap, loc, lnk);
+//heap.link(loc, lnk);
 //}
 //});
 //}

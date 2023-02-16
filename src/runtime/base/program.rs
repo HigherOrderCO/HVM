@@ -194,7 +194,7 @@ pub fn alloc_body(
         let cell = (*nodes.get_unchecked(i)).get_unchecked(j);
         let ptr = cell_to_ptr(heap, lvar, aloc, term, vars, cell);
         if let RuleBodyCell::Var { .. } = cell {
-          link(heap, (host + j) as u64, ptr);
+          heap.link((host + j) as u64, ptr);
         } else {
           *heap.node.get_unchecked(host + j).as_mut_ptr() = ptr;
         }
@@ -617,7 +617,7 @@ pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -
   let host = alloc(heap, tid, 1);
   let body = build_body(term, 0);
   let term = alloc_body(heap, prog, tid, 0, &[], &body);
-  link(heap, host, term);
+  heap.link(host, term);
   host
 }
 
@@ -636,8 +636,8 @@ pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
   for chr in text.chars().rev() {
     // TODO: reverse
     let ctr0 = alloc(heap, tid, 2);
-    link(heap, ctr0 + 0, U6O(chr as u64));
-    link(heap, ctr0 + 1, term);
+    heap.link(ctr0 + 0, U6O(chr as u64));
+    heap.link(ctr0 + 1, term);
     term = Ctr(STRING_CONS, ctr0);
   }
   term

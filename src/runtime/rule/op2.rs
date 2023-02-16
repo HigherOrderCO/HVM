@@ -43,7 +43,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
       _ => 0,
     };
     let done = U6O(c);
-    link(ctx.heap, *ctx.host, done);
+    ctx.heap.link(*ctx.host, done);
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
 
     return false;
@@ -77,7 +77,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
       _ => 0,
     };
     let done = F6O(c);
-    link(ctx.heap, *ctx.host, done);
+    ctx.heap.link(*ctx.host, done);
     free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
 
     return false;
@@ -92,15 +92,15 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     let op21 = get_loc(arg0, 0);
     let let0 = alloc(ctx.heap, ctx.tid, 3);
     let par0 = alloc(ctx.heap, ctx.tid, 2);
-    link(ctx.heap, let0 + 2, arg1);
-    link(ctx.heap, op20 + 1, Dp0(get_ext(arg0), let0));
-    link(ctx.heap, op20 + 0, take_arg(ctx.heap, arg0, 0));
-    link(ctx.heap, op21 + 0, take_arg(ctx.heap, arg0, 1));
-    link(ctx.heap, op21 + 1, Dp1(get_ext(arg0), let0));
-    link(ctx.heap, par0 + 0, Op2(get_ext(ctx.term), op20));
-    link(ctx.heap, par0 + 1, Op2(get_ext(ctx.term), op21));
+    ctx.heap.link(let0 + 2, arg1);
+    ctx.heap.link(op20 + 1, Dp0(get_ext(arg0), let0));
+    ctx.heap.link(op20 + 0, take_arg(ctx.heap, arg0, 0));
+    ctx.heap.link(op21 + 0, take_arg(ctx.heap, arg0, 1));
+    ctx.heap.link(op21 + 1, Dp1(get_ext(arg0), let0));
+    ctx.heap.link(par0 + 0, Op2(get_ext(ctx.term), op20));
+    ctx.heap.link(par0 + 1, Op2(get_ext(ctx.term), op21));
     let done = Sup(get_ext(arg0), par0);
-    link(ctx.heap, *ctx.host, done);
+    ctx.heap.link(*ctx.host, done);
     return false;
   }
   // (+ a {b0 b1})
@@ -113,15 +113,15 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     let op21 = get_loc(arg1, 0);
     let let0 = alloc(ctx.heap, ctx.tid, 3);
     let par0 = alloc(ctx.heap, ctx.tid, 2);
-    link(ctx.heap, let0 + 2, arg0);
-    link(ctx.heap, op20 + 0, Dp0(get_ext(arg1), let0));
-    link(ctx.heap, op20 + 1, take_arg(ctx.heap, arg1, 0));
-    link(ctx.heap, op21 + 1, take_arg(ctx.heap, arg1, 1));
-    link(ctx.heap, op21 + 0, Dp1(get_ext(arg1), let0));
-    link(ctx.heap, par0 + 0, Op2(get_ext(ctx.term), op20));
-    link(ctx.heap, par0 + 1, Op2(get_ext(ctx.term), op21));
+    ctx.heap.link(let0 + 2, arg0);
+    ctx.heap.link(op20 + 0, Dp0(get_ext(arg1), let0));
+    ctx.heap.link(op20 + 1, take_arg(ctx.heap, arg1, 0));
+    ctx.heap.link(op21 + 1, take_arg(ctx.heap, arg1, 1));
+    ctx.heap.link(op21 + 0, Dp1(get_ext(arg1), let0));
+    ctx.heap.link(par0 + 0, Op2(get_ext(ctx.term), op20));
+    ctx.heap.link(par0 + 1, Op2(get_ext(ctx.term), op21));
     let done = Sup(get_ext(arg1), par0);
-    link(ctx.heap, *ctx.host, done);
+    ctx.heap.link(*ctx.host, done);
     return false;
   }
 
