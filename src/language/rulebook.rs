@@ -41,52 +41,51 @@ pub fn new_rulebook() -> RuleBook {
     book.id_to_smap.insert(precomp.id, precomp.smap.to_vec());
     book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
   }
-  return book;
+  book
 }
 
-// Adds a group to a rulebook
-pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
-  fn register(book: &mut RuleBook, term: &language::syntax::Term, lhs_top: bool) {
+impl RuleBook {
+  fn register(&mut self, term: &language::syntax::Term, lhs_top: bool) {
     match term {
       language::syntax::Term::Dup { expr, body, .. } => {
-        register(book, expr, false);
-        register(book, body, false);
+        self.register(expr, false);
+        self.register(body, false);
       }
       language::syntax::Term::Sup { val0, val1 } => {
-        register(book, val0, false);
-        register(book, val1, false);
+        self.register(val0, false);
+        self.register(val1, false);
       }
       language::syntax::Term::Let { expr, body, .. } => {
-        register(book, expr, false);
-        register(book, body, false);
+        self.register(expr, false);
+        self.register(body, false);
       }
       language::syntax::Term::Lam { body, .. } => {
-        register(book, body, false);
+        self.register(body, false);
       }
       language::syntax::Term::App { func, argm, .. } => {
-        register(book, func, false);
-        register(book, argm, false);
+        self.register(func, false);
+        self.register(argm, false);
       }
       language::syntax::Term::Op2 { val0, val1, .. } => {
-        register(book, val0, false);
-        register(book, val1, false);
+        self.register(val0, false);
+        self.register(val1, false);
       }
       term @ language::syntax::Term::Ctr { name, args } => {
         // Registers id
-        let id = match book.name_to_id.get(name) {
+        let id = match self.name_to_id.get(name) {
           None => {
-            let id = book.name_count;
-            book.name_to_id.insert(name.clone(), id);
-            book.id_to_name.insert(id, name.clone());
-            book.name_count += 1;
+            let id = self.name_count;
+            self.name_to_id.insert(name.clone(), id);
+            self.id_to_name.insert(id, name.clone());
+            self.name_count += 1;
             id
           }
           Some(id) => *id,
         };
         // Registers smap
-        match book.id_to_smap.get(&id) {
+        match self.id_to_smap.get(&id) {
           None => {
-            book.id_to_smap.insert(id, vec![false; args.len()]);
+            self.id_to_smap.insert(id, vec![false; args.len()]);
           }
           Some(smap) => {
             if smap.len() != args.len() {
@@ -104,28 +103,30 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
               _ => false,
             };
             if is_strict {
-              book.id_to_smap.get_mut(&id).unwrap()[i] = true;
+              self.id_to_smap.get_mut(&id).unwrap()[i] = true;
             }
           }
         }
         // Recurses
         for arg in args {
-          register(book, arg, false);
+          self.register(arg, false);
         }
       }
       _ => (),
     }
   }
+  // Adds a group to a rulebook
+  pub fn add_group(&mut self, name: &str, group: &RuleGroup) {
+    // Inserts the group on the book
+    self.rule_group.insert(name.to_string(), group.clone());
 
-  // Inserts the group on the book
-  book.rule_group.insert(name.to_string(), group.clone());
-
-  // Builds its metadata (name_to_id, id_to_name, ctr_is_fun)
-  for rule in &group.1 {
-    register(book, &rule.lhs, true);
-    register(book, &rule.rhs, false);
-    if let language::syntax::Term::Ctr { ref name, .. } = *rule.lhs {
-      book.ctr_is_fun.insert(name.clone(), true);
+    // Builds its metadata (name_to_id, id_to_name, ctr_is_fun)
+    for rule in &group.1 {
+      self.register(&rule.lhs, true);
+      self.register(&rule.rhs, false);
+      if let language::syntax::Term::Ctr { ref name, .. } = *rule.lhs {
+        self.ctr_is_fun.insert(name.clone(), true);
+      }
     }
   }
 }
@@ -141,7 +142,7 @@ pub fn gen_rulebook(file: &language::syntax::File) -> RuleBook {
   // Adds each group
   for (name, group) in groups.iter() {
     if book.name_to_id.get(name).unwrap_or(&u64::MAX) >= &runtime::PRECOMP_COUNT {
-      add_group(&mut book, name, group);
+      book.add_group(name, group);
     }
   }
 
