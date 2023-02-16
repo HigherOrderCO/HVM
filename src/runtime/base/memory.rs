@@ -488,25 +488,25 @@ impl Heap {
       unsafe { self.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
     }
   }
-}
 
-// Substitution
-// ------------
+  // Substitution
+  // ------------
 
-// Atomically replaces a ptr by another. Updates binders.
-pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, Ptr> {
-  unsafe {
-    let got = heap.node.get_unchecked(loc as usize).compare_exchange_weak(
-      old,
-      neo,
-      Ordering::Relaxed,
-      Ordering::Relaxed,
-    )?;
-    if get_tag(neo) <= VAR {
-      let arg_loc = get_loc(neo, get_tag(neo) & 0x01);
-      heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+  // Atomically replaces a ptr by another. Updates binders.
+  pub fn atomic_relink(&self, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, Ptr> {
+    unsafe {
+      let got = self.node.get_unchecked(loc as usize).compare_exchange_weak(
+        old,
+        neo,
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+      )?;
+      if get_tag(neo) <= VAR {
+        let arg_loc = get_loc(neo, get_tag(neo) & 0x01);
+        self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+      }
+      Ok(got)
     }
-    Ok(got)
   }
 }
 
@@ -518,7 +518,7 @@ pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr
       if heap.tids == 1 {
         heap.link(get_loc(arg_ptr, 0), val);
         return;
-      } else if atomic_relink(heap, get_loc(arg_ptr, 0), var, val).is_ok() {
+      } else if heap.atomic_relink(get_loc(arg_ptr, 0), var, val).is_ok() {
         return;
       } else {
         continue;
