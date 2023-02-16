@@ -25,8 +25,7 @@ pub fn default_heap_size() -> usize {
   use sysinfo::SystemExt;
   let available_memory = System::new_with_specifics(RefreshKind::new().with_memory()).free_memory();
   let heap_size = (available_memory * 3 / 4) / 8;
-  let heap_size = std::cmp::min(heap_size as usize, 16 * CELLS_PER_GB);
-  return heap_size;
+  std::cmp::min(heap_size as usize, 16 * CELLS_PER_GB)
 }
 
 // If unspecified, spawns 1 thread for each available core
@@ -44,8 +43,8 @@ pub struct Runtime {
 
 impl Runtime {
   /// Creates a new, empty runtime
-  pub fn new(size: usize, tids: usize, dbug: bool) -> Runtime {
-    Runtime {
+  pub fn new(size: usize, tids: usize, dbug: bool) -> Self {
+    Self {
       heap: new_heap(size, tids),
       prog: Program::new(),
       book: language::rulebook::new_rulebook(),
@@ -55,18 +54,13 @@ impl Runtime {
   }
 
   /// Creates a runtime from source code, given a max number of nodes
-  pub fn from_code_with(
-    code: &str,
-    size: usize,
-    tids: usize,
-    dbug: bool,
-  ) -> Result<Runtime, String> {
+  pub fn from_code_with(code: &str, size: usize, tids: usize, dbug: bool) -> Result<Self, String> {
     let file = language::syntax::read_file(code)?;
     let heap = new_heap(size, tids);
     let prog = Program::new();
     let book = language::rulebook::gen_rulebook(&file);
     let tids = new_tids(tids);
-    Ok(Runtime { heap, prog, book, tids, dbug })
+    Ok(Self { heap, prog, book, tids, dbug })
   }
 
   ////fn get_area(&mut self) -> runtime::Area {
@@ -75,8 +69,8 @@ impl Runtime {
 
   /// Creates a runtime from a source code
   //#[cfg(not(target_arch = "wasm32"))]
-  pub fn from_code(code: &str) -> Result<Runtime, String> {
-    Runtime::from_code_with(code, default_heap_size(), default_heap_tids(), false)
+  pub fn from_code(code: &str) -> Result<Self, String> {
+    Self::from_code_with(code, default_heap_size(), default_heap_tids(), false)
   }
 
   ///// Extends a runtime with new definitions
@@ -365,15 +359,15 @@ impl Runtime {
   }
 
   pub fn alloc(&mut self, size: u64) -> u64 {
-    alloc(&self.heap, 0, size)// FIXME tid?
+    alloc(&self.heap, 0, size) // FIXME tid?
   }
 
   pub fn free(&mut self, loc: u64, size: u64) {
-    free(&self.heap, 0, loc, size)// FIXME tid?
+    free(&self.heap, 0, loc, size) // FIXME tid?
   }
 
   pub fn collect(&mut self, term: Ptr) {
-    collect(&self.heap, &self.prog.aris, 0, term)// FIXME tid?
+    collect(&self.heap, &self.prog.aris, 0, term) // FIXME tid?
   }
 }
 

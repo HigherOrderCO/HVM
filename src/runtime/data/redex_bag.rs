@@ -36,14 +36,14 @@ pub fn get_redex_left(redex: Redex) -> u64 {
 }
 
 impl RedexBag {
-  pub fn new(tids: usize) -> RedexBag {
+  pub fn new(tids: usize) -> Self {
     let mut next = vec![];
     for _ in 0..tids {
       next.push(CachePadded::new(AtomicUsize::new(0)));
     }
     let next = next.into_boxed_slice();
     let data = crate::runtime::new_atomic_u64_array(REDEX_BAG_SIZE);
-    RedexBag { tids, next, data }
+    Self { tids, next, data }
   }
 
   //pub fn min_index(&self, tid: usize) -> usize {

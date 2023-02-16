@@ -35,7 +35,7 @@ pub fn new_rulebook() -> RuleBook {
     ctr_is_fun: HashMap::new(),
   };
   for precomp in runtime::PRECOMP {
-    book.name_count = book.name_count + 1;
+    book.name_count += 1;
     book.name_to_id.insert(precomp.name.to_string(), precomp.id);
     book.id_to_name.insert(precomp.id, precomp.name.to_string());
     book.id_to_smap.insert(precomp.id, precomp.smap.to_vec());

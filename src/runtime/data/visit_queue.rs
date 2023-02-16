@@ -34,14 +34,14 @@ pub fn get_visit_cont(visit: Visit) -> u64 {
 }
 
 impl Default for VisitQueue {
-    fn default() -> Self {
-        Self::new()
-    }
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl VisitQueue {
-  pub fn new() -> VisitQueue {
-    VisitQueue {
+  pub fn new() -> Self {
+    Self {
       init: CachePadded::new(AtomicUsize::new(0)),
       last: CachePadded::new(AtomicUsize::new(0)),
       data: crate::runtime::new_atomic_u64_array(VISIT_QUEUE_SIZE),
