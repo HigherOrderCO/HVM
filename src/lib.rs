@@ -110,7 +110,7 @@ pub use language::syntax::{
 ///// Creates a runtime from source code, given a max number of nodes
 //pub fn from_code_with_size(code: &str, size: usize) -> Result<Runtime, String> {
 //let file = language::syntax::read_file(code)?;
-//let heap = runtime::new_heap(size, runtime::available_parallelism());
+//let heap = Heap::new(size, runtime::available_parallelism());
 //let prog = runtime::new_program();
 //let book = language::rulebook::gen_rulebook(&file);
 //return Ok(Runtime { heap, prog, book });

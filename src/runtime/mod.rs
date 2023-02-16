@@ -47,7 +47,7 @@ impl Runtime {
   /// Creates a new, empty runtime
   pub fn new(size: usize, tids: usize, dbug: bool) -> Self {
     Self {
-      heap: new_heap(size, tids),
+      heap: Heap::new(size, tids),
       prog: Program::new(),
       book: RuleBook::new(),
       tids: new_tids(tids),
@@ -58,7 +58,7 @@ impl Runtime {
   /// Creates a runtime from source code, given a max number of nodes
   pub fn from_code_with(code: &str, size: usize, tids: usize, dbug: bool) -> Result<Self, String> {
     let file = language::syntax::read_file(code)?;
-    let heap = new_heap(size, tids);
+    let heap = crate::runtime::Heap::new(size, tids);
     let prog = Program::new();
     let book = (&file).into();
     let tids = new_tids(tids);

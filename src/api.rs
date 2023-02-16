@@ -30,7 +30,7 @@ pub fn eval(
   }
 
   // Creates the runtime heap
-  let heap = runtime::new_heap(size, tids);
+  let heap = crate::runtime::Heap::new(size, tids);
   let tids = runtime::new_tids(tids);
 
   // Allocates the main term

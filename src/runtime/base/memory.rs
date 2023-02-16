@@ -372,9 +372,7 @@ impl Heap {
   pub fn take_arg(&self, term: Ptr, arg: u64) -> Ptr {
     self.take_ptr(get_loc(term, arg))
   }
-}
 
-impl Heap {
   // Writes a ptr to memory. Updates binders.
   pub fn link(&self, loc: u64, ptr: Ptr) -> Ptr {
     unsafe {
@@ -407,33 +405,35 @@ pub fn new_tids(tids: usize) -> Box<[usize]> {
   (0..tids).collect::<Vec<usize>>().into_boxed_slice()
 }
 
-pub fn new_heap(size: usize, tids: usize) -> Heap {
-  let mut lvar = vec![];
-  for tid in 0..tids {
-    lvar.push(CachePadded::new(LocalVars {
-      tid,
-      used: AtomicI64::new(0),
-      next: AtomicU64::new((size / tids * (tid + 0)) as u64),
-      amin: AtomicU64::new((size / tids * (tid + 0)) as u64),
-      amax: AtomicU64::new((size / tids * (tid + 1)) as u64),
-      dups: AtomicU64::new(((1 << 28) / tids * tid) as u64),
-      cost: AtomicU64::new(0),
-    }))
+impl Heap {
+  pub fn new(size: usize, tids: usize) -> Self {
+    let mut lvar = vec![];
+    for tid in 0..tids {
+      lvar.push(CachePadded::new(LocalVars {
+        tid,
+        used: AtomicI64::new(0),
+        next: AtomicU64::new((size / tids * (tid + 0)) as u64),
+        amin: AtomicU64::new((size / tids * (tid + 0)) as u64),
+        amax: AtomicU64::new((size / tids * (tid + 1)) as u64),
+        dups: AtomicU64::new(((1 << 28) / tids * tid) as u64),
+        cost: AtomicU64::new(0),
+      }))
+    }
+    let node = new_atomic_u64_array(size);
+    let lock = new_atomic_u8_array(size);
+    let lvar = lvar.into_boxed_slice();
+    let rbag = RedexBag::new(tids);
+    let aloc = (0..tids)
+      .map(|x| new_atomic_u64_array(1 << 20))
+      .collect::<Vec<Box<[AtomicU64]>>>()
+      .into_boxed_slice();
+    let vbuf = (0..tids)
+      .map(|x| new_atomic_u64_array(1 << 16))
+      .collect::<Vec<Box<[AtomicU64]>>>()
+      .into_boxed_slice();
+    let vstk = (0..tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
+    Self { tids, node, lock, lvar, rbag, aloc, vbuf, vstk }
   }
-  let node = new_atomic_u64_array(size);
-  let lock = new_atomic_u8_array(size);
-  let lvar = lvar.into_boxed_slice();
-  let rbag = RedexBag::new(tids);
-  let aloc = (0..tids)
-    .map(|x| new_atomic_u64_array(1 << 20))
-    .collect::<Vec<Box<[AtomicU64]>>>()
-    .into_boxed_slice();
-  let vbuf = (0..tids)
-    .map(|x| new_atomic_u64_array(1 << 16))
-    .collect::<Vec<Box<[AtomicU64]>>>()
-    .into_boxed_slice();
-  let vstk = (0..tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
-  Heap { tids, node, lock, lvar, rbag, aloc, vbuf, vstk }
 }
 
 // Allocator
