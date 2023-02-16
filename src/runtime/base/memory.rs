@@ -334,14 +334,14 @@ impl Heap {
   pub fn inc_cost(&self, tid: usize) {
     unsafe { self.lvar.get_unchecked(tid) }.cost.fetch_add(1, Ordering::Relaxed);
   }
-}
 
-pub fn gen_dup(heap: &Heap, tid: usize) -> u64 {
-  return unsafe { heap.lvar.get_unchecked(tid) }.dups.fetch_add(1, Ordering::Relaxed) & 0xFFF_FFFF;
+  pub fn gen_dup(&self, tid: usize) -> u64 {
+    unsafe { self.lvar.get_unchecked(tid) }.dups.fetch_add(1, Ordering::Relaxed) & 0xFFF_FFFF
+  }
 }
 
 pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {
-  return *arit.get(&get_ext(lnk)).unwrap_or(&0);
+  *arit.get(&get_ext(lnk)).unwrap_or(&0)
 }
 
 // Pointers
@@ -388,15 +388,15 @@ pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
 // -----------------
 
 pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
-  return unsafe {
+  unsafe {
     Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice())))
-  };
+  }
 }
 
 pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
-  return unsafe {
+  unsafe {
     Box::from_raw(AtomicU64::from_mut_slice(Box::leak(vec![0u64; size].into_boxed_slice())))
-  };
+  }
 }
 
 pub fn new_tids(tids: usize) -> Box<[usize]> {

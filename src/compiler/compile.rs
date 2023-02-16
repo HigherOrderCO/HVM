@@ -442,7 +442,7 @@ pub fn build_function_rule_rhs(
     } else {
       let coln = fresh(nams, "col");
       let name = fresh(nams, "dup");
-      line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
+      line(code, tab + 1, &format!("let {} = ctx.heap.gen_dup(ctx.tid);", coln));
       line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, 3)));
       line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name)); // FIXME: remove when possible (same as above)
       line(code, tab, &format!("link(ctx.heap, {} + 1, Era());", name)); // FIXME: remove when possible (same as above)
@@ -549,7 +549,7 @@ pub fn build_function_rule_rhs(
         let val0 = build_term(book, code, tab, free, vars, nams, lams, dups, val0);
         let val1 = build_term(book, code, tab, free, vars, nams, lams, dups, val1);
         let coln = fresh(nams, "col");
-        line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
+        line(code, tab + 1, &format!("let {} = ctx.heap.gen_dup(ctx.tid);", coln));
         line(code, tab, &format!("let {} = {};", name, alloc_node(free, 2)));
         line(code, tab, &format!("link(ctx.heap, {} + 0, {});", name, val0));
         line(code, tab, &format!("link(ctx.heap, {} + 1, {});", name, val1));
