@@ -715,22 +715,6 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
     name
   }
 
-  // Checks if this rule has nested patterns, and must be splitted
-  #[rustfmt::skip]
-  fn must_split(lhs: &language::syntax::Term) -> bool {
-/**/if let language::syntax::Term::Ctr { ref args, .. } = *lhs {
-/*  */for arg in args {
-/*  H */if let language::syntax::Term::Ctr { args: ref arg_args, .. } = **arg {
-/*   A  */for field in arg_args {
-/*    D   */if field.is_matchable() {
-/* ─=≡ΣO)   */return true;
-/*    U   */}
-/*   K  */}
-/*  E */}
-/* N*/}
-/**/} false
-  }
-
   // Returns true if a rule is a global default case (all args are vars)
   //fn is_default(lhs: &language::syntax::Term) -> bool {
   ///**/if let language::syntax::Term::Ctr { ref args, .. } = *lhs {
@@ -763,7 +747,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
     for i in 0..rules.len() {
       if !skip.contains(&i) {
         let rule = &rules[i];
-        if must_split(&rule.lhs) {
+        if rule.lhs.must_split() {
           if let language::syntax::Term::Ctr { ref name, ref args } = *rule.lhs {
             let mut new_group: Vec<language::syntax::Rule> = vec![];
             let new_lhs_name: String = name.clone();

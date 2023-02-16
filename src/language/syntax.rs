@@ -26,6 +26,22 @@ impl Term {
   pub fn is_matchable(&self) -> bool {
     matches!(self, Self::Ctr { .. } | Self::U6O { .. } | Self::F6O { .. })
   }
+
+  // Checks if this rule has nested patterns, and must be splitted
+  #[rustfmt::skip]
+  pub fn must_split(&self) -> bool {
+/**/if let Self::Ctr { ref args, .. } = *self {
+/*  */for arg in args {
+/*  H */if let Self::Ctr { args: ref arg_args, .. } = **arg {
+/*   A  */for field in arg_args {
+/*    D   */if field.is_matchable() {
+/* ─=≡ΣO)   */return true;
+/*    U   */}
+/*   K  */}
+/*  E */}
+/* N*/}
+/**/} false
+  }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
