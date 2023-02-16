@@ -16,7 +16,7 @@ pub fn build_name(name: &str) -> String {
 
 pub fn build_code(code: &str) -> Result<(String, String), String> {
   let file = language::syntax::read_file(code)?;
-  let book = language::rulebook::gen_rulebook(&file);
+  let book = (&file).into();
   runtime::gen_functions(&book);
   Ok(build_rulebook(&book))
 }

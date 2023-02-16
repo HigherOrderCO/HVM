@@ -24,27 +24,27 @@ pub struct RuleBook {
 
 pub type RuleGroup = (usize, Vec<language::syntax::Rule>);
 
-// Creates an empty rulebook
-pub fn new_rulebook() -> RuleBook {
-  let mut book = RuleBook {
-    rule_group: HashMap::new(),
-    name_count: 0,
-    name_to_id: HashMap::new(),
-    id_to_smap: HashMap::new(),
-    id_to_name: HashMap::new(),
-    ctr_is_fun: HashMap::new(),
-  };
-  for precomp in runtime::PRECOMP {
-    book.name_count += 1;
-    book.name_to_id.insert(precomp.name.to_string(), precomp.id);
-    book.id_to_name.insert(precomp.id, precomp.name.to_string());
-    book.id_to_smap.insert(precomp.id, precomp.smap.to_vec());
-    book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
-  }
-  book
-}
-
 impl RuleBook {
+  // Creates an empty rulebook
+  pub fn new() -> Self {
+    let mut book = Self {
+      rule_group: HashMap::new(),
+      name_count: 0,
+      name_to_id: HashMap::new(),
+      id_to_smap: HashMap::new(),
+      id_to_name: HashMap::new(),
+      ctr_is_fun: HashMap::new(),
+    };
+    for precomp in runtime::PRECOMP {
+      book.name_count += 1;
+      book.name_to_id.insert(precomp.name.to_string(), precomp.id);
+      book.id_to_name.insert(precomp.id, precomp.name.to_string());
+      book.id_to_smap.insert(precomp.id, precomp.smap.to_vec());
+      book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
+    }
+    book
+  }
+
   fn register(&mut self, term: &language::syntax::Term, lhs_top: bool) {
     match term {
       language::syntax::Term::Dup { expr, body, .. } => {
@@ -131,36 +131,37 @@ impl RuleBook {
   }
 }
 
-// Converts a file to a rulebook
-pub fn gen_rulebook(file: &language::syntax::File) -> RuleBook {
-  // Creates an empty rulebook
-  let mut book = new_rulebook();
+impl From<&language::syntax::File> for RuleBook {
+  fn from(file: &language::syntax::File) -> Self {
+    // Creates an empty rulebook
+    let mut book = RuleBook::new();
 
-  // Flattens, sanitizes and groups this file's rules
-  let groups = group_rules(&sanitize_rules(&flatten(&file.rules)));
+    // Flattens, sanitizes and groups this file's rules
+    let groups = group_rules(&sanitize_rules(&flatten(&file.rules)));
 
-  // Adds each group
-  for (name, group) in groups.iter() {
-    if book.name_to_id.get(name).unwrap_or(&u64::MAX) >= &runtime::PRECOMP_COUNT {
-      book.add_group(name, group);
-    }
-  }
-
-  // Includes SMaps
-  for (rule_name, rule_smap) in &file.smaps {
-    let id = book.name_to_id.get(rule_name).unwrap();
-    if book.id_to_smap.get(id).is_none() {
-      book.id_to_smap.insert(*id, vec![false; rule_smap.len()]);
-    }
-    let smap = book.id_to_smap.get_mut(id).unwrap();
-    for i in 0..smap.len() {
-      if rule_smap[i] {
-        smap[i] = true;
+    // Adds each group
+    for (name, group) in groups.iter() {
+      if book.name_to_id.get(name).unwrap_or(&u64::MAX) >= &runtime::PRECOMP_COUNT {
+        book.add_group(name, group);
       }
     }
-  }
 
-  book
+    // Includes SMaps
+    for (rule_name, rule_smap) in &file.smaps {
+      let id = book.name_to_id.get(rule_name).unwrap();
+      if book.id_to_smap.get(id).is_none() {
+        book.id_to_smap.insert(*id, vec![false; rule_smap.len()]);
+      }
+      let smap = book.id_to_smap.get_mut(id).unwrap();
+      for i in 0..smap.len() {
+        if rule_smap[i] {
+          smap[i] = true;
+        }
+      }
+    }
+
+    book
+  }
 }
 
 // Groups rules by name. For example:

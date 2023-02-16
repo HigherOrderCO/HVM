@@ -33,6 +33,8 @@ pub fn default_heap_tids() -> usize {
   std::thread::available_parallelism().unwrap().get()
 }
 
+use language::rulebook::RuleBook;
+
 pub struct Runtime {
   pub heap: Heap,
   pub prog: Program,
@@ -47,7 +49,7 @@ impl Runtime {
     Self {
       heap: new_heap(size, tids),
       prog: Program::new(),
-      book: language::rulebook::new_rulebook(),
+      book: RuleBook::new(),
       tids: new_tids(tids),
       dbug,
     }
@@ -58,7 +60,7 @@ impl Runtime {
     let file = language::syntax::read_file(code)?;
     let heap = new_heap(size, tids);
     let prog = Program::new();
-    let book = language::rulebook::gen_rulebook(&file);
+    let book = (&file).into();
     let tids = new_tids(tids);
     Ok(Self { heap, prog, book, tids, dbug })
   }

@@ -14,7 +14,7 @@ pub fn eval(
   let file = language::syntax::read_file(&format!("{}\nHVM_MAIN_CALL = {}", file, term))?;
 
   // Converts the file to a Rulebook
-  let book = language::rulebook::gen_rulebook(&file);
+  let book = (&file).into();
 
   // Creates the runtime program
   let mut prog = runtime::Program::new();
