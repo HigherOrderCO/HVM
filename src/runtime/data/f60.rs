@@ -67,27 +67,27 @@ pub fn xor(a: F60, b: F60) -> F60 {
 
 #[inline(always)]
 pub fn ltn(a: F60, b: F60) -> F60 {
-  new(if val(a) < val(b) { 1.0 } else { 0.0 })
+  new((val(a) < val(b)).into())
 }
 
 #[inline(always)]
 pub fn lte(a: F60, b: F60) -> F60 {
-  new(if val(a) <= val(b) { 1.0 } else { 0.0 })
+  new((val(a) <= val(b)).into())
 }
 
 #[inline(always)]
 pub fn eql(a: F60, b: F60) -> F60 {
-  new(if val(a) == val(b) { 1.0 } else { 0.0 })
+  new((val(a) == val(b)).into())
 }
 
 #[inline(always)]
 pub fn gte(a: F60, b: F60) -> F60 {
-  new(if val(a) >= val(b) { 1.0 } else { 0.0 })
+  new((val(a) >= val(b)).into())
 }
 
 #[inline(always)]
 pub fn gtn(a: F60, b: F60) -> F60 {
-  new(if val(a) > val(b) { 1.0 } else { 0.0 })
+  new((val(a) > val(b)).into())
 }
 
 #[inline(always)]
