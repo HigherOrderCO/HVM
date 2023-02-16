@@ -361,11 +361,11 @@ impl Runtime {
   }
 
   pub fn alloc(&mut self, size: u64) -> u64 {
-    alloc(&self.heap, 0, size) // FIXME tid?
+    self.heap.alloc(0, size) // FIXME tid?
   }
 
   pub fn free(&mut self, loc: u64, size: u64) {
-    free(&self.heap, 0, loc, size) // FIXME tid?
+    self.heap.free(0, loc, size) // FIXME tid?
   }
 
   pub fn collect(&mut self, term: Ptr) {

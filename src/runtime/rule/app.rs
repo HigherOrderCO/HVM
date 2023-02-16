@@ -26,8 +26,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
       ctx.heap.take_arg(ctx.term, 1),
     );
     ctx.heap.link(*ctx.host, ctx.heap.take_arg(arg0, 1));
-    free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
-    free(ctx.heap, ctx.tid, get_loc(arg0, 0), 2);
+    ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
+    ctx.heap.free(ctx.tid, get_loc(arg0, 0), 2);
     return true;
   }
 
@@ -39,8 +39,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     ctx.heap.inc_cost(ctx.tid);
     let app0 = get_loc(ctx.term, 0);
     let app1 = get_loc(arg0, 0);
-    let let0 = alloc(ctx.heap, ctx.tid, 3);
-    let par0 = alloc(ctx.heap, ctx.tid, 2);
+    let let0 = ctx.heap.alloc(ctx.tid, 3);
+    let par0 = ctx.heap.alloc(ctx.tid, 2);
     ctx.heap.link(let0 + 2, ctx.heap.take_arg(ctx.term, 1));
     ctx.heap.link(app0 + 1, Dp0(get_ext(arg0), let0));
     ctx.heap.link(app0 + 0, ctx.heap.take_arg(arg0, 0));

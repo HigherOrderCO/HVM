@@ -499,7 +499,7 @@ pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: 
 ////println!("~ rec_loc {} gets {} threads", rec_loc, rec_lvars.len());
 ////let new_loc;
 ////if thd_len == rec_len {
-////new_loc = alloc(heap, rec_tids[0], 1);
+////new_loc = heap.alloc(rec_tids[0], 1);
 ////move_ptr(heap, *rec_loc, new_loc);
 ////} else {
 ////new_loc = *rec_loc;

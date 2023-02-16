@@ -182,8 +182,7 @@ pub fn alloc_body(
     let aloc = &heap.aloc[tid];
     let lvar = &heap.lvar[tid];
     for i in 0..nodes.len() {
-      *aloc.get_unchecked(i).as_mut_ptr() =
-        alloc(heap, tid, (*nodes.get_unchecked(i)).len() as u64);
+      *aloc.get_unchecked(i).as_mut_ptr() = heap.alloc(tid, (*nodes.get_unchecked(i)).len() as u64);
     }
     if *lvar.dups.as_mut_ptr() + dupk >= (1 << 28) {
       *lvar.dups.as_mut_ptr() = 0;
@@ -614,7 +613,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
 }
 
 pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -> u64 {
-  let host = alloc(heap, tid, 1);
+  let host = heap.alloc(tid, 1);
   let body = build_body(term, 0);
   let term = alloc_body(heap, prog, tid, 0, &[], &body);
   heap.link(host, term);
@@ -635,7 +634,7 @@ pub fn make_string(heap: &Heap, tid: usize, text: &str) -> Ptr {
   let mut term = Ctr(STRING_NIL, 0);
   for chr in text.chars().rev() {
     // TODO: reverse
-    let ctr0 = alloc(heap, tid, 2);
+    let ctr0 = heap.alloc(tid, 2);
     heap.link(ctr0 + 0, U6O(chr as u64));
     heap.link(ctr0 + 1, term);
     term = Ctr(STRING_CONS, ctr0);

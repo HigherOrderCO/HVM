@@ -47,7 +47,7 @@ pub fn eval(
 
   // Frees used memory
   runtime::collect(&heap, &prog.aris, tids[0], heap.load_ptr(host));
-  runtime::free(&heap, 0, 0, 1);
+  heap.free(0, 0, 1);
 
   // Returns the result, rewrite cost and time elapsed
   Ok((code, heap.get_cost(), time))

@@ -147,9 +147,9 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
 
       // free the matched ctrs
       for (i, arity) in &rule.free {
-        free(ctx.heap, ctx.tid, get_loc(ctx.heap.load_arg(ctx.term, *i), 0), *arity);
+        ctx.heap.free(ctx.tid, get_loc(ctx.heap.load_arg(ctx.term, *i), 0), *arity);
       }
-      free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), arity_of(&ctx.prog.aris, fid));
+      ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), arity_of(&ctx.prog.aris, fid));
 
       return true;
     }
@@ -172,11 +172,11 @@ pub fn superpose(
   let arit = arity_of(aris, term);
   let func = get_ext(term);
   let fun0 = get_loc(term, 0);
-  let fun1 = alloc(heap, tid, arit);
+  let fun1 = heap.alloc(tid, arit);
   let par0 = get_loc(argn, 0);
   for i in 0..arit {
     if i != n {
-      let leti = alloc(heap, tid, 3);
+      let leti = heap.alloc(tid, 3);
       let argi = heap.take_arg(term, i);
       heap.link(fun0 + i, Dp0(get_ext(argn), leti));
       heap.link(fun1 + i, Dp1(get_ext(argn), leti));

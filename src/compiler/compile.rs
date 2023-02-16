@@ -365,15 +365,15 @@ pub fn build_function(
         // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
         for must_free in &free {
           if let Some((loc, ari)) = must_free {
-            line(&mut apply, 2, &format!("free(ctx.heap, ctx.tid, {}, {});", loc, ari));
+            line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, {}, {});", loc, ari));
           }
         }
 
         //for (i, arity) in &rule.free {
         //let i = *i as u64;
-        //line(&mut apply, 2, &format!("free(ctx.heap, ctx.tid, get_loc(arg{}, 0), {});", i, arity));
+        //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(arg{}, 0), {});", i, arity));
         //}
-        //line(&mut apply, 2, &format!("free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), {});", fn_visit.strict_map.len()));
+        //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), {});", fn_visit.strict_map.len()));
 
         let ret_ptr = match rule.body.0 {
           runtime::RuleBodyCell::Val { value } => value,
@@ -464,7 +464,7 @@ pub fn build_function_rule_rhs(
         }
       }
     }
-    return format!("alloc(ctx.heap, ctx.tid, {})", arit);
+    return format!("ctx.heap.alloc(ctx.tid, {})", arit);
   }
   fn build_term(
     book: &language::rulebook::RuleBook,

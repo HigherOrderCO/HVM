@@ -434,58 +434,59 @@ impl Heap {
     let vstk = (0..tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
     Self { tids, node, lock, lvar, rbag, aloc, vbuf, vstk }
   }
-}
 
-// Allocator
-// ---------
+  // Allocator
+  // ---------
 
-pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
-  unsafe {
-    let lvar = &heap.lvar.get_unchecked(tid);
-    if arity == 0 {
-      0
-    } else {
-      let mut length = 0;
-      //let mut count = 0;
-      loop {
-        //count += 1;
-        //if tid == 9 && count > 5000000 {
-        //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
-        //}
-        // Loads value on cursor
-        let val = heap.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
-        // If it is empty, increment length
-        if val == 0 {
-          length += 1;
-        // Otherwise, reset length
-        } else {
-          length = 0;
-        };
-        // Moves cursor right
-        *lvar.next.as_mut_ptr() += 1;
-        // If it is out of bounds, warp around
-        if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
-          length = 0;
-          *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
-        }
-        // If length equals arity, allocate that space
-        if length == arity {
-          //println!("[{}] return", lvar.tid);
-          //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
-          //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
-          //if tid == 9 && count > 50000 {
-          //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
+  pub fn alloc(&self, tid: usize, arity: u64) -> u64 {
+    unsafe {
+      let lvar = &self.lvar.get_unchecked(tid);
+      if arity == 0 {
+        0
+      } else {
+        let mut length = 0;
+        //let mut count = 0;
+        loop {
+          //count += 1;
+          //if tid == 9 && count > 5000000 {
+          //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
           //}
-          return *lvar.next.as_mut_ptr() - length;
+          // Loads value on cursor
+          let val =
+            self.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
+          // If it is empty, increment length
+          if val == 0 {
+            length += 1;
+          // Otherwise, reset length
+          } else {
+            length = 0;
+          };
+          // Moves cursor right
+          *lvar.next.as_mut_ptr() += 1;
+          // If it is out of bounds, warp around
+          if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
+            length = 0;
+            *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
+          }
+          // If length equals arity, allocate that space
+          if length == arity {
+            //println!("[{}] return", lvar.tid);
+            //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
+            //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
+            //if tid == 9 && count > 50000 {
+            //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
+            //}
+            return *lvar.next.as_mut_ptr() - length;
+          }
         }
       }
     }
   }
-}
 
-pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
-  for i in 0..arity {
-    unsafe { heap.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
+  pub fn free(&self, tid: usize, loc: u64, arity: u64) {
+    for i in 0..arity {
+      unsafe { self.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
+    }
   }
 }
 
@@ -623,7 +624,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         if acquire_lock(heap, tid, term).is_ok() {
           if get_tag(heap.load_arg(term, 1)) == ERA {
             coll.push(heap.take_arg(term, 2));
-            free(heap, tid, get_loc(term, 0), 3);
+            heap.free(tid, get_loc(term, 0), 3);
           }
           release_lock(heap, tid, term);
         }
@@ -633,7 +634,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         if acquire_lock(heap, tid, term).is_ok() {
           if get_tag(heap.load_arg(term, 0)) == ERA {
             coll.push(heap.take_arg(term, 2));
-            free(heap, tid, get_loc(term, 0), 3);
+            heap.free(tid, get_loc(term, 0), 3);
           }
           release_lock(heap, tid, term);
         }
@@ -644,25 +645,25 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
       LAM => {
         atomic_subst(heap, arit, tid, Var(get_loc(term, 0)), Era());
         next = heap.take_arg(term, 1);
-        free(heap, tid, get_loc(term, 0), 2);
+        heap.free(tid, get_loc(term, 0), 2);
         continue;
       }
       APP => {
         coll.push(heap.take_arg(term, 0));
         next = heap.take_arg(term, 1);
-        free(heap, tid, get_loc(term, 0), 2);
+        heap.free(tid, get_loc(term, 0), 2);
         continue;
       }
       SUP => {
         coll.push(heap.take_arg(term, 0));
         next = heap.take_arg(term, 1);
-        free(heap, tid, get_loc(term, 0), 2);
+        heap.free(tid, get_loc(term, 0), 2);
         continue;
       }
       OP2 => {
         coll.push(heap.take_arg(term, 0));
         next = heap.take_arg(term, 1);
-        free(heap, tid, get_loc(term, 0), 2);
+        heap.free(tid, get_loc(term, 0), 2);
         continue;
       }
       U60 => {}
@@ -676,7 +677,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
             next = heap.take_arg(term, i);
           }
         }
-        free(heap, tid, get_loc(term, 0), arity);
+        heap.free(tid, get_loc(term, 0), arity);
         if arity > 0 {
           continue;
         }

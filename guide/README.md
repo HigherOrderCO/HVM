@@ -440,7 +440,7 @@ let funs = vec![
       hvm::runtime::collect(ctx.heap, &ctx.prog.arit, ctx.tid, ctx.heap.load_ptr(arg0));
 
       // Frees the memory used by this function call
-      hvm::runtime::free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
+      ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
 
       // Tells HVM the returned value must be reduced
       return true;
