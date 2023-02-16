@@ -22,6 +22,12 @@ pub enum Term {
   Op2 { oper: Oper, val0: Box<Term>, val1: Box<Term> },
 }
 
+impl Term {
+  pub fn is_matchable(&self) -> bool {
+    matches!(self, Self::Ctr { .. } | Self::U6O { .. } | Self::F6O { .. })
+  }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Oper {
   Add,
@@ -52,6 +58,7 @@ pub struct Rule {
 }
 
 impl Rule {
+  // Checks true if every time that `a` matches, `b` will match too
   pub fn matches_together(&self, b: &Self) -> (bool, bool) {
     let mut same_shape = true;
     if let (

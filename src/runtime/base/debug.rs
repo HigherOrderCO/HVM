@@ -116,7 +116,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     tlocs: &[AtomicU64],
   ) -> String {
     let term = load_ptr(heap, host);
-    
+
     let done = if term == 0 {
       "<>".to_string()
     } else {

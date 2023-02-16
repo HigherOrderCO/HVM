@@ -722,7 +722,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
 /*  */for arg in args {
 /*  H */if let language::syntax::Term::Ctr { args: ref arg_args, .. } = **arg {
 /*   A  */for field in arg_args {
-/*    D   */if is_matchable(field) {
+/*    D   */if field.is_matchable() {
 /* ─=≡ΣO)   */return true;
 /*    U   */}
 /*   K  */}
@@ -746,20 +746,9 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
   ///**/} true
   //}
 
-  fn is_matchable(term: &language::syntax::Term) -> bool {
-    matches!(
-      term,
-      language::syntax::Term::Ctr { .. }
-        | language::syntax::Term::U6O { .. }
-        | language::syntax::Term::F6O { .. }
-    )
-  }
-
   //fn is_variable(term: &language::syntax::Term) -> bool {
   //matches!(term, language::syntax::Term::Var { .. })
   //}
-
-  // Checks true if every time that `a` matches, `b` will match too
 
   fn split_group(
     rules: &[language::syntax::Rule],
