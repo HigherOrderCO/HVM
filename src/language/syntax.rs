@@ -214,7 +214,7 @@ impl std::fmt::Display for File {
 // ======
 
 pub fn parse_let(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
-  return HOPA::guard(
+  HOPA::guard(
     HOPA::do_there_take_exact("let "),
     Box::new(|state| {
       let (state, _) = HOPA::force_there_take_exact("let ", state)?;
@@ -226,11 +226,11 @@ pub fn parse_let(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
       Ok((state, Box::new(Term::Let { name, expr, body })))
     }),
     state,
-  );
+  )
 }
 
 pub fn parse_dup(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
-  return HOPA::guard(
+  HOPA::guard(
     HOPA::do_there_take_exact("dup "),
     Box::new(|state| {
       let (state, _) = HOPA::force_there_take_exact("dup ", state)?;
@@ -243,7 +243,7 @@ pub fn parse_dup(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
       Ok((state, Box::new(Term::Dup { nam0, nam1, expr, body })))
     }),
     state,
-  );
+  )
 }
 
 pub fn parse_sup(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
@@ -277,7 +277,7 @@ pub fn parse_lam(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
 }
 
 pub fn parse_app(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
-  return HOPA::guard(
+  HOPA::guard(
     HOPA::do_there_take_exact("("),
     Box::new(|state| {
       HOPA::list(
@@ -296,7 +296,7 @@ pub fn parse_app(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
       )
     }),
     state,
-  );
+  )
 }
 
 pub fn parse_ctr(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
@@ -330,21 +330,15 @@ pub fn parse_num(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
       let (state, text) = HOPA::there_nonempty_name(state)?;
       if !text.is_empty() {
         if text.starts_with("0x") {
-          return Ok((
+          Ok((
             state,
             Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(&text[2..], 16).unwrap()) }),
-          ));
+          ))
         } else {
           if text.find(".").is_some() {
-            return Ok((
-              state,
-              Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) }),
-            ));
+            Ok((state, Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) })))
           } else {
-            return Ok((
-              state,
-              Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) }),
-            ));
+            Ok((state, Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) })))
           }
         }
       } else {
