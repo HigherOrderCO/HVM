@@ -508,25 +508,25 @@ impl Heap {
       Ok(got)
     }
   }
-}
 
-// Performs a global [x <- val] substitution atomically.
-pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
-  loop {
-    let arg_ptr = heap.load_ptr(get_loc(var, get_tag(var) & 0x01));
-    if get_tag(arg_ptr) == ARG {
-      if heap.tids == 1 {
-        heap.link(get_loc(arg_ptr, 0), val);
-        return;
-      } else if heap.atomic_relink(get_loc(arg_ptr, 0), var, val).is_ok() {
-        return;
-      } else {
-        continue;
+  // Performs a global [x <- val] substitution atomically.
+  pub fn atomic_subst(&self, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
+    loop {
+      let arg_ptr = self.load_ptr(get_loc(var, get_tag(var) & 0x01));
+      if get_tag(arg_ptr) == ARG {
+        if self.tids == 1 {
+          self.link(get_loc(arg_ptr, 0), val);
+          return;
+        } else if self.atomic_relink(get_loc(arg_ptr, 0), var, val).is_ok() {
+          return;
+        } else {
+          continue;
+        }
       }
-    }
-    if get_tag(arg_ptr) == ERA {
-      collect(heap, arit, tid, val); // safe, since `val` is owned by this thread
-      return;
+      if get_tag(arg_ptr) == ERA {
+        collect(self, arit, tid, val); // safe, since `val` is owned by this thread
+        return;
+      }
     }
   }
 }
@@ -643,7 +643,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
         heap.link(get_loc(term, 0), Era());
       }
       LAM => {
-        atomic_subst(heap, arit, tid, Var(get_loc(term, 0)), Era());
+        heap.atomic_subst(arit, tid, Var(get_loc(term, 0)), Era());
         next = heap.take_arg(term, 1);
         heap.free(tid, get_loc(term, 0), 2);
         continue;

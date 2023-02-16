@@ -18,8 +18,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // body
   if get_tag(arg0) == LAM {
     ctx.heap.inc_cost(ctx.tid);
-    atomic_subst(
-      ctx.heap,
+    ctx.heap.atomic_subst(
       &ctx.prog.aris,
       ctx.tid,
       Var(get_loc(arg0, 0)),
