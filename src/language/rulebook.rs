@@ -95,14 +95,8 @@ impl RuleBook {
         }
         // Force strictness when pattern-matching
         if lhs_top {
-          for i in 0..args.len() {
-            let is_strict = match *args[i] {
-              language::syntax::Term::Ctr { .. } => true,
-              language::syntax::Term::U6O { .. } => true,
-              language::syntax::Term::F6O { .. } => true,
-              _ => false,
-            };
-            if is_strict {
+          for (i, arg) in args.iter().enumerate() {
+            if arg.is_strict() {
               self.id_to_smap.get_mut(&id).unwrap()[i] = true;
             }
           }

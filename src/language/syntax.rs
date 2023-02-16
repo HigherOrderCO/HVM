@@ -114,6 +114,10 @@ impl Term {
     matches!(self, Self::Ctr { .. } | Self::U6O { .. } | Self::F6O { .. })
   }
 
+  pub fn is_strict(&self) -> bool {
+    matches!(self, Self::Ctr { .. } | Self::U6O { .. } | Self::F6O { .. })
+  }
+
   // Checks if this rule has nested patterns, and must be splitted
   #[rustfmt::skip]
   pub fn must_split(&self) -> bool {
