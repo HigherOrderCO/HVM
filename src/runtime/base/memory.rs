@@ -347,20 +347,20 @@ pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {
 // Pointers
 // --------
 
-// Given a location, loads the ptr stored on it
-pub fn load_ptr(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { heap.node.get_unchecked(loc as usize).load(Ordering::Relaxed) }
-}
-
-// Moves a pointer to another location
-pub fn move_ptr(heap: &Heap, old_loc: u64, new_loc: u64) -> Ptr {
-  link(heap, new_loc, take_ptr(heap, old_loc))
-}
-
 impl Heap {
+  // Given a location, loads the ptr stored on it
+  pub fn load_ptr(&self, loc: u64) -> Ptr {
+    unsafe { self.node.get_unchecked(loc as usize).load(Ordering::Relaxed) }
+  }
+
+  // Moves a pointer to another location
+  pub fn move_ptr(&self, old_loc: u64, new_loc: u64) -> Ptr {
+    link(self, new_loc, take_ptr(self, old_loc))
+  }
+
   // Given a pointer to a node, loads its nth arg
   pub fn load_arg(&self, term: Ptr, arg: u64) -> Ptr {
-    load_ptr(self, get_loc(term, arg))
+    self.load_ptr(get_loc(term, arg))
   }
 }
 // Given a location, takes the ptr stored on it
@@ -509,7 +509,7 @@ pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, P
 // Performs a global [x <- val] substitution atomically.
 pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
   loop {
-    let arg_ptr = load_ptr(heap, get_loc(var, get_tag(var) & 0x01));
+    let arg_ptr = heap.load_ptr(get_loc(var, get_tag(var) & 0x01));
     if get_tag(arg_ptr) == ARG {
       if heap.tids == 1 {
         link(heap, get_loc(arg_ptr, 0), val);

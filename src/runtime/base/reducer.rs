@@ -60,7 +60,7 @@ pub fn reduce(
   });
 
   // Return whnf term ptr
-  load_ptr(heap, root)
+  heap.load_ptr(root)
 }
 
 pub fn reducer(
@@ -104,7 +104,7 @@ pub fn reducer(
       }
       'work: loop {
         'visit: loop {
-          let term = load_ptr(heap, host);
+          let term = heap.load_ptr(host);
           if debug {
             print(tid, host);
           }
@@ -133,7 +133,7 @@ pub fn reducer(
                 }
                 Ok(_) => {
                   // If the term changed, release lock and try again
-                  if term != load_ptr(heap, host) {
+                  if term != heap.load_ptr(host) {
                     release_lock(heap, tid, term);
                     continue 'visit;
                   } else if dup::visit(ReduceCtx {
@@ -224,7 +224,7 @@ pub fn reducer(
         }
         'call: loop {
           'apply: loop {
-            let term = load_ptr(heap, host);
+            let term = heap.load_ptr(host);
             if debug {
               print(tid, host);
             }
@@ -346,7 +346,7 @@ pub fn reducer(
             stop.fetch_sub(1, Ordering::Relaxed);
             if full && !seen.contains(&host) {
               seen.insert(host);
-              let term = load_ptr(heap, host);
+              let term = heap.load_ptr(host);
               match get_tag(term) {
                 LAM => {
                   stop.fetch_add(1, Ordering::Relaxed);
@@ -445,11 +445,11 @@ pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: 
       break;
     }
   }
-  load_ptr(heap, host)
+  heap.load_ptr(host)
 }
 
 //pub fn normal(heap: &Heap, prog: &Program, tids: &[usize], host: u64, seen: &mut im::HashSet<u64>, debug: bool) -> Ptr {
-//let term = load_ptr(heap, host);
+//let term = heap.load_ptr( host);
 //if seen.contains(&host) {
 //term
 //} else {
@@ -549,5 +549,5 @@ pub fn normalize(heap: &Heap, prog: &Program, tids: &[usize], host: u64, debug: 
 //break;
 //}
 //}
-//load_ptr(heap, host)
+//heap.load_ptr( host)
 //}

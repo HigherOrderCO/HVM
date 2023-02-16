@@ -232,7 +232,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
     }
   }
 
-  let term = runtime::load_ptr(heap, host);
+  let term = heap.load_ptr(host);
 
   let mut names = HashMap::<Ptr, String>::new();
   let mut seen = HashSet::<Ptr>::new();
@@ -323,17 +323,17 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
         // todo: reverse
         let what = String::from("?h");
         let name = names.get(&pos).unwrap_or(&what);
-        let nam0 = if runtime::load_ptr(heap, pos + 0) == runtime::Era() {
+        let nam0 = if heap.load_ptr(pos + 0) == runtime::Era() {
           String::from("*")
         } else {
           format!("a{}", name)
         };
-        let nam1 = if runtime::load_ptr(heap, pos + 1) == runtime::Era() {
+        let nam1 = if heap.load_ptr(pos + 1) == runtime::Era() {
           String::from("*")
         } else {
           format!("b{}", name)
         };
-        let expr = expr(heap, prog, runtime::load_ptr(heap, pos + 2), &names);
+        let expr = expr(heap, prog, heap.load_ptr(pos + 2), &names);
         if i == 0 {
           output = language::syntax::Term::Dup {
             nam0,
@@ -486,7 +486,7 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
   }
 
   let mut names: HashMap<u64, String> = HashMap::new();
-  Box::new(dups(heap, prog, runtime::load_ptr(heap, host), &mut names))
+  Box::new(dups(heap, prog, heap.load_ptr(host), &mut names))
 }
 
 /// Reads back a term from Runtime's memory
@@ -500,14 +500,14 @@ pub fn as_string(heap: &Heap, prog: &Program, tids: &[usize], host: u64) -> Opti
   let mut text = String::new();
   runtime::reduce(heap, prog, tids, host, true, false);
   loop {
-    let term = runtime::load_ptr(heap, host);
+    let term = heap.load_ptr(host);
     if runtime::get_tag(term) == runtime::CTR {
       let fid = runtime::get_ext(term);
       if fid == runtime::STRING_NIL {
         break;
       }
       if fid == runtime::STRING_CONS {
-        let chr = runtime::load_ptr(heap, runtime::get_loc(term, 0));
+        let chr = heap.load_ptr(runtime::get_loc(term, 0));
         if runtime::get_tag(chr) == runtime::U60 {
           text.push(std::char::from_u32(runtime::get_num(chr) as u32).unwrap_or('?'));
           host = runtime::get_loc(term, 1);

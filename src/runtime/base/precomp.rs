@@ -226,7 +226,7 @@ fn hvm_log_apply(ctx: ReduceCtx) -> bool {
   let code = crate::language::readback::as_code(ctx.heap, ctx.prog, get_loc(ctx.term, 0));
   println!("{}", code);
   link(ctx.heap, *ctx.host, ctx.heap.load_arg(ctx.term, 1));
-  collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
+  collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_ptr(get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   true
 }
@@ -277,7 +277,7 @@ fn hvm_print_apply(ctx: ReduceCtx) -> bool {
     println!("{}", text);
   }
   link(ctx.heap, *ctx.host, ctx.heap.load_arg(ctx.term, 1));
-  collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
+  collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_ptr(get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   true
 }
@@ -292,7 +292,7 @@ fn hvm_sleep_visit(ctx: ReduceCtx) -> bool {
 fn hvm_sleep_apply(ctx: ReduceCtx) -> bool {
   let time = reduce(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), true, false);
   std::thread::sleep(std::time::Duration::from_nanos(get_num(time)));
-  link(ctx.heap, *ctx.host, load_ptr(ctx.heap, get_loc(ctx.term, 1)));
+  link(ctx.heap, *ctx.host, ctx.heap.load_ptr(get_loc(ctx.term, 1)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   true
 }

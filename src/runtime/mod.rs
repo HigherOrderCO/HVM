@@ -87,7 +87,7 @@ impl Runtime {
 
   /// Given a location, returns the pointer stored on it
   pub fn load_ptr(&self, host: u64) -> Ptr {
-    load_ptr(&self.heap, host)
+    self.heap.load_ptr(host)
   }
 
   /// Given a location, evaluates a term to head normal form

@@ -35,7 +35,7 @@ pub fn show_ptr(x: Ptr) -> String {
 pub fn show_heap(heap: &Heap) -> String {
   let mut text: String = String::new();
   for idx in 0..heap.node.len() {
-    let ptr = load_ptr(heap, idx as u64);
+    let ptr = heap.load_ptr(idx as u64);
     if ptr != 0 {
       text.push_str(&format!("{:04x} | ", idx));
       text.push_str(&show_ptr(ptr));
@@ -59,7 +59,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     names: &mut HashMap<u64, String>,
     count: &mut u64,
   ) {
-    let term = load_ptr(heap, host);
+    let term = heap.load_ptr(host);
     if term == 0 {
       return;
     }
@@ -115,7 +115,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     names: &HashMap<u64, String>,
     tlocs: &[AtomicU64],
   ) -> String {
-    let term = load_ptr(heap, host);
+    let term = heap.load_ptr(host);
 
     let done = if term == 0 {
       "<>".to_string()
@@ -215,9 +215,9 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     //let kind = kinds.get(&pos).unwrap_or(&0);
     let name = names.get(pos).unwrap_or(&what);
     let nam0 =
-      if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
+      if heap.load_ptr(pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
     let nam1 =
-      if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
+      if heap.load_ptr(pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
     text.push_str(&format!(
       "\ndup {} {} = {};",
       nam0,
@@ -231,9 +231,9 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
 pub fn validate_heap(heap: &Heap) {
   for idx in 0..heap.node.len() {
     // If it is an ARG, it must be pointing to a VAR/DP0/DP1 that points to it
-    let arg = load_ptr(heap, idx as u64);
+    let arg = heap.load_ptr(idx as u64);
     if get_tag(arg) == ARG {
-      let var = load_ptr(heap, get_loc(arg, 0));
+      let var = heap.load_ptr(get_loc(arg, 0));
       let oks = match get_tag(var) {
         VAR => get_loc(var, 0) == idx as u64,
         DP0 => get_loc(var, 0) == idx as u64,

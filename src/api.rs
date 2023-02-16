@@ -46,7 +46,7 @@ pub fn eval(
   let code = format!("{}", language::readback::as_term(&heap, &prog, host));
 
   // Frees used memory
-  runtime::collect(&heap, &prog.aris, tids[0], runtime::load_ptr(&heap, host));
+  runtime::collect(&heap, &prog.aris, tids[0], heap.load_ptr(host));
   runtime::free(&heap, 0, 0, 1);
 
   // Returns the result, rewrite cost and time elapsed
