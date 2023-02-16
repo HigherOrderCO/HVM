@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 // - ctr_is_fun: true if a ctr is used as a function
 // A sanitized rule has all its variables renamed to have unique names.
 // Variables that are never used are renamed to "*".
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct RuleBook {
   pub rule_group: HashMap<String, RuleGroup>,
   pub name_count: u64,
@@ -27,14 +27,8 @@ pub type RuleGroup = (usize, Vec<language::syntax::Rule>);
 impl RuleBook {
   // Creates an empty rulebook
   pub fn new() -> Self {
-    let mut book = Self {
-      rule_group: HashMap::new(),
-      name_count: 0,
-      name_to_id: HashMap::new(),
-      id_to_smap: HashMap::new(),
-      id_to_name: HashMap::new(),
-      ctr_is_fun: HashMap::new(),
-    };
+    let mut book = Self::default();
+
     for precomp in runtime::PRECOMP {
       book.name_count += 1;
       book.name_to_id.insert(precomp.name.to_string(), precomp.id);
