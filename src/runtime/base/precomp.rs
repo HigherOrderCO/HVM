@@ -129,7 +129,7 @@ pub const PRECOMP_COUNT: u64 = PRECOMP.len() as u64;
 
 #[inline(always)]
 pub fn u60_if_visit(ctx: ReduceCtx) -> bool {
-  if is_whnf(load_arg(ctx.heap, ctx.term, 0)) {
+  if is_whnf(ctx.heap.load_arg(ctx.term, 0)) {
     false
   } else {
     let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
@@ -141,9 +141,9 @@ pub fn u60_if_visit(ctx: ReduceCtx) -> bool {
 
 #[inline(always)]
 pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
-  let arg0 = load_arg(ctx.heap, ctx.term, 0);
-  let arg1 = load_arg(ctx.heap, ctx.term, 1);
-  let arg2 = load_arg(ctx.heap, ctx.term, 2);
+  let arg0 = ctx.heap.load_arg(ctx.term, 0);
+  let arg1 = ctx.heap.load_arg(ctx.term, 1);
+  let arg2 = ctx.heap.load_arg(ctx.term, 2);
   if get_tag(arg0) == SUP {
     fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
   }
@@ -172,7 +172,7 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
 
 #[inline(always)]
 pub fn u60_swap_visit(ctx: ReduceCtx) -> bool {
-  if is_whnf(load_arg(ctx.heap, ctx.term, 0)) {
+  if is_whnf(ctx.heap.load_arg(ctx.term, 0)) {
     false
   } else {
     let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
@@ -184,9 +184,9 @@ pub fn u60_swap_visit(ctx: ReduceCtx) -> bool {
 
 #[inline(always)]
 pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
-  let arg0 = load_arg(ctx.heap, ctx.term, 0);
-  let arg1 = load_arg(ctx.heap, ctx.term, 1);
-  let arg2 = load_arg(ctx.heap, ctx.term, 2);
+  let arg0 = ctx.heap.load_arg(ctx.term, 0);
+  let arg1 = ctx.heap.load_arg(ctx.term, 1);
+  let arg2 = ctx.heap.load_arg(ctx.term, 2);
   if get_tag(arg0) == SUP {
     fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
   }
@@ -225,7 +225,7 @@ fn hvm_log_apply(ctx: ReduceCtx) -> bool {
   normalize(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), false);
   let code = crate::language::readback::as_code(ctx.heap, ctx.prog, get_loc(ctx.term, 0));
   println!("{}", code);
-  link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 1));
+  link(ctx.heap, *ctx.host, ctx.heap.load_arg(ctx.term, 1));
   collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   true
@@ -251,7 +251,7 @@ fn hvm_query_apply(ctx: ReduceCtx) -> bool {
     }
     input
   }
-  let cont = load_arg(ctx.heap, ctx.term, 0);
+  let cont = ctx.heap.load_arg(ctx.term, 0);
   let text = make_string(ctx.heap, ctx.tid, &read_input());
   let app0 = alloc(ctx.heap, ctx.tid, 2);
   link(ctx.heap, app0 + 0, cont);
@@ -276,7 +276,7 @@ fn hvm_print_apply(ctx: ReduceCtx) -> bool {
   {
     println!("{}", text);
   }
-  link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 1));
+  link(ctx.heap, *ctx.host, ctx.heap.load_arg(ctx.term, 1));
   collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
   true
@@ -316,10 +316,10 @@ fn hvm_store_apply(ctx: ReduceCtx) -> bool {
         //link(ctx.heap, app0 + 0, cont);
         //link(ctx.heap, app0 + 1, U6O(0));
         //free(ctx.heap, 0, get_loc(ctx.term, 0), 2);
-        let done = load_arg(ctx.heap, ctx.term, 2);
+        let done = ctx.heap.load_arg(ctx.term, 2);
         link(ctx.heap, *ctx.host, done);
-        collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_arg(ctx.heap, ctx.term, 0));
-        collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_arg(ctx.heap, ctx.term, 1));
+        collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_arg(ctx.term, 0));
+        collect(ctx.heap, &ctx.prog.aris, ctx.tid, ctx.heap.load_arg(ctx.term, 1));
         free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
         return true;
       }
@@ -342,7 +342,7 @@ fn hvm_load_apply(ctx: ReduceCtx) -> bool {
   {
     if let Ok(file) = std::fs::read(key) {
       if let Ok(file) = std::str::from_utf8(&file) {
-        let cont = load_arg(ctx.heap, ctx.term, 1);
+        let cont = ctx.heap.load_arg(ctx.term, 1);
         let text = make_string(ctx.heap, ctx.tid, file);
         let app0 = alloc(ctx.heap, ctx.tid, 2);
         link(ctx.heap, app0 + 0, cont);

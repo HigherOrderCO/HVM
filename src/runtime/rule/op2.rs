@@ -11,8 +11,8 @@ pub fn visit(ctx: ReduceCtx) -> bool {
 
 #[inline(always)]
 pub fn apply(ctx: ReduceCtx) -> bool {
-  let arg0 = load_arg(ctx.heap, ctx.term, 0);
-  let arg1 = load_arg(ctx.heap, ctx.term, 1);
+  let arg0 = ctx.heap.load_arg(ctx.term, 0);
+  let arg1 = ctx.heap.load_arg(ctx.term, 1);
 
   // (OP a b)
   // -------- OP2-U60

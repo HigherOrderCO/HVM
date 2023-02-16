@@ -142,7 +142,7 @@ pub fn build_function(
         &format!("let vbuf = unsafe {{ ctx.heap.vbuf.get_unchecked(ctx.tid) }};"),
       );
       for sidx in &fn_visit.strict_idx {
-        line(&mut visit, 1, &format!("if !is_whnf(load_arg(ctx.heap, ctx.term, {})) {{", *sidx));
+        line(&mut visit, 1, &format!("if !is_whnf(ctx.heap.load_arg(ctx.term, {})) {{", *sidx));
         line(&mut visit, 2, &format!("unsafe {{ vbuf.get_unchecked(vlen) }}.store(get_loc(ctx.term, {}), Ordering::Relaxed);", *sidx));
         line(&mut visit, 2, &format!("vlen += 1"));
         line(&mut visit, 1, &format!("}}"));
@@ -251,7 +251,7 @@ pub fn build_function(
 
       // Loads strict arguments
       for i in 0..fn_smap.len() {
-        line(&mut apply, 1, &format!("let arg{} = load_arg(ctx.heap, ctx.term, {});", i, i));
+        line(&mut apply, 1, &format!("let arg{} = ctx.heap.load_arg(ctx.term, {});", i, i));
       }
 
       // Applies the fun_sup rule to superposed args
@@ -843,7 +843,7 @@ pub fn build_function_rule_rhs(
         line(
           code,
           tab + 0,
-          &format!("let arg{}_{} = load_arg(ctx.heap, arg{}, {});", param, field, param, field),
+          &format!("let arg{}_{} = ctx.heap.load_arg(arg{}, {});", param, field, param, field),
         );
         vars.push(format!("arg{}_{}", param, field));
       }

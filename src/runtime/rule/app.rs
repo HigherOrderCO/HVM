@@ -10,7 +10,7 @@ pub fn visit(ctx: ReduceCtx) -> bool {
 
 #[inline(always)]
 pub fn apply(ctx: ReduceCtx) -> bool {
-  let arg0 = load_arg(ctx.heap, ctx.term, 0);
+  let arg0 = ctx.heap.load_arg(ctx.term, 0);
 
   // (λx(body) a)
   // ------------ APP-LAM

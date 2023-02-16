@@ -357,11 +357,12 @@ pub fn move_ptr(heap: &Heap, old_loc: u64, new_loc: u64) -> Ptr {
   link(heap, new_loc, take_ptr(heap, old_loc))
 }
 
-// Given a pointer to a node, loads its nth arg
-pub fn load_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
-  load_ptr(heap, get_loc(term, arg))
+impl Heap {
+  // Given a pointer to a node, loads its nth arg
+  pub fn load_arg(&self, term: Ptr, arg: u64) -> Ptr {
+    load_ptr(self, get_loc(term, arg))
+  }
 }
-
 // Given a location, takes the ptr stored on it
 pub fn take_ptr(heap: &Heap, loc: u64) -> Ptr {
   unsafe { heap.node.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
@@ -617,7 +618,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
       DP0 => {
         link(heap, get_loc(term, 0), Era());
         if acquire_lock(heap, tid, term).is_ok() {
-          if get_tag(load_arg(heap, term, 1)) == ERA {
+          if get_tag(heap.load_arg(term, 1)) == ERA {
             coll.push(take_arg(heap, term, 2));
             free(heap, tid, get_loc(term, 0), 3);
           }
@@ -627,7 +628,7 @@ pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
       DP1 => {
         link(heap, get_loc(term, 1), Era());
         if acquire_lock(heap, tid, term).is_ok() {
-          if get_tag(load_arg(heap, term, 0)) == ERA {
+          if get_tag(heap.load_arg(term, 0)) == ERA {
             coll.push(take_arg(heap, term, 2));
             free(heap, tid, get_loc(term, 0), 3);
           }

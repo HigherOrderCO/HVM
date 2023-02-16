@@ -10,7 +10,7 @@ pub fn visit(ctx: ReduceCtx) -> bool {
 
 #[inline(always)]
 pub fn apply(ctx: ReduceCtx) -> bool {
-  let arg0 = load_arg(ctx.heap, ctx.term, 2);
+  let arg0 = ctx.heap.load_arg(ctx.term, 2);
   let tcol = get_ext(ctx.term);
 
   // dup r s = λx(f)
