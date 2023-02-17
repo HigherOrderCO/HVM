@@ -10,7 +10,8 @@
 
 // SwapGT : U60 -> U60 -> U60 -> List -> List
 (SwapGT 0 v x xs) = (Cons v (Cons x xs))
-(SwapGT 1 v x xs) = (Cons x (Insert v xs))
+(SwapGT 1 v x xs) = (StrictCons x (Insert v xs))
+  (StrictCons e !t) = (Cons e t)
 
 // Generates a random list
 (Rnd 0 s) = (Nil)
@@ -20,4 +21,4 @@
 (Sum Nil)         = 0
 (Sum (Cons x xs)) = (+ x (Sum xs))
 
-(Main n) = (Sum (Sort (Rnd (* n 1000) 1)))
+(Main n) = (Sum (Sort (Rnd (* 30 1000) 1)))

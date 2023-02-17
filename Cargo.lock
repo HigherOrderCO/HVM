@@ -3,6 +3,15 @@
 version = 3
 
 [[package]]
+name = "HOPA"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c09ede7d6db48480857dadc1a8e0b83dbd86eb15ad6dae49c4a5ca08c2fdf79d"
+dependencies = [
+ "highlight_error",
+]
+
+[[package]]
 name = "addr2line"
 version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -228,8 +237,9 @@ checksum = "809e18805660d7b6b2e2b9f316a5099521b5998d5cba4dda11b5157a21aaef03"
 
 [[package]]
 name = "hvm"
-version = "1.0.0"
+version = "1.0.2"
 dependencies = [
+ "HOPA",
  "backtrace",
  "clap",
  "crossbeam",

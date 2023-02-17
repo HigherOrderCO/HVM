@@ -1,4 +1,4 @@
-use crate::language::parser;
+use HOPA;
 use crate::runtime::data::u60;
 use crate::runtime::data::f60;
 
@@ -186,15 +186,15 @@ impl std::fmt::Display for File {
 // Parser
 // ======
 
-pub fn parse_let(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  return parser::guard(
-    parser::text_parser("let "),
+pub fn parse_let(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  return HOPA::guard(
+    HOPA::do_there_take_exact("let "),
     Box::new(|state| {
-      let (state, _)    = parser::consume("let ", state)?;
-      let (state, name) = parser::name1(state)?;
-      let (state, _)    = parser::consume("=", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("let ", state)?;
+      let (state, name) = HOPA::there_nonempty_name(state)?;
+      let (state, _)    = HOPA::force_there_take_exact("=", state)?;
       let (state, expr) = parse_term(state)?;
-      let (state, _)    = parser::text(";", state)?;
+      let (state, _)    = HOPA::there_take_exact(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Let { name, expr, body })))
     }),
@@ -202,16 +202,16 @@ pub fn parse_let(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   );
 }
 
-pub fn parse_dup(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  return parser::guard(
-    parser::text_parser("dup "),
+pub fn parse_dup(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  return HOPA::guard(
+    HOPA::do_there_take_exact("dup "),
     Box::new(|state| {
-      let (state, _)    = parser::consume("dup ", state)?;
-      let (state, nam0) = parser::name1(state)?;
-      let (state, nam1) = parser::name1(state)?;
-      let (state, _)    = parser::consume("=", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("dup ", state)?;
+      let (state, nam0) = HOPA::there_nonempty_name(state)?;
+      let (state, nam1) = HOPA::there_nonempty_name(state)?;
+      let (state, _)    = HOPA::force_there_take_exact("=", state)?;
       let (state, expr) = parse_term(state)?;
-      let (state, _)    = parser::text(";", state)?;
+      let (state, _)    = HOPA::there_take_exact(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Dup { nam0, nam1, expr, body })))
     }),
@@ -219,28 +219,32 @@ pub fn parse_dup(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   );
 }
 
-pub fn parse_sup(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  parser::guard(
-    parser::text_parser("{"),
+pub fn parse_sup(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  HOPA::guard(
+    HOPA::do_there_take_exact("{"),
     Box::new(move |state| {
-      let (state, _)    = parser::consume("{", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("{", state)?;
       let (state, val0) = parse_term(state)?;
       let (state, val1) = parse_term(state)?;
-      let (state, _)    = parser::consume("}", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("}", state)?;
       Ok((state, Box::new(Term::Sup { val0, val1 })))
     }),
     state,
   )
 }
 
-pub fn parse_lam(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  let parse_symbol =
-    |x| parser::parser_or(&[parser::text_parser("λ"), parser::text_parser("@")], x);
-  parser::guard(
+pub fn parse_lam(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  let parse_symbol = |x| {
+    return HOPA::any(&[
+      HOPA::do_there_take_exact("λ"),
+      HOPA::do_there_take_exact("@"),
+    ], x);
+  };
+  HOPA::guard(
     Box::new(parse_symbol),
     Box::new(move |state| {
       let (state, _)    = parse_symbol(state)?;
-      let (state, name) = parser::name(state)?;
+      let (state, name) = HOPA::there_name(state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::Lam { name, body })))
     }),
@@ -248,14 +252,14 @@ pub fn parse_lam(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   )
 }
 
-pub fn parse_app(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  return parser::guard(
-    parser::text_parser("("),
+pub fn parse_app(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  return HOPA::guard(
+    HOPA::do_there_take_exact("("),
     Box::new(|state| {
-      parser::list(
-        parser::text_parser("("),
-        parser::text_parser(""),
-        parser::text_parser(")"),
+      HOPA::list(
+        HOPA::do_there_take_exact("("),
+        HOPA::do_there_take_exact(""),
+        HOPA::do_there_take_exact(")"),
         Box::new(parse_term),
         Box::new(|args| {
           if !args.is_empty() {
@@ -271,18 +275,18 @@ pub fn parse_app(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   );
 }
 
-pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  parser::guard(
+pub fn parse_ctr(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  HOPA::guard(
     Box::new(|state| {
-      let (state, _) = parser::text("(", state)?;
-      let (state, head) = parser::get_char(state)?;
+      let (state, _) = HOPA::there_take_exact("(", state)?;
+      let (state, head) = HOPA::there_take_head(state)?;
       Ok((state, ('A'..='Z').contains(&head)))
     }),
     Box::new(|state| {
-      let (state, open) = parser::text("(", state)?;
-      let (state, name) = parser::name1(state)?;
+      let (state, open) = HOPA::there_take_exact("(", state)?;
+      let (state, name) = HOPA::there_nonempty_name(state)?;
       let (state, args) = if open {
-        parser::until(parser::text_parser(")"), Box::new(parse_term), state)?
+        HOPA::until(HOPA::do_there_take_exact(")"), Box::new(parse_term), state)?
       } else {
         (state, Vec::new())
       };
@@ -292,14 +296,14 @@ pub fn parse_ctr(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   )
 }
 
-pub fn parse_num(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  parser::guard(
+pub fn parse_num(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  HOPA::guard(
     Box::new(|state| {
-      let (state, head) = parser::get_char(state)?;
+      let (state, head) = HOPA::there_take_head(state)?;
       Ok((state, ('0'..='9').contains(&head)))
     }),
     Box::new(|state| {
-      let (state, text) = parser::name1(state)?;
+      let (state, text) = HOPA::there_nonempty_name(state)?;
       if !text.is_empty() {
         if text.starts_with("0x") {
           return Ok((state, Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(&text[2..], 16).unwrap()) })));
@@ -318,79 +322,75 @@ pub fn parse_num(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
   )
 }
 
-pub fn parse_op2(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
+pub fn parse_op2(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
   fn is_op_char(chr: char) -> bool {
     matches!(chr, '+' | '-' | '*' | '/' | '%' | '&' | '|' | '^' | '<' | '>' | '=' | '!')
   }
-  fn parse_oper(state: parser::State) -> parser::Answer<Oper> {
-    fn op<'a>(symbol: &'static str, oper: Oper) -> parser::Parser<'a, Option<Oper>> {
+  fn parse_oper(state: HOPA::State) -> HOPA::Answer<Oper> {
+    fn op<'a>(symbol: &'static str, oper: Oper) -> HOPA::Parser<'a, Option<Oper>> {
       Box::new(move |state| {
-        let (state, done) = parser::text(symbol, state)?;
+        let (state, done) = HOPA::there_take_exact(symbol, state)?;
         Ok((state, if done { Some(oper) } else { None }))
       })
     }
-    parser::grammar(
-      "Oper",
-      &[
-        op("+", Oper::Add),
-        op("-", Oper::Sub),
-        op("*", Oper::Mul),
-        op("/", Oper::Div),
-        op("%", Oper::Mod),
-        op("&", Oper::And),
-        op("|", Oper::Or),
-        op("^", Oper::Xor),
-        op("<<", Oper::Shl),
-        op(">>", Oper::Shr),
-        op("<=", Oper::Lte),
-        op("<", Oper::Ltn),
-        op("==", Oper::Eql),
-        op(">=", Oper::Gte),
-        op(">", Oper::Gtn),
-        op("!=", Oper::Neq),
-      ],
-      state,
-    )
+    HOPA::attempt("Oper", &[
+      op("+", Oper::Add),
+      op("-", Oper::Sub),
+      op("*", Oper::Mul),
+      op("/", Oper::Div),
+      op("%", Oper::Mod),
+      op("&", Oper::And),
+      op("|", Oper::Or),
+      op("^", Oper::Xor),
+      op("<<", Oper::Shl),
+      op(">>", Oper::Shr),
+      op("<=", Oper::Lte),
+      op("<", Oper::Ltn),
+      op("==", Oper::Eql),
+      op(">=", Oper::Gte),
+      op(">", Oper::Gtn),
+      op("!=", Oper::Neq),
+    ], state)
   }
-  parser::guard(
+  HOPA::guard(
     Box::new(|state| {
-      let (state, open) = parser::text("(", state)?;
-      let (state, head) = parser::get_char(state)?;
+      let (state, open) = HOPA::there_take_exact("(", state)?;
+      let (state, head) = HOPA::there_take_head(state)?;
       Ok((state, open && is_op_char(head)))
     }),
     Box::new(|state| {
-      let (state, _) = parser::text("(", state)?;
+      let (state, _) = HOPA::there_take_exact("(", state)?;
       let (state, oper) = parse_oper(state)?;
       let (state, val0) = parse_term(state)?;
       let (state, val1) = parse_term(state)?;
-      let (state, _) = parser::text(")", state)?;
+      let (state, _) = HOPA::there_take_exact(")", state)?;
       Ok((state, Box::new(Term::Op2 { oper, val0, val1 })))
     }),
     state,
   )
 }
 
-pub fn parse_var(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  parser::guard(
+pub fn parse_var(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  HOPA::guard(
     Box::new(|state| {
-      let (state, head) = parser::get_char(state)?;
+      let (state, head) = HOPA::there_take_head(state)?;
       Ok((state, ('a'..='z').contains(&head) || head == '_' || head == '$'))
     }),
     Box::new(|state| {
-      let (state, name) = parser::name(state)?;
+      let (state, name) = HOPA::there_name(state)?;
       Ok((state, Box::new(Term::Var { name })))
     }),
     state,
   )
 }
 
-pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
+pub fn parse_sym_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
   use std::hash::Hasher;
-  parser::guard(
-    parser::text_parser("%"),
+  HOPA::guard(
+    HOPA::do_there_take_exact("%"),
     Box::new(|state| {
-      let (state, _)    = parser::text("%", state)?;
-      let (state, name) = parser::name(state)?;
+      let (state, _)    = HOPA::there_take_exact("%", state)?;
+      let (state, name) = HOPA::there_name(state)?;
       let hash = {
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
         hasher.write(name.as_bytes());
@@ -405,20 +405,20 @@ pub fn parse_sym_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
 // ask x = fn; body
 // ----------------
 // (fn λx body)
-pub fn parse_ask_sugar_named(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  return parser::guard(
+pub fn parse_ask_sugar_named(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  return HOPA::guard(
     Box::new(|state| {
-      let (state, asks) = parser::text("ask ", state)?;
-      let (state, name) = parser::name(state)?;
-      let (state, eqls) = parser::text("=", state)?;
+      let (state, asks) = HOPA::there_take_exact("ask ", state)?;
+      let (state, name) = HOPA::there_name(state)?;
+      let (state, eqls) = HOPA::there_take_exact("=", state)?;
       Ok((state, asks && name.len() > 0 && eqls))
     }),
     Box::new(|state| {
-      let (state, _)    = parser::consume("ask ", state)?;
-      let (state, name) = parser::name1(state)?;
-      let (state, _)    = parser::consume("=", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("ask ", state)?;
+      let (state, name) = HOPA::there_nonempty_name(state)?;
+      let (state, _)    = HOPA::force_there_take_exact("=", state)?;
       let (state, func) = parse_term(state)?;
-      let (state, _)    = parser::text(";", state)?;
+      let (state, _)    = HOPA::there_take_exact(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::App { func, argm: Box::new(Term::Lam { name, body }) })))
     }),
@@ -426,13 +426,13 @@ pub fn parse_ask_sugar_named(state: parser::State) -> parser::Answer<Option<Box<
   );
 }
 
-pub fn parse_ask_sugar_anon(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  return parser::guard(
-    parser::text_parser("ask "),
+pub fn parse_ask_sugar_anon(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  return HOPA::guard(
+    HOPA::do_there_take_exact("ask "),
     Box::new(|state| {
-      let (state, _)    = parser::consume("ask ", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("ask ", state)?;
       let (state, func) = parse_term(state)?;
-      let (state, _)    = parser::text(";", state)?;
+      let (state, _)    = HOPA::there_take_exact(";", state)?;
       let (state, body) = parse_term(state)?;
       Ok((state, Box::new(Term::App { func, argm: Box::new(Term::Lam { name: "*".to_string(), body }) })))
     }),
@@ -440,20 +440,20 @@ pub fn parse_ask_sugar_anon(state: parser::State) -> parser::Answer<Option<Box<T
   );
 }
 
-pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  parser::guard(
+pub fn parse_chr_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  HOPA::guard(
     Box::new(|state| {
-      let (state, head) = parser::get_char(state)?;
+      let (state, head) = HOPA::there_take_head(state)?;
       Ok((state, head == '\''))
     }),
     Box::new(|state| {
-      let (state, _) = parser::text("'", state)?;
-      if let Some(c) = parser::head(state) {
-        let state = parser::tail(state);
-        let (state, _) = parser::text("'", state)?;
+      let (state, _) = HOPA::there_take_exact("'", state)?;
+      if let Some(c) = HOPA::head(state) {
+        let state = HOPA::tail(state);
+        let (state, _) = HOPA::there_take_exact("'", state)?;
         Ok((state, Box::new(Term::U6O { numb: c as u64 })))
       } else {
-        parser::expected("character", 1, state)
+        HOPA::expected("character", 1, state)
       }
     }),
     state,
@@ -461,25 +461,25 @@ pub fn parse_chr_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
 }
 
 // TODO: parse escape sequences
-pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  parser::guard(
+pub fn parse_str_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  HOPA::guard(
     Box::new(|state| {
-      let (state, head) = parser::get_char(state)?;
+      let (state, head) = HOPA::there_take_head(state)?;
       Ok((state, head == '"' || head == '`'))
     }),
     Box::new(|state| {
-      let delim = parser::head(state).unwrap_or('\0');
-      let state = parser::tail(state);
+      let delim = HOPA::head(state).unwrap_or('\0');
+      let state = HOPA::tail(state);
       let mut chars: Vec<char> = Vec::new();
       let mut state = state;
       loop {
-        if let Some(next) = parser::head(state) {
+        if let Some(next) = HOPA::head(state) {
           if next == delim || next == '\0' {
-            state = parser::tail(state);
+            state = HOPA::tail(state);
             break;
           } else {
             chars.push(next);
-            state = parser::tail(state);
+            state = HOPA::tail(state);
           }
         }
       }
@@ -494,21 +494,21 @@ pub fn parse_str_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
   )
 }
 
-pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  parser::guard(
+pub fn parse_lst_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  HOPA::guard(
     Box::new(|state| {
-      let (state, head) = parser::get_char(state)?;
+      let (state, head) = HOPA::there_take_head(state)?;
       Ok((state, head == '['))
     }),
     Box::new(|state| {
-      let (state, _head) = parser::text("[", state)?;
+      let (state, _head) = HOPA::there_take_exact("[", state)?;
       // let mut elems: Vec<Box<Term>> = Vec::new();
       let state = state;
-      let (state, elems) = parser::until(
-        Box::new(|x| parser::text("]", x)),
+      let (state, elems) = HOPA::until(
+        Box::new(|x| HOPA::there_take_exact("]", x)),
         Box::new(|x| {
           let (state, term) = parse_term(x)?;
-          let (state, _) = parser::maybe(Box::new(|x| parser::text(",", x)), state)?;
+          let (state, _) = HOPA::maybe(Box::new(|x| HOPA::there_take_exact(",", x)), state)?;
           Ok((state, term))
         }),
         state,
@@ -524,35 +524,35 @@ pub fn parse_lst_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>
   )
 }
 
-pub fn parse_if_sugar(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  return parser::guard(
-    parser::text_parser("if "),
+pub fn parse_if_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  return HOPA::guard(
+    HOPA::do_there_take_exact("if "),
     Box::new(|state| {
-      let (state, _)    = parser::consume("if ", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("if ", state)?;
       let (state, cond) = parse_term(state)?;
-      let (state, _)    = parser::consume("{", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("{", state)?;
       let (state, if_t) = parse_term(state)?;
-      let (state, _)    = parser::consume("}", state)?;
-      let (state, _)    = parser::consume("else", state)?;
-      let (state, _)    = parser::consume("{", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("}", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("else", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("{", state)?;
       let (state, if_f) = parse_term(state)?;
-      let (state, _)    = parser::consume("}", state)?;
+      let (state, _)    = HOPA::force_there_take_exact("}", state)?;
       Ok((state, Box::new(Term::Ctr { name: "U60.if".to_string(), args: vec![cond, if_t, if_f] })))
     }),
     state,
   );
 }
 
-pub fn parse_bng(state: parser::State) -> parser::Answer<Option<Box<Term>>> {
-  return parser::guard(parser::text_parser("!"), Box::new(|state| {
-    let (state, _)    = parser::consume("!", state)?;
+pub fn parse_bng(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+  return HOPA::guard(HOPA::do_there_take_exact("!"), Box::new(|state| {
+    let (state, _)    = HOPA::force_there_take_exact("!", state)?;
     let (state, term) = parse_term(state)?;
     Ok((state, term))
   }), state);
 }
 
-pub fn parse_term(state: parser::State) -> parser::Answer<Box<Term>> {
-  parser::grammar("Term", &[
+pub fn parse_term(state: HOPA::State) -> HOPA::Answer<Box<Term>> {
+  HOPA::attempt("Term", &[
     Box::new(parse_let),
     Box::new(parse_dup),
     Box::new(parse_lam),
@@ -574,12 +574,12 @@ pub fn parse_term(state: parser::State) -> parser::Answer<Box<Term>> {
   ], state)
 }
 
-pub fn parse_rule(state: parser::State) -> parser::Answer<Option<Rule>> {
-  return parser::guard(
-    parser::text_parser(""),
+pub fn parse_rule(state: HOPA::State) -> HOPA::Answer<Option<Rule>> {
+  return HOPA::guard(
+    HOPA::do_there_take_exact(""),
     Box::new(|state| {
       let (state, lhs) = parse_term(state)?;
-      let (state, _) = parser::consume("=", state)?;
+      let (state, _) = HOPA::force_there_take_exact("=", state)?;
       let (state, rhs) = parse_term(state)?;
       Ok((state, Rule { lhs, rhs }))
     }),
@@ -587,28 +587,28 @@ pub fn parse_rule(state: parser::State) -> parser::Answer<Option<Rule>> {
   );
 }
 
-pub fn parse_smap(state: parser::State) -> parser::Answer<Option<SMap>> {
-  pub fn parse_stct(state: parser::State) -> parser::Answer<bool> {
-    let (state, stct) = parser::text("!", state)?;
+pub fn parse_smap(state: HOPA::State) -> HOPA::Answer<Option<SMap>> {
+  pub fn parse_stct(state: HOPA::State) -> HOPA::Answer<bool> {
+    let (state, stct) = HOPA::there_take_exact("!", state)?;
     let (state, _)    = parse_term(state)?;
     Ok((state, stct))
   }
-  let (state, init) = parser::text("(", state)?;
+  let (state, init) = HOPA::there_take_exact("(", state)?;
   if init {
-    let (state, name) = parser::name1(state)?;
-    let (state, args) = parser::until(parser::text_parser(")"), Box::new(parse_stct), state)?;
+    let (state, name) = HOPA::there_nonempty_name(state)?;
+    let (state, args) = HOPA::until(HOPA::do_there_take_exact(")"), Box::new(parse_stct), state)?;
     return Ok((state, Some((name, args))));
   } else {
     return Ok((state, None));
   }
 }
 
-pub fn parse_file(state: parser::State) -> parser::Answer<File> {
+pub fn parse_file(state: HOPA::State) -> HOPA::Answer<File> {
   let mut rules = Vec::new();
   let mut smaps = Vec::new();
   let mut state = state;
   loop {
-    let (new_state, done) = parser::done(state)?;
+    let (new_state, done) = HOPA::there_end(state)?;
     if done {
       break;
     }
@@ -622,20 +622,20 @@ pub fn parse_file(state: parser::State) -> parser::Answer<File> {
       state = new_state;
       continue;
     }
-    return parser::expected("declaration", 1, state);
+    return HOPA::expected("declaration", 1, state);
   }
   Ok((state, File { rules, smaps }))
 }
 
 pub fn read_term(code: &str) -> Result<Box<Term>, String> {
-  parser::read(Box::new(parse_term), code)
+  HOPA::read(Box::new(parse_term), code)
 }
 
 pub fn read_file(code: &str) -> Result<File, String> {
-  parser::read(Box::new(parse_file), code)
+  HOPA::read(Box::new(parse_file), code)
 }
 
 #[allow(dead_code)]
 pub fn read_rule(code: &str) -> Result<Option<Rule>, String> {
-  parser::read(Box::new(parse_rule), code)
+  HOPA::read(Box::new(parse_rule), code)
 }

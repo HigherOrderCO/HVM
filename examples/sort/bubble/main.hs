@@ -16,7 +16,7 @@ insert v (Cons x xs) = swapGT (if v > x then 1 else 0) v x xs
 
 swapGT :: Word64 -> Word64 -> Word64 -> List -> List
 swapGT 0 v x xs = Cons v (Cons x xs)
-swapGT 1 v x xs = Cons x (insert v xs)
+swapGT 1 v x xs = Cons x $! insert v xs
 
 -- Generates a random list
 rnd' :: Word64 -> Word64 -> List
@@ -30,5 +30,6 @@ sum' (Cons x xs) = x + sum' xs
 
 main :: IO ()
 main = do
-  n <- read . head <$> getArgs :: IO Word64
+  -- n <- read . head <$> getArgs :: IO Word64
+  let n = 30
   print $ sum' (sort' (rnd' (n * 1000) 1))

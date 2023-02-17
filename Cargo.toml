@@ -1,9 +1,9 @@
 [package]
 name = "hvm"
-version = "1.0.0"
+version = "1.0.2"
 edition = "2021"
 description = "A massively parallel functional runtime."
-repository = "https://github.com/Kindelia/HVM"
+repository = "https://github.com/HigherOrderCO/HVM"
 license = "MIT"
 keywords = ["functional", "language", "runtime", "compiler", "target"]
 categories = ["compilers"]
@@ -20,6 +20,7 @@ test = false
 opt-level = 3
 
 [dependencies]
+HOPA = "0.1.1"
 backtrace = "0.3.66"
 sysinfo = "0.26.7"
 clap = { version = "4.1", features = ["derive"] }

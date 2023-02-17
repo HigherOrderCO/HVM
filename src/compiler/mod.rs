@@ -33,7 +33,6 @@ pub fn compile(code: &str, name: &str) -> std::io::Result<()> {
   let output = &format!("./{name}");
   fs::create_dir_all(format!("{output}/src/runtime/base")).ok();
   let cargo_rs = include_str!("./../../Cargo.toml")
-    .replace("name = \"hvm\"", &format!("name = \"{name}\""))
     .replace("name = \"hvm\"", &format!("name = \"{name}\""));
   fs::write(format!("{output}/Cargo.toml"), cargo_rs)?;
   copy("./rust-toolchain.toml", &format!("{output}/rust-toolchain.toml"))?;
