@@ -30,7 +30,7 @@
         shell = {commands = builtins.map (element: {package = common.pkgs.${element};}) ["ghc" "nodejs"];};
       };
       pkgConfig = common: let
-        override = {buildInputs = pkgs common ["openssl" "pkg-config"];};
+        override.overrideAttrs = old: {buildInputs = (old.buildInputs or []) ++ pkgs common ["openssl" "pkg-config"];};
       in {
         ${name} = {
           app = true;
@@ -42,7 +42,7 @@
       };
       root = nix-filter {
         root = ./.;
-        include = ["src" "Cargo.lock" "Cargo.toml" "rust-toolchain.toml"];
+        include = ["Cargo.lock" "Cargo.toml" "rust-toolchain.toml" "src"];
       };
     };
 }
