@@ -112,7 +112,7 @@ impl Program {
     Self { funs, aris, nams }
   }
 
-  pub fn add_book(&mut self, book: &language::rulebook::RuleBook) {
+  pub fn add_book(&mut self, book: &RuleBook) {
     let funs: &mut Funs = &mut gen_functions(book);
     let nams: &mut Nams = &mut gen_names(book);
     let aris: &mut Aris = &mut U64Map::new();
@@ -214,7 +214,7 @@ impl Heap {
 
 // todo: "dups" still needs to be moved out on `alloc_body` etc.
 pub fn build_function(
-  book: &language::rulebook::RuleBook,
+  book: &RuleBook,
   fn_name: &str,
   rules: &[language::syntax::Rule],
 ) -> Function {
@@ -293,7 +293,7 @@ pub fn hash<T: std::hash::Hash>(t: &T) -> u64 {
   s.finish()
 }
 
-pub fn gen_functions(book: &language::rulebook::RuleBook) -> U64Map<Function> {
+pub fn gen_functions(book: &RuleBook) -> U64Map<Function> {
   let mut funs: U64Map<Function> = U64Map::new();
   for (name, rules_info) in &book.rule_group {
     let fnid = book.name_to_id.get(name).unwrap_or(&0);
@@ -303,17 +303,12 @@ pub fn gen_functions(book: &language::rulebook::RuleBook) -> U64Map<Function> {
   funs
 }
 
-pub fn gen_names(book: &language::rulebook::RuleBook) -> U64Map<String> {
+pub fn gen_names(book: &RuleBook) -> U64Map<String> {
   U64Map::from_hashmap(&mut book.id_to_name.clone())
 }
 
 impl Term {
-  fn convert_term(
-    &self,
-    book: &language::rulebook::RuleBook,
-    depth: u64,
-    vars: &mut Vec<String>,
-  ) -> Core {
+  fn convert_term(&self, book: &RuleBook, depth: u64, vars: &mut Vec<String>) -> Core {
     match self {
       Self::Var { name } => {
         if let Some((idx, _)) = vars.iter().enumerate().rev().find(|(_, var)| var == &name) {
@@ -383,7 +378,7 @@ impl Term {
     }
   }
 
-  pub fn to_core(&self, book: &language::rulebook::RuleBook, inps: &[String]) -> Core {
+  pub fn to_core(&self, book: &RuleBook, inps: &[String]) -> Core {
     #[allow(clippy::identity_op)]
     let mut vars = inps.to_vec();
     self.convert_term(book, 0, &mut vars)
@@ -588,13 +583,7 @@ pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -
   host
 }
 
-pub fn alloc_term(
-  heap: &Heap,
-  prog: &Program,
-  tid: usize,
-  book: &language::rulebook::RuleBook,
-  term: &Term,
-) -> u64 {
+pub fn alloc_term(heap: &Heap, prog: &Program, tid: usize, book: &RuleBook, term: &Term) -> u64 {
   alloc_closed_core(heap, prog, tid, &term.to_core(book, &[]))
 }
 

@@ -15,7 +15,8 @@ pub use data::*;
 pub use rule::*;
 
 use crate::language;
-use crate::language::syntax::Oper;
+// use crate::language::syntax::Oper;
+use crate::prelude::*;
 
 pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
@@ -33,8 +34,6 @@ pub fn default_heap_size() -> usize {
 pub fn default_heap_tids() -> usize {
   std::thread::available_parallelism().unwrap().get()
 }
-
-use language::rulebook::RuleBook;
 
 pub struct Runtime {
   pub heap: Heap,
@@ -59,7 +58,7 @@ impl Runtime {
   /// Creates a runtime from source code, given a max number of nodes
   pub fn from_code_with(code: &str, size: usize, tids: usize, dbug: bool) -> Result<Self, String> {
     let file = language::syntax::read_file(code)?;
-    let heap = crate::runtime::Heap::new(size, tids);
+    let heap = Heap::new(size, tids);
     let prog = Program::new();
     let book = (&file).into();
     let tids = new_tids(tids);

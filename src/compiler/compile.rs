@@ -2,9 +2,8 @@
 // TODO: optimize apply to realloc same arity nodes
 
 use crate::language;
-use crate::language::syntax::Oper;
+use crate::prelude::*;
 use crate::runtime;
-use crate::runtime::Tag;
 use std::collections::HashMap;
 
 pub fn build_name(name: &str) -> String {
@@ -23,7 +22,7 @@ pub fn build_code(code: &str) -> Result<(String, String), String> {
   Ok(build_rulebook(&book))
 }
 
-pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
+pub fn build_rulebook(book: &RuleBook) -> (String, String) {
   // precomp ids
   let mut precomp_ids = String::new();
   for (id, name) in itertools::sorted(book.id_to_name.iter()) {
@@ -121,7 +120,7 @@ pub fn build_rulebook(book: &language::rulebook::RuleBook) -> (String, String) {
 }
 
 pub fn build_function(
-  book: &language::rulebook::RuleBook,
+  book: &RuleBook,
   fname: &str,
   rules: &[language::syntax::Rule],
 ) -> (String, String) {
@@ -402,7 +401,7 @@ pub fn build_function(
 }
 
 pub fn build_function_rule_rhs(
-  book: &language::rulebook::RuleBook,
+  book: &RuleBook,
   code: &mut String,
   free: &mut Vec<Option<(String, u64)>>,
   tab: u64,
@@ -469,7 +468,7 @@ pub fn build_function_rule_rhs(
     return format!("ctx.heap.alloc(ctx.tid, {})", arit);
   }
   fn build_term(
-    book: &language::rulebook::RuleBook,
+    book: &RuleBook,
     code: &mut String,
     tab: u64,
     free: &mut Vec<Option<(String, u64)>>,

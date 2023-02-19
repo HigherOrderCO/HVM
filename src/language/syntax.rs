@@ -1145,9 +1145,9 @@ pub fn parse_smap(state: HOPA::State) -> HOPA::Answer<Option<SMap>> {
   if init {
     let (state, name) = HOPA::there_nonempty_name(state)?;
     let (state, args) = HOPA::until(HOPA::do_there_take_exact(")"), Box::new(parse_stct), state)?;
-    return Ok((state, Some((name, args))));
+    Ok((state, Some((name, args))))
   } else {
-    return Ok((state, None));
+    Ok((state, None))
   }
 }
 
