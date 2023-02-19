@@ -405,17 +405,17 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
     glob: u64,
   ) -> u64 {
     if let Some(targ) = lams.get(&glob) {
-      *targ
-    } else {
-      let targ = nodes.len() as u64;
-      nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);
-      link(nodes, targ, 0, RuleBodyCell::Val { value: Era() });
-      if glob != 0 {
-        lams.insert(glob, targ);
-      }
-      targ
+      return *targ;
     }
+    let targ = nodes.len() as u64;
+    nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);
+    link(nodes, targ, 0, RuleBodyCell::Val { value: Era() });
+    if glob != 0 {
+      lams.insert(glob, targ);
+    }
+    targ
   }
+
   fn alloc_dup(
     dups: &mut HashMap<u64, (u64, u64)>,
     nodes: &mut Vec<RuleBodyNode>,
@@ -425,19 +425,19 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
   ) -> (u64, u64) {
     if let Some(got) = dups.get(&glob) {
       return *got;
-    } else {
-      let dupc = *dupk;
-      let targ = nodes.len() as u64;
-      *dupk += 1;
-      nodes.push(vec![RuleBodyCell::Val { value: 0 }; 3]);
-      links.push((targ, 0, RuleBodyCell::Val { value: Era() }));
-      links.push((targ, 1, RuleBodyCell::Val { value: Era() }));
-      if glob != 0 {
-        dups.insert(glob, (targ, dupc));
-      }
-      (targ, dupc)
     }
+    let dupc = *dupk;
+    let targ = nodes.len() as u64;
+    *dupk += 1;
+    nodes.push(vec![RuleBodyCell::Val { value: 0 }; 3]);
+    links.push((targ, 0, RuleBodyCell::Val { value: Era() }));
+    links.push((targ, 1, RuleBodyCell::Val { value: Era() }));
+    if glob != 0 {
+      dups.insert(glob, (targ, dupc));
+    }
+    (targ, dupc)
   }
+
   fn gen_elems(
     term: &Core,
     dupk: &mut u64,
