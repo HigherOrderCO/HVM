@@ -100,8 +100,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
             // This is a Kind2-specific optimization.
             if rule.hoas && r != apply.rules.len() - 1 {
               // Matches number literals
-              let is_num = get_tag(ctx.heap.load_arg(ctx.term, i)) == Tag::U60
-                || get_tag(ctx.heap.load_arg(ctx.term, i)) == Tag::F60;
+              let is_num = get_tag(ctx.heap.load_arg(ctx.term, i)).is_numeric();
 
               // Matches constructor labels
               let is_ctr = get_tag(ctx.heap.load_arg(ctx.term, i)) == Tag::CTR
@@ -117,9 +116,8 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
             // Only match default variables on CTRs and NUMs
             } else {
               let is_ctr = get_tag(ctx.heap.load_arg(ctx.term, i)) == Tag::CTR;
-              let is_u60 = get_tag(ctx.heap.load_arg(ctx.term, i)) == Tag::U60;
-              let is_f60 = get_tag(ctx.heap.load_arg(ctx.term, i)) == Tag::F60;
-              matched = matched && (is_ctr || is_u60 || is_f60);
+              let is_num = get_tag(ctx.heap.load_arg(ctx.term, i)).is_numeric();
+              matched = matched && (is_ctr || is_num);
             }
           }
         }

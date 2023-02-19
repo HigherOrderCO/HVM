@@ -268,9 +268,9 @@ impl Tag {
     })
   }
 
-  // pub fn is_numeric(&self) -> bool {
-  //   matches!(self, Self::U60 | Self::F60)
-  // }  pub fn l
+  pub fn is_numeric(&self) -> bool {
+    matches!(self, Self::U60 | Self::F60)
+  }
 
   pub fn is_whnf(&self) -> bool {
     matches!(self, Self::ERA | Self::LAM | Self::SUP | Self::CTR | Self::U60 | Self::F60)
