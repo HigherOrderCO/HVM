@@ -14,7 +14,8 @@ pub mod runtime;
 pub use language::*;
 pub use runtime::*;
 
-pub use crate::language::syntax::Oper;
+pub mod prelude;
+
 pub use runtime::{
   get_ext, get_loc, get_num, get_tag, get_val, Ptr, Tag, CELLS_PER_GB, CELLS_PER_KB, CELLS_PER_MB,
 };

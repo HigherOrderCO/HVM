@@ -11,6 +11,7 @@
 mod api;
 mod compiler;
 mod language;
+mod prelude;
 mod runtime;
 
 use clap::{Parser, Subcommand};
