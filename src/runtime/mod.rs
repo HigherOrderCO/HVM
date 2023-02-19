@@ -39,7 +39,7 @@ use language::rulebook::RuleBook;
 pub struct Runtime {
   pub heap: Heap,
   pub prog: Program,
-  pub book: language::rulebook::RuleBook,
+  pub book: RuleBook,
   pub tids: Box<[usize]>,
   pub dbug: bool,
 }

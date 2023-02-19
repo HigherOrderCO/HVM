@@ -1,4 +1,5 @@
 use crate::language;
+use crate::prelude::*;
 use crate::runtime::*;
 use std::collections::{hash_map, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -221,18 +222,18 @@ pub fn build_function(
   let dynrules = rules
     .iter()
     .filter_map(|rule| {
-      if let language::syntax::Term::Ctr { ref name, ref args } = *rule.lhs {
+      if let Term::Ctr { ref name, ref args } = *rule.lhs {
         let mut cond = vec![];
         let mut vars = vec![];
         let mut inps = vec![];
         let mut free = vec![];
         for (i, arg) in args.iter().enumerate() {
           match &**arg {
-            language::syntax::Term::Ctr { name, args } => {
+            Term::Ctr { name, args } => {
               cond.push(Ctr(*book.name_to_id.get(name).unwrap_or(&0), 0));
               free.push((i as u64, args.len() as u64));
               for (j, arg) in args.iter().enumerate() {
-                if let language::syntax::Term::Var { ref name } = **arg {
+                if let Term::Var { ref name } = **arg {
                   vars.push(RuleVar { param: i as u64, field: Some(j as u64), erase: name == "*" });
                   inps.push(name.clone());
                 } else {
@@ -240,13 +241,13 @@ pub fn build_function(
                 }
               }
             }
-            language::syntax::Term::U6O { numb } => {
+            Term::U6O { numb } => {
               cond.push(U6O(*numb));
             }
-            language::syntax::Term::F6O { numb } => {
+            Term::F6O { numb } => {
               cond.push(F6O(*numb));
             }
-            language::syntax::Term::Var { name } => {
+            Term::Var { name } => {
               cond.push(Var(0));
               vars.push(RuleVar { param: i as u64, field: None, erase: name == "*" });
               inps.push(name.clone());
@@ -306,7 +307,7 @@ pub fn gen_names(book: &language::rulebook::RuleBook) -> U64Map<String> {
   U64Map::from_hashmap(&mut book.id_to_name.clone())
 }
 
-impl language::syntax::Term {
+impl Term {
   fn convert_term(
     &self,
     book: &language::rulebook::RuleBook,
@@ -592,7 +593,7 @@ pub fn alloc_term(
   prog: &Program,
   tid: usize,
   book: &language::rulebook::RuleBook,
-  term: &language::syntax::Term,
+  term: &Term,
 ) -> u64 {
   alloc_closed_core(heap, prog, tid, &term.to_core(book, &[]))
 }
