@@ -252,8 +252,7 @@ impl Heap {
       let mut lets: HashMap<u64, u64> = HashMap::new();
       let mut kinds: HashMap<u64, u64> = HashMap::new();
       let mut stack = vec![term];
-      while !stack.is_empty() {
-        let term = stack.pop().unwrap();
+      while let Some(term) = stack.pop() {
         match runtime::get_tag(term) {
           Tag::LAM => {
             names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
@@ -345,8 +344,7 @@ impl Heap {
     ) -> language::syntax::Term {
       let mut stack = vec![StackItem::Term(term)];
       let mut output: Vec<language::syntax::Term> = vec![];
-      while !stack.is_empty() {
-        let item = stack.pop().unwrap();
+      while let Some(item) = stack.pop() {
         match item {
           StackItem::Resolver(term) => match runtime::get_tag(term) {
             Tag::CTR => {
