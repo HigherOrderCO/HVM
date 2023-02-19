@@ -256,19 +256,19 @@ impl Tag {
       Self::NIL => "NIL",
     }
   }
-  // pub fn global_name_misc(name: &str) -> Option<Self> {
-  //   if name.is_empty() || name.starts_with('$') {
-  //     return None;
-  //   }
+  pub fn global_name_misc(name: &str) -> Option<Self> {
+    if name.is_empty() || !name.starts_with('$') {
+      return None;
+    }
 
-  //   Some(if name.starts_with("$0") {
-  //     Self::DP0
-  //   } else if name.starts_with("$1") {
-  //     Self::DP1
-  //   } else {
-  //     Self::VAR
-  //   })
-  // }
+    Some(if name.starts_with("$0") {
+      Self::DP0
+    } else if name.starts_with("$1") {
+      Self::DP1
+    } else {
+      Self::VAR
+    })
+  }
 
   // pub fn is_numeric(&self) -> bool {
   //   matches!(self, Self::U60 | Self::F60)

@@ -190,8 +190,7 @@ impl Term {
     ctx: &mut CtxSanitizeTerm,
   ) -> Result<Box<Self>, String> {
     fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
-      if !crate::runtime::get_global_name_misc(name).is_some() && uses.get(name).copied() <= Some(0)
-      {
+      if !Tag::global_name_misc(name).is_some() && uses.get(name).copied() <= Some(0) {
         *name = "*".to_string();
       }
     }
@@ -201,7 +200,7 @@ impl Term {
           let mut name = tbl.get(name).unwrap_or(name).clone();
           rename_erased(&mut name, ctx.uses);
           Box::new(Term::Var { name })
-        } else if crate::runtime::get_global_name_misc(name).is_some() {
+        } else if Tag::global_name_misc(name).is_some() {
           if tbl.get(name).is_some() {
             panic!("Using a global variable more than once isn't supported yet. Use an explicit 'let' to clone it. {} {:?}", name, tbl.get(name));
           } else {
@@ -224,12 +223,12 @@ impl Term {
         }
       }
       Self::Dup { expr, body, nam0, nam1 } => {
-        let is_global_0 = crate::runtime::get_global_name_misc(nam0).is_some();
-        let is_global_1 = crate::runtime::get_global_name_misc(nam1).is_some();
-        if is_global_0 && crate::runtime::get_global_name_misc(nam0) != Some(Tag::DP0) {
+        let is_global_0 = Tag::global_name_misc(nam0).is_some();
+        let is_global_1 = Tag::global_name_misc(nam1).is_some();
+        if is_global_0 && Tag::global_name_misc(nam0) != Some(Tag::DP0) {
           panic!("The name of the global dup var '{}' must start with '$0'.", nam0);
         }
-        if is_global_1 && crate::runtime::get_global_name_misc(nam1) != Some(Tag::DP1) {
+        if is_global_1 && Tag::global_name_misc(nam1) != Some(Tag::DP1) {
           panic!("The name of the global dup var '{}' must start with '$1'.", nam1);
         }
         if is_global_0 != is_global_1 {
@@ -274,7 +273,7 @@ impl Term {
         Box::new(term)
       }
       Self::Let { name, expr, body } => {
-        if crate::runtime::get_global_name_misc(name).is_some() {
+        if Tag::global_name_misc(name).is_some() {
           panic!("Global variable '{}' not allowed on let. Use dup instead.", name);
         }
         let new_name = (ctx.fresh)();
@@ -289,7 +288,7 @@ impl Term {
         duplicator(&new_name, expr, body, ctx.uses)
       }
       Self::Lam { name, body } => {
-        let is_global = crate::runtime::get_global_name_misc(name).is_some();
+        let is_global = Tag::global_name_misc(name).is_some();
         let mut new_name = if is_global { name.clone() } else { (ctx.fresh)() };
         let got_name = tbl.remove(name);
         if !is_global {

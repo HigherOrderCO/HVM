@@ -210,18 +210,6 @@ impl Heap {
     }
   }
 }
-pub fn get_global_name_misc(name: &str) -> Option<Tag> {
-  if !name.is_empty() && name.starts_with("$") {
-    if name.starts_with("$0") {
-      return Some(Tag::DP0);
-    } else if name.starts_with("$1") {
-      return Some(Tag::DP1);
-    } else {
-      return Some(Tag::VAR);
-    }
-  }
-  None
-}
 
 // todo: "dups" still needs to be moved out on `alloc_body` etc.
 pub fn build_function(
@@ -353,7 +341,7 @@ impl language::syntax::Term {
         if let Some((idx, _)) = vars.iter().enumerate().rev().find(|(_, var)| var == &name) {
           Core::Var { bidx: idx as u64 }
         } else {
-          match get_global_name_misc(name) {
+          match Tag::global_name_misc(name) {
             Some(Tag::VAR) => Core::Glo { glob: hash(name), misc: Tag::VAR },
             Some(Tag::DP0) => Core::Glo { glob: hash(&name[2..].to_string()), misc: Tag::DP0 },
             Some(Tag::DP1) => Core::Glo { glob: hash(&name[2..].to_string()), misc: Tag::DP1 },
@@ -364,7 +352,7 @@ impl language::syntax::Term {
       Self::Dup { nam0, nam1, expr, body } => {
         let eras = (nam0 == "*", nam1 == "*");
         let glob =
-          if get_global_name_misc(nam0).is_some() { hash(&nam0[2..].to_string()) } else { 0 };
+          if Tag::global_name_misc(nam0).is_some() { hash(&nam0[2..].to_string()) } else { 0 };
         let expr = Box::new(expr.convert_term(book, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
@@ -379,7 +367,7 @@ impl language::syntax::Term {
         Core::Sup { val0, val1 }
       }
       Self::Lam { name, body } => {
-        let glob = if get_global_name_misc(name).is_some() { hash(name) } else { 0 };
+        let glob = if Tag::global_name_misc(name).is_some() { hash(name) } else { 0 };
         let eras = name == "*";
         vars.push(name.clone());
         let body = Box::new(body.convert_term(book, depth + 1, vars));
