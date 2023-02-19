@@ -207,7 +207,7 @@ pub fn build_function(
       }
       // Checks if it returns the same variables in order
       for i in 0..cell.len() {
-        if let runtime::RuleBodyCell::Var { index } = cell[i] {
+        if let RuleBodyCell::Var { index } = cell[i] {
           if index != i as u64 {
             break 'TransmuteOptimization;
           }
@@ -217,7 +217,7 @@ pub fn build_function(
       }
       // Gets the new ptr
       let ptr;
-      if let runtime::RuleBodyCell::Ptr { value, targ: 0, slot: 0 } = body.0 {
+      if let RuleBodyCell::Ptr { value, targ: 0, slot: 0 } = body.0 {
         ptr = value;
       } else {
         break 'TransmuteOptimization;
@@ -377,9 +377,9 @@ pub fn build_function(
         //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), {});", fn_visit.strict_map.len()));
 
         let ret_ptr = match rule.body.0 {
-          runtime::RuleBodyCell::Val { value } => value,
-          runtime::RuleBodyCell::Ptr { value, .. } => value,
-          runtime::RuleBodyCell::Var { .. } => runtime::Var(0),
+          RuleBodyCell::Val { value } => value,
+          RuleBodyCell::Ptr { value, .. } => value,
+          RuleBodyCell::Var { .. } => runtime::Var(0),
         };
         line(
           &mut apply,
