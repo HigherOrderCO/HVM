@@ -16,7 +16,7 @@ use std::collections::{HashMap, HashSet};
 // Variables that are never used are renamed to "*".
 #[derive(Clone, Debug, Default)]
 pub struct RuleBook {
-  pub rule_group: HashMap<String, RuleGroup>,
+  pub rule_group: HashMap<String, SyntaxRuleGroup>,
   pub name_count: u64,
   pub name_to_id: HashMap<String, u64>,
   pub id_to_smap: HashMap<u64, Vec<bool>>,
@@ -24,7 +24,7 @@ pub struct RuleBook {
   pub ctr_is_fun: HashMap<String, bool>,
 }
 
-pub type RuleGroup = (usize, Vec<SyntaxRule>);
+pub type SyntaxRuleGroup = (usize, Vec<SyntaxRule>);
 
 impl RuleBook {
   // Creates an empty rulebook
@@ -106,7 +106,7 @@ impl RuleBook {
     }
   }
   // Adds a group to a rulebook
-  pub fn add_group(&mut self, name: &str, group: &RuleGroup) {
+  pub fn add_group(&mut self, name: &str, group: &SyntaxRuleGroup) {
     // Inserts the group on the book
     self.rule_group.insert(name.to_string(), group.clone());
 
@@ -160,8 +160,8 @@ impl From<&language::syntax::File> for RuleBook {
 //   (add (zero)   (succ b)) = (succ b)
 //   (add (zero)   (zero)  ) = (zero)
 // This is a group of 4 rules starting with the "add" name.
-pub fn group_rules(rules: &[SyntaxRule]) -> HashMap<String, RuleGroup> {
-  let mut groups: HashMap<String, RuleGroup> = HashMap::new();
+pub fn group_rules(rules: &[SyntaxRule]) -> HashMap<String, SyntaxRuleGroup> {
+  let mut groups = HashMap::<String, SyntaxRuleGroup>::new();
   for rule in rules {
     if let Term::Ctr { ref name, ref args } = *rule.lhs {
       let group = groups.get_mut(name);
