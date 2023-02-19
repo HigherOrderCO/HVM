@@ -19,7 +19,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // r <- λx0(f0)
   // s <- λx1(f1)
   // x <- {x0 x1}
-  if get_tag(arg0) == Tag::LAM {
+  if arg0.tag() == Tag::LAM {
     ctx.heap.inc_cost(ctx.tid);
     let let0 = ctx.heap.alloc(ctx.tid, 3);
     let par0 = ctx.heap.alloc(ctx.tid, 2);
@@ -38,7 +38,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     );
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), Lam(lam0));
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), Lam(lam1));
-    let done = Lam(if get_tag(ctx.term) == Tag::DP0 { lam0 } else { lam1 });
+    let done = Lam(if ctx.term.tag() == Tag::DP0 { lam0 } else { lam1 });
     ctx.heap.link(*ctx.host, done);
     ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 3);
     ctx.heap.free(ctx.tid, get_loc(arg0, 0), 2);
@@ -51,7 +51,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // y <- b    | y <- {yA yB}
   //           | dup xA yA = a
   //           | dup xB yB = b
-  else if get_tag(arg0) == Tag::SUP {
+  else if arg0.tag() == Tag::SUP {
     if tcol == get_ext(arg0) {
       ctx.heap.inc_cost(ctx.tid);
       ctx.heap.atomic_subst(
@@ -102,7 +102,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // x <- N
   // y <- N
   // ~
-  else if get_tag(arg0) == Tag::U60 {
+  else if arg0.tag() == Tag::U60 {
     ctx.heap.inc_cost(ctx.tid);
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), arg0);
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), arg0);
@@ -114,7 +114,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // x <- N
   // y <- N
   // ~
-  else if get_tag(arg0) == Tag::F60 {
+  else if arg0.tag() == Tag::F60 {
     ctx.heap.inc_cost(ctx.tid);
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), arg0);
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), arg0);
@@ -129,7 +129,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // ...
   // x <- (K a0 b0 c0 ...)
   // y <- (K a1 b1 c1 ...)
-  else if get_tag(arg0) == Tag::CTR {
+  else if arg0.tag() == Tag::CTR {
     ctx.heap.inc_cost(ctx.tid);
     let fnum = get_ext(arg0);
     let fari = arity_of(&ctx.prog.aris, arg0);
@@ -171,7 +171,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // ----------- DUP-ERA
   // x <- *
   // y <- *
-  else if get_tag(arg0) == Tag::ERA {
+  else if arg0.tag() == Tag::ERA {
     ctx.heap.inc_cost(ctx.tid);
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), Era());
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), Era());

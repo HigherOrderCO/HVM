@@ -386,7 +386,7 @@ pub fn get_ext(lnk: Ptr) -> u64 {
 }
 
 pub fn get_oper(lnk: Ptr) -> Oper {
-  // assert!(get_tag(lnk) == Tag::OP2);
+  // assert!(lnk.tag() == Tag::OP2);
   // Oper::from(get_ext(lnk) as u8)
   Oper::from(get_ext(lnk))
 }
@@ -458,8 +458,8 @@ impl Heap {
   pub fn link(&self, loc: u64, ptr: Ptr) -> Ptr {
     unsafe {
       self.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
-      if get_tag(ptr) <= Tag::VAR {
-        let arg_loc = get_loc(ptr, get_tag(ptr).something());
+      if ptr.tag() <= Tag::VAR {
+        let arg_loc = get_loc(ptr, ptr.tag().something());
         self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
       }
     }
@@ -582,8 +582,8 @@ impl Heap {
         Ordering::Relaxed,
         Ordering::Relaxed,
       )?;
-      if get_tag(neo) <= Tag::VAR {
-        let arg_loc = get_loc(neo, get_tag(neo).something());
+      if neo.tag() <= Tag::VAR {
+        let arg_loc = get_loc(neo, neo.tag().something());
         self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
       }
       Ok(got)
@@ -593,8 +593,8 @@ impl Heap {
   // Performs a global [x <- val] substitution atomically.
   pub fn atomic_subst(&self, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
     loop {
-      let arg_ptr = self.load_ptr(get_loc(var, get_tag(var).something()));
-      if get_tag(arg_ptr) == Tag::ARG {
+      let arg_ptr = self.load_ptr(get_loc(var, var.tag().something()));
+      if arg_ptr.tag() == Tag::ARG {
         if self.tids == 1 {
           self.link(get_loc(arg_ptr, 0), val);
           return;
@@ -604,7 +604,7 @@ impl Heap {
           continue;
         }
       }
-      if get_tag(arg_ptr) == Tag::ERA {
+      if arg_ptr.tag() == Tag::ERA {
         self.collect(arit, tid, val); // safe, since `val` is owned by this thread
         return;
       }
@@ -702,11 +702,11 @@ impl Heap {
     let mut next = term;
     loop {
       let term = next;
-      match get_tag(term) {
+      match term.tag() {
         Tag::DP0 => {
           self.link(get_loc(term, 0), Era());
           if self.acquire_lock(tid, term).is_ok() {
-            if get_tag(self.load_arg(term, 1)) == Tag::ERA {
+            if self.load_arg(term, 1).tag() == Tag::ERA {
               coll.push(self.take_arg(term, 2));
               self.free(tid, get_loc(term, 0), 3);
             }
@@ -716,7 +716,7 @@ impl Heap {
         Tag::DP1 => {
           self.link(get_loc(term, 1), Era());
           if self.acquire_lock(tid, term).is_ok() {
-            if get_tag(self.load_arg(term, 0)) == Tag::ERA {
+            if self.load_arg(term, 0).tag() == Tag::ERA {
               coll.push(self.take_arg(term, 2));
               self.free(tid, get_loc(term, 0), 3);
             }

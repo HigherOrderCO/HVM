@@ -172,7 +172,7 @@ impl Heap {
           RuleBodyCell::Ptr { value, targ, slot } => {
             let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
             // should be changed if the pointer format changes
-            if get_tag(*value) <= Tag::DP1 {
+            if value.tag() <= Tag::DP1 {
               val += (*lvar.dups.as_mut_ptr() & 0xFFF_FFFF) * EXT;
             }
             val
@@ -392,7 +392,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
   fn link(nodes: &mut [RuleBodyNode], targ: u64, slot: u64, elem: RuleBodyCell) {
     nodes[targ as usize][slot as usize] = elem;
     if let RuleBodyCell::Ptr { value, targ: var_targ, slot: var_slot } = elem {
-      let tag = get_tag(value);
+      let tag = value.tag();
       if tag <= Tag::VAR {
         nodes[var_targ as usize][(var_slot + (tag.something())) as usize] =
           RuleBodyCell::Ptr { value: Arg(0), targ, slot };

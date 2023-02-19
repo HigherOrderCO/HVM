@@ -119,7 +119,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         let body = ctx.heap.load_arg(term, 1);
         let body = readback(heap, prog, ctx, stacks, body, depth + 1);
         let bind = ctx.heap.load_arg(term, 0);
-        let name = if runtime::get_tag(bind) == Tag::ERA {
+        let name = if bind.tag() == Tag::ERA {
           "*".to_string()
         } else {
           let var = runtime::Var(runtime::get_loc(term, 0));
@@ -453,7 +453,7 @@ impl Heap {
         }
         if fid == runtime::STRING_CONS {
           let chr = self.load_ptr(runtime::get_loc(term, 0));
-          if runtime::get_tag(chr) == Tag::U60 {
+          if chr.tag() == Tag::U60 {
             text.push(std::char::from_u32(runtime::get_num(chr) as u32).unwrap_or('?'));
             host = runtime::get_loc(term, 1);
             continue;

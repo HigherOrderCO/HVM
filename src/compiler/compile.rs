@@ -266,7 +266,7 @@ impl RuleBook {
         // Applies the fun_sup rule to superposed args
         for (i, is_strict) in fn_visit.strict_map.iter().enumerate() {
           if *is_strict {
-            line(&mut apply, 1, &format!("if get_tag(arg{}) == Tag::SUP {{", i));
+            line(&mut apply, 1, &format!("if arg{}.tag() == Tag::SUP {{", i));
             line(
               &mut apply,
               2,
@@ -283,46 +283,46 @@ impl RuleBook {
         for (r, rule) in fn_apply.rules.iter().enumerate() {
           let mut matched: Vec<String> = vec![];
 
-          // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
+          // Tests each rule condition (ex: `args[0].tag() == SUCC`)
           for (i, cond) in rule.cond.iter().enumerate() {
             let i = i as u64;
-            if runtime::get_tag(*cond) == Tag::U60 {
-              let same_tag = format!("get_tag(arg{}) == Tag::U60", i);
+            if cond.tag() == Tag::U60 {
+              let same_tag = format!("arg{}.tag() == Tag::U60", i);
               let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
               matched.push(format!("({} && {})", same_tag, same_val));
             }
-            if runtime::get_tag(*cond) == Tag::F60 {
-              let same_tag = format!("get_tag(arg{}) == Tag::F60", i);
+            if cond.tag() == Tag::F60 {
+              let same_tag = format!("arg{}.tag() == Tag::F60", i);
               let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
               matched.push(format!("({} && {})", same_tag, same_val));
             }
-            if runtime::get_tag(*cond) == Tag::CTR {
-              let some_tag = format!("get_tag(arg{}) == Tag::CTR", i);
+            if cond.tag() == Tag::CTR {
+              let some_tag = format!("arg{}.tag() == Tag::CTR", i);
               let some_ext = format!("get_ext(arg{}) == {}", i, runtime::get_ext(*cond));
               matched.push(format!("({} && {})", some_tag, some_ext));
             }
             // If this is a strict argument, then we're in a default variable
-            if runtime::get_tag(*cond) == Tag::VAR && fn_visit.strict_map[i as usize] {
+            if cond.tag() == Tag::VAR && fn_visit.strict_map[i as usize] {
               // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
               if rule.hoas && r != fn_apply.rules.len() - 1 {
                 // Matches number literals
                 let is_num = format!(
                   "({} || {})",
-                  format!("get_tag(arg{}) == Tag::U60", i),
-                  format!("get_tag(arg{}) == Tag::F60", i)
+                  format!("arg{}.tag() == Tag::U60", i),
+                  format!("arg{}.tag() == Tag::F60", i)
                 );
 
                 // Matches constructor labels
                 let is_ctr = format!(
                   "({} && {})",
-                  format!("get_tag(arg{}) == Tag::CTR", i),
+                  format!("arg{}.tag() == Tag::CTR", i),
                   format!("arity_of(heap, arg{}) == 0u", i)
                 );
 
                 // Matches HOAS numbers and constructors
                 let is_hoas_ctr_num = format!(
                   "({} && {} && {})",
-                  format!("get_tag(arg{}) == Tag::CTR", i),
+                  format!("arg{}.tag() == Tag::CTR", i),
                   format!("get_ext(arg{}) >= HOAS_CT0", i),
                   format!("get_ext(arg{}) <= HOAS_F60", i)
                 );
@@ -331,9 +331,9 @@ impl RuleBook {
 
               // Only match default variables on CTRs, U60s, F60s
               } else {
-                let is_ctr = format!("get_tag(arg{}) == Tag::CTR", i);
-                let is_u60 = format!("get_tag(arg{}) == Tag::U60", i);
-                let is_f60 = format!("get_tag(arg{}) == Tag::F60", i);
+                let is_ctr = format!("arg{}.tag() == Tag::CTR", i);
+                let is_u60 = format!("arg{}.tag() == Tag::U60", i);
+                let is_f60 = format!("arg{}.tag() == Tag::F60", i);
                 matched.push(format!("({} || {} || {})", is_ctr, is_u60, is_f60));
               }
             }
@@ -527,7 +527,7 @@ pub fn build_function_rule_rhs(
           line(
             code,
             tab + 0,
-            &format!("if get_tag({}) == Tag::U60 || get_tag({}) == Tag::F60 {{", copy, copy),
+            &format!("if {}.tag() == Tag::U60 || {}.tag() == Tag::F60 {{", copy, copy),
           );
           line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(code, tab + 1, &format!("{} = {};", dup0, copy));
@@ -614,7 +614,7 @@ pub fn build_function_rule_rhs(
         if INLINE_NUMBERS && *func == runtime::U60_IF && fargs.len() == 3 {
           let ret = fresh(nams, "ret");
           line(code, tab + 0, &format!("let {};", ret));
-          line(code, tab + 0, &format!("if get_tag({}) == Tag::U60 {{", fargs[0]));
+          line(code, tab + 0, &format!("if {}.tag() == Tag::U60 {{", fargs[0]));
           line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
           line(code, tab + 2, &format!("ctx.heap.collect(&ctx.prog.aris, ctx.tid, {});", fargs[1]));
@@ -637,7 +637,7 @@ pub fn build_function_rule_rhs(
         } else if INLINE_NUMBERS && *func == runtime::U60_SWAP && fargs.len() == 3 {
           let ret = fresh(nams, "ret");
           line(code, tab + 0, &format!("let {};", ret));
-          line(code, tab + 0, &format!("if get_tag({}) == Tag::U60 {{", fargs[0]));
+          line(code, tab + 0, &format!("if {}.tag() == Tag::U60 {{", fargs[0]));
           line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           let both = fresh(nams, "both");
           line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
@@ -689,7 +689,7 @@ pub fn build_function_rule_rhs(
           line(
             code,
             tab + 0,
-            &format!("if get_tag({}) == Tag::U60 && get_tag({}) == Tag::U60 {{", val0, val1),
+            &format!("if {}.tag() == Tag::U60 && {}.tag() == Tag::U60 {{", val0, val1),
           );
           let a = format!("get_num({})", val0);
           let b = format!("get_num({})", val1);
@@ -715,10 +715,7 @@ pub fn build_function_rule_rhs(
           line(
             code,
             tab + 0,
-            &format!(
-              "}} else if get_tag({}) == Tag::F60 && get_tag({}) == Tag::F60 {{",
-              val0, val1
-            ),
+            &format!("}} else if {}.tag() == Tag::F60 && {}.tag() == Tag::F60 {{", val0, val1),
           );
           let a = format!("get_num({})", val0);
           let b = format!("get_num({})", val1);

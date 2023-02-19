@@ -285,7 +285,7 @@ impl Runtime {
   }
 
   pub fn get_tag(lnk: Ptr) -> Tag {
-    get_tag(lnk)
+    lnk.tag()
   }
 
   pub fn get_ext(lnk: Ptr) -> u64 {

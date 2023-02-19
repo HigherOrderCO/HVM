@@ -9,7 +9,7 @@ pub fn show_ptr(x: Ptr) -> String {
   if x == 0 {
     String::from("~")
   } else {
-    let tag = get_tag(x);
+    let tag = x.tag();
     let ext = get_ext(x);
     let val = get_val(x);
     format!("{}({:07x}, {:08x})", tag.as_str(), ext, val)
@@ -47,7 +47,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     if term == 0 {
       return;
     }
-    match get_tag(term) {
+    match term.tag() {
       Tag::LAM => {
         names.insert(get_loc(term, 0), format!("{}", count));
         *count += 1;
@@ -104,7 +104,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     let done = if term == 0 {
       "<>".to_string()
     } else {
-      match get_tag(term) {
+      match term.tag() {
         Tag::DP0 => {
           if let Some(name) = names.get(&get_loc(term, 0)) {
             format!("a{}", name)
@@ -181,7 +181,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
           format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
         }
         Tag::ERA => "*".to_string(),
-        _ => format!("<era:{}>", get_tag(term)),
+        _ => format!("<era:{}>", term.tag()),
       }
     };
     for (tid, tid_loc) in tlocs.iter().enumerate() {
@@ -222,9 +222,9 @@ pub fn validate_heap(heap: &Heap) {
   for idx in 0..heap.node.len() {
     // If it is an ARG, it must be pointing to a VAR/DP0/DP1 that points to it
     let arg = heap.load_ptr(idx as u64);
-    if get_tag(arg) == Tag::ARG {
+    if arg.tag() == Tag::ARG {
       let var = heap.load_ptr(get_loc(arg, 0));
-      let oks = match get_tag(var) {
+      let oks = match var.tag() {
         Tag::VAR => get_loc(var, 0) == idx as u64,
         Tag::DP0 => get_loc(var, 0) == idx as u64,
         Tag::DP1 => get_loc(var, 0) == idx as u64 - 1,

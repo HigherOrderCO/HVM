@@ -33,7 +33,7 @@ pub struct ReduceCtx<'a> {
 //   }
 
 pub fn is_whnf(term: Ptr) -> bool {
-  get_tag(term).is_whnf()
+  term.tag().is_whnf()
 }
 
 impl Heap {
@@ -103,7 +103,7 @@ fn reducer(
           if debug {
             print(tid, host);
           }
-          match get_tag(term) {
+          match term.tag() {
             Tag::APP => {
               if app::visit(ReduceCtx {
                 heap,
@@ -224,7 +224,7 @@ fn reducer(
               print(tid, host);
             }
             // Apply rewrite rules
-            match get_tag(term) {
+            match term.tag() {
               Tag::APP => {
                 if app::apply(ReduceCtx {
                   heap,
@@ -342,7 +342,7 @@ fn reducer(
             if full && !seen.contains(&host) {
               seen.insert(host);
               let term = heap.load_ptr(host);
-              match get_tag(term) {
+              match term.tag() {
                 Tag::LAM => {
                   stop.fetch_add(1, Ordering::Relaxed);
                   visit.push(new_visit(get_loc(term, 1), hold, cont));
@@ -453,7 +453,7 @@ impl Heap {
 //let term = reduce(heap, prog, tids, host, debug);
 //seen.insert(host);
 //let mut rec_locs = vec![];
-//match get_tag(term) {
+//match term.tag() {
 //LAM => {
 //rec_locs.push(get_loc(term, 1));
 //}
