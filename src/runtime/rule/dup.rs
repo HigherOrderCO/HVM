@@ -11,7 +11,7 @@ pub fn visit(ctx: ReduceCtx) -> bool {
 #[inline(always)]
 pub fn apply(ctx: ReduceCtx) -> bool {
   let arg0 = ctx.heap.load_arg(ctx.term, 2);
-  let tcol = get_ext(ctx.term);
+  let tcol = ctx.term.ext();
 
   // dup r s = λx(f)
   // --------------- DUP-LAM
@@ -28,13 +28,13 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     ctx.heap.link(let0 + 2, ctx.heap.take_arg(arg0, 1));
     ctx.heap.link(par0 + 1, Var(lam1));
     ctx.heap.link(par0 + 0, Var(lam0));
-    ctx.heap.link(lam0 + 1, Dp0(get_ext(ctx.term), let0));
-    ctx.heap.link(lam1 + 1, Dp1(get_ext(ctx.term), let0));
+    ctx.heap.link(lam0 + 1, Dp0(ctx.term.ext(), let0));
+    ctx.heap.link(lam1 + 1, Dp1(ctx.term.ext(), let0));
     ctx.heap.atomic_subst(
       &ctx.prog.aris,
       ctx.tid,
       Var(get_loc(arg0, 0)),
-      Sup(get_ext(ctx.term), par0),
+      Sup(ctx.term.ext(), par0),
     );
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), Lam(lam0));
     ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp1(tcol, get_loc(ctx.term, 0)), Lam(lam1));
@@ -52,7 +52,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   //           | dup xA yA = a
   //           | dup xB yB = b
   else if arg0.tag() == Tag::SUP {
-    if tcol == get_ext(arg0) {
+    if tcol == arg0.ext() {
       ctx.heap.inc_cost(ctx.tid);
       ctx.heap.atomic_subst(
         &ctx.prog.aris,
@@ -85,13 +85,13 @@ pub fn apply(ctx: ReduceCtx) -> bool {
         &ctx.prog.aris,
         ctx.tid,
         Dp0(tcol, get_loc(ctx.term, 0)),
-        Sup(get_ext(arg0), par0),
+        Sup(arg0.ext(), par0),
       );
       ctx.heap.atomic_subst(
         &ctx.prog.aris,
         ctx.tid,
         Dp1(tcol, get_loc(ctx.term, 0)),
-        Sup(get_ext(arg0), par1),
+        Sup(arg0.ext(), par1),
       );
       ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 3);
       return true;
@@ -131,7 +131,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // y <- (K a1 b1 c1 ...)
   else if arg0.tag() == Tag::CTR {
     ctx.heap.inc_cost(ctx.tid);
-    let fnum = get_ext(arg0);
+    let fnum = arg0.ext();
     let fari = arity_of(&ctx.prog.aris, arg0);
     if fari == 0 {
       ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp0(tcol, get_loc(ctx.term, 0)), Ctr(fnum, 0));
@@ -144,13 +144,13 @@ pub fn apply(ctx: ReduceCtx) -> bool {
       for i in 0..fari - 1 {
         let leti = ctx.heap.alloc(ctx.tid, 3);
         ctx.heap.link(leti + 2, ctx.heap.take_arg(arg0, i));
-        ctx.heap.link(ctr0 + i, Dp0(get_ext(ctx.term), leti));
-        ctx.heap.link(ctr1 + i, Dp1(get_ext(ctx.term), leti));
+        ctx.heap.link(ctr0 + i, Dp0(ctx.term.ext(), leti));
+        ctx.heap.link(ctr1 + i, Dp1(ctx.term.ext(), leti));
       }
       let leti = ctx.heap.alloc(ctx.tid, 3);
       ctx.heap.link(leti + 2, ctx.heap.take_arg(arg0, fari - 1));
-      ctx.heap.link(ctr0 + fari - 1, Dp0(get_ext(ctx.term), leti));
-      ctx.heap.link(ctr1 + fari - 1, Dp1(get_ext(ctx.term), leti));
+      ctx.heap.link(ctr0 + fari - 1, Dp0(ctx.term.ext(), leti));
+      ctx.heap.link(ctr1 + fari - 1, Dp1(ctx.term.ext(), leti));
       ctx.heap.atomic_subst(
         &ctx.prog.aris,
         ctx.tid,

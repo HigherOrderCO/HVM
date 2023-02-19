@@ -10,7 +10,7 @@ pub fn show_ptr(x: Ptr) -> String {
     String::from("~")
   } else {
     let tag = x.tag();
-    let ext = get_ext(x);
+    let ext = x.ext();
     let val = get_val(x);
     format!("{}({:07x}, {:08x})", tag.as_str(), ext, val)
   }
@@ -65,7 +65,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
         if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
           names.insert(get_loc(term, 0), format!("{}", count));
           *count += 1;
-          kinds.insert(get_loc(term, 0), get_ext(term));
+          kinds.insert(get_loc(term, 0), term.ext());
           e.insert(get_loc(term, 0));
           find_lets(heap, prog, get_loc(term, 2), lets, kinds, names, count);
         }
@@ -74,7 +74,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
         if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
           names.insert(get_loc(term, 0), format!("{}", count));
           *count += 1;
-          kinds.insert(get_loc(term, 0), get_ext(term));
+          kinds.insert(get_loc(term, 0), term.ext());
           e.insert(get_loc(term, 0));
           find_lets(heap, prog, get_loc(term, 2), lets, kinds, names, count);
         }
@@ -136,13 +136,13 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
           format!("({} {})", func, argm)
         }
         Tag::SUP => {
-          //let kind = get_ext(term);
+          //let kind = term.ext();
           let func = go(heap, prog, get_loc(term, 0), names, tlocs);
           let argm = go(heap, prog, get_loc(term, 1), names, tlocs);
           format!("{{{} {}}}", func, argm)
         }
         Tag::OP2 => {
-          let oper = get_ext(term);
+          let oper = term.ext();
           let val0 = go(heap, prog, get_loc(term, 0), names, tlocs);
           let val1 = go(heap, prog, get_loc(term, 1), names, tlocs);
           let symb = match oper {
@@ -173,7 +173,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
           format!("{}", f60::val(get_val(term)))
         }
         Tag::CTR | Tag::FUN => {
-          let func = get_ext(term);
+          let func = term.ext();
           let arit = arity_of(&prog.aris, term);
           let args: Vec<String> =
             (0..arit).map(|i| go(heap, prog, get_loc(term, i), names, tlocs)).collect();

@@ -167,7 +167,7 @@ fn reducer(
               }
             }
             Tag::FUN | Tag::CTR => {
-              let fid = get_ext(term);
+              let fid = term.ext();
               //[[CODEGEN:FAST-VISIT]]//
               match &prog.funs.get(&fid) {
                 Some(Function::Interpreted { smap: fn_smap, visit: fn_visit, apply: fn_apply }) => {
@@ -279,7 +279,7 @@ fn reducer(
                 }
               }
               Tag::FUN | Tag::CTR => {
-                let fid = get_ext(term);
+                let fid = term.ext();
                 //[[CODEGEN:FAST-APPLY]]//
                 match &prog.funs.get(&fid) {
                   Some(Function::Interpreted {

@@ -237,11 +237,7 @@ impl RuleBook {
           0,
           &format!("pub fn {}_apply(ctx: ReduceCtx) -> bool {{", &build_name(fname)),
         );
-        line(
-          &mut apply,
-          1,
-          &format!("let done = Ctr({}, get_loc(ctx.term, 0));", runtime::get_ext(ptr)),
-        );
+        line(&mut apply, 1, &format!("let done = Ctr({}, get_loc(ctx.term, 0));", ptr.ext()));
         line(&mut apply, 1, "ctx.heap.link(*ctx.host, done);");
         line(&mut apply, 1, "return false;");
         line(&mut apply, 0, &format!("}}"));
@@ -298,7 +294,7 @@ impl RuleBook {
             }
             if cond.tag() == Tag::CTR {
               let some_tag = format!("arg{}.tag() == Tag::CTR", i);
-              let some_ext = format!("get_ext(arg{}) == {}", i, runtime::get_ext(*cond));
+              let some_ext = format!("arg{}.ext() == {}", i, cond.ext());
               matched.push(format!("({} && {})", some_tag, some_ext));
             }
             // If this is a strict argument, then we're in a default variable
@@ -323,8 +319,8 @@ impl RuleBook {
                 let is_hoas_ctr_num = format!(
                   "({} && {} && {})",
                   format!("arg{}.tag() == Tag::CTR", i),
-                  format!("get_ext(arg{}) >= HOAS_CT0", i),
-                  format!("get_ext(arg{}) <= HOAS_F60", i)
+                  format!("arg{}.ext() >= HOAS_CT0", i),
+                  format!("arg{}.ext() <= HOAS_F60", i)
                 );
 
                 matched.push(format!("({} || {} || {})", is_num, is_ctr, is_hoas_ctr_num));

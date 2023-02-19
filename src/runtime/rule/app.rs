@@ -41,13 +41,13 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     let let0 = ctx.heap.alloc(ctx.tid, 3);
     let par0 = ctx.heap.alloc(ctx.tid, 2);
     ctx.heap.link(let0 + 2, ctx.heap.take_arg(ctx.term, 1));
-    ctx.heap.link(app0 + 1, Dp0(get_ext(arg0), let0));
+    ctx.heap.link(app0 + 1, Dp0(arg0.ext(), let0));
     ctx.heap.link(app0 + 0, ctx.heap.take_arg(arg0, 0));
     ctx.heap.link(app1 + 0, ctx.heap.take_arg(arg0, 1));
-    ctx.heap.link(app1 + 1, Dp1(get_ext(arg0), let0));
+    ctx.heap.link(app1 + 1, Dp1(arg0.ext(), let0));
     ctx.heap.link(par0 + 0, App(app0));
     ctx.heap.link(par0 + 1, App(app1));
-    let done = Sup(get_ext(arg0), par0);
+    let done = Sup(arg0.ext(), par0);
     ctx.heap.link(*ctx.host, done);
     return false;
   }

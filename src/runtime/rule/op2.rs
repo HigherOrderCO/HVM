@@ -91,13 +91,13 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     let let0 = ctx.heap.alloc(ctx.tid, 3);
     let par0 = ctx.heap.alloc(ctx.tid, 2);
     ctx.heap.link(let0 + 2, arg1);
-    ctx.heap.link(op20 + 1, Dp0(get_ext(arg0), let0));
+    ctx.heap.link(op20 + 1, Dp0(arg0.ext(), let0));
     ctx.heap.link(op20 + 0, ctx.heap.take_arg(arg0, 0));
     ctx.heap.link(op21 + 0, ctx.heap.take_arg(arg0, 1));
-    ctx.heap.link(op21 + 1, Dp1(get_ext(arg0), let0));
-    ctx.heap.link(par0 + 0, Op2(get_ext(ctx.term), op20));
-    ctx.heap.link(par0 + 1, Op2(get_ext(ctx.term), op21));
-    let done = Sup(get_ext(arg0), par0);
+    ctx.heap.link(op21 + 1, Dp1(arg0.ext(), let0));
+    ctx.heap.link(par0 + 0, Op2(ctx.term.ext(), op20));
+    ctx.heap.link(par0 + 1, Op2(ctx.term.ext(), op21));
+    let done = Sup(arg0.ext(), par0);
     ctx.heap.link(*ctx.host, done);
     return false;
   }
@@ -112,13 +112,13 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     let let0 = ctx.heap.alloc(ctx.tid, 3);
     let par0 = ctx.heap.alloc(ctx.tid, 2);
     ctx.heap.link(let0 + 2, arg0);
-    ctx.heap.link(op20 + 0, Dp0(get_ext(arg1), let0));
+    ctx.heap.link(op20 + 0, Dp0(arg1.ext(), let0));
     ctx.heap.link(op20 + 1, ctx.heap.take_arg(arg1, 0));
     ctx.heap.link(op21 + 1, ctx.heap.take_arg(arg1, 1));
-    ctx.heap.link(op21 + 0, Dp1(get_ext(arg1), let0));
-    ctx.heap.link(par0 + 0, Op2(get_ext(ctx.term), op20));
-    ctx.heap.link(par0 + 1, Op2(get_ext(ctx.term), op21));
-    let done = Sup(get_ext(arg1), par0);
+    ctx.heap.link(op21 + 0, Dp1(arg1.ext(), let0));
+    ctx.heap.link(par0 + 0, Op2(ctx.term.ext(), op20));
+    ctx.heap.link(par0 + 1, Op2(ctx.term.ext(), op21));
+    let done = Sup(arg1.ext(), par0);
     ctx.heap.link(*ctx.host, done);
     return false;
   }

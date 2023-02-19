@@ -369,11 +369,16 @@ pub fn Fun(fun: u64, pos: u64) -> Ptr {
 
 pub trait PtrImpl {
   fn tag(&self) -> Tag;
+  fn ext(&self) -> u64;
 }
 
 impl PtrImpl for u64 {
   fn tag(&self) -> Tag {
     (self / TAG).into()
+  }
+
+  fn ext(&self) -> u64 {
+    (self / EXT) & 0xFFF_FFFF
   }
 }
 
@@ -381,14 +386,14 @@ impl PtrImpl for u64 {
 //   (lnk / TAG).into()
 // }
 
-pub fn get_ext(lnk: Ptr) -> u64 {
-  (lnk / EXT) & 0xFFF_FFFF
-}
+// pub fn get_ext(lnk: Ptr) -> u64 {
+//   (lnk / EXT) & 0xFFF_FFFF
+// }
 
 pub fn get_oper(lnk: Ptr) -> Oper {
   // assert!(lnk.tag() == Tag::OP2);
-  // Oper::from(get_ext(lnk) as u8)
-  Oper::from(get_ext(lnk))
+  // Oper::from(lnk.ext() as u8)
+  Oper::from(lnk.ext())
 }
 
 pub fn get_val(lnk: Ptr) -> u64 {
@@ -422,7 +427,7 @@ impl Heap {
 }
 
 pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {
-  *arit.get(&get_ext(lnk)).unwrap_or(&0)
+  *arit.get(&lnk.ext()).unwrap_or(&0)
 }
 
 // Pointers

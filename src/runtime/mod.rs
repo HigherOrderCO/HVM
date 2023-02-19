@@ -289,7 +289,7 @@ impl Runtime {
   }
 
   pub fn get_ext(lnk: Ptr) -> u64 {
-    get_ext(lnk)
+    lnk.ext()
   }
 
   pub fn get_val(lnk: Ptr) -> u64 {

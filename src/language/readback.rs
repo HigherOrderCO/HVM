@@ -135,7 +135,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         Box::new(Term::App { func, argm })
       }
       Tag::SUP => {
-        let col = runtime::get_ext(term);
+        let col = term.ext();
         let empty = &vec![];
         let stack = stacks.get(col).unwrap_or(empty);
         if let Some(val) = stack.last() {
@@ -154,7 +154,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         }
       }
       Tag::DP0 => {
-        let col = runtime::get_ext(term);
+        let col = term.ext();
         let val = ctx.heap.load_arg(term, 2);
         stacks.push(col, false);
         let result = readback(heap, prog, ctx, stacks, val, depth + 1);
@@ -162,7 +162,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         result
       }
       Tag::DP1 => {
-        let col = runtime::get_ext(term);
+        let col = term.ext();
         let val = ctx.heap.load_arg(term, 2);
         stacks.push(col, true);
         let result = readback(heap, prog, ctx, stacks, val, depth + 1);
@@ -186,7 +186,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         Box::new(Term::F6O { numb })
       }
       Tag::CTR | Tag::FUN => {
-        let func = runtime::get_ext(term);
+        let func = term.ext();
         let arit = runtime::arity_of(&ctx.prog.aris, term);
         let mut args = vec![];
         for i in 0..arit {
@@ -261,7 +261,7 @@ impl Heap {
           Tag::DP0 => {
             if let hash_map::Entry::Vacant(e) = lets.entry(runtime::get_loc(term, 0)) {
               names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
-              kinds.insert(runtime::get_loc(term, 0), runtime::get_ext(term));
+              kinds.insert(runtime::get_loc(term, 0), term.ext());
               e.insert(runtime::get_loc(term, 0));
               stack.push(heap.load_arg(term, 2));
             }
@@ -269,7 +269,7 @@ impl Heap {
           Tag::DP1 => {
             if let hash_map::Entry::Vacant(e) = lets.entry(runtime::get_loc(term, 0)) {
               names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
-              kinds.insert(runtime::get_loc(term, 0), runtime::get_ext(term));
+              kinds.insert(runtime::get_loc(term, 0), term.ext());
               e.insert(runtime::get_loc(term, 0));
               stack.push(heap.load_arg(term, 2));
             }
@@ -325,7 +325,7 @@ impl Heap {
         match item {
           StackItem::Resolver(term) => match term.tag() {
             Tag::CTR => {
-              let func = runtime::get_ext(term);
+              let func = term.ext();
               let arit = runtime::arity_of(&prog.aris, term);
               let mut args = vec![];
               for _ in 0..arit {
@@ -335,7 +335,7 @@ impl Heap {
               output.push(Term::Ctr { name, args });
             }
             Tag::FUN => {
-              let func = runtime::get_ext(term);
+              let func = term.ext();
               let arit = runtime::arity_of(&prog.aris, term);
               let mut args = vec![];
               for _ in 0..arit {
@@ -447,7 +447,7 @@ impl Heap {
     loop {
       let term = self.load_ptr(host);
       if term.tag() == Tag::CTR {
-        let fid = runtime::get_ext(term);
+        let fid = term.ext();
         if fid == runtime::STRING_NIL {
           break;
         }

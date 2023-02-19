@@ -91,7 +91,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
         }
         Tag::CTR => {
           let same_tag = ctx.heap.load_arg(ctx.term, i).tag() == Tag::CTR;
-          let same_ext = get_ext(ctx.heap.load_arg(ctx.term, i)) == get_ext(*cond);
+          let same_ext = ctx.heap.load_arg(ctx.term, i).ext() == cond.ext();
           matched = matched && same_tag && same_ext;
         }
         Tag::VAR => {
@@ -108,8 +108,8 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
 
               // Matches HOAS numbers and constructors
               let is_hoas_ctr_num = ctx.heap.load_arg(ctx.term, i).tag() == Tag::CTR
-                && get_ext(ctx.heap.load_arg(ctx.term, i)) >= KIND_TERM_CT0
-                && get_ext(ctx.heap.load_arg(ctx.term, i)) <= KIND_TERM_F60;
+                && ctx.heap.load_arg(ctx.term, i).ext() >= KIND_TERM_CT0
+                && ctx.heap.load_arg(ctx.term, i).ext() <= KIND_TERM_F60;
 
               matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
 
@@ -168,7 +168,7 @@ pub fn superpose(
 ) -> Ptr {
   heap.inc_cost(tid);
   let arit = arity_of(aris, term);
-  let func = get_ext(term);
+  let func = term.ext();
   let fun0 = get_loc(term, 0);
   let fun1 = heap.alloc(tid, arit);
   let par0 = get_loc(argn, 0);
@@ -176,8 +176,8 @@ pub fn superpose(
     if i != n {
       let leti = heap.alloc(tid, 3);
       let argi = heap.take_arg(term, i);
-      heap.link(fun0 + i, Dp0(get_ext(argn), leti));
-      heap.link(fun1 + i, Dp1(get_ext(argn), leti));
+      heap.link(fun0 + i, Dp0(argn.ext(), leti));
+      heap.link(fun1 + i, Dp1(argn.ext(), leti));
       heap.link(leti + 2, argi);
     } else {
       heap.link(fun0 + i, heap.take_arg(argn, 0));
@@ -186,7 +186,7 @@ pub fn superpose(
   }
   heap.link(par0 + 0, Fun(func, fun0));
   heap.link(par0 + 1, Fun(func, fun1));
-  let done = Sup(get_ext(argn), par0);
+  let done = Sup(argn.ext(), par0);
   heap.link(host, done);
   done
 }
