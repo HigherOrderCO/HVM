@@ -11,7 +11,7 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
     let vbuf = unsafe { ctx.heap.vbuf.get_unchecked(ctx.tid) };
     for sidx in sidxs {
       if !is_whnf(ctx.heap.load_arg(ctx.term, *sidx)) {
-        unsafe { vbuf.get_unchecked(vlen) }.store(get_loc(ctx.term, *sidx), Ordering::Relaxed);
+        unsafe { vbuf.get_unchecked(vlen) }.store(ctx.term.loc(*sidx), Ordering::Relaxed);
         vlen += 1;
       }
     }
@@ -39,10 +39,10 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
   //let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, sidxs.len() as u64));
   //for (i, arg_idx) in sidxs.iter().enumerate() {
   //if i < sidxs.len() - 1 {
-  //ctx.visit.push(new_visit(get_loc(ctx.term, *arg_idx), goup));
+  //ctx.visit.push(new_visit(ctx.term.loc(*arg_idx), goup));
   //} else {
   //*ctx.cont = goup;
-  //*ctx.host = get_loc(ctx.term, *arg_idx);
+  //*ctx.host = ctx.term.loc(*arg_idx);
   //return true;
   //}
   //}
@@ -145,9 +145,9 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
 
       // free the matched ctrs
       for (i, arity) in &rule.free {
-        ctx.heap.free(ctx.tid, get_loc(ctx.heap.load_arg(ctx.term, *i), 0), *arity);
+        ctx.heap.free(ctx.tid, ctx.heap.load_arg(ctx.term.loc(*i), 0), *arity);
       }
-      ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), arity_of(&ctx.prog.aris, fid));
+      ctx.heap.free(ctx.tid, ctx.term.loc(0), arity_of(&ctx.prog.aris, fid));
 
       return true;
     }
@@ -169,9 +169,9 @@ pub fn superpose(
   heap.inc_cost(tid);
   let arit = arity_of(aris, term);
   let func = term.ext();
-  let fun0 = get_loc(term, 0);
+  let fun0 = term.loc(0);
   let fun1 = heap.alloc(tid, arit);
-  let par0 = get_loc(argn, 0);
+  let par0 = argn.loc(0);
   for i in 0..arit {
     if i != n {
       let leti = heap.alloc(tid, 3);

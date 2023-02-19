@@ -4,7 +4,7 @@ use crate::runtime::*;
 pub fn visit(ctx: ReduceCtx) -> bool {
   let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
   *ctx.cont = goup;
-  *ctx.host = get_loc(ctx.term, 0);
+  *ctx.host = ctx.term.loc(0);
   true
 }
 
@@ -21,12 +21,12 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     ctx.heap.atomic_subst(
       &ctx.prog.aris,
       ctx.tid,
-      Var(get_loc(arg0, 0)),
+      Var(arg0.loc(0)),
       ctx.heap.take_arg(ctx.term, 1),
     );
     ctx.heap.link(*ctx.host, ctx.heap.take_arg(arg0, 1));
-    ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
-    ctx.heap.free(ctx.tid, get_loc(arg0, 0), 2);
+    ctx.heap.free(ctx.tid, ctx.term.loc(0), 2);
+    ctx.heap.free(ctx.tid, arg0.loc(0), 2);
     return true;
   }
 
@@ -36,8 +36,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // {(a x0) (b x1)}
   if arg0.tag() == Tag::SUP {
     ctx.heap.inc_cost(ctx.tid);
-    let app0 = get_loc(ctx.term, 0);
-    let app1 = get_loc(arg0, 0);
+    let app0 = ctx.term.loc(0);
+    let app1 = arg0.loc(0);
     let let0 = ctx.heap.alloc(ctx.tid, 3);
     let par0 = ctx.heap.alloc(ctx.tid, 2);
     ctx.heap.link(let0 + 2, ctx.heap.take_arg(ctx.term, 1));

@@ -49,44 +49,44 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     }
     match term.tag() {
       Tag::LAM => {
-        names.insert(get_loc(term, 0), format!("{}", count));
+        names.insert(term.loc(0), format!("{}", count));
         *count += 1;
-        find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, term.loc(1), lets, kinds, names, count);
       }
       Tag::APP => {
-        find_lets(heap, prog, get_loc(term, 0), lets, kinds, names, count);
-        find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, term.loc(0), lets, kinds, names, count);
+        find_lets(heap, prog, term.loc(1), lets, kinds, names, count);
       }
       Tag::SUP => {
-        find_lets(heap, prog, get_loc(term, 0), lets, kinds, names, count);
-        find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, term.loc(0), lets, kinds, names, count);
+        find_lets(heap, prog, term.loc(1), lets, kinds, names, count);
       }
       Tag::DP0 => {
-        if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
-          names.insert(get_loc(term, 0), format!("{}", count));
+        if let hash_map::Entry::Vacant(e) = lets.entry(term.loc(0)) {
+          names.insert(term.loc(0), format!("{}", count));
           *count += 1;
-          kinds.insert(get_loc(term, 0), term.ext());
-          e.insert(get_loc(term, 0));
-          find_lets(heap, prog, get_loc(term, 2), lets, kinds, names, count);
+          kinds.insert(term.loc(0), term.ext());
+          e.insert(term.loc(0));
+          find_lets(heap, prog, term.loc(2), lets, kinds, names, count);
         }
       }
       Tag::DP1 => {
-        if let hash_map::Entry::Vacant(e) = lets.entry(get_loc(term, 0)) {
-          names.insert(get_loc(term, 0), format!("{}", count));
+        if let hash_map::Entry::Vacant(e) = lets.entry(term.loc(0)) {
+          names.insert(term.loc(0), format!("{}", count));
           *count += 1;
-          kinds.insert(get_loc(term, 0), term.ext());
-          e.insert(get_loc(term, 0));
-          find_lets(heap, prog, get_loc(term, 2), lets, kinds, names, count);
+          kinds.insert(term.loc(0), term.ext());
+          e.insert(term.loc(0));
+          find_lets(heap, prog, term.loc(2), lets, kinds, names, count);
         }
       }
       Tag::OP2 => {
-        find_lets(heap, prog, get_loc(term, 0), lets, kinds, names, count);
-        find_lets(heap, prog, get_loc(term, 1), lets, kinds, names, count);
+        find_lets(heap, prog, term.loc(0), lets, kinds, names, count);
+        find_lets(heap, prog, term.loc(1), lets, kinds, names, count);
       }
       Tag::CTR | Tag::FUN => {
         let arity = arity_of(&prog.aris, term);
         for i in 0..arity {
-          find_lets(heap, prog, get_loc(term, i), lets, kinds, names, count);
+          find_lets(heap, prog, term.loc(i), lets, kinds, names, count);
         }
       }
       _ => {}
@@ -106,45 +106,45 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     } else {
       match term.tag() {
         Tag::DP0 => {
-          if let Some(name) = names.get(&get_loc(term, 0)) {
+          if let Some(name) = names.get(&term.loc(0)) {
             format!("a{}", name)
           } else {
-            format!("a^{}", get_loc(term, 0))
+            format!("a^{}", term.loc(0))
           }
         }
         Tag::DP1 => {
-          if let Some(name) = names.get(&get_loc(term, 0)) {
+          if let Some(name) = names.get(&term.loc(0)) {
             format!("b{}", name)
           } else {
-            format!("b^{}", get_loc(term, 0))
+            format!("b^{}", term.loc(0))
           }
         }
         Tag::VAR => {
-          if let Some(name) = names.get(&get_loc(term, 0)) {
+          if let Some(name) = names.get(&term.loc(0)) {
             format!("x{}", name)
           } else {
-            format!("x^{}", get_loc(term, 0))
+            format!("x^{}", term.loc(0))
           }
         }
         Tag::LAM => {
-          let name = format!("x{}", names.get(&get_loc(term, 0)).unwrap_or(&String::from("<lam>")));
-          format!("λ{} {}", name, go(heap, prog, get_loc(term, 1), names, tlocs))
+          let name = format!("x{}", names.get(&term.loc(0)).unwrap_or(&String::from("<lam>")));
+          format!("λ{} {}", name, go(heap, prog, term.loc(1), names, tlocs))
         }
         Tag::APP => {
-          let func = go(heap, prog, get_loc(term, 0), names, tlocs);
-          let argm = go(heap, prog, get_loc(term, 1), names, tlocs);
+          let func = go(heap, prog, term.loc(0), names, tlocs);
+          let argm = go(heap, prog, term.loc(1), names, tlocs);
           format!("({} {})", func, argm)
         }
         Tag::SUP => {
           //let kind = term.ext();
-          let func = go(heap, prog, get_loc(term, 0), names, tlocs);
-          let argm = go(heap, prog, get_loc(term, 1), names, tlocs);
+          let func = go(heap, prog, term.loc(0), names, tlocs);
+          let argm = go(heap, prog, term.loc(1), names, tlocs);
           format!("{{{} {}}}", func, argm)
         }
         Tag::OP2 => {
           let oper = term.ext();
-          let val0 = go(heap, prog, get_loc(term, 0), names, tlocs);
-          let val1 = go(heap, prog, get_loc(term, 1), names, tlocs);
+          let val0 = go(heap, prog, term.loc(0), names, tlocs);
+          let val1 = go(heap, prog, term.loc(1), names, tlocs);
           let symb = match oper {
             0x0 => "+",
             0x1 => "-",
@@ -176,7 +176,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
           let func = term.ext();
           let arit = arity_of(&prog.aris, term);
           let args: Vec<String> =
-            (0..arit).map(|i| go(heap, prog, get_loc(term, i), names, tlocs)).collect();
+            (0..arit).map(|i| go(heap, prog, term.loc(i), names, tlocs)).collect();
           let name = &prog.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
           format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
         }
@@ -223,11 +223,11 @@ pub fn validate_heap(heap: &Heap) {
     // If it is an ARG, it must be pointing to a VAR/DP0/DP1 that points to it
     let arg = heap.load_ptr(idx as u64);
     if arg.tag() == Tag::ARG {
-      let var = heap.load_ptr(get_loc(arg, 0));
+      let var = heap.load_ptr(arg.loc(0));
       let oks = match var.tag() {
-        Tag::VAR => get_loc(var, 0) == idx as u64,
-        Tag::DP0 => get_loc(var, 0) == idx as u64,
-        Tag::DP1 => get_loc(var, 0) == idx as u64 - 1,
+        Tag::VAR => var.loc(0) == idx as u64,
+        Tag::DP0 => var.loc(0) == idx as u64,
+        Tag::DP1 => var.loc(0) == idx as u64 - 1,
         _ => false,
       };
       if !oks {

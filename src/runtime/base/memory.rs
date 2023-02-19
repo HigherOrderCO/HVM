@@ -373,6 +373,7 @@ pub trait PtrImpl {
   fn oper(&self) -> Oper;
   fn val(&self) -> u64;
   fn num(&self) -> u64;
+  fn loc(&self, arg: u64) -> u64;
 }
 
 impl PtrImpl for u64 {
@@ -394,6 +395,10 @@ impl PtrImpl for u64 {
 
   fn num(&self) -> u64 {
     self & 0xFFF_FFFF_FFFF_FFFF
+  }
+
+  fn loc(&self, arg: u64) -> u64 {
+    self.val() + arg
   }
 }
 
@@ -419,9 +424,9 @@ impl PtrImpl for u64 {
 //   lnk & 0xFFF_FFFF_FFFF_FFFF
 // }
 
-pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
-  lnk.val() + arg
-}
+// pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
+//   lnk.val() + arg
+// }
 
 impl Heap {
   pub fn get_cost(&self) -> u64 {
@@ -461,7 +466,7 @@ impl Heap {
 
   // Given a pointer to a node, loads its nth arg
   pub fn load_arg(&self, term: Ptr, arg: u64) -> Ptr {
-    self.load_ptr(get_loc(term, arg))
+    self.load_ptr(term.loc(arg))
   }
 
   // Given a location, takes the ptr stored on it
@@ -471,7 +476,7 @@ impl Heap {
 
   // Given a pointer to a node, takes its nth arg
   pub fn take_arg(&self, term: Ptr, arg: u64) -> Ptr {
-    self.take_ptr(get_loc(term, arg))
+    self.take_ptr(term.loc(arg))
   }
 
   // Writes a ptr to memory. Updates binders.
@@ -479,7 +484,7 @@ impl Heap {
     unsafe {
       self.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
       if ptr.tag() <= Tag::VAR {
-        let arg_loc = get_loc(ptr, ptr.tag().something());
+        let arg_loc = ptr.loc(ptr.tag().something());
         self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
       }
     }
@@ -603,7 +608,7 @@ impl Heap {
         Ordering::Relaxed,
       )?;
       if neo.tag() <= Tag::VAR {
-        let arg_loc = get_loc(neo, neo.tag().something());
+        let arg_loc = neo.loc(neo.tag().something());
         self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
       }
       Ok(got)
@@ -613,12 +618,12 @@ impl Heap {
   // Performs a global [x <- val] substitution atomically.
   pub fn atomic_subst(&self, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
     loop {
-      let arg_ptr = self.load_ptr(get_loc(var, var.tag().something()));
+      let arg_ptr = self.load_ptr(var.loc(var.tag().something()));
       if arg_ptr.tag() == Tag::ARG {
         if self.tids == 1 {
-          self.link(get_loc(arg_ptr, 0), val);
+          self.link(arg_ptr.loc(0), val);
           return;
-        } else if self.atomic_relink(get_loc(arg_ptr, 0), var, val).is_ok() {
+        } else if self.atomic_relink(arg_ptr.loc(0), var, val).is_ok() {
           return;
         } else {
           continue;
@@ -639,12 +644,12 @@ pub const LOCK_OPEN: u8 = 0xFF;
 
 impl Heap {
   pub fn acquire_lock(&self, tid: usize, term: Ptr) -> Result<u8, u8> {
-    let locker = unsafe { self.lock.get_unchecked(get_loc(term, 0) as usize) };
+    let locker = unsafe { self.lock.get_unchecked(term.loc(0) as usize) };
     locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
   }
 
   pub fn release_lock(&self, tid: usize, term: Ptr) {
-    let locker = unsafe { self.lock.get_unchecked(get_loc(term, 0) as usize) };
+    let locker = unsafe { self.lock.get_unchecked(term.loc(0) as usize) };
     locker.store(LOCK_OPEN, Ordering::Release)
   }
 }
@@ -724,50 +729,50 @@ impl Heap {
       let term = next;
       match term.tag() {
         Tag::DP0 => {
-          self.link(get_loc(term, 0), Era());
+          self.link(term.loc(0), Era());
           if self.acquire_lock(tid, term).is_ok() {
             if self.load_arg(term, 1).tag() == Tag::ERA {
               coll.push(self.take_arg(term, 2));
-              self.free(tid, get_loc(term, 0), 3);
+              self.free(tid, term.loc(0), 3);
             }
             self.release_lock(tid, term);
           }
         }
         Tag::DP1 => {
-          self.link(get_loc(term, 1), Era());
+          self.link(term.loc(1), Era());
           if self.acquire_lock(tid, term).is_ok() {
             if self.load_arg(term, 0).tag() == Tag::ERA {
               coll.push(self.take_arg(term, 2));
-              self.free(tid, get_loc(term, 0), 3);
+              self.free(tid, term.loc(0), 3);
             }
             self.release_lock(tid, term);
           }
         }
         Tag::VAR => {
-          self.link(get_loc(term, 0), Era());
+          self.link(term.loc(0), Era());
         }
         Tag::LAM => {
-          self.atomic_subst(arit, tid, Var(get_loc(term, 0)), Era());
+          self.atomic_subst(arit, tid, Var(term.loc(0)), Era());
           next = self.take_arg(term, 1);
-          self.free(tid, get_loc(term, 0), 2);
+          self.free(tid, term.loc(0), 2);
           continue;
         }
         Tag::APP => {
           coll.push(self.take_arg(term, 0));
           next = self.take_arg(term, 1);
-          self.free(tid, get_loc(term, 0), 2);
+          self.free(tid, term.loc(0), 2);
           continue;
         }
         Tag::SUP => {
           coll.push(self.take_arg(term, 0));
           next = self.take_arg(term, 1);
-          self.free(tid, get_loc(term, 0), 2);
+          self.free(tid, term.loc(0), 2);
           continue;
         }
         Tag::OP2 => {
           coll.push(self.take_arg(term, 0));
           next = self.take_arg(term, 1);
-          self.free(tid, get_loc(term, 0), 2);
+          self.free(tid, term.loc(0), 2);
           continue;
         }
         Tag::U60 => {}
@@ -781,7 +786,7 @@ impl Heap {
               next = self.take_arg(term, i);
             }
           }
-          self.free(tid, get_loc(term, 0), arity);
+          self.free(tid, term.loc(0), arity);
           if arity > 0 {
             continue;
           }

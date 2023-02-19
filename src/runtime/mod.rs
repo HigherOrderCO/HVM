@@ -301,7 +301,7 @@ impl Runtime {
   }
 
   pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
-    get_loc(lnk, arg)
+    lnk.loc(arg)
   }
 
   pub fn Var(pos: u64) -> Ptr {

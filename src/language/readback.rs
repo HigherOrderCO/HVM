@@ -33,7 +33,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         let param = ctx.heap.load_arg(term, 0);
         let body = ctx.heap.load_arg(term, 1);
         if param.tag() != Tag::ERA {
-          let var = runtime::Var(runtime::get_loc(term, 0));
+          let var = runtime::Var(term.loc(0));
           ctx.names.insert(var, format!("x{}", ctx.names.len()));
         };
         gen_var_names(heap, prog, ctx, body, depth + 1);
@@ -122,7 +122,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         let name = if bind.tag() == Tag::ERA {
           "*".to_string()
         } else {
-          let var = runtime::Var(runtime::get_loc(term, 0));
+          let var = runtime::Var(term.loc(0));
           ctx.names.get(&var).map(|s| s.clone()).unwrap_or("?".to_string())
         };
         Box::new(Term::Lam { name, body })
@@ -202,7 +202,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
           .names
           .get(&term)
           .map(String::to_string)
-          .unwrap_or_else(|| format!("^{}", runtime::get_loc(term, 0)));
+          .unwrap_or_else(|| format!("^{}", term.loc(0)));
         Box::new(Term::Var { name }) // ............... /\ why this sounds so threatening?
       }
       Tag::ARG => Box::new(Term::Var { name: "<arg>".to_string() }),
@@ -247,7 +247,7 @@ impl Heap {
       while let Some(term) = stack.pop() {
         match term.tag() {
           Tag::LAM => {
-            names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
+            names.insert(term.loc(0), format!("{}", names.len()));
             stack.push(heap.load_arg(term, 1));
           }
           Tag::APP => {
@@ -259,18 +259,18 @@ impl Heap {
             stack.push(heap.load_arg(term, 0));
           }
           Tag::DP0 => {
-            if let hash_map::Entry::Vacant(e) = lets.entry(runtime::get_loc(term, 0)) {
-              names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
-              kinds.insert(runtime::get_loc(term, 0), term.ext());
-              e.insert(runtime::get_loc(term, 0));
+            if let hash_map::Entry::Vacant(e) = lets.entry(term.loc(0)) {
+              names.insert(term.loc(0), format!("{}", names.len()));
+              kinds.insert(term.loc(0), term.ext());
+              e.insert(term.loc(0));
               stack.push(heap.load_arg(term, 2));
             }
           }
           Tag::DP1 => {
-            if let hash_map::Entry::Vacant(e) = lets.entry(runtime::get_loc(term, 0)) {
-              names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
-              kinds.insert(runtime::get_loc(term, 0), term.ext());
-              e.insert(runtime::get_loc(term, 0));
+            if let hash_map::Entry::Vacant(e) = lets.entry(term.loc(0)) {
+              names.insert(term.loc(0), format!("{}", names.len()));
+              kinds.insert(term.loc(0), term.ext());
+              e.insert(term.loc(0));
               stack.push(heap.load_arg(term, 2));
             }
           }
@@ -345,8 +345,7 @@ impl Heap {
               output.push(Term::Ctr { name, args });
             }
             Tag::LAM => {
-              let name =
-                format!("x{}", names.get(&runtime::get_loc(term, 0)).unwrap_or(&String::from("?")));
+              let name = format!("x{}", names.get(&term.loc(0)).unwrap_or(&String::from("?")));
               let body = Box::new(output.pop().unwrap());
               output.push(Term::Lam { name, body });
             }
@@ -365,24 +364,15 @@ impl Heap {
           },
           StackItem::Term(term) => match term.tag() {
             Tag::DP0 => {
-              let name = format!(
-                "a{}",
-                names.get(&runtime::get_loc(term, 0)).unwrap_or(&String::from("?a"))
-              );
+              let name = format!("a{}", names.get(&term.loc(0)).unwrap_or(&String::from("?a")));
               output.push(Term::Var { name });
             }
             Tag::DP1 => {
-              let name = format!(
-                "b{}",
-                names.get(&runtime::get_loc(term, 0)).unwrap_or(&String::from("?b"))
-              );
+              let name = format!("b{}", names.get(&term.loc(0)).unwrap_or(&String::from("?b")));
               output.push(Term::Var { name });
             }
             Tag::VAR => {
-              let name = format!(
-                "x{}",
-                names.get(&runtime::get_loc(term, 0)).unwrap_or(&String::from("?x"))
-              );
+              let name = format!("x{}", names.get(&term.loc(0)).unwrap_or(&String::from("?x")));
               output.push(Term::Var { name });
             }
             Tag::LAM => {
@@ -452,10 +442,10 @@ impl Heap {
           break;
         }
         if fid == runtime::STRING_CONS {
-          let chr = self.load_ptr(runtime::get_loc(term, 0));
+          let chr = self.load_ptr(term.loc(0));
           if chr.tag() == Tag::U60 {
             text.push(std::char::from_u32(chr.num() as u32).unwrap_or('?'));
-            host = runtime::get_loc(term, 1);
+            host = term.loc(1);
             continue;
           } else {
             return None;

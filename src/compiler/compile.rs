@@ -150,7 +150,14 @@ impl RuleBook {
         );
         for sidx in &fn_visit.strict_idx {
           line(&mut visit, 1, &format!("if !is_whnf(ctx.heap.load_arg(ctx.term, {})) {{", *sidx));
-          line(&mut visit, 2, &format!("unsafe {{ vbuf.get_unchecked(vlen) }}.store(get_loc(ctx.term, {}), Ordering::Relaxed);", *sidx));
+          line(
+            &mut visit,
+            2,
+            &format!(
+              "unsafe {{ vbuf.get_unchecked(vlen) }}.store(ctx.term.loc({}), Ordering::Relaxed);",
+              *sidx
+            ),
+          );
           line(&mut visit, 2, &format!("vlen += 1"));
           line(&mut visit, 1, &format!("}}"));
         }
@@ -237,7 +244,7 @@ impl RuleBook {
           0,
           &format!("pub fn {}_apply(ctx: ReduceCtx) -> bool {{", &build_name(fname)),
         );
-        line(&mut apply, 1, &format!("let done = Ctr({}, get_loc(ctx.term, 0));", ptr.ext()));
+        line(&mut apply, 1, &format!("let done = Ctr({}, ctx.term.loc(0));", ptr.ext()));
         line(&mut apply, 1, "ctx.heap.link(*ctx.host, done);");
         line(&mut apply, 1, "return false;");
         line(&mut apply, 0, &format!("}}"));
@@ -344,9 +351,9 @@ impl RuleBook {
           // Builds the free vector
           let mut free: Vec<Option<(String, u64)>> = vec![];
           for (idx, ari) in &rule.free {
-            free.push(Some((format!("get_loc(arg{}, 0)", idx), *ari)));
+            free.push(Some((format!("arg{}.loc(0)", idx), *ari)));
           }
-          free.push(Some(("get_loc(ctx.term, 0)".to_string(), fn_visit.strict_map.len() as u64)));
+          free.push(Some(("ctx.term.loc(0)".to_string(), fn_visit.strict_map.len() as u64)));
 
           // Builds the right-hand side term (ex: `(Succ (Add a b))`)
           //let done = build_function_rule_body(&mut apply, 2, &rule.body, &rule.vars);
@@ -377,9 +384,9 @@ impl RuleBook {
 
           //for (i, arity) in &rule.free {
           //let i = *i as u64;
-          //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(arg{}, 0), {});", i, arity));
+          //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, arg{}.loc(0), {});", i, arity));
           //}
-          //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), {});", fn_visit.strict_map.len()));
+          //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, ctx.term.loc(0), {});", fn_visit.strict_map.len()));
 
           let ret_ptr = match rule.body.0 {
             RuleBodyCell::Val { value } => value,

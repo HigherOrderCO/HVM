@@ -345,32 +345,32 @@ fn reducer(
               match term.tag() {
                 Tag::LAM => {
                   stop.fetch_add(1, Ordering::Relaxed);
-                  visit.push(new_visit(get_loc(term, 1), hold, cont));
+                  visit.push(new_visit(term.loc(1), hold, cont));
                 }
                 Tag::APP => {
                   stop.fetch_add(2, Ordering::Relaxed);
-                  visit.push(new_visit(get_loc(term, 0), hold, cont));
-                  visit.push(new_visit(get_loc(term, 1), hold, cont));
+                  visit.push(new_visit(term.loc(0), hold, cont));
+                  visit.push(new_visit(term.loc(1), hold, cont));
                 }
                 Tag::SUP => {
                   stop.fetch_add(2, Ordering::Relaxed);
-                  visit.push(new_visit(get_loc(term, 0), hold, cont));
-                  visit.push(new_visit(get_loc(term, 1), hold, cont));
+                  visit.push(new_visit(term.loc(0), hold, cont));
+                  visit.push(new_visit(term.loc(1), hold, cont));
                 }
                 Tag::DP0 => {
                   stop.fetch_add(1, Ordering::Relaxed);
-                  visit.push(new_visit(get_loc(term, 2), hold, cont));
+                  visit.push(new_visit(term.loc(2), hold, cont));
                 }
                 Tag::DP1 => {
                   stop.fetch_add(1, Ordering::Relaxed);
-                  visit.push(new_visit(get_loc(term, 2), hold, cont));
+                  visit.push(new_visit(term.loc(2), hold, cont));
                 }
                 Tag::CTR | Tag::FUN => {
                   let arit = arity_of(&prog.aris, term);
                   if arit > 0 {
                     stop.fetch_add(arit as usize, Ordering::Relaxed);
                     for i in 0..arit {
-                      visit.push(new_visit(get_loc(term, i), hold, cont));
+                      visit.push(new_visit(term.loc(i), hold, cont));
                     }
                   }
                 }
@@ -455,26 +455,26 @@ impl Heap {
 //let mut rec_locs = vec![];
 //match term.tag() {
 //LAM => {
-//rec_locs.push(get_loc(term, 1));
+//rec_locs.push(term.loc(1));
 //}
 //APP => {
-//rec_locs.push(get_loc(term, 0));
-//rec_locs.push(get_loc(term, 1));
+//rec_locs.push(term.loc(0));
+//rec_locs.push(term.loc(1));
 //}
 //SUP => {
-//rec_locs.push(get_loc(term, 0));
-//rec_locs.push(get_loc(term, 1));
+//rec_locs.push(term.loc(0));
+//rec_locs.push(term.loc(1));
 //}
 //DP0 => {
-//rec_locs.push(get_loc(term, 2));
+//rec_locs.push(term.loc(2));
 //}
 //DP1 => {
-//rec_locs.push(get_loc(term, 2));
+//rec_locs.push(term.loc(2));
 //}
 //CTR | FUN => {
 //let arity = arity_of(&prog.aris, term);
 //for i in 0 .. arity {
-//rec_locs.push(get_loc(term, i));
+//rec_locs.push(term.loc(i));
 //}
 //}
 //_ => {}

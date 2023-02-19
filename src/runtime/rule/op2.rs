@@ -3,9 +3,9 @@ use crate::runtime::*;
 #[inline(always)]
 pub fn visit(ctx: ReduceCtx) -> bool {
   let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 2));
-  ctx.visit.push(new_visit(get_loc(ctx.term, 1), ctx.hold, goup));
+  ctx.visit.push(new_visit(ctx.term.loc(1), ctx.hold, goup));
   *ctx.cont = goup;
-  *ctx.host = get_loc(ctx.term, 0);
+  *ctx.host = ctx.term.loc(0);
   true
 }
 
@@ -43,7 +43,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     };
     let done = U6O(c);
     ctx.heap.link(*ctx.host, done);
-    ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
+    ctx.heap.free(ctx.tid, ctx.term.loc(0), 2);
 
     return false;
   }
@@ -76,7 +76,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     };
     let done = F6O(c);
     ctx.heap.link(*ctx.host, done);
-    ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
+    ctx.heap.free(ctx.tid, ctx.term.loc(0), 2);
 
     return false;
   }
@@ -86,8 +86,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // {(+ a0 b0) (+ a1 b1)}
   else if arg0.tag() == Tag::SUP {
     ctx.heap.inc_cost(ctx.tid);
-    let op20 = get_loc(ctx.term, 0);
-    let op21 = get_loc(arg0, 0);
+    let op20 = ctx.term.loc(0);
+    let op21 = arg0.loc(0);
     let let0 = ctx.heap.alloc(ctx.tid, 3);
     let par0 = ctx.heap.alloc(ctx.tid, 2);
     ctx.heap.link(let0 + 2, arg1);
@@ -107,8 +107,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // {(+ a0 b0) (+ a1 b1)}
   else if arg1.tag() == Tag::SUP {
     ctx.heap.inc_cost(ctx.tid);
-    let op20 = get_loc(ctx.term, 0);
-    let op21 = get_loc(arg1, 0);
+    let op20 = ctx.term.loc(0);
+    let op21 = arg1.loc(0);
     let let0 = ctx.heap.alloc(ctx.tid, 3);
     let par0 = ctx.heap.alloc(ctx.tid, 2);
     ctx.heap.link(let0 + 2, arg0);
