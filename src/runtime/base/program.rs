@@ -113,7 +113,7 @@ impl Program {
   }
 
   pub fn add_book(&mut self, book: &RuleBook) {
-    let funs: &mut Funs = &mut gen_functions(book);
+    let funs: &mut Funs = &mut book.gen_functions();
     let nams: &mut Nams = &mut gen_names(book);
     let aris: &mut Aris = &mut U64Map::new();
     for (fid, fun) in funs.data.drain(0..).enumerate() {
@@ -293,14 +293,16 @@ pub fn hash<T: std::hash::Hash>(t: &T) -> u64 {
   s.finish()
 }
 
-pub fn gen_functions(book: &RuleBook) -> U64Map<Function> {
-  let mut funs: U64Map<Function> = U64Map::new();
-  for (name, rules_info) in &book.rule_group {
-    let fnid = book.name_to_id.get(name).unwrap_or(&0);
-    let func = build_function(book, name, &rules_info.1);
-    funs.insert(*fnid, func);
+impl RuleBook {
+  pub fn gen_functions(&self) -> U64Map<Function> {
+    let mut funs: U64Map<Function> = U64Map::new();
+    for (name, rules_info) in &self.rule_group {
+      let fnid = self.name_to_id.get(name).unwrap_or(&0);
+      let func = build_function(self, name, &rules_info.1);
+      funs.insert(*fnid, func);
+    }
+    funs
   }
-  funs
 }
 
 pub fn gen_names(book: &RuleBook) -> U64Map<String> {

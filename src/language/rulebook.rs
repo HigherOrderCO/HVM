@@ -1,6 +1,5 @@
 use crate::language;
 use crate::prelude::*;
-use crate::prelude::*;
 use crate::runtime;
 use std::collections::{HashMap, HashSet};
 
@@ -39,6 +38,11 @@ impl RuleBook {
       book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
     }
     book
+  }
+
+  pub fn from_file(path: &str) -> Result<Self, String> {
+    let file = language::syntax::read_file(path)?;
+    Ok((&file).into())
   }
 
   fn register(&mut self, term: &Term, lhs_top: bool) {
