@@ -15,6 +15,7 @@ pub use data::*;
 pub use rule::*;
 
 use crate::language;
+use crate::language::syntax::Oper;
 
 pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
@@ -209,67 +210,67 @@ impl Runtime {
   }
 
   pub fn ADD() -> u64 {
-    ADD
+    Oper::Add.as_u64()
   }
 
   pub fn SUB() -> u64 {
-    SUB
+    Oper::Sub.as_u64()
   }
 
   pub fn MUL() -> u64 {
-    MUL
+    Oper::Mul.as_u64()
   }
 
   pub fn DIV() -> u64 {
-    DIV
+    Oper::Div.as_u64()
   }
 
   pub fn MOD() -> u64 {
-    MOD
+    Oper::Mod.as_u64()
   }
 
   pub fn AND() -> u64 {
-    AND
+    Oper::And.as_u64()
   }
 
   pub fn OR() -> u64 {
-    OR
+    Oper::Or.as_u64()
   }
 
   pub fn XOR() -> u64 {
-    XOR
+    Oper::Xor.as_u64()
   }
 
   pub fn SHL() -> u64 {
-    SHL
+    Oper::Shl.as_u64()
   }
 
   pub fn SHR() -> u64 {
-    SHR
+    Oper::Shr.as_u64()
   }
 
   pub fn LTN() -> u64 {
-    LTN
+    Oper::Ltn.as_u64()
   }
 
   pub fn LTE() -> u64 {
-    LTE
+    Oper::Lte.as_u64()
   }
 
   pub fn EQL() -> u64 {
-    EQL
+    Oper::Eql.as_u64()
   }
 
   pub fn GTE() -> u64 {
-    GTE
+    Oper::Gte.as_u64()
   }
 
   pub fn GTN() -> u64 {
-    GTN
+    Oper::Gtn.as_u64()
   }
 
   pub fn NEQ() -> u64 {
-    NEQ
+    Oper::Neq.as_u64()
   }
 
   pub fn CELLS_PER_KB() -> usize {

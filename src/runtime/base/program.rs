@@ -17,7 +17,7 @@ pub enum Core {
   Ctr { func: u64, args: Vec<Core> },
   U6O { numb: u64 },
   F6O { numb: u64 },
-  Op2 { oper: u64, val0: Box<Core>, val1: Box<Core> },
+  Op2 { oper: Oper, val0: Box<Core>, val1: Box<Core> },
 }
 
 // A runtime rule
@@ -306,29 +306,6 @@ pub fn gen_names(book: &language::rulebook::RuleBook) -> U64Map<String> {
   U64Map::from_hashmap(&mut book.id_to_name.clone())
 }
 
-impl language::syntax::Oper {
-  fn raw(&self) -> u64 {
-    match self {
-      Self::Add => ADD,
-      Self::Sub => SUB,
-      Self::Mul => MUL,
-      Self::Div => DIV,
-      Self::Mod => MOD,
-      Self::And => AND,
-      Self::Or => OR,
-      Self::Xor => XOR,
-      Self::Shl => SHL,
-      Self::Shr => SHR,
-      Self::Ltn => LTN,
-      Self::Lte => LTE,
-      Self::Eql => EQL,
-      Self::Gte => GTE,
-      Self::Gtn => GTN,
-      Self::Neq => NEQ,
-    }
-  }
-}
-
 impl language::syntax::Term {
   fn convert_term(
     &self,
@@ -398,10 +375,9 @@ impl language::syntax::Term {
       Self::U6O { numb } => Core::U6O { numb: *numb },
       Self::F6O { numb } => Core::F6O { numb: *numb },
       Self::Op2 { oper, val0, val1 } => {
-        let oper = oper.raw();
         let val0 = Box::new(val0.convert_term(book, depth + 0, vars));
         let val1 = Box::new(val1.convert_term(book, depth + 1, vars));
-        Core::Op2 { oper, val0, val1 }
+        Core::Op2 { oper: *oper, val0, val1 }
       }
     }
   }
@@ -582,7 +558,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
         links.push((targ, 0, val0));
         let val1 = gen_elems(val1, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 1, val1));
-        RuleBodyCell::Ptr { value: Op2(*oper, 0), targ, slot: 0 }
+        RuleBodyCell::Ptr { value: Op2(oper.as_u64(), 0), targ, slot: 0 }
       }
     }
   }

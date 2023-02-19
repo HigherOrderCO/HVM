@@ -342,24 +342,64 @@ impl Term {
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Oper {
-  Add,
-  Sub,
-  Mul,
-  Div,
-  Mod,
-  And,
-  Or,
-  Xor,
-  Shl,
-  Shr,
-  Lte,
-  Ltn,
-  Eql,
-  Gte,
-  Gtn,
-  Neq,
+  Add = 0x0,
+  Sub = 0x1,
+  Mul = 0x2,
+  Div = 0x3,
+  Mod = 0x4,
+  And = 0x5,
+  Or = 0x6,
+  Xor = 0x7,
+  Shl = 0x8,
+  Shr = 0x9,
+  Lte = 0xA,
+  Ltn = 0xB,
+  Eql = 0xC,
+  Gte = 0xD,
+  Gtn = 0xE,
+  Neq = 0xF,
+}
+
+impl From<u8> for Oper {
+  fn from(value: u8) -> Self {
+    unsafe { std::mem::transmute(value) }
+  }
+}
+
+impl From<u64> for Oper {
+  fn from(value: u64) -> Self {
+    Self::from(value as u8)
+  }
+}
+
+impl Oper {
+  pub fn as_u64(&self) -> u64 {
+    *self as _
+  }
+
+  pub fn as_str(&self) -> &str {
+    match *self {
+      Self::Add => "Add",
+      Self::Sub => "Sub",
+      Self::Mul => "Mul",
+      Self::Div => "Div",
+      Self::Mod => "Mod",
+      Self::And => "And",
+      Self::Or => "Or",
+      Self::Xor => "Xor",
+      Self::Shl => "Shl",
+      Self::Shr => "Shr",
+      Self::Ltn => "Ltn",
+      Self::Lte => "Lte",
+      Self::Eql => "Eql",
+      Self::Gte => "Gte",
+      Self::Gtn => "Gtn",
+      Self::Neq => "Neq",
+    }
+  }
 }
 
 // Rule

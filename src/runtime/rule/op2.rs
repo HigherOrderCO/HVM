@@ -23,24 +23,23 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     ctx.heap.inc_cost(ctx.tid);
     let a = get_num(arg0);
     let b = get_num(arg1);
-    let c = match get_ext(ctx.term) {
-      ADD => u60::add(a, b),
-      SUB => u60::sub(a, b),
-      MUL => u60::mul(a, b),
-      DIV => u60::div(a, b),
-      MOD => u60::mdl(a, b),
-      AND => u60::and(a, b),
-      OR => u60::or(a, b),
-      XOR => u60::xor(a, b),
-      SHL => u60::shl(a, b),
-      SHR => u60::shr(a, b),
-      LTN => u60::ltn(a, b),
-      LTE => u60::lte(a, b),
-      EQL => u60::eql(a, b),
-      GTE => u60::gte(a, b),
-      GTN => u60::gtn(a, b),
-      NEQ => u60::neq(a, b),
-      _ => 0,
+    let c = match get_oper(ctx.term) {
+      Oper::Add => u60::add(a, b),
+      Oper::Sub => u60::sub(a, b),
+      Oper::Mul => u60::mul(a, b),
+      Oper::Div => u60::div(a, b),
+      Oper::Mod => u60::mdl(a, b),
+      Oper::And => u60::and(a, b),
+      Oper::Or => u60::or(a, b),
+      Oper::Xor => u60::xor(a, b),
+      Oper::Shl => u60::shl(a, b),
+      Oper::Shr => u60::shr(a, b),
+      Oper::Ltn => u60::ltn(a, b),
+      Oper::Lte => u60::lte(a, b),
+      Oper::Eql => u60::eql(a, b),
+      Oper::Gte => u60::gte(a, b),
+      Oper::Gtn => u60::gtn(a, b),
+      Oper::Neq => u60::neq(a, b),
     };
     let done = U6O(c);
     ctx.heap.link(*ctx.host, done);
@@ -57,24 +56,23 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     ctx.heap.inc_cost(ctx.tid);
     let a = get_num(arg0);
     let b = get_num(arg1);
-    let c = match get_ext(ctx.term) {
-      ADD => f60::add(a, b),
-      SUB => f60::sub(a, b),
-      MUL => f60::mul(a, b),
-      DIV => f60::div(a, b),
-      MOD => f60::mdl(a, b),
-      AND => f60::and(a, b),
-      OR => f60::or(a, b),
-      XOR => f60::xor(a, b),
-      SHL => f60::shl(a, b),
-      SHR => f60::shr(a, b),
-      LTN => f60::ltn(a, b),
-      LTE => f60::lte(a, b),
-      EQL => f60::eql(a, b),
-      GTE => f60::gte(a, b),
-      GTN => f60::gtn(a, b),
-      NEQ => f60::neq(a, b),
-      _ => 0,
+    let c = match get_oper(ctx.term) {
+      Oper::Add => f60::add(a, b),
+      Oper::Sub => f60::sub(a, b),
+      Oper::Mul => f60::mul(a, b),
+      Oper::Div => f60::div(a, b),
+      Oper::Mod => f60::mdl(a, b),
+      Oper::And => f60::and(a, b),
+      Oper::Or => f60::or(a, b),
+      Oper::Xor => f60::xor(a, b),
+      Oper::Shl => f60::shl(a, b),
+      Oper::Shr => f60::shr(a, b),
+      Oper::Ltn => f60::ltn(a, b),
+      Oper::Lte => f60::lte(a, b),
+      Oper::Eql => f60::eql(a, b),
+      Oper::Gte => f60::gte(a, b),
+      Oper::Gtn => f60::gtn(a, b),
+      Oper::Neq => f60::neq(a, b),
     };
     let done = F6O(c);
     ctx.heap.link(*ctx.host, done);

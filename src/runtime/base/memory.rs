@@ -289,7 +289,7 @@ impl Tag {
 
 impl From<u8> for Tag {
   fn from(value: u8) -> Self {
-    unsafe { std::mem::transmute(value as u8) }
+    unsafe { std::mem::transmute(value) }
   }
 }
 
@@ -310,23 +310,6 @@ impl From<Tag> for u64 {
     value as u64
   }
 }
-
-pub const ADD: u64 = 0x0;
-pub const SUB: u64 = 0x1;
-pub const MUL: u64 = 0x2;
-pub const DIV: u64 = 0x3;
-pub const MOD: u64 = 0x4;
-pub const AND: u64 = 0x5;
-pub const OR: u64 = 0x6;
-pub const XOR: u64 = 0x7;
-pub const SHL: u64 = 0x8;
-pub const SHR: u64 = 0x9;
-pub const LTN: u64 = 0xA;
-pub const LTE: u64 = 0xB;
-pub const EQL: u64 = 0xC;
-pub const GTE: u64 = 0xD;
-pub const GTN: u64 = 0xE;
-pub const NEQ: u64 = 0xF;
 
 // Pointer Constructors
 // --------------------
@@ -392,6 +375,12 @@ pub fn get_tag(lnk: Ptr) -> Tag {
 
 pub fn get_ext(lnk: Ptr) -> u64 {
   (lnk / EXT) & 0xFFF_FFFF
+}
+
+pub fn get_oper(lnk: Ptr) -> Oper {
+  // assert!(get_tag(lnk) == Tag::OP2);
+  // Oper::from(get_ext(lnk) as u8)
+  Oper::from(get_ext(lnk))
 }
 
 pub fn get_val(lnk: Ptr) -> u64 {

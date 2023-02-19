@@ -171,25 +171,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         result
       }
       Tag::OP2 => {
-        let oper = match runtime::get_ext(term) {
-          runtime::ADD => language::syntax::Oper::Add,
-          runtime::SUB => language::syntax::Oper::Sub,
-          runtime::MUL => language::syntax::Oper::Mul,
-          runtime::DIV => language::syntax::Oper::Div,
-          runtime::MOD => language::syntax::Oper::Mod,
-          runtime::AND => language::syntax::Oper::And,
-          runtime::OR => language::syntax::Oper::Or,
-          runtime::XOR => language::syntax::Oper::Xor,
-          runtime::SHL => language::syntax::Oper::Shl,
-          runtime::SHR => language::syntax::Oper::Shr,
-          runtime::LTN => language::syntax::Oper::Ltn,
-          runtime::LTE => language::syntax::Oper::Lte,
-          runtime::EQL => language::syntax::Oper::Eql,
-          runtime::GTE => language::syntax::Oper::Gte,
-          runtime::GTN => language::syntax::Oper::Gtn,
-          runtime::NEQ => language::syntax::Oper::Neq,
-          _ => panic!("unknown operation"),
-        };
+        let oper = runtime::get_oper(term);
         let val0 = ctx.heap.load_arg(term, 0);
         let val1 = ctx.heap.load_arg(term, 1);
         let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
@@ -399,26 +381,7 @@ impl Heap {
               output.push(language::syntax::Term::App { func, argm });
             }
             Tag::OP2 => {
-              let oper = runtime::get_ext(term);
-              let oper = match oper {
-                runtime::ADD => language::syntax::Oper::Add,
-                runtime::SUB => language::syntax::Oper::Sub,
-                runtime::MUL => language::syntax::Oper::Mul,
-                runtime::DIV => language::syntax::Oper::Div,
-                runtime::MOD => language::syntax::Oper::Mod,
-                runtime::AND => language::syntax::Oper::And,
-                runtime::OR => language::syntax::Oper::Or,
-                runtime::XOR => language::syntax::Oper::Xor,
-                runtime::SHL => language::syntax::Oper::Shl,
-                runtime::SHR => language::syntax::Oper::Shr,
-                runtime::LTN => language::syntax::Oper::Ltn,
-                runtime::LTE => language::syntax::Oper::Lte,
-                runtime::EQL => language::syntax::Oper::Eql,
-                runtime::GTE => language::syntax::Oper::Gte,
-                runtime::GTN => language::syntax::Oper::Gtn,
-                runtime::NEQ => language::syntax::Oper::Neq,
-                _ => panic!("Invalid operator."),
-              };
+              let oper = runtime::get_oper(term);
               let val1 = Box::new(output.pop().unwrap());
               let val0 = Box::new(output.pop().unwrap());
               output.push(language::syntax::Term::Op2 { oper, val0, val1 })

@@ -2,6 +2,7 @@
 // TODO: optimize apply to realloc same arity nodes
 
 use crate::language;
+use crate::language::syntax::Oper;
 use crate::runtime;
 use crate::runtime::Tag;
 use std::collections::HashMap;
@@ -685,53 +686,22 @@ pub fn build_function_rule_rhs(
           let a = format!("get_num({})", val0);
           let b = format!("get_num({})", val1);
           match *oper {
-            runtime::ADD => {
-              line(code, tab + 1, &format!("{} = U6O(u60::add({}, {}));", retx, a, b))
-            }
-            runtime::SUB => {
-              line(code, tab + 1, &format!("{} = U6O(u60::sub({}, {}));", retx, a, b))
-            }
-            runtime::MUL => {
-              line(code, tab + 1, &format!("{} = U6O(u60::mul({}, {}));", retx, a, b))
-            }
-            runtime::DIV => {
-              line(code, tab + 1, &format!("{} = U6O(u60::div({}, {}));", retx, a, b))
-            }
-            runtime::MOD => {
-              line(code, tab + 1, &format!("{} = U6O(u60::mdl({}, {}));", retx, a, b))
-            }
-            runtime::AND => {
-              line(code, tab + 1, &format!("{} = U6O(u60::and({}, {}));", retx, a, b))
-            }
-            runtime::OR => line(code, tab + 1, &format!("{} = U6O(u60::or({}, {}));", retx, a, b)),
-            runtime::XOR => {
-              line(code, tab + 1, &format!("{} = U6O(u60::xor({}, {}));", retx, a, b))
-            }
-            runtime::SHL => {
-              line(code, tab + 1, &format!("{} = U6O(u60::shl({}, {}));", retx, a, b))
-            }
-            runtime::SHR => {
-              line(code, tab + 1, &format!("{} = U6O(u60::shr({}, {}));", retx, a, b))
-            }
-            runtime::LTN => {
-              line(code, tab + 1, &format!("{} = U6O(u60::ltn({}, {}));", retx, a, b))
-            }
-            runtime::LTE => {
-              line(code, tab + 1, &format!("{} = U6O(u60::lte({}, {}));", retx, a, b))
-            }
-            runtime::EQL => {
-              line(code, tab + 1, &format!("{} = U6O(u60::eql({}, {}));", retx, a, b))
-            }
-            runtime::GTE => {
-              line(code, tab + 1, &format!("{} = U6O(u60::gte({}, {}));", retx, a, b))
-            }
-            runtime::GTN => {
-              line(code, tab + 1, &format!("{} = U6O(u60::gtn({}, {}));", retx, a, b))
-            }
-            runtime::NEQ => {
-              line(code, tab + 1, &format!("{} = U6O(u60::neq({}, {}));", retx, a, b))
-            }
-            _ => line(code, tab + 1, &format!("{} = 0;", retx)),
+            Oper::Add => line(code, tab + 1, &format!("{} = U6O(u60::add({}, {}));", retx, a, b)),
+            Oper::Sub => line(code, tab + 1, &format!("{} = U6O(u60::sub({}, {}));", retx, a, b)),
+            Oper::Mul => line(code, tab + 1, &format!("{} = U6O(u60::mul({}, {}));", retx, a, b)),
+            Oper::Div => line(code, tab + 1, &format!("{} = U6O(u60::div({}, {}));", retx, a, b)),
+            Oper::Mod => line(code, tab + 1, &format!("{} = U6O(u60::mdl({}, {}));", retx, a, b)),
+            Oper::And => line(code, tab + 1, &format!("{} = U6O(u60::and({}, {}));", retx, a, b)),
+            Oper::Or => line(code, tab + 1, &format!("{} = U6O(u60::or({}, {}));", retx, a, b)),
+            Oper::Xor => line(code, tab + 1, &format!("{} = U6O(u60::xor({}, {}));", retx, a, b)),
+            Oper::Shl => line(code, tab + 1, &format!("{} = U6O(u60::shl({}, {}));", retx, a, b)),
+            Oper::Shr => line(code, tab + 1, &format!("{} = U6O(u60::shr({}, {}));", retx, a, b)),
+            Oper::Ltn => line(code, tab + 1, &format!("{} = U6O(u60::ltn({}, {}));", retx, a, b)),
+            Oper::Lte => line(code, tab + 1, &format!("{} = U6O(u60::lte({}, {}));", retx, a, b)),
+            Oper::Eql => line(code, tab + 1, &format!("{} = U6O(u60::eql({}, {}));", retx, a, b)),
+            Oper::Gte => line(code, tab + 1, &format!("{} = U6O(u60::gte({}, {}));", retx, a, b)),
+            Oper::Gtn => line(code, tab + 1, &format!("{} = U6O(u60::gtn({}, {}));", retx, a, b)),
+            Oper::Neq => line(code, tab + 1, &format!("{} = U6O(u60::neq({}, {}));", retx, a, b)),
           }
           line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(
@@ -745,53 +715,22 @@ pub fn build_function_rule_rhs(
           let a = format!("get_num({})", val0);
           let b = format!("get_num({})", val1);
           match *oper {
-            runtime::ADD => {
-              line(code, tab + 1, &format!("{} = F6O(f60::add({}, {}));", retx, a, b))
-            }
-            runtime::SUB => {
-              line(code, tab + 1, &format!("{} = F6O(f60::sub({}, {}));", retx, a, b))
-            }
-            runtime::MUL => {
-              line(code, tab + 1, &format!("{} = F6O(f60::mul({}, {}));", retx, a, b))
-            }
-            runtime::DIV => {
-              line(code, tab + 1, &format!("{} = F6O(f60::div({}, {}));", retx, a, b))
-            }
-            runtime::MOD => {
-              line(code, tab + 1, &format!("{} = F6O(f60::mdl({}, {}));", retx, a, b))
-            }
-            runtime::AND => {
-              line(code, tab + 1, &format!("{} = F6O(f60::and({}, {}));", retx, a, b))
-            }
-            runtime::OR => line(code, tab + 1, &format!("{} = F6O(f60::or({}, {}));", retx, a, b)),
-            runtime::XOR => {
-              line(code, tab + 1, &format!("{} = F6O(f60::xor({}, {}));", retx, a, b))
-            }
-            runtime::SHL => {
-              line(code, tab + 1, &format!("{} = F6O(f60::shl({}, {}));", retx, a, b))
-            }
-            runtime::SHR => {
-              line(code, tab + 1, &format!("{} = F6O(f60::shr({}, {}));", retx, a, b))
-            }
-            runtime::LTN => {
-              line(code, tab + 1, &format!("{} = F6O(f60::ltn({}, {}));", retx, a, b))
-            }
-            runtime::LTE => {
-              line(code, tab + 1, &format!("{} = F6O(f60::lte({}, {}));", retx, a, b))
-            }
-            runtime::EQL => {
-              line(code, tab + 1, &format!("{} = F6O(f60::eql({}, {}));", retx, a, b))
-            }
-            runtime::GTE => {
-              line(code, tab + 1, &format!("{} = F6O(f60::gte({}, {}));", retx, a, b))
-            }
-            runtime::GTN => {
-              line(code, tab + 1, &format!("{} = F6O(f60::gtn({}, {}));", retx, a, b))
-            }
-            runtime::NEQ => {
-              line(code, tab + 1, &format!("{} = F6O(f60::neq({}, {}));", retx, a, b))
-            }
-            _ => line(code, tab + 1, &format!("{} = 0;", retx)),
+            Oper::Add => line(code, tab + 1, &format!("{} = F6O(f60::add({}, {}));", retx, a, b)),
+            Oper::Sub => line(code, tab + 1, &format!("{} = F6O(f60::sub({}, {}));", retx, a, b)),
+            Oper::Mul => line(code, tab + 1, &format!("{} = F6O(f60::mul({}, {}));", retx, a, b)),
+            Oper::Div => line(code, tab + 1, &format!("{} = F6O(f60::div({}, {}));", retx, a, b)),
+            Oper::Mod => line(code, tab + 1, &format!("{} = F6O(f60::mdl({}, {}));", retx, a, b)),
+            Oper::And => line(code, tab + 1, &format!("{} = F6O(f60::and({}, {}));", retx, a, b)),
+            Oper::Or => line(code, tab + 1, &format!("{} = F6O(f60::or({}, {}));", retx, a, b)),
+            Oper::Xor => line(code, tab + 1, &format!("{} = F6O(f60::xor({}, {}));", retx, a, b)),
+            Oper::Shl => line(code, tab + 1, &format!("{} = F6O(f60::shl({}, {}));", retx, a, b)),
+            Oper::Shr => line(code, tab + 1, &format!("{} = F6O(f60::shr({}, {}));", retx, a, b)),
+            Oper::Ltn => line(code, tab + 1, &format!("{} = F6O(f60::ltn({}, {}));", retx, a, b)),
+            Oper::Lte => line(code, tab + 1, &format!("{} = F6O(f60::lte({}, {}));", retx, a, b)),
+            Oper::Eql => line(code, tab + 1, &format!("{} = F6O(f60::eql({}, {}));", retx, a, b)),
+            Oper::Gte => line(code, tab + 1, &format!("{} = F6O(f60::gte({}, {}));", retx, a, b)),
+            Oper::Gtn => line(code, tab + 1, &format!("{} = F6O(f60::gtn({}, {}));", retx, a, b)),
+            Oper::Neq => line(code, tab + 1, &format!("{} = F6O(f60::neq({}, {}));", retx, a, b)),
           }
           line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           line(code, tab + 0, "} else {");
@@ -799,25 +738,7 @@ pub fn build_function_rule_rhs(
         line(code, tab + 1, &format!("let {} = {};", name, alloc_node(&mut vec![], 2)));
         line(code, tab + 1, &format!("ctx.heap.link({} + 0, {});", name, val0));
         line(code, tab + 1, &format!("ctx.heap.link({} + 1, {});", name, val1));
-        let oper_name = match *oper {
-          runtime::ADD => "ADD",
-          runtime::SUB => "SUB",
-          runtime::MUL => "MUL",
-          runtime::DIV => "DIV",
-          runtime::MOD => "MOD",
-          runtime::AND => "AND",
-          runtime::OR => "OR",
-          runtime::XOR => "XOR",
-          runtime::SHL => "SHL",
-          runtime::SHR => "SHR",
-          runtime::LTN => "LTN",
-          runtime::LTE => "LTE",
-          runtime::EQL => "EQL",
-          runtime::GTE => "GTE",
-          runtime::GTN => "GTN",
-          runtime::NEQ => "NEQ",
-          _ => "?",
-        };
+        let oper_name = oper.as_str();
         line(code, tab + 1, &format!("{} = Op2({}, {});", retx, oper_name, name));
         if INLINE_NUMBERS {
           line(code, tab + 0, "}");
