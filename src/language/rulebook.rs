@@ -24,7 +24,7 @@ pub struct RuleBook {
   pub ctr_is_fun: HashMap<String, bool>,
 }
 
-pub type RuleGroup = (usize, Vec<Rule>);
+pub type RuleGroup = (usize, Vec<SyntaxRule>);
 
 impl RuleBook {
   // Creates an empty rulebook
@@ -160,7 +160,7 @@ impl From<&language::syntax::File> for RuleBook {
 //   (add (zero)   (succ b)) = (succ b)
 //   (add (zero)   (zero)  ) = (zero)
 // This is a group of 4 rules starting with the "add" name.
-pub fn group_rules(rules: &[Rule]) -> HashMap<String, RuleGroup> {
+pub fn group_rules(rules: &[SyntaxRule]) -> HashMap<String, RuleGroup> {
   let mut groups: HashMap<String, RuleGroup> = HashMap::new();
   for rule in rules {
     if let Term::Ctr { ref name, ref args } = *rule.lhs {
@@ -183,12 +183,12 @@ pub fn group_rules(rules: &[Rule]) -> HashMap<String, RuleGroup> {
 
 #[allow(dead_code)]
 pub struct SanitizedRule {
-  pub rule: Rule,
+  pub rule: SyntaxRule,
   pub uses: HashMap<String, u64>,
 }
 
 // Sanitizes all rules in a vector
-pub fn sanitize_rules(rules: &[Rule]) -> Vec<Rule> {
+pub fn sanitize_rules(rules: &[SyntaxRule]) -> Vec<SyntaxRule> {
   rules
     .iter()
     .map(|rule| {
@@ -322,7 +322,7 @@ mod tests {
 
 // Split rules that have nested cases, flattening them.
 // I'm not proud of this code. Must improve considerably.
-pub fn flatten(rules: &[Rule]) -> Vec<Rule> {
+pub fn flatten(rules: &[SyntaxRule]) -> Vec<SyntaxRule> {
   // Unique name generator
   let mut name_count = 0;
   fn fresh(name_count: &mut u64) -> u64 {
@@ -350,19 +350,19 @@ pub fn flatten(rules: &[Rule]) -> Vec<Rule> {
   //matches!(term, Term::Var { .. })
   //}
 
-  fn split_group(rules: &[Rule], name_count: &mut u64) -> Vec<Rule> {
+  fn split_group(rules: &[SyntaxRule], name_count: &mut u64) -> Vec<SyntaxRule> {
     // println!("\n[split_group]");
     // for rule in rules {
     //   println!("{}", rule);
     // }
     let mut skip: HashSet<usize> = HashSet::new();
-    let mut new_rules: Vec<Rule> = vec![];
+    let mut new_rules: Vec<SyntaxRule> = vec![];
     for i in 0..rules.len() {
       if !skip.contains(&i) {
         let rule = &rules[i];
         if rule.lhs.must_split() {
           if let Term::Ctr { ref name, ref args } = *rule.lhs {
-            let mut new_group: Vec<Rule> = vec![];
+            let mut new_group: Vec<SyntaxRule> = vec![];
             let new_lhs_name: String = name.clone();
             let new_rhs_name: String = format!("{}.{}", name, fresh(name_count));
             let mut new_lhs_args: Vec<Box<Term>> = vec![];
@@ -415,7 +415,7 @@ pub fn flatten(rules: &[Rule]) -> Vec<Rule> {
             //(Foo.0 a b c d) = ...
             let new_lhs = Box::new(Term::Ctr { name: new_lhs_name, args: new_lhs_args.clone() });
             let new_rhs = Box::new(Term::Ctr { name: new_rhs_name.clone(), args: new_rhs_args });
-            let new_rule = Rule { lhs: new_lhs, rhs: new_rhs };
+            let new_rule = SyntaxRule { lhs: new_lhs, rhs: new_rhs };
             new_group.push(new_rule);
             for (j, other) in rules.iter().enumerate().skip(i) {
               let (compatible, same_shape) = rule.matches_together(&other);
@@ -506,7 +506,7 @@ pub fn flatten(rules: &[Rule]) -> Vec<Rule> {
                   }
                   let other_new_lhs =
                     Box::new(Term::Ctr { name: other_new_lhs_name, args: other_new_lhs_args });
-                  let new_rule = Rule { lhs: other_new_lhs, rhs: other_new_rhs };
+                  let new_rule = SyntaxRule { lhs: other_new_lhs, rhs: other_new_rhs };
                   new_group.push(new_rule);
                 }
               }
@@ -526,7 +526,7 @@ pub fn flatten(rules: &[Rule]) -> Vec<Rule> {
   }
 
   // Groups rules by function name
-  let mut groups: HashMap<String, Vec<Rule>> = HashMap::new();
+  let mut groups: HashMap<String, Vec<SyntaxRule>> = HashMap::new();
   for rule in rules {
     if let Term::Ctr { ref name, .. } = *rule.lhs {
       if let Some(group) = groups.get_mut(name) {
