@@ -193,6 +193,20 @@ pub struct LocalVars {
   pub cost: AtomicU64, // total number of rewrite rules
 }
 
+impl LocalVars {
+  pub fn new(size: usize, tids: usize, tid: usize) -> Self {
+    Self {
+      tid,
+      used: AtomicI64::new(0),
+      next: AtomicU64::new((size / tids * (tid + 0)) as u64),
+      amin: AtomicU64::new((size / tids * (tid + 0)) as u64),
+      amax: AtomicU64::new((size / tids * (tid + 1)) as u64),
+      dups: AtomicU64::new(((1 << 28) / tids * tid) as u64),
+      cost: AtomicU64::new(0),
+    }
+  }
+}
+
 // Global memory buffer
 pub struct Heap {
   pub tids: usize,
@@ -515,15 +529,7 @@ impl Heap {
   pub fn new(size: usize, tids: usize) -> Self {
     let mut lvar = vec![];
     for tid in 0..tids {
-      lvar.push(CachePadded::new(LocalVars {
-        tid,
-        used: AtomicI64::new(0),
-        next: AtomicU64::new((size / tids * (tid + 0)) as u64),
-        amin: AtomicU64::new((size / tids * (tid + 0)) as u64),
-        amax: AtomicU64::new((size / tids * (tid + 1)) as u64),
-        dups: AtomicU64::new(((1 << 28) / tids * tid) as u64),
-        cost: AtomicU64::new(0),
-      }))
+      lvar.push(LocalVars::new(size, tids, tid).into());
     }
     let node = new_atomic_u64_array(size);
     let lock = new_atomic_u8_array(size);

@@ -28,3 +28,5 @@ crossbeam = "0.8.2"
 highlight_error = "0.1.1"
 instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
 itertools = "0.10"
+bitfield-struct = "0.3"
+atomic = "0.5"
