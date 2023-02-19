@@ -28,11 +28,11 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
 
     ctx.seen.insert(term);
 
-    match runtime::get_tag(term) {
+    match term.tag() {
       Tag::LAM => {
         let param = ctx.heap.load_arg(term, 0);
         let body = ctx.heap.load_arg(term, 1);
-        if runtime::get_tag(param) != Tag::ERA {
+        if param.tag() != Tag::ERA {
           let var = runtime::Var(runtime::get_loc(term, 0));
           ctx.names.insert(var, format!("x{}", ctx.names.len()));
         };
@@ -114,7 +114,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
     term: Ptr,
     depth: u32,
   ) -> Box<Term> {
-    match runtime::get_tag(term) {
+    match term.tag() {
       Tag::LAM => {
         let body = ctx.heap.load_arg(term, 1);
         let body = readback(heap, prog, ctx, stacks, body, depth + 1);
@@ -207,7 +207,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
       }
       Tag::ARG => Box::new(Term::Var { name: "<arg>".to_string() }),
       Tag::ERA => Box::new(Term::Var { name: "<era>".to_string() }),
-      _ => Box::new(Term::Var { name: format!("<unknown_tag_{}>", runtime::get_tag(term)) }),
+      _ => Box::new(Term::Var { name: format!("<unknown_tag_{}>", term.tag()) }),
     }
   }
 
@@ -245,7 +245,7 @@ impl Heap {
       let mut kinds: HashMap<u64, u64> = HashMap::new();
       let mut stack = vec![term];
       while let Some(term) = stack.pop() {
-        match runtime::get_tag(term) {
+        match term.tag() {
           Tag::LAM => {
             names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
             stack.push(heap.load_arg(term, 1));
@@ -323,7 +323,7 @@ impl Heap {
       let mut output: Vec<Term> = vec![];
       while let Some(item) = stack.pop() {
         match item {
-          StackItem::Resolver(term) => match runtime::get_tag(term) {
+          StackItem::Resolver(term) => match term.tag() {
             Tag::CTR => {
               let func = runtime::get_ext(term);
               let arit = runtime::arity_of(&prog.aris, term);
@@ -363,7 +363,7 @@ impl Heap {
             }
             _ => panic!("Term not valid in readback"),
           },
-          StackItem::Term(term) => match runtime::get_tag(term) {
+          StackItem::Term(term) => match term.tag() {
             Tag::DP0 => {
               let name = format!(
                 "a{}",
@@ -446,7 +446,7 @@ impl Heap {
     self.reduce(prog, tids, host, true, false);
     loop {
       let term = self.load_ptr(host);
-      if runtime::get_tag(term) == Tag::CTR {
+      if term.tag() == Tag::CTR {
         let fid = runtime::get_ext(term);
         if fid == runtime::STRING_NIL {
           break;

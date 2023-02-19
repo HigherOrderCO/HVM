@@ -367,9 +367,19 @@ pub fn Fun(fun: u64, pos: u64) -> Ptr {
 // Pointer Getters
 // ---------------
 
-pub fn get_tag(lnk: Ptr) -> Tag {
-  (lnk / TAG).into()
+pub trait PtrImpl {
+  fn tag(&self) -> Tag;
 }
+
+impl PtrImpl for u64 {
+  fn tag(&self) -> Tag {
+    (self / TAG).into()
+  }
+}
+
+// pub fn get_tag(lnk: Ptr) -> Tag {
+//   (lnk / TAG).into()
+// }
 
 pub fn get_ext(lnk: Ptr) -> u64 {
   (lnk / EXT) & 0xFFF_FFFF
