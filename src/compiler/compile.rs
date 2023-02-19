@@ -62,7 +62,7 @@ impl RuleBook {
       if id >= &runtime::PRECOMP_COUNT {
         let name = self.id_to_name.get(id).unwrap();
         if let Some(rules) = self.rule_group.get(name) {
-          let (got_visit, got_apply) = build_function(self, &name, &rules.1);
+          let (got_visit, got_apply) = self.build_function(&name, &rules.1);
           line(&mut precomp_fns, 0, &format!("{}", got_visit));
           line(&mut precomp_fns, 0, &format!("{}", got_apply));
         }
@@ -124,287 +124,291 @@ impl RuleBook {
   }
 }
 
-pub fn build_function(
-  book: &RuleBook,
-  fname: &str,
-  rules: &[language::syntax::Rule],
-) -> (String, String) {
-  if let runtime::Function::Interpreted { smap: fn_smap, visit: fn_visit, apply: fn_apply } =
-    runtime::build_function(book, fname, rules)
-  {
-    // Visit
-    // -----
+impl RuleBook {
+  pub fn build_function(&self, fname: &str, rules: &[language::syntax::Rule]) -> (String, String) {
+    if let runtime::Function::Interpreted { smap: fn_smap, visit: fn_visit, apply: fn_apply } =
+      runtime::build_function(self, fname, rules)
+    {
+      // Visit
+      // -----
 
-    let mut visit = String::new();
-    line(&mut visit, 0, &format!("#[inline(always)]"));
-    line(&mut visit, 0, &format!("pub fn {}_visit(ctx: ReduceCtx) -> bool {{", &build_name(fname)));
-    if fn_visit.strict_idx.is_empty() {
-      line(&mut visit, 1, "return false;");
-    } else {
-      line(&mut visit, 1, &format!("let mut vlen = 0;"));
+      let mut visit = String::new();
+      line(&mut visit, 0, &format!("#[inline(always)]"));
       line(
         &mut visit,
-        1,
-        &format!("let vbuf = unsafe {{ ctx.heap.vbuf.get_unchecked(ctx.tid) }};"),
+        0,
+        &format!("pub fn {}_visit(ctx: ReduceCtx) -> bool {{", &build_name(fname)),
       );
-      for sidx in &fn_visit.strict_idx {
-        line(&mut visit, 1, &format!("if !is_whnf(ctx.heap.load_arg(ctx.term, {})) {{", *sidx));
-        line(&mut visit, 2, &format!("unsafe {{ vbuf.get_unchecked(vlen) }}.store(get_loc(ctx.term, {}), Ordering::Relaxed);", *sidx));
-        line(&mut visit, 2, &format!("vlen += 1"));
+      if fn_visit.strict_idx.is_empty() {
+        line(&mut visit, 1, "return false;");
+      } else {
+        line(&mut visit, 1, &format!("let mut vlen = 0;"));
+        line(
+          &mut visit,
+          1,
+          &format!("let vbuf = unsafe {{ ctx.heap.vbuf.get_unchecked(ctx.tid) }};"),
+        );
+        for sidx in &fn_visit.strict_idx {
+          line(&mut visit, 1, &format!("if !is_whnf(ctx.heap.load_arg(ctx.term, {})) {{", *sidx));
+          line(&mut visit, 2, &format!("unsafe {{ vbuf.get_unchecked(vlen) }}.store(get_loc(ctx.term, {}), Ordering::Relaxed);", *sidx));
+          line(&mut visit, 2, &format!("vlen += 1"));
+          line(&mut visit, 1, &format!("}}"));
+        }
+        line(&mut visit, 1, &format!("if vlen == 0 {{"));
+        line(&mut visit, 2, &format!("return false;"));
+        line(&mut visit, 1, &format!("}} else {{"));
+        line(
+          &mut visit,
+          2,
+          &format!(
+            "let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));"
+          ),
+        );
+        for i in 0..fn_visit.strict_idx.len() {
+          line(&mut visit, 2, &format!("if {} < vlen - 1 {{", i));
+          line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({}).load(Ordering::Relaxed) }}, ctx.hold, goup));", i));
+          line(&mut visit, 2, &format!("}}"));
+        }
+        line(&mut visit, 2, &format!("*ctx.cont = goup;"));
+        line(
+          &mut visit,
+          2,
+          &format!(
+            "*ctx.host = unsafe {{ vbuf.get_unchecked(vlen - 1).load(Ordering::Relaxed) }};"
+          ),
+        );
+        line(&mut visit, 2, &format!("return true;"));
         line(&mut visit, 1, &format!("}}"));
       }
-      line(&mut visit, 1, &format!("if vlen == 0 {{"));
-      line(&mut visit, 2, &format!("return false;"));
-      line(&mut visit, 1, &format!("}} else {{"));
-      line(
-        &mut visit,
-        2,
-        &format!(
-          "let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));"
-        ),
-      );
-      for i in 0..fn_visit.strict_idx.len() {
-        line(&mut visit, 2, &format!("if {} < vlen - 1 {{", i));
-        line(&mut visit, 3, &format!("ctx.visit.push(new_visit(unsafe {{ vbuf.get_unchecked({}).load(Ordering::Relaxed) }}, ctx.hold, goup));", i));
-        line(&mut visit, 2, &format!("}}"));
-      }
-      line(&mut visit, 2, &format!("*ctx.cont = goup;"));
-      line(
-        &mut visit,
-        2,
-        &format!("*ctx.host = unsafe {{ vbuf.get_unchecked(vlen - 1).load(Ordering::Relaxed) }};"),
-      );
-      line(&mut visit, 2, &format!("return true;"));
-      line(&mut visit, 1, &format!("}}"));
-    }
-    line(&mut visit, 0, &format!("}}"));
+      line(&mut visit, 0, &format!("}}"));
 
-    // Apply
-    // -----
+      // Apply
+      // -----
 
-    let mut apply = String::new();
+      let mut apply = String::new();
 
-    // Transmute Optimization
-    // ----------------------
-    // When a function has the shape:
-    // (Foo a b c ...) = (Bar a b c ...)
-    // It just transmutes the pointer.
+      // Transmute Optimization
+      // ----------------------
+      // When a function has the shape:
+      // (Foo a b c ...) = (Bar a b c ...)
+      // It just transmutes the pointer.
 
-    'TransmuteOptimization: {
-      if fn_apply.rules.len() != 1 {
-        break 'TransmuteOptimization;
-      }
-      let runtime::program::Rule { hoas, cond, vars, core, body, .. } = &fn_apply.rules[0];
-      // Checks if it doesn't do any pattern-matching
-      for mat in cond {
-        if *mat != runtime::Var(0) {
+      'TransmuteOptimization: {
+        if fn_apply.rules.len() != 1 {
           break 'TransmuteOptimization;
         }
-      }
-      // Checks if its rhs only allocs one node
-      if body.1.len() != 1 {
-        break 'TransmuteOptimization;
-      }
-      // Checks if the function and body arity match
-      let cell = &body.1[0];
-      if cell.len() != vars.len() {
-        break 'TransmuteOptimization;
-      }
-      // Checks if it returns the same variables in order
-      for i in 0..cell.len() {
-        if let RuleBodyCell::Var { index } = cell[i] {
-          if index != i as u64 {
+        let runtime::program::Rule { hoas, cond, vars, core, body, .. } = &fn_apply.rules[0];
+        // Checks if it doesn't do any pattern-matching
+        for mat in cond {
+          if *mat != runtime::Var(0) {
             break 'TransmuteOptimization;
           }
+        }
+        // Checks if its rhs only allocs one node
+        if body.1.len() != 1 {
+          break 'TransmuteOptimization;
+        }
+        // Checks if the function and body arity match
+        let cell = &body.1[0];
+        if cell.len() != vars.len() {
+          break 'TransmuteOptimization;
+        }
+        // Checks if it returns the same variables in order
+        for i in 0..cell.len() {
+          if let RuleBodyCell::Var { index } = cell[i] {
+            if index != i as u64 {
+              break 'TransmuteOptimization;
+            }
+          } else {
+            break 'TransmuteOptimization;
+          }
+        }
+        // Gets the new ptr
+        let ptr;
+        if let RuleBodyCell::Ptr { value, targ: 0, slot: 0 } = body.0 {
+          ptr = value;
         } else {
           break 'TransmuteOptimization;
         }
-      }
-      // Gets the new ptr
-      let ptr;
-      if let RuleBodyCell::Ptr { value, targ: 0, slot: 0 } = body.0 {
-        ptr = value;
-      } else {
-        break 'TransmuteOptimization;
-      }
-      // If all is true, compile as a transmuter
-      line(&mut apply, 0, &format!("#[inline(always)]"));
-      line(
-        &mut apply,
-        0,
-        &format!("pub fn {}_apply(ctx: ReduceCtx) -> bool {{", &build_name(fname)),
-      );
-      line(
-        &mut apply,
-        1,
-        &format!("let done = Ctr({}, get_loc(ctx.term, 0));", runtime::get_ext(ptr)),
-      );
-      line(&mut apply, 1, "ctx.heap.link(*ctx.host, done);");
-      line(&mut apply, 1, "return false;");
-      line(&mut apply, 0, &format!("}}"));
-    }
-
-    // Normal Function
-    // ---------------
-
-    if apply.len() == 0 {
-      line(&mut apply, 0, &format!("#[inline(always)]"));
-      line(
-        &mut apply,
-        0,
-        &format!("pub fn {}_apply(ctx: ReduceCtx) -> bool {{", &build_name(fname)),
-      );
-
-      // Loads strict arguments
-      for i in 0..fn_smap.len() {
-        line(&mut apply, 1, &format!("let arg{} = ctx.heap.load_arg(ctx.term, {});", i, i));
+        // If all is true, compile as a transmuter
+        line(&mut apply, 0, &format!("#[inline(always)]"));
+        line(
+          &mut apply,
+          0,
+          &format!("pub fn {}_apply(ctx: ReduceCtx) -> bool {{", &build_name(fname)),
+        );
+        line(
+          &mut apply,
+          1,
+          &format!("let done = Ctr({}, get_loc(ctx.term, 0));", runtime::get_ext(ptr)),
+        );
+        line(&mut apply, 1, "ctx.heap.link(*ctx.host, done);");
+        line(&mut apply, 1, "return false;");
+        line(&mut apply, 0, &format!("}}"));
       }
 
-      // Applies the fun_sup rule to superposed args
-      for (i, is_strict) in fn_visit.strict_map.iter().enumerate() {
-        if *is_strict {
-          line(&mut apply, 1, &format!("if get_tag(arg{}) == Tag::SUP {{", i));
-          line(
-            &mut apply,
-            2,
-            &format!(
-              "fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg{}, {});",
-              i, i
-            ),
-          );
-          line(&mut apply, 1, "}");
-        }
-      }
+      // Normal Function
+      // ---------------
 
-      // For each rule condition vector
-      for (r, rule) in fn_apply.rules.iter().enumerate() {
-        let mut matched: Vec<String> = vec![];
+      if apply.len() == 0 {
+        line(&mut apply, 0, &format!("#[inline(always)]"));
+        line(
+          &mut apply,
+          0,
+          &format!("pub fn {}_apply(ctx: ReduceCtx) -> bool {{", &build_name(fname)),
+        );
 
-        // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
-        for (i, cond) in rule.cond.iter().enumerate() {
-          let i = i as u64;
-          if runtime::get_tag(*cond) == Tag::U60 {
-            let same_tag = format!("get_tag(arg{}) == Tag::U60", i);
-            let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
-            matched.push(format!("({} && {})", same_tag, same_val));
-          }
-          if runtime::get_tag(*cond) == Tag::F60 {
-            let same_tag = format!("get_tag(arg{}) == Tag::F60", i);
-            let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
-            matched.push(format!("({} && {})", same_tag, same_val));
-          }
-          if runtime::get_tag(*cond) == Tag::CTR {
-            let some_tag = format!("get_tag(arg{}) == Tag::CTR", i);
-            let some_ext = format!("get_ext(arg{}) == {}", i, runtime::get_ext(*cond));
-            matched.push(format!("({} && {})", some_tag, some_ext));
-          }
-          // If this is a strict argument, then we're in a default variable
-          if runtime::get_tag(*cond) == Tag::VAR && fn_visit.strict_map[i as usize] {
-            // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
-            if rule.hoas && r != fn_apply.rules.len() - 1 {
-              // Matches number literals
-              let is_num = format!(
-                "({} || {})",
-                format!("get_tag(arg{}) == Tag::U60", i),
-                format!("get_tag(arg{}) == Tag::F60", i)
-              );
-
-              // Matches constructor labels
-              let is_ctr = format!(
-                "({} && {})",
-                format!("get_tag(arg{}) == Tag::CTR", i),
-                format!("arity_of(heap, arg{}) == 0u", i)
-              );
-
-              // Matches HOAS numbers and constructors
-              let is_hoas_ctr_num = format!(
-                "({} && {} && {})",
-                format!("get_tag(arg{}) == Tag::CTR", i),
-                format!("get_ext(arg{}) >= HOAS_CT0", i),
-                format!("get_ext(arg{}) <= HOAS_F60", i)
-              );
-
-              matched.push(format!("({} || {} || {})", is_num, is_ctr, is_hoas_ctr_num));
-
-            // Only match default variables on CTRs, U60s, F60s
-            } else {
-              let is_ctr = format!("get_tag(arg{}) == Tag::CTR", i);
-              let is_u60 = format!("get_tag(arg{}) == Tag::U60", i);
-              let is_f60 = format!("get_tag(arg{}) == Tag::F60", i);
-              matched.push(format!("({} || {} || {})", is_ctr, is_u60, is_f60));
-            }
-          }
+        // Loads strict arguments
+        for i in 0..fn_smap.len() {
+          line(&mut apply, 1, &format!("let arg{} = ctx.heap.load_arg(ctx.term, {});", i, i));
         }
 
-        let conds = if matched.is_empty() { String::from("true") } else { matched.join(" && ") };
-        line(&mut apply, 1, &format!("if {} {{", conds));
-
-        // Increments the gas count
-        line(&mut apply, 2, "ctx.heap.inc_cost(ctx.tid);");
-
-        // Builds the free vector
-        let mut free: Vec<Option<(String, u64)>> = vec![];
-        for (idx, ari) in &rule.free {
-          free.push(Some((format!("get_loc(arg{}, 0)", idx), *ari)));
-        }
-        free.push(Some(("get_loc(ctx.term, 0)".to_string(), fn_visit.strict_map.len() as u64)));
-
-        // Builds the right-hand side term (ex: `(Succ (Add a b))`)
-        //let done = build_function_rule_body(&mut apply, 2, &rule.body, &rule.vars);
-        let done = build_function_rule_rhs(book, &mut apply, &mut free, 2, &rule.core, &rule.vars);
-        line(&mut apply, 2, &format!("let done = {};", done));
-
-        // Links the host location to it
-        line(&mut apply, 2, "ctx.heap.link(*ctx.host, done);");
-
-        // Collects unused variables (none in this example)
-        for dynvar @ runtime::RuleVar { param: _, field: _, erase } in rule.vars.iter() {
-          if *erase {
+        // Applies the fun_sup rule to superposed args
+        for (i, is_strict) in fn_visit.strict_map.iter().enumerate() {
+          if *is_strict {
+            line(&mut apply, 1, &format!("if get_tag(arg{}) == Tag::SUP {{", i));
             line(
               &mut apply,
               2,
-              &format!("ctx.heap.collect(&ctx.prog.aris, ctx.tid, {});", get_var(dynvar)),
+              &format!(
+              "fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg{}, {});",
+              i, i
+            ),
             );
+            line(&mut apply, 1, "}");
           }
         }
 
-        // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
-        for must_free in &free {
-          if let Some((loc, ari)) = must_free {
-            line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, {}, {});", loc, ari));
+        // For each rule condition vector
+        for (r, rule) in fn_apply.rules.iter().enumerate() {
+          let mut matched: Vec<String> = vec![];
+
+          // Tests each rule condition (ex: `get_tag(args[0]) == SUCC`)
+          for (i, cond) in rule.cond.iter().enumerate() {
+            let i = i as u64;
+            if runtime::get_tag(*cond) == Tag::U60 {
+              let same_tag = format!("get_tag(arg{}) == Tag::U60", i);
+              let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
+              matched.push(format!("({} && {})", same_tag, same_val));
+            }
+            if runtime::get_tag(*cond) == Tag::F60 {
+              let same_tag = format!("get_tag(arg{}) == Tag::F60", i);
+              let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
+              matched.push(format!("({} && {})", same_tag, same_val));
+            }
+            if runtime::get_tag(*cond) == Tag::CTR {
+              let some_tag = format!("get_tag(arg{}) == Tag::CTR", i);
+              let some_ext = format!("get_ext(arg{}) == {}", i, runtime::get_ext(*cond));
+              matched.push(format!("({} && {})", some_tag, some_ext));
+            }
+            // If this is a strict argument, then we're in a default variable
+            if runtime::get_tag(*cond) == Tag::VAR && fn_visit.strict_map[i as usize] {
+              // This is a Kind2-specific optimization. Check 'HOAS_OPT'.
+              if rule.hoas && r != fn_apply.rules.len() - 1 {
+                // Matches number literals
+                let is_num = format!(
+                  "({} || {})",
+                  format!("get_tag(arg{}) == Tag::U60", i),
+                  format!("get_tag(arg{}) == Tag::F60", i)
+                );
+
+                // Matches constructor labels
+                let is_ctr = format!(
+                  "({} && {})",
+                  format!("get_tag(arg{}) == Tag::CTR", i),
+                  format!("arity_of(heap, arg{}) == 0u", i)
+                );
+
+                // Matches HOAS numbers and constructors
+                let is_hoas_ctr_num = format!(
+                  "({} && {} && {})",
+                  format!("get_tag(arg{}) == Tag::CTR", i),
+                  format!("get_ext(arg{}) >= HOAS_CT0", i),
+                  format!("get_ext(arg{}) <= HOAS_F60", i)
+                );
+
+                matched.push(format!("({} || {} || {})", is_num, is_ctr, is_hoas_ctr_num));
+
+              // Only match default variables on CTRs, U60s, F60s
+              } else {
+                let is_ctr = format!("get_tag(arg{}) == Tag::CTR", i);
+                let is_u60 = format!("get_tag(arg{}) == Tag::U60", i);
+                let is_f60 = format!("get_tag(arg{}) == Tag::F60", i);
+                matched.push(format!("({} || {} || {})", is_ctr, is_u60, is_f60));
+              }
+            }
           }
+
+          let conds = if matched.is_empty() { String::from("true") } else { matched.join(" && ") };
+          line(&mut apply, 1, &format!("if {} {{", conds));
+
+          // Increments the gas count
+          line(&mut apply, 2, "ctx.heap.inc_cost(ctx.tid);");
+
+          // Builds the free vector
+          let mut free: Vec<Option<(String, u64)>> = vec![];
+          for (idx, ari) in &rule.free {
+            free.push(Some((format!("get_loc(arg{}, 0)", idx), *ari)));
+          }
+          free.push(Some(("get_loc(ctx.term, 0)".to_string(), fn_visit.strict_map.len() as u64)));
+
+          // Builds the right-hand side term (ex: `(Succ (Add a b))`)
+          //let done = build_function_rule_body(&mut apply, 2, &rule.body, &rule.vars);
+          let done =
+            build_function_rule_rhs(self, &mut apply, &mut free, 2, &rule.core, &rule.vars);
+          line(&mut apply, 2, &format!("let done = {};", done));
+
+          // Links the host location to it
+          line(&mut apply, 2, "ctx.heap.link(*ctx.host, done);");
+
+          // Collects unused variables (none in this example)
+          for dynvar @ runtime::RuleVar { param: _, field: _, erase } in rule.vars.iter() {
+            if *erase {
+              line(
+                &mut apply,
+                2,
+                &format!("ctx.heap.collect(&ctx.prog.aris, ctx.tid, {});", get_var(dynvar)),
+              );
+            }
+          }
+
+          // Clears the matched ctrs (the `(Succ ...)` and the `(Add ...)` ctrs)
+          for must_free in &free {
+            if let Some((loc, ari)) = must_free {
+              line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, {}, {});", loc, ari));
+            }
+          }
+
+          //for (i, arity) in &rule.free {
+          //let i = *i as u64;
+          //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(arg{}, 0), {});", i, arity));
+          //}
+          //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), {});", fn_visit.strict_map.len()));
+
+          let ret_ptr = match rule.body.0 {
+            RuleBodyCell::Val { value } => value,
+            RuleBodyCell::Ptr { value, .. } => value,
+            RuleBodyCell::Var { .. } => runtime::Var(0),
+          };
+          line(
+            &mut apply,
+            2,
+            &format!("return {};", if runtime::is_whnf(ret_ptr) { "false" } else { "true" }),
+          );
+          //line(&mut apply, 2, &format!("return true;"));
+          line(&mut apply, 1, "}");
         }
+        line(&mut apply, 1, "return false;");
 
-        //for (i, arity) in &rule.free {
-        //let i = *i as u64;
-        //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(arg{}, 0), {});", i, arity));
-        //}
-        //line(&mut apply, 2, &format!("ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), {});", fn_visit.strict_map.len()));
-
-        let ret_ptr = match rule.body.0 {
-          RuleBodyCell::Val { value } => value,
-          RuleBodyCell::Ptr { value, .. } => value,
-          RuleBodyCell::Var { .. } => runtime::Var(0),
-        };
-        line(
-          &mut apply,
-          2,
-          &format!("return {};", if runtime::is_whnf(ret_ptr) { "false" } else { "true" }),
-        );
-        //line(&mut apply, 2, &format!("return true;"));
-        line(&mut apply, 1, "}");
+        line(&mut apply, 0, "}");
       }
-      line(&mut apply, 1, "return false;");
 
-      line(&mut apply, 0, "}");
+      (visit, apply)
+    } else {
+      panic!("Unexpected error.");
     }
-
-    (visit, apply)
-  } else {
-    panic!("Unexpected error.");
   }
 }
-
 pub fn build_function_rule_rhs(
   book: &RuleBook,
   code: &mut String,
