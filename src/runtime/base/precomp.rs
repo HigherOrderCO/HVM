@@ -147,8 +147,8 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
   if arg0.tag() == Tag::SUP {
     fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
   }
-  if (arg0.tag() == Tag::U60) {
-    if (get_num(arg0) == 0) {
+  if arg0.tag() == Tag::U60 {
+    if get_num(arg0) == 0 {
       ctx.heap.inc_cost(ctx.tid);
       let done = arg2;
       ctx.heap.link(*ctx.host, done);
@@ -190,8 +190,8 @@ pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
   if arg0.tag() == Tag::SUP {
     fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
   }
-  if (arg0.tag() == Tag::U60) {
-    if (get_num(arg0) == 0) {
+  if arg0.tag() == Tag::U60 {
+    if get_num(arg0) == 0 {
       ctx.heap.inc_cost(ctx.tid);
       let ctr_0 = ctx.heap.alloc(ctx.tid, 2);
       ctx.heap.link(ctr_0 + 0, arg1);
