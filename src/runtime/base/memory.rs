@@ -370,6 +370,7 @@ pub fn Fun(fun: u64, pos: u64) -> Ptr {
 pub trait PtrImpl {
   fn tag(&self) -> Tag;
   fn ext(&self) -> u64;
+  fn oper(&self) -> Oper;
 }
 
 impl PtrImpl for u64 {
@@ -379,6 +380,10 @@ impl PtrImpl for u64 {
 
   fn ext(&self) -> u64 {
     (self / EXT) & 0xFFF_FFFF
+  }
+
+  fn oper(&self) -> Oper {
+    Oper::from(self.ext())
   }
 }
 
@@ -390,11 +395,11 @@ impl PtrImpl for u64 {
 //   (lnk / EXT) & 0xFFF_FFFF
 // }
 
-pub fn get_oper(lnk: Ptr) -> Oper {
-  // assert!(lnk.tag() == Tag::OP2);
-  // Oper::from(lnk.ext() as u8)
-  Oper::from(lnk.ext())
-}
+// pub fn get_oper(lnk: Ptr) -> Oper {
+//   // assert!(lnk.tag() == Tag::OP2);
+//   // Oper::from(lnk.ext() as u8)
+//   Oper::from(lnk.ext())
+// }
 
 pub fn get_val(lnk: Ptr) -> u64 {
   lnk & 0xFFFF_FFFF

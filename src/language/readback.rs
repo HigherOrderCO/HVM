@@ -170,7 +170,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         result
       }
       Tag::OP2 => {
-        let oper = runtime::get_oper(term);
+        let oper = term.oper();
         let val0 = ctx.heap.load_arg(term, 0);
         let val1 = ctx.heap.load_arg(term, 1);
         let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
@@ -356,7 +356,7 @@ impl Heap {
               output.push(Term::App { func, argm });
             }
             Tag::OP2 => {
-              let oper = runtime::get_oper(term);
+              let oper = term.oper();
               let val1 = Box::new(output.pop().unwrap());
               let val0 = Box::new(output.pop().unwrap());
               output.push(Term::Op2 { oper, val0, val1 })
