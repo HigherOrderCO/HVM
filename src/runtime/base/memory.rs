@@ -212,20 +212,104 @@ pub const VAL: u64 = 1;
 pub const EXT: u64 = 0x100000000;
 pub const TAG: u64 = 0x1000000000000000;
 
-pub const DP0: u64 = 0x0;
-pub const DP1: u64 = 0x1;
-pub const VAR: u64 = 0x2;
-pub const ARG: u64 = 0x3;
-pub const ERA: u64 = 0x4;
-pub const LAM: u64 = 0x5;
-pub const APP: u64 = 0x6;
-pub const SUP: u64 = 0x7;
-pub const CTR: u64 = 0x8;
-pub const FUN: u64 = 0x9;
-pub const OP2: u64 = 0xA;
-pub const U60: u64 = 0xB;
-pub const F60: u64 = 0xC;
-pub const NIL: u64 = 0xF;
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum Tag {
+  DP0 = 0x0,
+  DP1 = 0x1,
+  VAR = 0x2,
+  ARG = 0x3,
+  ERA = 0x4,
+  LAM = 0x5,
+  APP = 0x6,
+  SUP = 0x7,
+  CTR = 0x8,
+  FUN = 0x9,
+  OP2 = 0xA,
+  U60 = 0xB,
+  F60 = 0xC,
+  NIL = 0xF,
+}
+
+impl std::fmt::Display for Tag {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{:?}", self)
+  }
+}
+
+impl Tag {
+  pub fn as_str(&self) -> &str {
+    match &self {
+      Self::DP0 => "Dp0",
+      Self::DP1 => "Dp1",
+      Self::VAR => "Var",
+      Self::ARG => "Arg",
+      Self::ERA => "Era",
+      Self::LAM => "Lam",
+      Self::APP => "App",
+      Self::SUP => "Sup",
+      Self::CTR => "Ctr",
+      Self::FUN => "Fun",
+      Self::OP2 => "Op2",
+      Self::U60 => "U60",
+      Self::F60 => "F60",
+      Self::NIL => "NIL",
+    }
+  }
+  // pub fn global_name_misc(name: &str) -> Option<Self> {
+  //   if name.is_empty() || name.starts_with('$') {
+  //     return None;
+  //   }
+
+  //   Some(if name.starts_with("$0") {
+  //     Self::DP0
+  //   } else if name.starts_with("$1") {
+  //     Self::DP1
+  //   } else {
+  //     Self::VAR
+  //   })
+  // }
+
+  // pub fn is_numeric(&self) -> bool {
+  //   matches!(self, Self::U60 | Self::F60)
+  // }  pub fn l
+
+  pub fn is_whnf(&self) -> bool {
+    matches!(self, Self::ERA | Self::LAM | Self::SUP | Self::CTR | Self::U60 | Self::F60)
+  }
+
+  pub fn as_u64(&self) -> u64 {
+    *self as _
+  }
+
+  pub fn something(&self) -> u64 {
+    self.as_u64() & 0x01
+  }
+}
+
+impl From<u8> for Tag {
+  fn from(value: u8) -> Self {
+    unsafe { std::mem::transmute(value as u8) }
+  }
+}
+
+impl From<u64> for Tag {
+  fn from(value: u64) -> Self {
+    Self::from(value as u8)
+  }
+}
+
+impl From<Tag> for u8 {
+  fn from(value: Tag) -> Self {
+    value as u8
+  }
+}
+
+impl From<Tag> for u64 {
+  fn from(value: Tag) -> Self {
+    value as u64
+  }
+}
 
 pub const ADD: u64 = 0x0;
 pub const SUB: u64 = 0x1;
@@ -248,62 +332,62 @@ pub const NEQ: u64 = 0xF;
 // --------------------
 
 pub fn Var(pos: u64) -> Ptr {
-  (VAR * TAG) | pos
+  (Tag::VAR.as_u64() * TAG) | pos
 }
 
 pub fn Dp0(col: u64, pos: u64) -> Ptr {
-  (DP0 * TAG) | (col * EXT) | pos
+  (Tag::DP0.as_u64() * TAG) | (col * EXT) | pos
 }
 
 pub fn Dp1(col: u64, pos: u64) -> Ptr {
-  (DP1 * TAG) | (col * EXT) | pos
+  (Tag::DP1.as_u64() * TAG) | (col * EXT) | pos
 }
 
 pub fn Arg(pos: u64) -> Ptr {
-  (ARG * TAG) | pos
+  (Tag::ARG.as_u64() * TAG) | pos
 }
 
 pub fn Era() -> Ptr {
-  ERA * TAG
+  Tag::ERA.as_u64() * TAG
 }
 
 pub fn Lam(pos: u64) -> Ptr {
-  (LAM * TAG) | pos
+  (Tag::LAM.as_u64() * TAG) | pos
 }
 
 pub fn App(pos: u64) -> Ptr {
-  (APP * TAG) | pos
+  (Tag::APP.as_u64() * TAG) | pos
 }
 
 pub fn Sup(col: u64, pos: u64) -> Ptr {
-  (SUP * TAG) | (col * EXT) | pos
+  (Tag::SUP.as_u64() * TAG) | (col * EXT) | pos
 }
 
 pub fn Op2(ope: u64, pos: u64) -> Ptr {
-  (OP2 * TAG) | (ope * EXT) | pos
+  (Tag::OP2.as_u64() * TAG) | (ope * EXT) | pos
 }
 
 pub fn U6O(val: u64) -> Ptr {
-  (U60 * TAG) | val
+  (Tag::U60.as_u64() * TAG) | val
 }
 
 pub fn F6O(val: u64) -> Ptr {
-  (F60 * TAG) | val
+  (Tag::F60.as_u64() * TAG) | val
 }
 
 pub fn Ctr(fun: u64, pos: u64) -> Ptr {
-  (CTR * TAG) | (fun * EXT) | pos
+  (Tag::CTR.as_u64() * TAG) | (fun * EXT) | pos
 }
 
 pub fn Fun(fun: u64, pos: u64) -> Ptr {
-  (FUN * TAG) | (fun * EXT) | pos
+  (Tag::FUN.as_u64() * TAG) | (fun * EXT) | pos
 }
 
 // Pointer Getters
 // ---------------
 
-pub fn get_tag(lnk: Ptr) -> u64 {
-  lnk / TAG
+pub fn get_tag(lnk: Ptr) -> Tag {
+  (lnk / TAG).into()
 }
 
 pub fn get_ext(lnk: Ptr) -> u64 {
@@ -377,8 +461,8 @@ impl Heap {
   pub fn link(&self, loc: u64, ptr: Ptr) -> Ptr {
     unsafe {
       self.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
-      if get_tag(ptr) <= VAR {
-        let arg_loc = get_loc(ptr, get_tag(ptr) & 0x01);
+      if get_tag(ptr) <= Tag::VAR {
+        let arg_loc = get_loc(ptr, get_tag(ptr).something());
         self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
       }
     }
@@ -501,8 +585,8 @@ impl Heap {
         Ordering::Relaxed,
         Ordering::Relaxed,
       )?;
-      if get_tag(neo) <= VAR {
-        let arg_loc = get_loc(neo, get_tag(neo) & 0x01);
+      if get_tag(neo) <= Tag::VAR {
+        let arg_loc = get_loc(neo, get_tag(neo).something());
         self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
       }
       Ok(got)
@@ -512,8 +596,8 @@ impl Heap {
   // Performs a global [x <- val] substitution atomically.
   pub fn atomic_subst(&self, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
     loop {
-      let arg_ptr = self.load_ptr(get_loc(var, get_tag(var) & 0x01));
-      if get_tag(arg_ptr) == ARG {
+      let arg_ptr = self.load_ptr(get_loc(var, get_tag(var).something()));
+      if get_tag(arg_ptr) == Tag::ARG {
         if self.tids == 1 {
           self.link(get_loc(arg_ptr, 0), val);
           return;
@@ -523,7 +607,7 @@ impl Heap {
           continue;
         }
       }
-      if get_tag(arg_ptr) == ERA {
+      if get_tag(arg_ptr) == Tag::ERA {
         self.collect(arit, tid, val); // safe, since `val` is owned by this thread
         return;
       }
@@ -622,56 +706,56 @@ impl Heap {
     loop {
       let term = next;
       match get_tag(term) {
-        DP0 => {
+        Tag::DP0 => {
           self.link(get_loc(term, 0), Era());
           if self.acquire_lock(tid, term).is_ok() {
-            if get_tag(self.load_arg(term, 1)) == ERA {
+            if get_tag(self.load_arg(term, 1)) == Tag::ERA {
               coll.push(self.take_arg(term, 2));
               self.free(tid, get_loc(term, 0), 3);
             }
             self.release_lock(tid, term);
           }
         }
-        DP1 => {
+        Tag::DP1 => {
           self.link(get_loc(term, 1), Era());
           if self.acquire_lock(tid, term).is_ok() {
-            if get_tag(self.load_arg(term, 0)) == ERA {
+            if get_tag(self.load_arg(term, 0)) == Tag::ERA {
               coll.push(self.take_arg(term, 2));
               self.free(tid, get_loc(term, 0), 3);
             }
             self.release_lock(tid, term);
           }
         }
-        VAR => {
+        Tag::VAR => {
           self.link(get_loc(term, 0), Era());
         }
-        LAM => {
+        Tag::LAM => {
           self.atomic_subst(arit, tid, Var(get_loc(term, 0)), Era());
           next = self.take_arg(term, 1);
           self.free(tid, get_loc(term, 0), 2);
           continue;
         }
-        APP => {
+        Tag::APP => {
           coll.push(self.take_arg(term, 0));
           next = self.take_arg(term, 1);
           self.free(tid, get_loc(term, 0), 2);
           continue;
         }
-        SUP => {
+        Tag::SUP => {
           coll.push(self.take_arg(term, 0));
           next = self.take_arg(term, 1);
           self.free(tid, get_loc(term, 0), 2);
           continue;
         }
-        OP2 => {
+        Tag::OP2 => {
           coll.push(self.take_arg(term, 0));
           next = self.take_arg(term, 1);
           self.free(tid, get_loc(term, 0), 2);
           continue;
         }
-        U60 => {}
-        F60 => {}
-        CTR | FUN => {
+        Tag::U60 => {}
+        Tag::F60 => {}
+        Tag::CTR | Tag::FUN => {
           let arity = arity_of(arit, term);
           for i in 0..arity {
             if i < arity - 1 {

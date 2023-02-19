@@ -6,6 +6,8 @@ use std::collections::{BTreeMap, HashMap};
 
 type NameTable = BTreeMap<String, String>;
 
+use crate::runtime::Tag;
+
 struct CtxSanitizeTerm<'a> {
   uses: &'a mut HashMap<String, u64>,
   fresh: &'a mut dyn FnMut() -> String,
@@ -224,10 +226,10 @@ impl Term {
       Self::Dup { expr, body, nam0, nam1 } => {
         let is_global_0 = crate::runtime::get_global_name_misc(nam0).is_some();
         let is_global_1 = crate::runtime::get_global_name_misc(nam1).is_some();
-        if is_global_0 && crate::runtime::get_global_name_misc(nam0) != Some(crate::runtime::DP0) {
+        if is_global_0 && crate::runtime::get_global_name_misc(nam0) != Some(Tag::DP0) {
           panic!("The name of the global dup var '{}' must start with '$0'.", nam0);
         }
-        if is_global_1 && crate::runtime::get_global_name_misc(nam1) != Some(crate::runtime::DP1) {
+        if is_global_1 && crate::runtime::get_global_name_misc(nam1) != Some(Tag::DP1) {
           panic!("The name of the global dup var '{}' must start with '$1'.", nam1);
         }
         if is_global_0 != is_global_1 {

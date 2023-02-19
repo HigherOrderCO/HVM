@@ -33,7 +33,7 @@ pub struct ReduceCtx<'a> {
 //   }
 
 pub fn is_whnf(term: Ptr) -> bool {
-  matches!(get_tag(term), ERA | LAM | SUP | CTR | U60 | F60)
+  get_tag(term).is_whnf()
 }
 
 impl Heap {
@@ -104,7 +104,7 @@ fn reducer(
             print(tid, host);
           }
           match get_tag(term) {
-            APP => {
+            Tag::APP => {
               if app::visit(ReduceCtx {
                 heap,
                 prog,
@@ -121,7 +121,7 @@ fn reducer(
                 break 'work;
               }
             }
-            DP0 | DP1 => {
+            Tag::DP0 | Tag::DP1 => {
               match heap.acquire_lock(tid, term) {
                 Err(locker_tid) => {
                   continue 'work;
@@ -149,7 +149,7 @@ fn reducer(
                 }
               }
             }
-            OP2 => {
+            Tag::OP2 => {
               if op2::visit(ReduceCtx {
                 heap,
                 prog,
@@ -166,7 +166,7 @@ fn reducer(
                 break 'work;
               }
             }
-            FUN | CTR => {
+            Tag::FUN | Tag::CTR => {
               let fid = get_ext(term);
               //[[CODEGEN:FAST-VISIT]]//
               match &prog.funs.get(&fid) {
@@ -225,7 +225,7 @@ fn reducer(
             }
             // Apply rewrite rules
             match get_tag(term) {
-              APP => {
+              Tag::APP => {
                 if app::apply(ReduceCtx {
                   heap,
                   prog,
@@ -242,7 +242,7 @@ fn reducer(
                   break 'apply;
                 }
               }
-              DP0 | DP1 => {
+              Tag::DP0 | Tag::DP1 => {
                 if dup::apply(ReduceCtx {
                   heap,
                   prog,
@@ -261,7 +261,7 @@ fn reducer(
                   break 'apply;
                 }
               }
-              OP2 => {
+              Tag::OP2 => {
                 if op2::apply(ReduceCtx {
                   heap,
                   prog,
@@ -278,7 +278,7 @@ fn reducer(
                   break 'apply;
                 }
               }
-              FUN | CTR => {
+              Tag::FUN | Tag::CTR => {
                 let fid = get_ext(term);
                 //[[CODEGEN:FAST-APPLY]]//
                 match &prog.funs.get(&fid) {
@@ -343,29 +343,29 @@ fn reducer(
               seen.insert(host);
               let term = heap.load_ptr(host);
               match get_tag(term) {
-                LAM => {
+                Tag::LAM => {
                   stop.fetch_add(1, Ordering::Relaxed);
                   visit.push(new_visit(get_loc(term, 1), hold, cont));
                 }
-                APP => {
+                Tag::APP => {
                   stop.fetch_add(2, Ordering::Relaxed);
                   visit.push(new_visit(get_loc(term, 0), hold, cont));
                   visit.push(new_visit(get_loc(term, 1), hold, cont));
                 }
-                SUP => {
+                Tag::SUP => {
                   stop.fetch_add(2, Ordering::Relaxed);
                   visit.push(new_visit(get_loc(term, 0), hold, cont));
                   visit.push(new_visit(get_loc(term, 1), hold, cont));
                 }
-                DP0 => {
+                Tag::DP0 => {
                   stop.fetch_add(1, Ordering::Relaxed);
                   visit.push(new_visit(get_loc(term, 2), hold, cont));
                 }
-                DP1 => {
+                Tag::DP1 => {
                   stop.fetch_add(1, Ordering::Relaxed);
                   visit.push(new_visit(get_loc(term, 2), hold, cont));
                 }
-                CTR | FUN => {
+                Tag::CTR | Tag::FUN => {
                   let arit = arity_of(&prog.aris, term);
                   if arit > 0 {
                     stop.fetch_add(arit as usize, Ordering::Relaxed);

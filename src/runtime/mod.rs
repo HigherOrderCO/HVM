@@ -157,55 +157,55 @@ impl Runtime {
   //// WASM re-exports
 
   pub fn DP0() -> u64 {
-    DP0
+    Tag::DP0.as_u64()
   }
 
   pub fn DP1() -> u64 {
-    DP1
+    Tag::DP1.as_u64()
   }
 
   pub fn VAR() -> u64 {
-    VAR
+    Tag::VAR.as_u64()
   }
 
   pub fn ARG() -> u64 {
-    ARG
+    Tag::ARG.as_u64()
   }
 
   pub fn ERA() -> u64 {
-    ERA
+    Tag::ERA.as_u64()
   }
 
   pub fn LAM() -> u64 {
-    LAM
+    Tag::LAM.as_u64()
   }
 
   pub fn APP() -> u64 {
-    APP
+    Tag::APP.as_u64()
   }
 
   pub fn SUP() -> u64 {
-    SUP
+    Tag::SUP.as_u64()
   }
 
   pub fn CTR() -> u64 {
-    CTR
+    Tag::CTR.as_u64()
   }
 
   pub fn FUN() -> u64 {
-    FUN
+    Tag::FUN.as_u64()
   }
 
   pub fn OP2() -> u64 {
-    OP2
+    Tag::OP2.as_u64()
   }
 
   pub fn U60() -> u64 {
-    U60
+    Tag::U60.as_u64()
   }
 
   pub fn F60() -> u64 {
-    F60
+    Tag::F60.as_u64()
   }
 
   pub fn ADD() -> u64 {
@@ -284,7 +284,7 @@ impl Runtime {
     CELLS_PER_GB
   }
 
-  pub fn get_tag(lnk: Ptr) -> u64 {
+  pub fn get_tag(lnk: Ptr) -> Tag {
     get_tag(lnk)
   }
 

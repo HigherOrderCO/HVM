@@ -5,7 +5,7 @@
 
 use crate::language;
 use crate::runtime;
-use crate::runtime::{Heap, Program, Ptr};
+use crate::runtime::{Heap, Program, Ptr, Tag};
 use std::collections::{hash_map, HashMap, HashSet};
 
 /// Reads back a term from Runtime's memory
@@ -30,44 +30,44 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
     ctx.seen.insert(term);
 
     match runtime::get_tag(term) {
-      runtime::LAM => {
+      Tag::LAM => {
         let param = ctx.heap.load_arg(term, 0);
         let body = ctx.heap.load_arg(term, 1);
-        if runtime::get_tag(param) != runtime::ERA {
+        if runtime::get_tag(param) != Tag::ERA {
           let var = runtime::Var(runtime::get_loc(term, 0));
           ctx.names.insert(var, format!("x{}", ctx.names.len()));
         };
         gen_var_names(heap, prog, ctx, body, depth + 1);
       }
-      runtime::APP => {
+      Tag::APP => {
         let lam = ctx.heap.load_arg(term, 0);
         let arg = ctx.heap.load_arg(term, 1);
         gen_var_names(heap, prog, ctx, lam, depth + 1);
         gen_var_names(heap, prog, ctx, arg, depth + 1);
       }
-      runtime::SUP => {
+      Tag::SUP => {
         let arg0 = ctx.heap.load_arg(term, 0);
         let arg1 = ctx.heap.load_arg(term, 1);
         gen_var_names(heap, prog, ctx, arg0, depth + 1);
         gen_var_names(heap, prog, ctx, arg1, depth + 1);
       }
-      runtime::DP0 => {
+      Tag::DP0 => {
         let arg = ctx.heap.load_arg(term, 2);
         gen_var_names(heap, prog, ctx, arg, depth + 1);
       }
-      runtime::DP1 => {
+      Tag::DP1 => {
         let arg = ctx.heap.load_arg(term, 2);
         gen_var_names(heap, prog, ctx, arg, depth + 1);
       }
-      runtime::OP2 => {
+      Tag::OP2 => {
         let arg0 = ctx.heap.load_arg(term, 0);
         let arg1 = ctx.heap.load_arg(term, 1);
         gen_var_names(heap, prog, ctx, arg0, depth + 1);
         gen_var_names(heap, prog, ctx, arg1, depth + 1);
       }
-      runtime::U60 => {}
-      runtime::F60 => {}
-      runtime::CTR | runtime::FUN => {
+      Tag::U60 => {}
+      Tag::F60 => {}
+      Tag::CTR | Tag::FUN => {
         let arity = runtime::arity_of(&ctx.prog.aris, term);
         for i in 0..arity {
           let arg = ctx.heap.load_arg(term, i);
@@ -116,11 +116,11 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
     depth: u32,
   ) -> Box<language::syntax::Term> {
     match runtime::get_tag(term) {
-      runtime::LAM => {
+      Tag::LAM => {
         let body = ctx.heap.load_arg(term, 1);
         let body = readback(heap, prog, ctx, stacks, body, depth + 1);
         let bind = ctx.heap.load_arg(term, 0);
-        let name = if runtime::get_tag(bind) == runtime::ERA {
+        let name = if runtime::get_tag(bind) == Tag::ERA {
           "*".to_string()
         } else {
           let var = runtime::Var(runtime::get_loc(term, 0));
@@ -128,14 +128,14 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         };
         Box::new(language::syntax::Term::Lam { name, body })
       }
-      runtime::APP => {
+      Tag::APP => {
         let func = ctx.heap.load_arg(term, 0);
         let argm = ctx.heap.load_arg(term, 1);
         let func = readback(heap, prog, ctx, stacks, func, depth + 1);
         let argm = readback(heap, prog, ctx, stacks, argm, depth + 1);
         Box::new(language::syntax::Term::App { func, argm })
       }
-      runtime::SUP => {
+      Tag::SUP => {
         let col = runtime::get_ext(term);
         let empty = &vec![];
         let stack = stacks.get(col).unwrap_or(empty);
@@ -154,7 +154,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           Box::new(language::syntax::Term::Sup { val0, val1 })
         }
       }
-      runtime::DP0 => {
+      Tag::DP0 => {
         let col = runtime::get_ext(term);
         let val = ctx.heap.load_arg(term, 2);
         stacks.push(col, false);
@@ -162,7 +162,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         stacks.pop(col);
         result
       }
-      runtime::DP1 => {
+      Tag::DP1 => {
         let col = runtime::get_ext(term);
         let val = ctx.heap.load_arg(term, 2);
         stacks.push(col, true);
@@ -170,7 +170,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         stacks.pop(col);
         result
       }
-      runtime::OP2 => {
+      Tag::OP2 => {
         let oper = match runtime::get_ext(term) {
           runtime::ADD => language::syntax::Oper::Add,
           runtime::SUB => language::syntax::Oper::Sub,
@@ -196,15 +196,15 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
         let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
         Box::new(language::syntax::Term::Op2 { oper, val0, val1 })
       }
-      runtime::U60 => {
+      Tag::U60 => {
         let numb = runtime::get_num(term);
         Box::new(language::syntax::Term::U6O { numb })
       }
-      runtime::F60 => {
+      Tag::F60 => {
         let numb = runtime::get_num(term);
         Box::new(language::syntax::Term::F6O { numb })
       }
-      runtime::CTR | runtime::FUN => {
+      Tag::CTR | Tag::FUN => {
         let func = runtime::get_ext(term);
         let arit = runtime::arity_of(&ctx.prog.aris, term);
         let mut args = vec![];
@@ -216,7 +216,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           ctx.prog.nams.get(&func).map(String::to_string).unwrap_or_else(|| format!("${}", func));
         Box::new(language::syntax::Term::Ctr { name, args })
       }
-      runtime::VAR => {
+      Tag::VAR => {
         let name = ctx
           .names
           .get(&term)
@@ -224,8 +224,8 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           .unwrap_or_else(|| format!("^{}", runtime::get_loc(term, 0)));
         Box::new(language::syntax::Term::Var { name }) // ............... /\ why this sounds so threatening?
       }
-      runtime::ARG => Box::new(language::syntax::Term::Var { name: "<arg>".to_string() }),
-      runtime::ERA => Box::new(language::syntax::Term::Var { name: "<era>".to_string() }),
+      Tag::ARG => Box::new(language::syntax::Term::Var { name: "<arg>".to_string() }),
+      Tag::ERA => Box::new(language::syntax::Term::Var { name: "<era>".to_string() }),
       _ => Box::new(language::syntax::Term::Var {
         name: format!("<unknown_tag_{}>", runtime::get_tag(term)),
       }),
@@ -273,19 +273,19 @@ impl Heap {
       while !stack.is_empty() {
         let term = stack.pop().unwrap();
         match runtime::get_tag(term) {
-          runtime::LAM => {
+          Tag::LAM => {
             names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
             stack.push(heap.load_arg(term, 1));
           }
-          runtime::APP => {
+          Tag::APP => {
             stack.push(heap.load_arg(term, 1));
             stack.push(heap.load_arg(term, 0));
           }
-          runtime::SUP => {
+          Tag::SUP => {
             stack.push(heap.load_arg(term, 1));
             stack.push(heap.load_arg(term, 0));
           }
-          runtime::DP0 => {
+          Tag::DP0 => {
             if let hash_map::Entry::Vacant(e) = lets.entry(runtime::get_loc(term, 0)) {
               names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
               kinds.insert(runtime::get_loc(term, 0), runtime::get_ext(term));
@@ -293,7 +293,7 @@ impl Heap {
               stack.push(heap.load_arg(term, 2));
             }
           }
-          runtime::DP1 => {
+          Tag::DP1 => {
             if let hash_map::Entry::Vacant(e) = lets.entry(runtime::get_loc(term, 0)) {
               names.insert(runtime::get_loc(term, 0), format!("{}", names.len()));
               kinds.insert(runtime::get_loc(term, 0), runtime::get_ext(term));
@@ -301,11 +301,11 @@ impl Heap {
               stack.push(heap.load_arg(term, 2));
             }
           }
-          runtime::OP2 => {
+          Tag::OP2 => {
             stack.push(heap.load_arg(term, 1));
             stack.push(heap.load_arg(term, 0));
           }
-          runtime::CTR | runtime::FUN => {
+          Tag::CTR | Tag::FUN => {
             let arity = runtime::arity_of(&prog.aris, term);
             for i in (0..arity).rev() {
               stack.push(heap.load_arg(term, i));
@@ -367,7 +367,7 @@ impl Heap {
         let item = stack.pop().unwrap();
         match item {
           StackItem::Resolver(term) => match runtime::get_tag(term) {
-            runtime::CTR => {
+            Tag::CTR => {
               let func = runtime::get_ext(term);
               let arit = runtime::arity_of(&prog.aris, term);
               let mut args = vec![];
@@ -377,7 +377,7 @@ impl Heap {
               let name = ctr_name(prog, func);
               output.push(language::syntax::Term::Ctr { name, args });
             }
-            runtime::FUN => {
+            Tag::FUN => {
               let func = runtime::get_ext(term);
               let arit = runtime::arity_of(&prog.aris, term);
               let mut args = vec![];
@@ -387,18 +387,18 @@ impl Heap {
               let name = ctr_name(prog, func);
               output.push(language::syntax::Term::Ctr { name, args });
             }
-            runtime::LAM => {
+            Tag::LAM => {
               let name =
                 format!("x{}", names.get(&runtime::get_loc(term, 0)).unwrap_or(&String::from("?")));
               let body = Box::new(output.pop().unwrap());
               output.push(language::syntax::Term::Lam { name, body });
             }
-            runtime::APP => {
+            Tag::APP => {
               let argm = Box::new(output.pop().unwrap());
               let func = Box::new(output.pop().unwrap());
               output.push(language::syntax::Term::App { func, argm });
             }
-            runtime::OP2 => {
+            Tag::OP2 => {
               let oper = runtime::get_ext(term);
               let oper = match oper {
                 runtime::ADD => language::syntax::Oper::Add,
@@ -426,65 +426,65 @@ impl Heap {
             _ => panic!("Term not valid in readback"),
           },
           StackItem::Term(term) => match runtime::get_tag(term) {
-            runtime::DP0 => {
+            Tag::DP0 => {
               let name = format!(
                 "a{}",
                 names.get(&runtime::get_loc(term, 0)).unwrap_or(&String::from("?a"))
               );
               output.push(language::syntax::Term::Var { name });
             }
-            runtime::DP1 => {
+            Tag::DP1 => {
               let name = format!(
                 "b{}",
                 names.get(&runtime::get_loc(term, 0)).unwrap_or(&String::from("?b"))
               );
               output.push(language::syntax::Term::Var { name });
             }
-            runtime::VAR => {
+            Tag::VAR => {
               let name = format!(
                 "x{}",
                 names.get(&runtime::get_loc(term, 0)).unwrap_or(&String::from("?x"))
               );
               output.push(language::syntax::Term::Var { name });
             }
-            runtime::LAM => {
+            Tag::LAM => {
               stack.push(StackItem::Resolver(term));
               stack.push(StackItem::Term(heap.load_arg(term, 1)));
             }
-            runtime::APP => {
-              stack.push(StackItem::Resolver(term));
-              stack.push(StackItem::Term(heap.load_arg(term, 1)));
-              stack.push(StackItem::Term(heap.load_arg(term, 0)));
-            }
-            runtime::SUP => {}
-            runtime::OP2 => {
+            Tag::APP => {
               stack.push(StackItem::Resolver(term));
               stack.push(StackItem::Term(heap.load_arg(term, 1)));
               stack.push(StackItem::Term(heap.load_arg(term, 0)));
             }
-            runtime::U60 => {
+            Tag::SUP => {}
+            Tag::OP2 => {
+              stack.push(StackItem::Resolver(term));
+              stack.push(StackItem::Term(heap.load_arg(term, 1)));
+              stack.push(StackItem::Term(heap.load_arg(term, 0)));
+            }
+            Tag::U60 => {
               let numb = runtime::get_num(term);
               output.push(language::syntax::Term::U6O { numb });
             }
-            runtime::F60 => {
+            Tag::F60 => {
               let numb = runtime::get_num(term);
               output.push(language::syntax::Term::F6O { numb });
             }
-            runtime::CTR => {
+            Tag::CTR => {
               let arit = runtime::arity_of(&prog.aris, term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
                 stack.push(StackItem::Term(heap.load_arg(term, i)));
               }
             }
-            runtime::FUN => {
+            Tag::FUN => {
               let arit = runtime::arity_of(&prog.aris, term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
                 stack.push(StackItem::Term(heap.load_arg(term, i)));
               }
             }
-            runtime::ERA => {}
+            // Tag::ERA => {}
             _ => {}
           },
         }
@@ -508,14 +508,14 @@ impl Heap {
     self.reduce(prog, tids, host, true, false);
     loop {
       let term = self.load_ptr(host);
-      if runtime::get_tag(term) == runtime::CTR {
+      if runtime::get_tag(term) == Tag::CTR {
         let fid = runtime::get_ext(term);
         if fid == runtime::STRING_NIL {
           break;
         }
         if fid == runtime::STRING_CONS {
           let chr = self.load_ptr(runtime::get_loc(term, 0));
-          if runtime::get_tag(chr) == runtime::U60 {
+          if runtime::get_tag(chr) == Tag::U60 {
             text.push(std::char::from_u32(runtime::get_num(chr) as u32).unwrap_or('?'));
             host = runtime::get_loc(term, 1);
             continue;

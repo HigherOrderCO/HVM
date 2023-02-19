@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 #[derive(Clone, Debug)]
 pub enum Core {
   Var { bidx: u64 },
-  Glo { glob: u64, misc: u64 },
+  Glo { glob: u64, misc: Tag },
   Dup { eras: (bool, bool), glob: u64, expr: Box<Core>, body: Box<Core> },
   Sup { val0: Box<Core>, val1: Box<Core> },
   Let { expr: Box<Core>, body: Box<Core> },
@@ -171,7 +171,7 @@ impl Heap {
           RuleBodyCell::Ptr { value, targ, slot } => {
             let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
             // should be changed if the pointer format changes
-            if get_tag(*value) <= DP1 {
+            if get_tag(*value) <= Tag::DP1 {
               val += (*lvar.dups.as_mut_ptr() & 0xFFF_FFFF) * EXT;
             }
             val
@@ -210,14 +210,14 @@ impl Heap {
     }
   }
 }
-pub fn get_global_name_misc(name: &str) -> Option<u64> {
+pub fn get_global_name_misc(name: &str) -> Option<Tag> {
   if !name.is_empty() && name.starts_with("$") {
     if name.starts_with("$0") {
-      return Some(DP0);
+      return Some(Tag::DP0);
     } else if name.starts_with("$1") {
-      return Some(DP1);
+      return Some(Tag::DP1);
     } else {
-      return Some(VAR);
+      return Some(Tag::VAR);
     }
   }
   None
@@ -354,9 +354,9 @@ impl language::syntax::Term {
           Core::Var { bidx: idx as u64 }
         } else {
           match get_global_name_misc(name) {
-            Some(VAR) => Core::Glo { glob: hash(name), misc: VAR },
-            Some(DP0) => Core::Glo { glob: hash(&name[2..].to_string()), misc: DP0 },
-            Some(DP1) => Core::Glo { glob: hash(&name[2..].to_string()), misc: DP1 },
+            Some(Tag::VAR) => Core::Glo { glob: hash(name), misc: Tag::VAR },
+            Some(Tag::DP0) => Core::Glo { glob: hash(&name[2..].to_string()), misc: Tag::DP0 },
+            Some(Tag::DP1) => Core::Glo { glob: hash(&name[2..].to_string()), misc: Tag::DP1 },
             _ => panic!("Unexpected error."),
           }
         }
@@ -431,8 +431,8 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
     nodes[targ as usize][slot as usize] = elem;
     if let RuleBodyCell::Ptr { value, targ: var_targ, slot: var_slot } = elem {
       let tag = get_tag(value);
-      if tag <= VAR {
-        nodes[var_targ as usize][(var_slot + (tag & 0x01)) as usize] =
+      if tag <= Tag::VAR {
+        nodes[var_targ as usize][(var_slot + (tag.something())) as usize] =
           RuleBodyCell::Ptr { value: Arg(0), targ, slot };
       }
     }
@@ -494,15 +494,15 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
         }
       }
       Core::Glo { glob, misc } => match *misc {
-        VAR => {
+        Tag::VAR => {
           let targ = alloc_lam(lams, nodes, *glob);
           RuleBodyCell::Ptr { value: Var(0), targ, slot: 0 }
         }
-        DP0 => {
+        Tag::DP0 => {
           let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
           RuleBodyCell::Ptr { value: Dp0(dupc, 0), targ, slot: 0 }
         }
-        DP1 => {
+        Tag::DP1 => {
           let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
           RuleBodyCell::Ptr { value: Dp1(dupc, 0), targ, slot: 0 }
         }

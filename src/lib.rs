@@ -15,9 +15,8 @@ pub use language::*;
 pub use runtime::*;
 
 pub use runtime::{
-  get_ext, get_loc, get_num, get_tag, get_val, Ptr, ADD, AND, APP, ARG, CELLS_PER_GB, CELLS_PER_KB,
-  CELLS_PER_MB, CTR, DIV, DP0, DP1, EQL, ERA, F60, FUN, GTE, GTN, LAM, LTE, LTN, MOD, MUL, NEQ,
-  OP2, OR, SHL, SHR, SUB, SUP, U60, VAR, XOR,
+  get_ext, get_loc, get_num, get_tag, get_val, Ptr, Tag, ADD, AND, CELLS_PER_GB, CELLS_PER_KB,
+  CELLS_PER_MB, DIV, EQL, GTE, GTN, LTE, LTN, MOD, MUL, NEQ, OR, SHL, SHR, SUB, XOR,
 };
 
 pub use language::syntax::{
