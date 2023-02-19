@@ -21,8 +21,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     //operate(ctx.heap, ctx.tid, ctx.term, arg0, arg1, *ctx.host);
 
     ctx.heap.inc_cost(ctx.tid);
-    let a = get_num(arg0);
-    let b = get_num(arg1);
+    let a = arg0.num();
+    let b = arg1.num();
     let c = match ctx.term.oper() {
       Oper::Add => u60::add(a, b),
       Oper::Sub => u60::sub(a, b),
@@ -54,8 +54,8 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     //operate(ctx.heap, ctx.tid, ctx.term, arg0, arg1, *ctx.host);
 
     ctx.heap.inc_cost(ctx.tid);
-    let a = get_num(arg0);
-    let b = get_num(arg1);
+    let a = arg0.num();
+    let b = arg1.num();
     let c = match ctx.term.oper() {
       Oper::Add => f60::add(a, b),
       Oper::Sub => f60::sub(a, b),

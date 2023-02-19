@@ -284,12 +284,12 @@ impl RuleBook {
             let i = i as u64;
             if cond.tag() == Tag::U60 {
               let same_tag = format!("arg{}.tag() == Tag::U60", i);
-              let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
+              let same_val = format!("arg{}.num() == {}", i, cond.num());
               matched.push(format!("({} && {})", same_tag, same_val));
             }
             if cond.tag() == Tag::F60 {
               let same_tag = format!("arg{}.tag() == Tag::F60", i);
-              let same_val = format!("get_num(arg{}) == {}", i, runtime::get_num(*cond));
+              let same_val = format!("arg{}.num() == {}", i, cond.num());
               matched.push(format!("({} && {})", same_tag, same_val));
             }
             if cond.tag() == Tag::CTR {
@@ -612,7 +612,7 @@ pub fn build_function_rule_rhs(
           line(code, tab + 0, &format!("let {};", ret));
           line(code, tab + 0, &format!("if {}.tag() == Tag::U60 {{", fargs[0]));
           line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
-          line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
+          line(code, tab + 1, &format!("if {}.num() == 0 {{", fargs[0]));
           line(code, tab + 2, &format!("ctx.heap.collect(&ctx.prog.aris, ctx.tid, {});", fargs[1]));
           line(code, tab + 2, &format!("{} = {};", ret, fargs[2]));
           line(code, tab + 1, &format!("}} else {{"));
@@ -636,7 +636,7 @@ pub fn build_function_rule_rhs(
           line(code, tab + 0, &format!("if {}.tag() == Tag::U60 {{", fargs[0]));
           line(code, tab + 1, "ctx.heap.inc_cost(ctx.tid);");
           let both = fresh(nams, "both");
-          line(code, tab + 1, &format!("if get_num({}) == 0 {{", fargs[0]));
+          line(code, tab + 1, &format!("if {}.num() == 0 {{", fargs[0]));
           line(code, tab + 2, &format!("let {} = {};", both, alloc_node(free, 2)));
           line(code, tab + 2, &format!("ctx.heap.link({} + 0, {});", both, fargs[1]));
           line(code, tab + 2, &format!("ctx.heap.link({} + 1, {});", both, fargs[2]));
@@ -687,8 +687,8 @@ pub fn build_function_rule_rhs(
             tab + 0,
             &format!("if {}.tag() == Tag::U60 && {}.tag() == Tag::U60 {{", val0, val1),
           );
-          let a = format!("get_num({})", val0);
-          let b = format!("get_num({})", val1);
+          let a = format!("{}.num()", val0);
+          let b = format!("{}.num()", val1);
           match *oper {
             Oper::Add => line(code, tab + 1, &format!("{} = U6O(u60::add({}, {}));", retx, a, b)),
             Oper::Sub => line(code, tab + 1, &format!("{} = U6O(u60::sub({}, {}));", retx, a, b)),
@@ -713,8 +713,8 @@ pub fn build_function_rule_rhs(
             tab + 0,
             &format!("}} else if {}.tag() == Tag::F60 && {}.tag() == Tag::F60 {{", val0, val1),
           );
-          let a = format!("get_num({})", val0);
-          let b = format!("get_num({})", val1);
+          let a = format!("{}.num()", val0);
+          let b = format!("{}.num()", val1);
           match *oper {
             Oper::Add => line(code, tab + 1, &format!("{} = F6O(f60::add({}, {}));", retx, a, b)),
             Oper::Sub => line(code, tab + 1, &format!("{} = F6O(f60::sub({}, {}));", retx, a, b)),

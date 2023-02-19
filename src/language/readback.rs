@@ -178,11 +178,11 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         Box::new(Term::Op2 { oper, val0, val1 })
       }
       Tag::U60 => {
-        let numb = runtime::get_num(term);
+        let numb = term.num();
         Box::new(Term::U6O { numb })
       }
       Tag::F60 => {
-        let numb = runtime::get_num(term);
+        let numb = term.num();
         Box::new(Term::F6O { numb })
       }
       Tag::CTR | Tag::FUN => {
@@ -401,11 +401,11 @@ impl Heap {
               stack.push(StackItem::Term(heap.load_arg(term, 0)));
             }
             Tag::U60 => {
-              let numb = runtime::get_num(term);
+              let numb = term.num();
               output.push(Term::U6O { numb });
             }
             Tag::F60 => {
-              let numb = runtime::get_num(term);
+              let numb = term.num();
               output.push(Term::F6O { numb });
             }
             Tag::CTR => {
@@ -454,7 +454,7 @@ impl Heap {
         if fid == runtime::STRING_CONS {
           let chr = self.load_ptr(runtime::get_loc(term, 0));
           if chr.tag() == Tag::U60 {
-            text.push(std::char::from_u32(runtime::get_num(chr) as u32).unwrap_or('?'));
+            text.push(std::char::from_u32(chr.num() as u32).unwrap_or('?'));
             host = runtime::get_loc(term, 1);
             continue;
           } else {

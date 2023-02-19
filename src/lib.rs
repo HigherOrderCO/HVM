@@ -16,7 +16,7 @@ pub use runtime::*;
 
 pub mod prelude;
 
-pub use runtime::{get_loc, get_num, Ptr, Tag, CELLS_PER_GB, CELLS_PER_KB, CELLS_PER_MB};
+pub use runtime::{get_loc, Ptr, Tag, CELLS_PER_GB, CELLS_PER_KB, CELLS_PER_MB};
 
 pub use language::syntax::{
   Term,
@@ -347,7 +347,7 @@ pub use language::syntax::{
 //}
 
 //pub fn get_num(lnk: Ptr) -> u64 {
-//return get_num(lnk);
+//return lnk.num();
 //}
 
 //pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {

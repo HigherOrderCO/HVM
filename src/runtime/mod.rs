@@ -297,7 +297,7 @@ impl Runtime {
   }
 
   pub fn get_num(lnk: Ptr) -> u64 {
-    get_num(lnk)
+    lnk.num()
   }
 
   pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {

@@ -81,12 +81,12 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
       match cond.tag() {
         Tag::U60 => {
           let same_tag = ctx.heap.load_arg(ctx.term, i).tag() == Tag::U60;
-          let same_val = get_num(ctx.heap.load_arg(ctx.term, i)) == get_num(*cond);
+          let same_val = ctx.heap.load_arg(ctx.term, i).num() == cond.num();
           matched = matched && same_tag && same_val;
         }
         Tag::F60 => {
           let same_tag = ctx.heap.load_arg(ctx.term, i).tag() == Tag::F60;
-          let same_val = get_num(ctx.heap.load_arg(ctx.term, i)) == get_num(*cond);
+          let same_val = ctx.heap.load_arg(ctx.term, i).num() == cond.num();
           matched = matched && same_tag && same_val;
         }
         Tag::CTR => {

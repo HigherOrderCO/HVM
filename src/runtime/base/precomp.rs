@@ -148,7 +148,7 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
     fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
   }
   if arg0.tag() == Tag::U60 {
-    if get_num(arg0) == 0 {
+    if arg0.num() == 0 {
       ctx.heap.inc_cost(ctx.tid);
       let done = arg2;
       ctx.heap.link(*ctx.host, done);
@@ -191,7 +191,7 @@ pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
     fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
   }
   if arg0.tag() == Tag::U60 {
-    if get_num(arg0) == 0 {
+    if arg0.num() == 0 {
       ctx.heap.inc_cost(ctx.tid);
       let ctr_0 = ctx.heap.alloc(ctx.tid, 2);
       ctx.heap.link(ctr_0 + 0, arg1);
@@ -289,7 +289,7 @@ fn hvm_sleep_visit(ctx: ReduceCtx) -> bool {
 
 fn hvm_sleep_apply(ctx: ReduceCtx) -> bool {
   let time = ctx.heap.reduce(ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), true, false);
-  std::thread::sleep(std::time::Duration::from_nanos(get_num(time)));
+  std::thread::sleep(std::time::Duration::from_nanos(time.num()));
   ctx.heap.link(*ctx.host, ctx.heap.load_ptr(get_loc(ctx.term, 1)));
   ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
   true
