@@ -371,6 +371,7 @@ pub trait PtrImpl {
   fn tag(&self) -> Tag;
   fn ext(&self) -> u64;
   fn oper(&self) -> Oper;
+  fn val(&self) -> u64;
 }
 
 impl PtrImpl for u64 {
@@ -384,6 +385,10 @@ impl PtrImpl for u64 {
 
   fn oper(&self) -> Oper {
     Oper::from(self.ext())
+  }
+
+  fn val(&self) -> u64 {
+    self & 0xFFFF_FFFF
   }
 }
 
@@ -401,16 +406,16 @@ impl PtrImpl for u64 {
 //   Oper::from(lnk.ext())
 // }
 
-pub fn get_val(lnk: Ptr) -> u64 {
-  lnk & 0xFFFF_FFFF
-}
+// pub fn get_val(lnk: Ptr) -> u64 {
+//   lnk & 0xFFFF_FFFF
+// }
 
 pub fn get_num(lnk: Ptr) -> u64 {
   lnk & 0xFFF_FFFF_FFFF_FFFF
 }
 
 pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
-  get_val(lnk) + arg
+  lnk.val() + arg
 }
 
 impl Heap {

@@ -11,7 +11,7 @@ pub fn show_ptr(x: Ptr) -> String {
   } else {
     let tag = x.tag();
     let ext = x.ext();
-    let val = get_val(x);
+    let val = x.val();
     format!("{}({:07x}, {:08x})", tag.as_str(), ext, val)
   }
 }
@@ -167,10 +167,10 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
           format!("({} {} {})", symb, val0, val1)
         }
         Tag::U60 => {
-          format!("{}", u60::val(get_val(term)))
+          format!("{}", u60::val(term.val()))
         }
         Tag::F60 => {
-          format!("{}", f60::val(get_val(term)))
+          format!("{}", f60::val(term.val()))
         }
         Tag::CTR | Tag::FUN => {
           let func = term.ext();

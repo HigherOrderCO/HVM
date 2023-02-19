@@ -293,7 +293,7 @@ impl Runtime {
   }
 
   pub fn get_val(lnk: Ptr) -> u64 {
-    get_val(lnk)
+    lnk.val()
   }
 
   pub fn get_num(lnk: Ptr) -> u64 {
