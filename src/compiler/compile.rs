@@ -19,104 +19,110 @@ pub fn build_code(code: &str) -> Result<(String, String), String> {
   let file = language::syntax::read_file(code)?;
   let book = (&file).into();
   runtime::gen_functions(&book);
-  Ok(build_rulebook(&book))
+  Ok(book.build_rulebook())
 }
 
-pub fn build_rulebook(book: &RuleBook) -> (String, String) {
-  // precomp ids
-  let mut precomp_ids = String::new();
-  for (id, name) in itertools::sorted(book.id_to_name.iter()) {
-    //if id >= &runtime::PRECOMP_COUNT {
-    line(&mut precomp_ids, 0, &format!("pub const {} : u64 = {};", &build_name(name), id));
-    //}
-  }
-
-  // precomp els
-  let mut precomp_els = String::new();
-  for id in itertools::sorted(book.id_to_name.keys()) {
-    if id >= &runtime::PRECOMP_COUNT {
-      let name = book.id_to_name.get(id).unwrap();
-      line(&mut precomp_els, 0, &format!(r#"  Precomp {{"#));
-      line(&mut precomp_els, 0, &format!(r#"    id: {},"#, &build_name(&name)));
-      line(&mut precomp_els, 0, &format!(r#"    name: "{}","#, &name));
-      line(&mut precomp_els, 0, &format!(r#"    smap: &{:?},"#, book.id_to_smap.get(id).unwrap()));
-      if *book.ctr_is_fun.get(name).unwrap_or(&false) {
-        line(&mut precomp_els, 0, &format!(r#"    funs: Some(PrecompFuns {{"#));
-        line(&mut precomp_els, 0, &format!(r#"      visit: {}_visit,"#, &build_name(&name)));
-        line(&mut precomp_els, 0, &format!(r#"      apply: {}_apply,"#, &build_name(&name)));
-        line(&mut precomp_els, 0, &format!(r#"    }}),"#));
-      } else {
-        line(&mut precomp_els, 0, &format!(r#"    funs: None,"#));
-      }
-      line(&mut precomp_els, 0, &format!(r#"  }},"#));
+impl RuleBook {
+  pub fn build_rulebook(&self) -> (String, String) {
+    // precomp ids
+    let mut precomp_ids = String::new();
+    for (id, name) in itertools::sorted(self.id_to_name.iter()) {
+      //if id >= &runtime::PRECOMP_COUNT {
+      line(&mut precomp_ids, 0, &format!("pub const {} : u64 = {};", &build_name(name), id));
+      //}
     }
-  }
 
-  // precomp fns
-  let mut precomp_fns = String::new();
-  for id in itertools::sorted(book.id_to_name.keys()) {
-    if id >= &runtime::PRECOMP_COUNT {
-      let name = book.id_to_name.get(id).unwrap();
-      if let Some(rules) = book.rule_group.get(name) {
-        let (got_visit, got_apply) = build_function(book, &name, &rules.1);
-        line(&mut precomp_fns, 0, &format!("{}", got_visit));
-        line(&mut precomp_fns, 0, &format!("{}", got_apply));
+    // precomp els
+    let mut precomp_els = String::new();
+    for id in itertools::sorted(self.id_to_name.keys()) {
+      if id >= &runtime::PRECOMP_COUNT {
+        let name = self.id_to_name.get(id).unwrap();
+        line(&mut precomp_els, 0, &format!(r#"  Precomp {{"#));
+        line(&mut precomp_els, 0, &format!(r#"    id: {},"#, &build_name(&name)));
+        line(&mut precomp_els, 0, &format!(r#"    name: "{}","#, &name));
+        line(
+          &mut precomp_els,
+          0,
+          &format!(r#"    smap: &{:?},"#, self.id_to_smap.get(id).unwrap()),
+        );
+        if *self.ctr_is_fun.get(name).unwrap_or(&false) {
+          line(&mut precomp_els, 0, &format!(r#"    funs: Some(PrecompFuns {{"#));
+          line(&mut precomp_els, 0, &format!(r#"      visit: {}_visit,"#, &build_name(&name)));
+          line(&mut precomp_els, 0, &format!(r#"      apply: {}_apply,"#, &build_name(&name)));
+          line(&mut precomp_els, 0, &format!(r#"    }}),"#));
+        } else {
+          line(&mut precomp_els, 0, &format!(r#"    funs: None,"#));
+        }
+        line(&mut precomp_els, 0, &format!(r#"  }},"#));
       }
     }
-  }
 
-  // fast visit
-  let mut fast_visit = String::new();
-  line(&mut fast_visit, 7, &format!("match fid {{"));
-  for id in itertools::sorted(book.id_to_name.keys()) {
-    if id >= &runtime::PRECOMP_COUNT {
-      let name = book.id_to_name.get(id).unwrap();
-      if let Some(rules) = book.rule_group.get(name) {
-        line(&mut fast_visit, 8, &format!("{} => {{", &build_name(&name)));
-        line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
-        line(&mut fast_visit, 10, &format!("continue 'visit;"));
-        line(&mut fast_visit, 9, &format!("}} else {{"));
-        line(&mut fast_visit, 10, &format!("break 'visit;"));
-        line(&mut fast_visit, 9, &format!("}}"));
-        line(&mut fast_visit, 8, &format!("}}"));
-      };
+    // precomp fns
+    let mut precomp_fns = String::new();
+    for id in itertools::sorted(self.id_to_name.keys()) {
+      if id >= &runtime::PRECOMP_COUNT {
+        let name = self.id_to_name.get(id).unwrap();
+        if let Some(rules) = self.rule_group.get(name) {
+          let (got_visit, got_apply) = build_function(self, &name, &rules.1);
+          line(&mut precomp_fns, 0, &format!("{}", got_visit));
+          line(&mut precomp_fns, 0, &format!("{}", got_apply));
+        }
+      }
     }
-  }
-  line(&mut fast_visit, 8, &format!("_ => {{}}"));
-  line(&mut fast_visit, 7, &format!("}}"));
 
-  // fast apply
-  let mut fast_apply = String::new();
-  line(&mut fast_apply, 8, &format!("match fid {{"));
-  for id in itertools::sorted(book.id_to_name.keys()) {
-    if id >= &runtime::PRECOMP_COUNT {
-      let name = book.id_to_name.get(id).unwrap();
-      if let Some(rules) = book.rule_group.get(name) {
-        line(&mut fast_apply, 9, &format!("{} => {{", &build_name(&name)));
-        line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
-        line(&mut fast_apply, 11, &format!("continue 'work;"));
-        line(&mut fast_apply, 10, &format!("}} else {{"));
-        line(&mut fast_apply, 11, &format!("break 'apply;"));
-        line(&mut fast_apply, 10, &format!("}}"));
-        line(&mut fast_apply, 9, &format!("}}"));
-      };
+    // fast visit
+    let mut fast_visit = String::new();
+    line(&mut fast_visit, 7, &format!("match fid {{"));
+    for id in itertools::sorted(self.id_to_name.keys()) {
+      if id >= &runtime::PRECOMP_COUNT {
+        let name = self.id_to_name.get(id).unwrap();
+        if let Some(rules) = self.rule_group.get(name) {
+          line(&mut fast_visit, 8, &format!("{} => {{", &build_name(&name)));
+          line(&mut fast_visit, 9, &format!("if {}_visit(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
+          line(&mut fast_visit, 10, &format!("continue 'visit;"));
+          line(&mut fast_visit, 9, &format!("}} else {{"));
+          line(&mut fast_visit, 10, &format!("break 'visit;"));
+          line(&mut fast_visit, 9, &format!("}}"));
+          line(&mut fast_visit, 8, &format!("}}"));
+        };
+      }
     }
+    line(&mut fast_visit, 8, &format!("_ => {{}}"));
+    line(&mut fast_visit, 7, &format!("}}"));
+
+    // fast apply
+    let mut fast_apply = String::new();
+    line(&mut fast_apply, 8, &format!("match fid {{"));
+    for id in itertools::sorted(self.id_to_name.keys()) {
+      if id >= &runtime::PRECOMP_COUNT {
+        let name = self.id_to_name.get(id).unwrap();
+        if let Some(rules) = self.rule_group.get(name) {
+          line(&mut fast_apply, 9, &format!("{} => {{", &build_name(&name)));
+          line(&mut fast_apply, 10, &format!("if {}_apply(ReduceCtx {{ heap, prog, tid, hold, term, visit, redex, cont: &mut cont, host: &mut host }}) {{", &build_name(&name)));
+          line(&mut fast_apply, 11, &format!("continue 'work;"));
+          line(&mut fast_apply, 10, &format!("}} else {{"));
+          line(&mut fast_apply, 11, &format!("break 'apply;"));
+          line(&mut fast_apply, 10, &format!("}}"));
+          line(&mut fast_apply, 9, &format!("}}"));
+        };
+      }
+    }
+    line(&mut fast_apply, 9, &format!("_ => {{}}"));
+    line(&mut fast_apply, 8, &format!("}}"));
+
+    // precomp.rs
+    let precomp_rs: &str = include_str!("./../runtime/base/precomp.rs");
+    let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-IDS]]//\n", &precomp_ids);
+    let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-ELS]]//\n", &precomp_els);
+    let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-FNS]]//\n", &precomp_fns);
+
+    // reducer.rs
+    let reducer_rs: &str = include_str!("./../runtime/base/reducer.rs");
+    let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-VISIT]]//\n", &fast_visit);
+    let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-APPLY]]//\n", &fast_apply);
+
+    (precomp_rs, reducer_rs)
   }
-  line(&mut fast_apply, 9, &format!("_ => {{}}"));
-  line(&mut fast_apply, 8, &format!("}}"));
-
-  // precomp.rs
-  let precomp_rs: &str = include_str!("./../runtime/base/precomp.rs");
-  let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-IDS]]//\n", &precomp_ids);
-  let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-ELS]]//\n", &precomp_els);
-  let precomp_rs = precomp_rs.replace("//[[CODEGEN:PRECOMP-FNS]]//\n", &precomp_fns);
-
-  // reducer.rs
-  let reducer_rs: &str = include_str!("./../runtime/base/reducer.rs");
-  let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-VISIT]]//\n", &fast_visit);
-  let reducer_rs = reducer_rs.replace("//[[CODEGEN:FAST-APPLY]]//\n", &fast_apply);
-
-  return (precomp_rs, reducer_rs);
 }
 
 pub fn build_function(
