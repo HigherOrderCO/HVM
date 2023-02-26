@@ -188,11 +188,13 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
       Tag::CTR | Tag::FUN => {
         let func = term.ext();
         let arit = ctx.prog.aris.arity_of(term);
-        let mut args = vec![];
-        for i in 0..arit {
-          let arg = ctx.heap.load_arg(term, i);
-          args.push(readback(heap, prog, ctx, stacks, arg, depth + 1));
-        }
+
+        let args = (0..arit)
+          .map(|i| {
+            let arg = ctx.heap.load_arg(term, i);
+            readback(heap, prog, ctx, stacks, arg, depth + 1)
+          })
+          .collect();
         let name =
           ctx.prog.nams.get(func).map(String::to_string).unwrap_or_else(|| format!("${}", func));
         Box::new(Term::Ctr { name, args })
@@ -234,15 +236,15 @@ impl Heap {
 
     fn ctr_name(prog: &Program, id: u64) -> String {
       if let Some(name) = prog.nams.get(id) {
-        return name.clone();
+        name.clone()
       } else {
-        return format!("${}", id);
+        format!("${}", id)
       }
     }
 
     fn dups(heap: &Heap, prog: &Program, term: Ptr, names: &mut HashMap<u64, String>) -> Term {
-      let mut lets: HashMap<u64, u64> = HashMap::new();
-      let mut kinds: HashMap<u64, u64> = HashMap::new();
+      let mut lets = HashMap::<u64, u64>::new();
+      let mut kinds = HashMap::<u64, u64>::new();
       let mut stack = vec![term];
       while let Some(term) = stack.pop() {
         match term.tag() {
@@ -327,20 +329,17 @@ impl Heap {
             Tag::CTR => {
               let func = term.ext();
               let arit = prog.aris.arity_of(term);
-              let mut args = vec![];
-              for _ in 0..arit {
-                args.push(Box::new(output.pop().unwrap()));
-              }
+
+              let args = (0..arit).map(|_| Box::new(output.pop().unwrap())).collect();
               let name = ctr_name(prog, func);
               output.push(Term::Ctr { name, args });
             }
             Tag::FUN => {
               let func = term.ext();
               let arit = prog.aris.arity_of(term);
-              let mut args = vec![];
-              for _ in 0..arit {
-                args.push(Box::new(output.pop().unwrap()));
-              }
+
+              let args = (0..arit).map(|_| Box::new(output.pop().unwrap())).collect();
+
               let name = ctr_name(prog, func);
               output.push(Term::Ctr { name, args });
             }
@@ -420,7 +419,7 @@ impl Heap {
       output.pop().unwrap()
     }
 
-    let mut names: HashMap<u64, String> = HashMap::new();
+    let mut names = HashMap::<u64, String>::new();
     Box::new(dups(self, prog, self.load_ptr(host), &mut names))
   }
 
