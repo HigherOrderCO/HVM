@@ -84,7 +84,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
         find_lets(heap, prog, term.loc(1), lets, kinds, names, count);
       }
       Tag::CTR | Tag::FUN => {
-        let arity = arity_of(&prog.aris, term);
+        let arity = prog.aris.arity_of(term);
         for i in 0..arity {
           find_lets(heap, prog, term.loc(i), lets, kinds, names, count);
         }
@@ -174,7 +174,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
         }
         Tag::CTR | Tag::FUN => {
           let func = term.ext();
-          let arit = arity_of(&prog.aris, term);
+          let arit = prog.aris.arity_of(term);
           let args: Vec<String> =
             (0..arit).map(|i| go(heap, prog, term.loc(i), names, tlocs)).collect();
           let name = &prog.nams.get(func).unwrap_or(&String::from("<?>")).clone();

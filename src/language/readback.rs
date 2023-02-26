@@ -67,7 +67,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
       Tag::U60 => {}
       Tag::F60 => {}
       Tag::CTR | Tag::FUN => {
-        let arity = runtime::arity_of(&ctx.prog.aris, term);
+        let arity = ctx.prog.aris.arity_of(term);
         for i in 0..arity {
           let arg = ctx.heap.load_arg(term, i);
           gen_var_names(heap, prog, ctx, arg, depth + 1);
@@ -187,7 +187,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
       }
       Tag::CTR | Tag::FUN => {
         let func = term.ext();
-        let arit = runtime::arity_of(&ctx.prog.aris, term);
+        let arit = ctx.prog.aris.arity_of(term);
         let mut args = vec![];
         for i in 0..arit {
           let arg = ctx.heap.load_arg(term, i);
@@ -279,7 +279,7 @@ impl Heap {
             stack.push(heap.load_arg(term, 0));
           }
           Tag::CTR | Tag::FUN => {
-            let arity = runtime::arity_of(&prog.aris, term);
+            let arity = prog.aris.arity_of(term);
             for i in (0..arity).rev() {
               stack.push(heap.load_arg(term, i));
             }
@@ -326,7 +326,7 @@ impl Heap {
           StackItem::Resolver(term) => match term.tag() {
             Tag::CTR => {
               let func = term.ext();
-              let arit = runtime::arity_of(&prog.aris, term);
+              let arit = prog.aris.arity_of(term);
               let mut args = vec![];
               for _ in 0..arit {
                 args.push(Box::new(output.pop().unwrap()));
@@ -336,7 +336,7 @@ impl Heap {
             }
             Tag::FUN => {
               let func = term.ext();
-              let arit = runtime::arity_of(&prog.aris, term);
+              let arit = prog.aris.arity_of(term);
               let mut args = vec![];
               for _ in 0..arit {
                 args.push(Box::new(output.pop().unwrap()));
@@ -399,14 +399,14 @@ impl Heap {
               output.push(Term::F6O { numb });
             }
             Tag::CTR => {
-              let arit = runtime::arity_of(&prog.aris, term);
+              let arit = prog.aris.arity_of(term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
                 stack.push(StackItem::Term(heap.load_arg(term, i)));
               }
             }
             Tag::FUN => {
-              let arit = runtime::arity_of(&prog.aris, term);
+              let arit = prog.aris.arity_of(term);
               stack.push(StackItem::Resolver(term));
               for i in 0..arit {
                 stack.push(StackItem::Term(heap.load_arg(term, i)));

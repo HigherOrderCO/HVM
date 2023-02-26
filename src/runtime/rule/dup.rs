@@ -127,7 +127,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   else if arg0.tag() == Tag::CTR {
     ctx.heap.inc_cost(ctx.tid);
     let fnum = arg0.ext();
-    let fari = arity_of(&ctx.prog.aris, arg0);
+    let fari = ctx.prog.aris.arity_of(arg0);
     if fari == 0 {
       ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp0(tcol, ctx.term.loc(0)), Ctr(fnum, 0));
       ctx.heap.atomic_subst(&ctx.prog.aris, ctx.tid, Dp1(tcol, ctx.term.loc(0)), Ctr(fnum, 0));

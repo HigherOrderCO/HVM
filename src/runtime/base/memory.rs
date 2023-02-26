@@ -529,8 +529,10 @@ impl Heap {
   }
 }
 
-pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {
-  *arit.get(lnk.ext()).unwrap_or(&0)
+impl U64Map<u64> {
+  pub fn arity_of(&self, lnk: Ptr) -> u64 {
+    *self.get(lnk.ext()).unwrap_or(&0)
+  }
 }
 
 // Pointers
@@ -857,7 +859,7 @@ impl Heap {
         Tag::U60 => {}
         Tag::F60 => {}
         Tag::CTR | Tag::FUN => {
-          let arity = arity_of(arit, term);
+          let arity = arit.arity_of(term);
           for i in 0..arity {
             if i < arity - 1 {
               coll.push(self.take_arg(term, i));

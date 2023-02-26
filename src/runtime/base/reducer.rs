@@ -366,7 +366,7 @@ fn reducer(
                   visit.push(new_visit(term.loc(2), hold, cont));
                 }
                 Tag::CTR | Tag::FUN => {
-                  let arit = arity_of(&prog.aris, term);
+                  let arit = prog.aris.arity_of(term);
                   if arit > 0 {
                     stop.fetch_add(arit as usize, Ordering::Relaxed);
                     for i in 0..arit {
@@ -472,7 +472,7 @@ impl Heap {
 //rec_locs.push(term.loc(2));
 //}
 //CTR | FUN => {
-//let arity = arity_of(&prog.aris, term);
+//let arity = prog.aris.arity_of( term);
 //for i in 0 .. arity {
 //rec_locs.push(term.loc(i));
 //}

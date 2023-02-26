@@ -103,7 +103,7 @@ pub fn apply(ctx: ReduceCtx, fid: Ptr, visit: &VisitObj, apply: &ApplyObj) -> bo
               let is_num = ptr.tag().is_numeric();
 
               // Matches constructor labels
-              let is_ctr = ptr.tag() == Tag::CTR && arity_of(&ctx.prog.aris, ptr) == 0;
+              let is_ctr = ptr.tag() == Tag::CTR && ctx.prog.aris.arity_of(ptr) == 0;
 
               // Matches HOAS numbers and constructors
               let is_hoas_ctr_num =
@@ -146,7 +146,7 @@ pub fn apply(ctx: ReduceCtx, fid: Ptr, visit: &VisitObj, apply: &ApplyObj) -> bo
         let t = ctx.heap.load_arg(ctx.term.loc(*i).into(), 0);
         ctx.heap.free(ctx.tid, t.into(), *arity);
       }
-      ctx.heap.free(ctx.tid, ctx.term.loc(0), arity_of(&ctx.prog.aris, fid));
+      ctx.heap.free(ctx.tid, ctx.term.loc(0), ctx.prog.aris.arity_of(fid));
 
       return true;
     }
@@ -166,7 +166,7 @@ pub fn superpose(
   n: u64,
 ) -> Ptr {
   heap.inc_cost(tid);
-  let arit = arity_of(aris, term);
+  let arit = aris.arity_of(term);
   let func = term.ext();
   let fun0 = term.loc(0);
   let fun1 = heap.alloc(tid, arit);

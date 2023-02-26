@@ -319,7 +319,7 @@ impl RuleBook {
                 let is_ctr = format!(
                   "({} && {})",
                   format!("arg{}.tag() == Tag::CTR", i),
-                  format!("arity_of(heap, arg{}) == 0u", i)
+                  format!("heap.arity_of(arg{}) == 0u", i)
                 );
 
                 // Matches HOAS numbers and constructors
