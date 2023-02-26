@@ -94,15 +94,17 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
       Self { stacks: HashMap::new() }
     }
     fn get(&self, col: Ptr) -> Option<&Vec<bool>> {
-      self.stacks.get(&col)
+      self.stacks.get(&col.ext().into())
     }
-    fn pop(&mut self, col: Ptr) -> bool {
-      let stack = self.stacks.entry(col).or_insert_with(Vec::new);
-      stack.pop().unwrap_or(false)
-    }
+
     fn push(&mut self, col: Ptr, val: bool) {
-      let stack = self.stacks.entry(col).or_insert_with(Vec::new);
+      let stack = self.stacks.entry(col.ext().into()).or_insert_with(Vec::new);
       stack.push(val);
+    }
+
+    fn pop(&mut self, col: Ptr) -> bool {
+      let stack = self.stacks.entry(col.ext().into()).or_insert_with(Vec::new);
+      stack.pop().unwrap_or(false)
     }
   }
 
@@ -135,7 +137,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         Box::new(Term::App { func, argm })
       }
       Tag::SUP => {
-        let col = term.ext();
+        let col = term;
         let empty = &vec![];
         let stack = stacks.get(col).unwrap_or(empty);
         if let Some(val) = stack.last() {
@@ -154,19 +156,17 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
         }
       }
       Tag::DP0 => {
-        let col = term.ext();
         let val = ctx.heap.load_arg(term, 2);
-        stacks.push(col, false);
+        stacks.push(term, false);
         let result = readback(heap, prog, ctx, stacks, val, depth + 1);
-        stacks.pop(col);
+        stacks.pop(term);
         result
       }
       Tag::DP1 => {
-        let col = term.ext();
         let val = ctx.heap.load_arg(term, 2);
-        stacks.push(col, true);
+        stacks.push(term, true);
         let result = readback(heap, prog, ctx, stacks, val, depth + 1);
-        stacks.pop(col);
+        stacks.pop(term);
         result
       }
       Tag::OP2 => {
@@ -194,7 +194,7 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<Term> {
           args.push(readback(heap, prog, ctx, stacks, arg, depth + 1));
         }
         let name =
-          ctx.prog.nams.get(&func).map(String::to_string).unwrap_or_else(|| format!("${}", func));
+          ctx.prog.nams.get(func).map(String::to_string).unwrap_or_else(|| format!("${}", func));
         Box::new(Term::Ctr { name, args })
       }
       Tag::VAR => {
@@ -233,7 +233,7 @@ impl Heap {
     }
 
     fn ctr_name(prog: &Program, id: u64) -> String {
-      if let Some(name) = prog.nams.get(&id) {
+      if let Some(name) = prog.nams.get(id) {
         return name.clone();
       } else {
         return format!("${}", id);

@@ -28,12 +28,8 @@ checksum = "f26201604c87b1e01bd3d98f8d5d9a8fcbb815e8cedb41ffccbeb4bf593a35fe"
 
 [[package]]
 name = "atomic"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b88d82667eca772c4aa12f0f1348b3ae643424c8876448f3f7bd5787032e234c"
-dependencies = [
- "autocfg",
-]
+version = "0.5.2"
+source = "git+https://github.com/adamnemecek/atomic-rs#d14961f0916a1a13336034bb058e1241256a5a87"
 
 [[package]]
 name = "atty"

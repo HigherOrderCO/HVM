@@ -141,12 +141,12 @@ impl Runtime {
 
   /// Returns the name of a given id
   pub fn get_name(&self, id: u64) -> String {
-    self.prog.nams.get(&id).unwrap_or(&"?".to_string()).clone()
+    self.prog.nams.get(id).unwrap_or(&"?".to_string()).clone()
   }
 
   /// Returns the arity of a given id
   pub fn get_arity(&self, id: u64) -> u64 {
-    *self.prog.aris.get(&id).unwrap_or(&u64::MAX)
+    *self.prog.aris.get(id).unwrap_or(&u64::MAX)
   }
 
   /// Returns the name of a given id

@@ -51,7 +51,7 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
 }
 
 #[inline(always)]
-pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bool {
+pub fn apply(ctx: ReduceCtx, fid: Ptr, visit: &VisitObj, apply: &ApplyObj) -> bool {
   // Reduces function superpositions
   for (n, is_strict) in visit.strict_map.iter().enumerate() {
     let n = n as u64;
@@ -77,46 +77,44 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
 
     // Tests each rule condition (ex: `args[0].tag() == SUCC`)
     for (i, cond) in rule.cond.iter().enumerate() {
-      let i = i as u64;
+      let ptr = ctx.heap.load_arg(ctx.term, i as _);
       match cond.tag() {
         Tag::U60 => {
-          let same_tag = ctx.heap.load_arg(ctx.term, i).tag() == Tag::U60;
-          let same_val = ctx.heap.load_arg(ctx.term, i).num() == cond.num();
+          let same_tag = ptr.tag() == Tag::U60;
+          let same_val = ptr.num() == cond.num();
           matched = matched && same_tag && same_val;
         }
         Tag::F60 => {
-          let same_tag = ctx.heap.load_arg(ctx.term, i).tag() == Tag::F60;
-          let same_val = ctx.heap.load_arg(ctx.term, i).num() == cond.num();
+          let same_tag = ptr.tag() == Tag::F60;
+          let same_val = ptr.num() == cond.num();
           matched = matched && same_tag && same_val;
         }
         Tag::CTR => {
-          let same_tag = ctx.heap.load_arg(ctx.term, i).tag() == Tag::CTR;
-          let same_ext = ctx.heap.load_arg(ctx.term, i).ext() == cond.ext();
+          let same_tag = ptr.tag() == Tag::CTR;
+          let same_ext = ptr.ext() == cond.ext();
           matched = matched && same_tag && same_ext;
         }
         Tag::VAR => {
           // If this is a strict argument, then we're in a default variable
-          if unsafe { *visit.strict_map.get_unchecked(i as usize) } {
+          if unsafe { *visit.strict_map.get_unchecked(i) } {
             // This is a Kind2-specific optimization.
             if rule.hoas && r != apply.rules.len() - 1 {
               // Matches number literals
-              let is_num = ctx.heap.load_arg(ctx.term, i).tag().is_numeric();
+              let is_num = ptr.tag().is_numeric();
 
               // Matches constructor labels
-              let is_ctr = ctx.heap.load_arg(ctx.term, i).tag() == Tag::CTR
-                && arity_of(&ctx.prog.aris, ctx.heap.load_arg(ctx.term, i)) == 0;
+              let is_ctr = ptr.tag() == Tag::CTR && arity_of(&ctx.prog.aris, ptr) == 0;
 
               // Matches HOAS numbers and constructors
-              let is_hoas_ctr_num = ctx.heap.load_arg(ctx.term, i).tag() == Tag::CTR
-                && ctx.heap.load_arg(ctx.term, i).ext() >= KIND_TERM_CT0
-                && ctx.heap.load_arg(ctx.term, i).ext() <= KIND_TERM_F60;
+              let is_hoas_ctr_num =
+                ptr.tag() == Tag::CTR && ptr.ext() >= KIND_TERM_CT0 && ptr.ext() <= KIND_TERM_F60;
 
               matched = matched && (is_num || is_ctr || is_hoas_ctr_num);
 
             // Only match default variables on CTRs and NUMs
             } else {
-              let is_ctr = ctx.heap.load_arg(ctx.term, i).tag() == Tag::CTR;
-              let is_num = ctx.heap.load_arg(ctx.term, i).tag().is_numeric();
+              let is_ctr = ptr.tag() == Tag::CTR;
+              let is_num = ptr.tag().is_numeric();
               matched = matched && (is_ctr || is_num);
             }
           }
@@ -145,7 +143,8 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
 
       // free the matched ctrs
       for (i, arity) in &rule.free {
-        ctx.heap.free(ctx.tid, ctx.heap.load_arg(ctx.term.loc(*i), 0), *arity);
+        let t = ctx.heap.load_arg(ctx.term.loc(*i).into(), 0);
+        ctx.heap.free(ctx.tid, t.into(), *arity);
       }
       ctx.heap.free(ctx.tid, ctx.term.loc(0), arity_of(&ctx.prog.aris, fid));
 

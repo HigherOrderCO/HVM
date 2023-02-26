@@ -177,7 +177,6 @@ use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
 // Types
 // -----
 
-pub type Ptr = u64;
 pub type AtomicPtr = AtomicU64;
 pub type ArityMap = crate::runtime::data::u64_map::U64Map<u64>;
 
@@ -206,11 +205,11 @@ impl LocalVars {
     }
   }
 }
-
+use atomic::Atomic;
 // Global memory buffer
 pub struct Heap {
   pub tids: usize,
-  pub node: Box<[AtomicU64]>,
+  pub node: Box<[Atomic<Ptr>]>,
   pub lock: Box<[AtomicU8]>,
   pub lvar: Box<[CachePadded<LocalVars>]>,
   pub vstk: Box<[VisitQueue]>,
@@ -327,94 +326,164 @@ impl From<Tag> for u64 {
 // --------------------
 
 pub fn Var(pos: u64) -> Ptr {
-  (Tag::VAR.as_u64() * TAG) | pos
+  Ptr::new1(Tag::VAR, 0, pos)
 }
 
 pub fn Dp0(col: u64, pos: u64) -> Ptr {
-  (Tag::DP0.as_u64() * TAG) | (col * EXT) | pos
+  Ptr::new1(Tag::DP0, col, pos)
 }
 
 pub fn Dp1(col: u64, pos: u64) -> Ptr {
-  (Tag::DP1.as_u64() * TAG) | (col * EXT) | pos
+  Ptr::new1(Tag::DP1, col, pos)
 }
 
 pub fn Arg(pos: u64) -> Ptr {
-  (Tag::ARG.as_u64() * TAG) | pos
+  Ptr::new1(Tag::ARG, 0, pos)
 }
 
 pub fn Era() -> Ptr {
-  Tag::ERA.as_u64() * TAG
+  Ptr::new1(Tag::ERA, 0, 0)
 }
 
 pub fn Lam(pos: u64) -> Ptr {
-  (Tag::LAM.as_u64() * TAG) | pos
+  Ptr::new1(Tag::LAM, 0, pos)
 }
 
 pub fn App(pos: u64) -> Ptr {
-  (Tag::APP.as_u64() * TAG) | pos
+  Ptr::new1(Tag::APP, 0, pos)
 }
 
 pub fn Sup(col: u64, pos: u64) -> Ptr {
-  (Tag::SUP.as_u64() * TAG) | (col * EXT) | pos
+  Ptr::new1(Tag::SUP, col, pos)
 }
 
 pub fn Op2(ope: u64, pos: u64) -> Ptr {
-  (Tag::OP2.as_u64() * TAG) | (ope * EXT) | pos
+  Ptr::new1(Tag::OP2, ope, pos)
 }
 
 pub fn U6O(val: u64) -> Ptr {
-  (Tag::U60.as_u64() * TAG) | val
+  // (Tag::U60.as_u64() * TAG) | val
+  Ptr::new1(Tag::U60, 0, val)
 }
 
 pub fn F6O(val: u64) -> Ptr {
-  (Tag::F60.as_u64() * TAG) | val
+  Ptr::new1(Tag::F60, 0, val)
 }
 
 pub fn Ctr(fun: u64, pos: u64) -> Ptr {
-  (Tag::CTR.as_u64() * TAG) | (fun * EXT) | pos
+  Ptr::new1(Tag::CTR, fun, pos)
 }
 
 pub fn Fun(fun: u64, pos: u64) -> Ptr {
-  (Tag::FUN.as_u64() * TAG) | (fun * EXT) | pos
+  Ptr::new1(Tag::FUN, fun, pos)
 }
 
 // Pointer Getters
 // ---------------
 
-pub trait PtrImpl {
-  fn tag(&self) -> Tag;
-  fn ext(&self) -> u64;
-  fn oper(&self) -> Oper;
-  fn val(&self) -> u64;
-  fn num(&self) -> u64;
-  fn loc(&self, arg: u64) -> u64;
+use bitfield_struct::bitfield;
+
+#[bitfield(u64)]
+pub struct Ptr {
+  #[bits(32)]
+  pub val: u64,
+
+  #[bits(28)]
+  pub ext: u64,
+
+  #[bits(4)]
+  pub tag: Tag,
 }
 
-impl PtrImpl for u64 {
-  fn tag(&self) -> Tag {
-    (self / TAG).into()
+impl Ptr {
+  pub fn zero() -> Self {
+    Self(0)
   }
 
-  fn ext(&self) -> u64 {
-    (self / EXT) & 0xFFF_FFFF
+  pub fn is_zero(&self) -> bool {
+    self.0 == 0
   }
 
-  fn oper(&self) -> Oper {
+  pub fn raw(&self) -> u64 {
+    self.0
+  }
+
+  pub fn new1(tag: Tag, ext: u64, val: u64) -> Self {
+    Self::new().with_tag(tag).with_ext(ext).with_val(val)
+  }
+
+  pub fn oper(&self) -> Oper {
     Oper::from(self.ext())
   }
 
-  fn val(&self) -> u64 {
-    self & 0xFFFF_FFFF
+  pub fn num(&self) -> u64 {
+    self.0 & 0xFFF_FFFF_FFFF_FFFF
   }
 
-  fn num(&self) -> u64 {
-    self & 0xFFF_FFFF_FFFF_FFFF
-  }
-
-  fn loc(&self, arg: u64) -> u64 {
+  pub fn loc(&self, arg: u64) -> u64 {
     self.val() + arg
   }
 }
+
+impl PartialEq for Ptr {
+  fn eq(&self, other: &Self) -> bool {
+    self.0 == other.0
+  }
+}
+
+impl Eq for Ptr {}
+
+impl PartialOrd for Ptr {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    self.0.partial_cmp(&other.0)
+  }
+}
+
+// impl From<u64> for Ptr {
+//   fn from(value: u64) -> Self {
+//     Self(value)
+//   }
+// }
+
+impl std::hash::Hash for Ptr {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.0.hash(state);
+  }
+}
+// pub trait PtrImpl {
+//   fn tag(&self) -> Tag;
+//   fn ext(&self) -> u64;
+//   fn oper(&self) -> Oper;
+//   fn val(&self) -> u64;
+//   fn num(&self) -> u64;
+//   fn loc(&self, arg: u64) -> u64;
+// }
+
+// impl PtrImpl for u64 {
+//   fn tag(&self) -> Tag {
+//     (self / TAG).into()
+//   }
+
+//   fn ext(&self) -> u64 {
+//     (self / EXT) & 0xFFF_FFFF
+//   }
+
+//   fn oper(&self) -> Oper {
+//     Oper::from(self.ext())
+//   }
+
+//   fn val(&self) -> u64 {
+//     self & 0xFFFF_FFFF
+//   }
+
+//   fn num(&self) -> u64 {
+//     self & 0xFFF_FFFF_FFFF_FFFF
+//   }
+
+//   fn loc(&self, arg: u64) -> u64 {
+//     self.val() + arg
+//   }
+// }
 
 // pub fn get_tag(lnk: Ptr) -> Tag {
 //   (lnk / TAG).into()
@@ -461,7 +530,7 @@ impl Heap {
 }
 
 pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {
-  *arit.get(&lnk.ext()).unwrap_or(&0)
+  *arit.get(lnk.ext()).unwrap_or(&0)
 }
 
 // Pointers
@@ -485,7 +554,7 @@ impl Heap {
 
   // Given a location, takes the ptr stored on it
   pub fn take_ptr(&self, loc: u64) -> Ptr {
-    unsafe { self.node.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
+    unsafe { self.node.get_unchecked(loc as usize).swap(Ptr::zero(), Ordering::Relaxed) }
   }
 
   // Given a pointer to a node, takes its nth arg
@@ -525,13 +594,17 @@ pub fn new_tids(tids: usize) -> Box<[usize]> {
   (0..tids).collect::<Vec<usize>>().into_boxed_slice()
 }
 
+pub fn new_boxed_slice<T>(size: usize, f: impl Fn(usize) -> T) -> Box<[T]> {
+  (0..size).map(f).collect::<Vec<_>>().into()
+}
+
 impl Heap {
   pub fn new(size: usize, tids: usize) -> Self {
     let mut lvar = vec![];
     for tid in 0..tids {
       lvar.push(LocalVars::new(size, tids, tid).into());
     }
-    let node = new_atomic_u64_array(size);
+    let node = new_boxed_slice(size, |_| Atomic::new(Ptr::zero()));
     let lock = new_atomic_u8_array(size);
     let lvar = lvar.into_boxed_slice();
     let rbag = RedexBag::new(tids);
@@ -564,21 +637,21 @@ impl Heap {
           //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
           //}
           // Loads value on cursor
-          let val =
-            self.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
+          let val = self.node.get_unchecked(*lvar.next.as_ptr() as usize).load(Ordering::Relaxed);
           // If it is empty, increment length
-          if val == 0 {
+          if val.is_zero() {
             length += 1;
           // Otherwise, reset length
           } else {
             length = 0;
           };
           // Moves cursor right
-          *lvar.next.as_mut_ptr() += 1;
+          *lvar.next.as_ptr() += 1;
+
           // If it is out of bounds, warp around
-          if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
+          if *lvar.next.as_ptr() >= *lvar.amax.as_ptr() {
             length = 0;
-            *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
+            *lvar.next.as_ptr() = *lvar.amin.as_ptr();
           }
           // If length equals arity, allocate that space
           if length == arity {
@@ -588,7 +661,7 @@ impl Heap {
             //if tid == 9 && count > 50000 {
             //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
             //}
-            return *lvar.next.as_mut_ptr() - length;
+            return *lvar.next.as_ptr() - length;
           }
         }
       }
@@ -597,7 +670,7 @@ impl Heap {
 
   pub fn free(&self, tid: usize, loc: u64, arity: u64) {
     for i in 0..arity {
-      unsafe { self.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
+      unsafe { self.node.get_unchecked((loc + i) as usize) }.store(Ptr::zero(), Ordering::Relaxed);
     }
   }
 

@@ -49,9 +49,9 @@ pub type RuleBodyNode = Vec<RuleBodyCell>;
 // A body cell
 #[derive(Copy, Clone, Debug)]
 pub enum RuleBodyCell {
-  Val { value: u64 }, // Fixed value, doesn't require adjustment
+  Val { value: Ptr }, // Fixed value, doesn't require adjustment
   Var { index: u64 }, // Link to an external variable
-  Ptr { value: u64, targ: u64, slot: u64 }, // Local link, requires adjustment
+  Ptr { value: Ptr, targ: u64, slot: u64 }, // Local link, requires adjustment
 }
 
 pub type VisitFun = fn(ReduceCtx) -> bool;
@@ -170,12 +170,12 @@ impl Heap {
           RuleBodyCell::Val { value } => *value,
           RuleBodyCell::Var { index } => heap.get_var(term, vars.get_unchecked(*index as usize)),
           RuleBodyCell::Ptr { value, targ, slot } => {
-            let mut val = value + *aloc.get_unchecked(*targ as usize).as_mut_ptr() + slot;
+            let mut val = value.raw() + *aloc.get_unchecked(*targ as usize).as_ptr() + slot;
             // should be changed if the pointer format changes
             if value.tag() <= Tag::DP1 {
-              val += (*lvar.dups.as_mut_ptr() & 0xFFF_FFFF) * EXT;
+              val += (*lvar.dups.as_ptr() & 0xFFF_FFFF) * EXT;
             }
-            val
+            val.into()
           }
         }
       }
@@ -186,26 +186,25 @@ impl Heap {
       let aloc = &self.aloc[tid];
       let lvar = &self.lvar[tid];
       for i in 0..nodes.len() {
-        *aloc.get_unchecked(i).as_mut_ptr() =
-          self.alloc(tid, (*nodes.get_unchecked(i)).len() as u64);
+        *aloc.get_unchecked(i).as_ptr() = self.alloc(tid, (*nodes.get_unchecked(i)).len() as u64);
       }
-      if *lvar.dups.as_mut_ptr() + dupk >= (1 << 28) {
-        *lvar.dups.as_mut_ptr() = 0;
+      if *lvar.dups.as_ptr() + dupk >= (1 << 28) {
+        *lvar.dups.as_ptr() = 0;
       }
       for i in 0..nodes.len() {
-        let host = *aloc.get_unchecked(i).as_mut_ptr() as usize;
+        let host = *aloc.get_unchecked(i).as_ptr() as usize;
         for j in 0..(*nodes.get_unchecked(i)).len() {
           let cell = (*nodes.get_unchecked(i)).get_unchecked(j);
           let ptr = cell_to_ptr(self, lvar, aloc, term, vars, cell);
           if let RuleBodyCell::Var { .. } = cell {
             self.link((host + j) as u64, ptr);
           } else {
-            *self.node.get_unchecked(host + j).as_mut_ptr() = ptr;
+            *self.node.get_unchecked(host + j).as_ptr() = ptr;
           }
         }
       }
       let done = cell_to_ptr(self, lvar, aloc, term, vars, cell);
-      *lvar.dups.as_mut_ptr() += dupk;
+      *lvar.dups.as_ptr() += dupk;
       //println!("result: {}\n{}\n", show_ptr(done), show_term(heap, prog, done, 0));
       done
     }
@@ -408,7 +407,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       return *targ;
     }
     let targ = nodes.len() as u64;
-    nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);
+    nodes.push(vec![RuleBodyCell::Val { value: Ptr::zero() }; 2]);
     link(nodes, targ, 0, RuleBodyCell::Val { value: Era() });
     if glob != 0 {
       lams.insert(glob, targ);
@@ -429,7 +428,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
     let dupc = *dupk;
     let targ = nodes.len() as u64;
     *dupk += 1;
-    nodes.push(vec![RuleBodyCell::Val { value: 0 }; 3]);
+    nodes.push(vec![RuleBodyCell::Val { value: Ptr::zero() }; 3]);
     links.push((targ, 0, RuleBodyCell::Val { value: Era() }));
     links.push((targ, 1, RuleBodyCell::Val { value: Era() }));
     if glob != 0 {
@@ -488,7 +487,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
         let dupc = *dupk;
         let targ = nodes.len() as u64;
         *dupk += 1;
-        nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);
+        nodes.push(vec![RuleBodyCell::Val { value: Ptr::zero() }; 2]);
         let val0 = gen_elems(val0, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 0, val0));
         let val1 = gen_elems(val1, dupk, vars, lams, dups, nodes, links);
@@ -514,7 +513,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       }
       Core::App { func, argm } => {
         let targ = nodes.len() as u64;
-        nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);
+        nodes.push(vec![RuleBodyCell::Val { value: Ptr::zero() }; 2]);
         let func = gen_elems(func, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 0, func));
         let argm = gen_elems(argm, dupk, vars, lams, dups, nodes, links);
@@ -524,7 +523,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       Core::Fun { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
-          nodes.push(vec![RuleBodyCell::Val { value: 0 }; args.len()]);
+          nodes.push(vec![RuleBodyCell::Val { value: Ptr::zero() }; args.len()]);
           for (i, arg) in args.iter().enumerate() {
             let arg = gen_elems(arg, dupk, vars, lams, dups, nodes, links);
             links.push((targ, i as u64, arg));
@@ -537,7 +536,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       Core::Ctr { func, args } => {
         if !args.is_empty() {
           let targ = nodes.len() as u64;
-          nodes.push(vec![RuleBodyCell::Val { value: 0 }; args.len()]);
+          nodes.push(vec![RuleBodyCell::Val { value: Ptr::zero() }; args.len()]);
           for (i, arg) in args.iter().enumerate() {
             let arg = gen_elems(arg, dupk, vars, lams, dups, nodes, links);
             links.push((targ, i as u64, arg));
@@ -551,7 +550,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       Core::F6O { numb } => RuleBodyCell::Val { value: F6O(*numb) },
       Core::Op2 { oper, val0, val1 } => {
         let targ = nodes.len() as u64;
-        nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);
+        nodes.push(vec![RuleBodyCell::Val { value: Ptr::zero() }; 2]);
         let val0 = gen_elems(val0, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 0, val0));
         let val1 = gen_elems(val1, dupk, vars, lams, dups, nodes, links);
@@ -580,7 +579,7 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
 pub fn alloc_closed_core(heap: &Heap, prog: &Program, tid: usize, term: &Core) -> u64 {
   let host = heap.alloc(tid, 1);
   let body = build_body(term, 0);
-  let term = heap.alloc_body(prog, tid, 0, &[], &body);
+  let term = heap.alloc_body(prog, tid, Ptr::zero(), &[], &body);
   heap.link(host, term);
   host
 }

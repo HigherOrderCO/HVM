@@ -30,15 +30,16 @@ impl<A> U64Map<A> {
     key
   }
 
-  pub fn insert(&mut self, key: u64, val: A) {
-    while self.data.len() <= key as usize {
+  pub fn insert(&mut self, key: impl Into<u64>, val: A) {
+    let k = key.into() as usize;
+    while self.data.len() <= k as usize {
       self.data.push(None);
     }
-    self.data[key as usize] = Some(val);
+    self.data[k] = Some(val);
   }
 
-  pub fn get(&self, key: &u64) -> Option<&A> {
-    if let Some(Some(got)) = self.data.get(*key as usize) {
+  pub fn get(&self, key: impl Into<u64>) -> Option<&A> {
+    if let Some(Some(got)) = self.data.get(key.into() as usize) {
       return Some(got);
     }
     None

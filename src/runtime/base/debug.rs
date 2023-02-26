@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // -----
 
 pub fn show_ptr(x: Ptr) -> String {
-  if x == 0 {
+  if x.is_zero() {
     String::from("~")
   } else {
     let tag = x.tag();
@@ -20,7 +20,7 @@ pub fn show_heap(heap: &Heap) -> String {
   let mut text: String = String::new();
   for idx in 0..heap.node.len() {
     let ptr = heap.load_ptr(idx as u64);
-    if ptr != 0 {
+    if !ptr.is_zero() {
       text.push_str(&format!("{:04x} | ", idx));
       text.push_str(&show_ptr(ptr));
       text.push('\n');
@@ -44,7 +44,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     count: &mut u64,
   ) {
     let term = heap.load_ptr(host);
-    if term == 0 {
+    if term.is_zero() {
       return;
     }
     match term.tag() {
@@ -101,7 +101,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
   ) -> String {
     let term = heap.load_ptr(host);
 
-    let done = if term == 0 {
+    let done = if term.is_zero() {
       "<>".to_string()
     } else {
       match term.tag() {
@@ -177,7 +177,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
           let arit = arity_of(&prog.aris, term);
           let args: Vec<String> =
             (0..arit).map(|i| go(heap, prog, term.loc(i), names, tlocs)).collect();
-          let name = &prog.nams.get(&func).unwrap_or(&String::from("<?>")).clone();
+          let name = &prog.nams.get(func).unwrap_or(&String::from("<?>")).clone();
           format!("({}{})", name, args.iter().map(|x| format!(" {}", x)).collect::<String>())
         }
         Tag::ERA => "*".to_string(),
@@ -198,12 +198,12 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     let what = String::from("?h");
     //let kind = kinds.get(&pos).unwrap_or(&0);
     let name = names.get(pos).unwrap_or(&what);
-    let nam0 = if heap.load_ptr(pos + 0) == Tag::ERA.as_u64() {
+    let nam0 = if heap.load_ptr(pos + 0).tag() == Tag::ERA {
       String::from("*")
     } else {
       format!("a{}", name)
     };
-    let nam1 = if heap.load_ptr(pos + 1) == Tag::ERA.as_u64() {
+    let nam1 = if heap.load_ptr(pos + 1).tag() == Tag::ERA {
       String::from("*")
     } else {
       format!("b{}", name)
