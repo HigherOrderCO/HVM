@@ -177,7 +177,6 @@ use std::sync::atomic::{AtomicI64, AtomicU64, AtomicU8, Ordering};
 // Types
 // -----
 
-pub type Ptr = u64;
 pub type AtomicPtr = AtomicU64;
 pub type ArityMap = crate::runtime::data::u64_map::U64Map<u64>;
 
@@ -193,10 +192,24 @@ pub struct LocalVars {
   pub cost: AtomicU64, // total number of rewrite rules
 }
 
+impl LocalVars {
+  pub fn new(size: usize, tids: usize, tid: usize) -> Self {
+    Self {
+      tid,
+      used: AtomicI64::new(0),
+      next: AtomicU64::new((size / tids * (tid + 0)) as u64),
+      amin: AtomicU64::new((size / tids * (tid + 0)) as u64),
+      amax: AtomicU64::new((size / tids * (tid + 1)) as u64),
+      dups: AtomicU64::new(((1 << 28) / tids * tid) as u64),
+      cost: AtomicU64::new(0),
+    }
+  }
+}
+use atomic::Atomic;
 // Global memory buffer
 pub struct Heap {
   pub tids: usize,
-  pub node: Box<[AtomicU64]>,
+  pub node: Box<[Atomic<Ptr>]>,
   pub lock: Box<[AtomicU8]>,
   pub lvar: Box<[CachePadded<LocalVars>]>,
   pub vstk: Box<[VisitQueue]>,
@@ -212,316 +225,495 @@ pub const VAL: u64 = 1;
 pub const EXT: u64 = 0x100000000;
 pub const TAG: u64 = 0x1000000000000000;
 
-pub const DP0: u64 = 0x0;
-pub const DP1: u64 = 0x1;
-pub const VAR: u64 = 0x2;
-pub const ARG: u64 = 0x3;
-pub const ERA: u64 = 0x4;
-pub const LAM: u64 = 0x5;
-pub const APP: u64 = 0x6;
-pub const SUP: u64 = 0x7;
-pub const CTR: u64 = 0x8;
-pub const FUN: u64 = 0x9;
-pub const OP2: u64 = 0xA;
-pub const U60: u64 = 0xB;
-pub const F60: u64 = 0xC;
-pub const NIL: u64 = 0xF;
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum Tag {
+  DP0 = 0x0,
+  DP1 = 0x1,
+  VAR = 0x2,
+  ARG = 0x3,
+  ERA = 0x4,
+  LAM = 0x5,
+  APP = 0x6,
+  SUP = 0x7,
+  CTR = 0x8,
+  FUN = 0x9,
+  OP2 = 0xA,
+  U60 = 0xB,
+  F60 = 0xC,
+  NIL = 0xF,
+}
 
-pub const ADD: u64 = 0x0;
-pub const SUB: u64 = 0x1;
-pub const MUL: u64 = 0x2;
-pub const DIV: u64 = 0x3;
-pub const MOD: u64 = 0x4;
-pub const AND: u64 = 0x5;
-pub const OR: u64 = 0x6;
-pub const XOR: u64 = 0x7;
-pub const SHL: u64 = 0x8;
-pub const SHR: u64 = 0x9;
-pub const LTN: u64 = 0xA;
-pub const LTE: u64 = 0xB;
-pub const EQL: u64 = 0xC;
-pub const GTE: u64 = 0xD;
-pub const GTN: u64 = 0xE;
-pub const NEQ: u64 = 0xF;
+impl std::fmt::Display for Tag {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{:?}", self)
+  }
+}
+
+impl Tag {
+  pub fn as_str(&self) -> &str {
+    match &self {
+      Self::DP0 => "Dp0",
+      Self::DP1 => "Dp1",
+      Self::VAR => "Var",
+      Self::ARG => "Arg",
+      Self::ERA => "Era",
+      Self::LAM => "Lam",
+      Self::APP => "App",
+      Self::SUP => "Sup",
+      Self::CTR => "Ctr",
+      Self::FUN => "Fun",
+      Self::OP2 => "Op2",
+      Self::U60 => "U60",
+      Self::F60 => "F60",
+      Self::NIL => "NIL",
+    }
+  }
+
+  pub fn global_name_misc(name: &str) -> Option<Self> {
+    if name.is_empty() || !name.starts_with('$') {
+      return None;
+    }
+    Some(match &name[..2] {
+      "$0" => Self::DP0,
+      "$1" => Self::DP1,
+      _ => Self::VAR,
+    })
+  }
+
+  pub fn is_numeric(&self) -> bool {
+    matches!(self, Self::U60 | Self::F60)
+  }
+
+  pub fn is_whnf(&self) -> bool {
+    matches!(self, Self::ERA | Self::LAM | Self::SUP | Self::CTR | Self::U60 | Self::F60)
+  }
+
+  pub fn as_u64(&self) -> u64 {
+    *self as _
+  }
+
+  pub fn something(&self) -> u64 {
+    self.as_u64() & 0x01
+  }
+}
+
+impl From<u8> for Tag {
+  fn from(value: u8) -> Self {
+    unsafe { std::mem::transmute(value) }
+  }
+}
+
+impl From<u64> for Tag {
+  fn from(value: u64) -> Self {
+    Self::from(value as u8)
+  }
+}
+
+impl From<Tag> for u8 {
+  fn from(value: Tag) -> Self {
+    value as u8
+  }
+}
+
+impl From<Tag> for u64 {
+  fn from(value: Tag) -> Self {
+    value as u64
+  }
+}
 
 // Pointer Constructors
 // --------------------
 
 pub fn Var(pos: u64) -> Ptr {
-  (VAR * TAG) | pos
+  Ptr::new1(Tag::VAR, 0, pos)
 }
 
 pub fn Dp0(col: u64, pos: u64) -> Ptr {
-  (DP0 * TAG) | (col * EXT) | pos
+  Ptr::new1(Tag::DP0, col, pos)
 }
 
 pub fn Dp1(col: u64, pos: u64) -> Ptr {
-  (DP1 * TAG) | (col * EXT) | pos
+  Ptr::new1(Tag::DP1, col, pos)
 }
 
 pub fn Arg(pos: u64) -> Ptr {
-  (ARG * TAG) | pos
+  Ptr::new1(Tag::ARG, 0, pos)
 }
 
 pub fn Era() -> Ptr {
-  ERA * TAG
+  Ptr::new1(Tag::ERA, 0, 0)
 }
 
 pub fn Lam(pos: u64) -> Ptr {
-  (LAM * TAG) | pos
+  Ptr::new1(Tag::LAM, 0, pos)
 }
 
 pub fn App(pos: u64) -> Ptr {
-  (APP * TAG) | pos
+  Ptr::new1(Tag::APP, 0, pos)
 }
 
 pub fn Sup(col: u64, pos: u64) -> Ptr {
-  (SUP * TAG) | (col * EXT) | pos
+  Ptr::new1(Tag::SUP, col, pos)
 }
 
 pub fn Op2(ope: u64, pos: u64) -> Ptr {
-  (OP2 * TAG) | (ope * EXT) | pos
+  Ptr::new1(Tag::OP2, ope, pos)
 }
 
 pub fn U6O(val: u64) -> Ptr {
-  (U60 * TAG) | val
+  // (Tag::U60.as_u64() * TAG) | val
+  Ptr::new1(Tag::U60, 0, val)
 }
 
 pub fn F6O(val: u64) -> Ptr {
-  (F60 * TAG) | val
+  Ptr::new1(Tag::F60, 0, val)
 }
 
 pub fn Ctr(fun: u64, pos: u64) -> Ptr {
-  (CTR * TAG) | (fun * EXT) | pos
+  Ptr::new1(Tag::CTR, fun, pos)
 }
 
 pub fn Fun(fun: u64, pos: u64) -> Ptr {
-  (FUN * TAG) | (fun * EXT) | pos
+  Ptr::new1(Tag::FUN, fun, pos)
 }
 
 // Pointer Getters
 // ---------------
 
-pub fn get_tag(lnk: Ptr) -> u64 {
-  lnk / TAG
+use bitfield_struct::bitfield;
+
+#[bitfield(u64)]
+pub struct Ptr {
+  #[bits(32)]
+  pub val: u64,
+
+  #[bits(28)]
+  pub ext: u64,
+
+  #[bits(4)]
+  pub tag: Tag,
 }
 
-pub fn get_ext(lnk: Ptr) -> u64 {
-  (lnk / EXT) & 0xFFF_FFFF
+impl Ptr {
+  pub fn zero() -> Self {
+    Self(0)
+  }
+
+  pub fn is_zero(&self) -> bool {
+    self.0 == 0
+  }
+
+  pub fn raw(&self) -> u64 {
+    self.0
+  }
+
+  pub fn new1(tag: Tag, ext: u64, val: u64) -> Self {
+    Self::new().with_tag(tag).with_ext(ext).with_val(val)
+  }
+
+  pub fn oper(&self) -> Oper {
+    Oper::from(self.ext())
+  }
+
+  pub fn num(&self) -> u64 {
+    self.0 & 0xFFF_FFFF_FFFF_FFFF
+  }
+
+  pub fn loc(&self, arg: u64) -> u64 {
+    self.val() + arg
+  }
 }
 
-pub fn get_val(lnk: Ptr) -> u64 {
-  lnk & 0xFFFF_FFFF
+impl PartialEq for Ptr {
+  fn eq(&self, other: &Self) -> bool {
+    self.0 == other.0
+  }
 }
 
-pub fn get_num(lnk: Ptr) -> u64 {
-  lnk & 0xFFF_FFFF_FFFF_FFFF
+impl Eq for Ptr {}
+
+impl PartialOrd for Ptr {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    self.0.partial_cmp(&other.0)
+  }
 }
 
-pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
-  get_val(lnk) + arg
+// impl From<u64> for Ptr {
+//   fn from(value: u64) -> Self {
+//     Self(value)
+//   }
+// }
+
+impl std::hash::Hash for Ptr {
+  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+    self.0.hash(state);
+  }
+}
+// pub trait PtrImpl {
+//   fn tag(&self) -> Tag;
+//   fn ext(&self) -> u64;
+//   fn oper(&self) -> Oper;
+//   fn val(&self) -> u64;
+//   fn num(&self) -> u64;
+//   fn loc(&self, arg: u64) -> u64;
+// }
+
+// impl PtrImpl for u64 {
+//   fn tag(&self) -> Tag {
+//     (self / TAG).into()
+//   }
+
+//   fn ext(&self) -> u64 {
+//     (self / EXT) & 0xFFF_FFFF
+//   }
+
+//   fn oper(&self) -> Oper {
+//     Oper::from(self.ext())
+//   }
+
+//   fn val(&self) -> u64 {
+//     self & 0xFFFF_FFFF
+//   }
+
+//   fn num(&self) -> u64 {
+//     self & 0xFFF_FFFF_FFFF_FFFF
+//   }
+
+//   fn loc(&self, arg: u64) -> u64 {
+//     self.val() + arg
+//   }
+// }
+
+// pub fn get_tag(lnk: Ptr) -> Tag {
+//   (lnk / TAG).into()
+// }
+
+// pub fn get_ext(lnk: Ptr) -> u64 {
+//   (lnk / EXT) & 0xFFF_FFFF
+// }
+
+// pub fn get_oper(lnk: Ptr) -> Oper {
+//   // assert!(lnk.tag() == Tag::OP2);
+//   // Oper::from(lnk.ext() as u8)
+//   Oper::from(lnk.ext())
+// }
+
+// pub fn get_val(lnk: Ptr) -> u64 {
+//   lnk & 0xFFFF_FFFF
+// }
+
+// pub fn get_num(lnk: Ptr) -> u64 {
+//   lnk & 0xFFF_FFFF_FFFF_FFFF
+// }
+
+// pub fn get_loc(lnk: Ptr, arg: u64) -> u64 {
+//   lnk.val() + arg
+// }
+
+impl Heap {
+  pub fn get_cost(&self) -> u64 {
+    self.lvar.iter().map(|x| x.cost.load(Ordering::Relaxed)).sum()
+  }
+
+  pub fn get_used(&self) -> i64 {
+    self.lvar.iter().map(|x| x.used.load(Ordering::Relaxed)).sum()
+  }
+
+  pub fn inc_cost(&self, tid: usize) {
+    unsafe { self.lvar.get_unchecked(tid) }.cost.fetch_add(1, Ordering::Relaxed);
+  }
+
+  pub fn gen_dup(&self, tid: usize) -> u64 {
+    unsafe { self.lvar.get_unchecked(tid) }.dups.fetch_add(1, Ordering::Relaxed) & 0xFFF_FFFF
+  }
 }
 
-pub fn get_cost(heap: &Heap) -> u64 {
-  heap.lvar.iter().map(|x| x.cost.load(Ordering::Relaxed)).sum()
-}
-
-pub fn get_used(heap: &Heap) -> i64 {
-  heap.lvar.iter().map(|x| x.used.load(Ordering::Relaxed)).sum()
-}
-
-pub fn inc_cost(heap: &Heap, tid: usize) {
-  unsafe { heap.lvar.get_unchecked(tid) }.cost.fetch_add(1, Ordering::Relaxed);
-}
-
-pub fn gen_dup(heap: &Heap, tid: usize) -> u64 {
-  return unsafe { heap.lvar.get_unchecked(tid) }.dups.fetch_add(1, Ordering::Relaxed) & 0xFFF_FFFF;
-}
-
-pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {
-  return *arit.get(&get_ext(lnk)).unwrap_or(&0);
+impl U64Map<u64> {
+  pub fn arity_of(&self, lnk: Ptr) -> u64 {
+    *self.get(lnk.ext()).unwrap_or(&0)
+  }
 }
 
 // Pointers
 // --------
 
-// Given a location, loads the ptr stored on it
-pub fn load_ptr(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { heap.node.get_unchecked(loc as usize).load(Ordering::Relaxed) }
-}
-
-// Moves a pointer to another location
-pub fn move_ptr(heap: &Heap, old_loc: u64, new_loc: u64) -> Ptr {
-  link(heap, new_loc, take_ptr(heap, old_loc))
-}
-
-// Given a pointer to a node, loads its nth arg
-pub fn load_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
-  load_ptr(heap, get_loc(term, arg))
-}
-
-// Given a location, takes the ptr stored on it
-pub fn take_ptr(heap: &Heap, loc: u64) -> Ptr {
-  unsafe { heap.node.get_unchecked(loc as usize).swap(0, Ordering::Relaxed) }
-}
-
-// Given a pointer to a node, takes its nth arg
-pub fn take_arg(heap: &Heap, term: Ptr, arg: u64) -> Ptr {
-  take_ptr(heap, get_loc(term, arg))
-}
-
-// Writes a ptr to memory. Updates binders.
-pub fn link(heap: &Heap, loc: u64, ptr: Ptr) -> Ptr {
-  unsafe {
-    heap.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
-    if get_tag(ptr) <= VAR {
-      let arg_loc = get_loc(ptr, get_tag(ptr) & 0x01);
-      heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
-    }
+impl Heap {
+  // Given a location, loads the ptr stored on it
+  pub fn load_ptr(&self, loc: u64) -> Ptr {
+    unsafe { self.node.get_unchecked(loc as usize).load(Ordering::Relaxed) }
   }
-  ptr
+
+  // Moves a pointer to another location
+  pub fn move_ptr(&self, old_loc: u64, new_loc: u64) -> Ptr {
+    self.link(new_loc, self.take_ptr(old_loc))
+  }
+
+  // Given a pointer to a node, loads its nth arg
+  pub fn load_arg(&self, term: Ptr, arg: u64) -> Ptr {
+    self.load_ptr(term.loc(arg))
+  }
+
+  // Given a location, takes the ptr stored on it
+  pub fn take_ptr(&self, loc: u64) -> Ptr {
+    unsafe { self.node.get_unchecked(loc as usize).swap(Ptr::zero(), Ordering::Relaxed) }
+  }
+
+  // Given a pointer to a node, takes its nth arg
+  pub fn take_arg(&self, term: Ptr, arg: u64) -> Ptr {
+    self.take_ptr(term.loc(arg))
+  }
+
+  // Writes a ptr to memory. Updates binders.
+  pub fn link(&self, loc: u64, ptr: Ptr) -> Ptr {
+    unsafe {
+      self.node.get_unchecked(loc as usize).store(ptr, Ordering::Relaxed);
+      if ptr.tag() <= Tag::VAR {
+        let arg_loc = ptr.loc(ptr.tag().something());
+        self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+      }
+    }
+    ptr
+  }
 }
 
 // Heap Constructors
 // -----------------
 
 pub fn new_atomic_u8_array(size: usize) -> Box<[AtomicU8]> {
-  return unsafe {
+  unsafe {
     Box::from_raw(AtomicU8::from_mut_slice(Box::leak(vec![0xFFu8; size].into_boxed_slice())))
-  };
+  }
 }
 
 pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
-  return unsafe {
+  unsafe {
     Box::from_raw(AtomicU64::from_mut_slice(Box::leak(vec![0u64; size].into_boxed_slice())))
-  };
+  }
 }
 
 pub fn new_tids(tids: usize) -> Box<[usize]> {
-  return (0..tids).collect::<Vec<usize>>().into_boxed_slice();
+  (0..tids).collect::<Vec<usize>>().into_boxed_slice()
 }
 
-pub fn new_heap(size: usize, tids: usize) -> Heap {
-  let mut lvar = vec![];
-  for tid in 0..tids {
-    lvar.push(CachePadded::new(LocalVars {
-      tid: tid,
-      used: AtomicI64::new(0),
-      next: AtomicU64::new((size / tids * (tid + 0)) as u64),
-      amin: AtomicU64::new((size / tids * (tid + 0)) as u64),
-      amax: AtomicU64::new((size / tids * (tid + 1)) as u64),
-      dups: AtomicU64::new(((1 << 28) / tids * tid) as u64),
-      cost: AtomicU64::new(0),
-    }))
+pub fn new_boxed_slice<T>(size: usize, f: impl Fn(usize) -> T) -> Box<[T]> {
+  (0..size).map(f).collect::<Vec<_>>().into()
+}
+
+impl Heap {
+  pub fn new(size: usize, tids: usize) -> Self {
+    let mut lvar = vec![];
+    for tid in 0..tids {
+      lvar.push(LocalVars::new(size, tids, tid).into());
+    }
+    let node = new_boxed_slice(size, |_| Atomic::new(Ptr::zero()));
+    let lock = new_atomic_u8_array(size);
+    let lvar = lvar.into_boxed_slice();
+    let rbag = RedexBag::new(tids);
+    let aloc = (0..tids)
+      .map(|x| new_atomic_u64_array(1 << 20))
+      .collect::<Vec<Box<[AtomicU64]>>>()
+      .into_boxed_slice();
+    let vbuf = (0..tids)
+      .map(|x| new_atomic_u64_array(1 << 16))
+      .collect::<Vec<Box<[AtomicU64]>>>()
+      .into_boxed_slice();
+    let vstk = (0..tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
+    Self { tids, node, lock, lvar, rbag, aloc, vbuf, vstk }
   }
-  let node = new_atomic_u64_array(size);
-  let lock = new_atomic_u8_array(size);
-  let lvar = lvar.into_boxed_slice();
-  let rbag = RedexBag::new(tids);
-  let aloc = (0..tids)
-    .map(|x| new_atomic_u64_array(1 << 20))
-    .collect::<Vec<Box<[AtomicU64]>>>()
-    .into_boxed_slice();
-  let vbuf = (0..tids)
-    .map(|x| new_atomic_u64_array(1 << 16))
-    .collect::<Vec<Box<[AtomicU64]>>>()
-    .into_boxed_slice();
-  let vstk = (0..tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
-  return Heap { tids, node, lock, lvar, rbag, aloc, vbuf, vstk };
-}
 
-// Allocator
-// ---------
+  // Allocator
+  // ---------
 
-pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
-  unsafe {
-    let lvar = &heap.lvar.get_unchecked(tid);
-    if arity == 0 {
-      0
-    } else {
-      let mut length = 0;
-      //let mut count = 0;
-      loop {
-        //count += 1;
-        //if tid == 9 && count > 5000000 {
-        //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
-        //}
-        // Loads value on cursor
-        let val = heap.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
-        // If it is empty, increment length
-        if val == 0 {
-          length += 1;
-        // Otherwise, reset length
-        } else {
-          length = 0;
-        };
-        // Moves cursor right
-        *lvar.next.as_mut_ptr() += 1;
-        // If it is out of bounds, warp around
-        if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
-          length = 0;
-          *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
-        }
-        // If length equals arity, allocate that space
-        if length == arity {
-          //println!("[{}] return", lvar.tid);
-          //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
-          //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
-          //if tid == 9 && count > 50000 {
-          //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
+  pub fn alloc(&self, tid: usize, arity: u64) -> u64 {
+    unsafe {
+      let lvar = &self.lvar.get_unchecked(tid);
+      if arity == 0 {
+        0
+      } else {
+        let mut length = 0;
+        //let mut count = 0;
+        loop {
+          //count += 1;
+          //if tid == 9 && count > 5000000 {
+          //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
           //}
-          return *lvar.next.as_mut_ptr() - length;
+          // Loads value on cursor
+          let val = self.node.get_unchecked(*lvar.next.as_ptr() as usize).load(Ordering::Relaxed);
+          // If it is empty, increment length
+          if val.is_zero() {
+            length += 1;
+          // Otherwise, reset length
+          } else {
+            length = 0;
+          };
+          // Moves cursor right
+          *lvar.next.as_ptr() += 1;
+
+          // If it is out of bounds, warp around
+          if *lvar.next.as_ptr() >= *lvar.amax.as_ptr() {
+            length = 0;
+            *lvar.next.as_ptr() = *lvar.amin.as_ptr();
+          }
+          // If length equals arity, allocate that space
+          if length == arity {
+            //println!("[{}] return", lvar.tid);
+            //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
+            //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
+            //if tid == 9 && count > 50000 {
+            //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
+            //}
+            return *lvar.next.as_ptr() - length;
+          }
         }
       }
     }
   }
-}
 
-pub fn free(heap: &Heap, tid: usize, loc: u64, arity: u64) {
-  for i in 0..arity {
-    unsafe { heap.node.get_unchecked((loc + i) as usize) }.store(0, Ordering::Relaxed);
-  }
-}
-
-// Substitution
-// ------------
-
-// Atomically replaces a ptr by another. Updates binders.
-pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, Ptr> {
-  unsafe {
-    let got = heap.node.get_unchecked(loc as usize).compare_exchange_weak(
-      old,
-      neo,
-      Ordering::Relaxed,
-      Ordering::Relaxed,
-    )?;
-    if get_tag(neo) <= VAR {
-      let arg_loc = get_loc(neo, get_tag(neo) & 0x01);
-      heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+  pub fn free(&self, tid: usize, loc: u64, arity: u64) {
+    for i in 0..arity {
+      unsafe { self.node.get_unchecked((loc + i) as usize) }.store(Ptr::zero(), Ordering::Relaxed);
     }
-    return Ok(got);
   }
-}
 
-// Performs a global [x <- val] substitution atomically.
-pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
-  loop {
-    let arg_ptr = load_ptr(heap, get_loc(var, get_tag(var) & 0x01));
-    if get_tag(arg_ptr) == ARG {
-      if heap.tids == 1 {
-        link(heap, get_loc(arg_ptr, 0), val);
-        return;
-      } else {
-        if atomic_relink(heap, get_loc(arg_ptr, 0), var, val).is_ok() {
+  // Substitution
+  // ------------
+
+  // Atomically replaces a ptr by another. Updates binders.
+  pub fn atomic_relink(&self, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, Ptr> {
+    unsafe {
+      let got = self.node.get_unchecked(loc as usize).compare_exchange_weak(
+        old,
+        neo,
+        Ordering::Relaxed,
+        Ordering::Relaxed,
+      )?;
+      if neo.tag() <= Tag::VAR {
+        let arg_loc = neo.loc(neo.tag().something());
+        self.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
+      }
+      Ok(got)
+    }
+  }
+
+  // Performs a global [x <- val] substitution atomically.
+  pub fn atomic_subst(&self, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr) {
+    loop {
+      let arg_ptr = self.load_ptr(var.loc(var.tag().something()));
+      if arg_ptr.tag() == Tag::ARG {
+        if self.tids == 1 {
+          self.link(arg_ptr.loc(0), val);
+          return;
+        } else if self.atomic_relink(arg_ptr.loc(0), var, val).is_ok() {
           return;
         } else {
           continue;
         }
       }
-    }
-    if get_tag(arg_ptr) == ERA {
-      collect(heap, arit, tid, val); // safe, since `val` is owned by this thread
-      return;
+      if arg_ptr.tag() == Tag::ERA {
+        self.collect(arit, tid, val); // safe, since `val` is owned by this thread
+        return;
+      }
     }
   }
 }
@@ -531,14 +723,16 @@ pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr
 
 pub const LOCK_OPEN: u8 = 0xFF;
 
-pub fn acquire_lock(heap: &Heap, tid: usize, term: Ptr) -> Result<u8, u8> {
-  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
-  locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
-}
+impl Heap {
+  pub fn acquire_lock(&self, tid: usize, term: Ptr) -> Result<u8, u8> {
+    let locker = unsafe { self.lock.get_unchecked(term.loc(0) as usize) };
+    locker.compare_exchange_weak(LOCK_OPEN, tid as u8, Ordering::Acquire, Ordering::Relaxed)
+  }
 
-pub fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
-  let locker = unsafe { heap.lock.get_unchecked(get_loc(term, 0) as usize) };
-  locker.store(LOCK_OPEN, Ordering::Release)
+  pub fn release_lock(&self, tid: usize, term: Ptr) {
+    let locker = unsafe { self.lock.get_unchecked(term.loc(0) as usize) };
+    locker.store(LOCK_OPEN, Ordering::Release)
+  }
 }
 
 // Garbage Collection
@@ -608,81 +802,83 @@ pub fn release_lock(heap: &Heap, tid: usize, term: Ptr) {
 // system. Sadly, it is an issue that exists, and, for the time being, I'm not aware of a good
 // solution that maintains HVM philosophy of only including constant-time compute primitives.
 
-pub fn collect(heap: &Heap, arit: &ArityMap, tid: usize, term: Ptr) {
-  let mut coll = Vec::new();
-  let mut next = term;
-  loop {
-    let term = next;
-    match get_tag(term) {
-      DP0 => {
-        link(heap, get_loc(term, 0), Era());
-        if acquire_lock(heap, tid, term).is_ok() {
-          if get_tag(load_arg(heap, term, 1)) == ERA {
-            coll.push(take_arg(heap, term, 2));
-            free(heap, tid, get_loc(term, 0), 3);
-          }
-          release_lock(heap, tid, term);
-        }
-      }
-      DP1 => {
-        link(heap, get_loc(term, 1), Era());
-        if acquire_lock(heap, tid, term).is_ok() {
-          if get_tag(load_arg(heap, term, 0)) == ERA {
-            coll.push(take_arg(heap, term, 2));
-            free(heap, tid, get_loc(term, 0), 3);
-          }
-          release_lock(heap, tid, term);
-        }
-      }
-      VAR => {
-        link(heap, get_loc(term, 0), Era());
-      }
-      LAM => {
-        atomic_subst(heap, arit, tid, Var(get_loc(term, 0)), Era());
-        next = take_arg(heap, term, 1);
-        free(heap, tid, get_loc(term, 0), 2);
-        continue;
-      }
-      APP => {
-        coll.push(take_arg(heap, term, 0));
-        next = take_arg(heap, term, 1);
-        free(heap, tid, get_loc(term, 0), 2);
-        continue;
-      }
-      SUP => {
-        coll.push(take_arg(heap, term, 0));
-        next = take_arg(heap, term, 1);
-        free(heap, tid, get_loc(term, 0), 2);
-        continue;
-      }
-      OP2 => {
-        coll.push(take_arg(heap, term, 0));
-        next = take_arg(heap, term, 1);
-        free(heap, tid, get_loc(term, 0), 2);
-        continue;
-      }
-      U60 => {}
-      F60 => {}
-      CTR | FUN => {
-        let arity = arity_of(arit, term);
-        for i in 0..arity {
-          if i < arity - 1 {
-            coll.push(take_arg(heap, term, i));
-          } else {
-            next = take_arg(heap, term, i);
+impl Heap {
+  pub fn collect(&self, arit: &ArityMap, tid: usize, term: Ptr) {
+    let mut coll = vec![];
+    let mut next = term;
+    loop {
+      let term = next;
+      match term.tag() {
+        Tag::DP0 => {
+          self.link(term.loc(0), Era());
+          if self.acquire_lock(tid, term).is_ok() {
+            if self.load_arg(term, 1).tag() == Tag::ERA {
+              coll.push(self.take_arg(term, 2));
+              self.free(tid, term.loc(0), 3);
+            }
+            self.release_lock(tid, term);
           }
         }
-        free(heap, tid, get_loc(term, 0), arity);
-        if arity > 0 {
+        Tag::DP1 => {
+          self.link(term.loc(1), Era());
+          if self.acquire_lock(tid, term).is_ok() {
+            if self.load_arg(term, 0).tag() == Tag::ERA {
+              coll.push(self.take_arg(term, 2));
+              self.free(tid, term.loc(0), 3);
+            }
+            self.release_lock(tid, term);
+          }
+        }
+        Tag::VAR => {
+          self.link(term.loc(0), Era());
+        }
+        Tag::LAM => {
+          self.atomic_subst(arit, tid, Var(term.loc(0)), Era());
+          next = self.take_arg(term, 1);
+          self.free(tid, term.loc(0), 2);
           continue;
         }
+        Tag::APP => {
+          coll.push(self.take_arg(term, 0));
+          next = self.take_arg(term, 1);
+          self.free(tid, term.loc(0), 2);
+          continue;
+        }
+        Tag::SUP => {
+          coll.push(self.take_arg(term, 0));
+          next = self.take_arg(term, 1);
+          self.free(tid, term.loc(0), 2);
+          continue;
+        }
+        Tag::OP2 => {
+          coll.push(self.take_arg(term, 0));
+          next = self.take_arg(term, 1);
+          self.free(tid, term.loc(0), 2);
+          continue;
+        }
+        Tag::U60 => {}
+        Tag::F60 => {}
+        Tag::CTR | Tag::FUN => {
+          let arity = arit.arity_of(term);
+          for i in 0..arity {
+            if i < arity - 1 {
+              coll.push(self.take_arg(term, i));
+            } else {
+              next = self.take_arg(term, i);
+            }
+          }
+          self.free(tid, term.loc(0), arity);
+          if arity > 0 {
+            continue;
+          }
+        }
+        _ => {}
       }
-      _ => {}
-    }
-    if let Some(got) = coll.pop() {
-      next = got;
-    } else {
-      break;
+      if let Some(got) = coll.pop() {
+        next = got;
+      } else {
+        break;
+      }
     }
   }
 }

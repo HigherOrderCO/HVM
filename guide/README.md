@@ -428,19 +428,19 @@ let funs = vec![
       let arg1 = runtime::get_loc(ctx.term, 1);
 
       // Converts the argument #0 to a Rust string
-      if let Some(text) = crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], arg0) {
+      if let Some(text) = ctx.heap.as_string(ctx.prog, &[ctx.tid], arg0) {
         // Prints it
         println!("{}", text);
       }
 
       // Sets the returned result to be the argument #1
-      hvm::runtime::link(ctx.heap, *ctx.host, arg1);
+      ctx.heap.link(*ctx.host, arg1);
 
       // Collects the argument #0
-      hvm::runtime::collect(ctx.heap, &ctx.prog.arit, ctx.tid, hvm::runtime::load_ptr(ctx.heap, arg0));
+      ctx.heap.collect(&ctx.prog.arit, ctx.tid, ctx.heap.load_ptr(arg0));
 
       // Frees the memory used by this function call
-      hvm::runtime::free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
+      ctx.heap.free(ctx.tid, get_loc(ctx.term, 0), 2);
 
       // Tells HVM the returned value must be reduced
       return true;

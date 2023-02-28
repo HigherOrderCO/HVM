@@ -1,40 +1,47 @@
 // std::collections::HashMap<u64, A, std::hash::BuildHasherDefault<nohash_hasher::NoHashHasher<u64>>>;
 
 pub struct U64Map<A> {
-  pub data: Vec<Option<A>>
+  pub data: Vec<Option<A>>,
+}
+
+impl<A> Default for U64Map<A> {
+  fn default() -> Self {
+    Self::new()
+  }
 }
 
 impl<A> U64Map<A> {
-  pub fn new() -> U64Map<A> {
+  pub fn new() -> Self {
     // std::collections::HashMap::with_hasher(std::hash::BuildHasherDefault::default());
-    return U64Map { data: Vec::new() };
+    Self { data: vec![] }
   }
 
-  pub fn from_hashmap(old_map: &mut std::collections::HashMap<u64, A>) -> U64Map<A> {
-    let mut new_map : U64Map<A> = U64Map::new();
+  pub fn from_hashmap(old_map: &mut std::collections::HashMap<u64, A>) -> Self {
+    let mut new_map = Self::new();
     for (key, val) in old_map.drain() {
       new_map.insert(key, val);
     }
-    return new_map;
+    new_map
   }
 
   pub fn push(&mut self, val: A) -> u64 {
     let key = self.data.len() as u64;
     self.insert(key, val);
-    return key;
+    key
   }
 
-  pub fn insert(&mut self, key: u64, val: A) {
-    while self.data.len() <= key as usize {
+  pub fn insert(&mut self, key: impl Into<u64>, val: A) {
+    let k = key.into() as usize;
+    while self.data.len() <= k as usize {
       self.data.push(None);
     }
-    self.data[key as usize] = Some(val);
+    self.data[k] = Some(val);
   }
 
-  pub fn get(&self, key: &u64) -> Option<&A> {
-    if let Some(Some(got)) = self.data.get(*key as usize) {
+  pub fn get(&self, key: impl Into<u64>) -> Option<&A> {
+    if let Some(Some(got)) = self.data.get(key.into() as usize) {
       return Some(got);
     }
-    return None;
+    None
   }
 }

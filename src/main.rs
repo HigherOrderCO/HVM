@@ -1,6 +1,5 @@
 #![feature(atomic_from_mut)]
 #![feature(atomic_mut_ptr)]
-
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
@@ -9,10 +8,11 @@
 #![allow(unused_labels)]
 #![allow(non_upper_case_globals)]
 
-mod language;
-mod runtime;
-mod compiler;
 mod api;
+mod compiler;
+mod language;
+mod prelude;
+mod runtime;
 
 use clap::{Parser, Subcommand};
 
@@ -28,8 +28,7 @@ struct Cli {
 enum Command {
   /// Load a file and run an expression
   #[clap(aliases = &["r"])]
-
-  Run { 
+  Run {
     /// Set the heap size (in 64-bit nodes).
     #[clap(short = 's', long, default_value = "auto", parse(try_from_str=parse_size))]
     size: usize,
@@ -59,7 +58,7 @@ enum Command {
   #[clap(aliases = &["c"])]
   Compile {
     /// A "file.hvm" to load.
-    file: String
+    file: String,
   },
 }
 
@@ -76,11 +75,16 @@ fn run_cli() -> Result<(), String> {
   match cli.command {
     Command::Run { size, tids, cost: show_cost, debug, file, expr } => {
       let tids = if debug { 1 } else { tids };
-      let (norm, cost, time) = api::eval(&load_code(&file)?, &expr, Vec::new(), size, tids, debug)?;
+      let (norm, cost, time) = api::eval(&load_code(&file)?, &expr, vec![], size, tids, debug)?;
       println!("{}", norm);
       if show_cost {
         eprintln!();
-        eprintln!("\x1b[32m[TIME: {:.2}s | COST: {} | RPS: {:.2}m]\x1b[0m", ((time as f64)/1000.0), cost - 1, (cost as f64) / (time as f64) / 1000.0);
+        eprintln!(
+          "\x1b[32m[TIME: {:.2}s | COST: {} | RPS: {:.2}m]\x1b[0m",
+          ((time as f64) / 1000.0),
+          cost - 1,
+          (cost as f64) / (time as f64) / 1000.0
+        );
       }
       Ok(())
     }
