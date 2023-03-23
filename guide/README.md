@@ -53,7 +53,7 @@ First program
 
 HVM allows you to extend its machine with user-supplied functions, which are
 defined in files, using an equational style that resembles other functional
-languages like Haskelll. For example, the function below computes the
+languages like Haskell. For example, the function below computes the
 [BMI](https://en.wikipedia.org/wiki/Body_mass_index) of a person:
 
 ```javascript
