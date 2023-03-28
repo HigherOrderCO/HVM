@@ -814,7 +814,7 @@ HVM's Low-level Implementation
 ==============================
 
 To learn more about HVM's low level implementation and memory layout, check the comments on
-[../src/runtime/base/memory.rs](runtime/memory.rs).
+[runtime/base/memory.rs](../src/runtime/base/memory.rs).
 
 Bonus: Copatterns
 =================
