@@ -322,13 +322,14 @@ book, up to page 40. As such, it doesn't support some λ-terms, such as:
 (λx.(x x) λf.λx.(f (f x)))
 ```
 
-It is, though, Turing complete, so you could implement a full λ-calculus interpreter
-on it - that limitation only addresses built-in closures. Keep in mind many popular
-languages don't include the full λ-calculus either; Rust, for example, has a much
-more limited subset, due to the borrow system. That said, HVM covers a wide class 
-of λ-terms, including the the Y-combinator, church encodings (even algorithms
-like addition, multiplication and exponentiation), as well as arbitrary
-datatypes (both native and scott encoded) and recursion.
+HVM is, though, Turing complete, so you could implement a full λ-calculus
+interpreter on it - that limitation only addresses built-in closures. Keep in
+mind many popular languages don't include the full λ-calculus closures either;
+Rust, for example, covers a very restricted subset, due to the borrow system.
+That said, HVM covers a wide class of λ-terms, including the the Y-combinator,
+church encodings (even algorithms like addition, multiplication and
+exponentiation), as well as arbitrary datatypes (both native and scott encoded)
+and recursion.
 
 ### Will HVM support the full λ-Calculus, or System-F?
 
