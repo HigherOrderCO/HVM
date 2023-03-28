@@ -270,7 +270,7 @@ More Information
 
 - To ask questions and **join our community**, check our [Discord Server](https://discord.gg/kindelia).
 
-- To **contact the author** directly, send an email to <taelin@kindelia.org>.
+- To **contact the author** directly, send an email to <taelin@higherorderco.org>.
 
 FAQ
 ===
@@ -322,8 +322,11 @@ book, up to page 40. As such, it doesn't support some λ-terms, such as:
 (λx.(x x) λf.λx.(f (f x)))
 ```
 
-It is, though, Turing complete, and covers a wide subset of the λ-calculus,
-including terms such as the Y-combinator, church encodings (including algorithms
+It is, though, Turing complete, so you could implement a full λ-calculus interpreter
+on it - that limitation only addresses built-in closures. Keep in mind many popular
+languages don't include the full λ-calculus either; Rust, for example, has a much
+more limited subset, due to the borrow system. That said, HVM covers a wide class 
+of λ-terms, including the the Y-combinator, church encodings (even algorithms
 like addition, multiplication and exponentiation), as well as arbitrary
 datatypes (both native and scott encoded) and recursion.
 
@@ -523,11 +526,6 @@ HVM is a prototype. Bugs are expected. Please, open an issue!
 ### I've used HVM in production and now my company is bankrupt.
 
 I quit.
-
-Disclaimers
-===========
-
-(Removed in favor of the FAQ above!)
 
 Related Work
 ============
