@@ -422,10 +422,11 @@ there are multiple ways to alleviate, or solve, this problem. One approach would
 be to implement "safe pointers", also described on the book, which would reduce
 the cloning overhead and make some quadratic cases linear. But that wouldn't
 work for all cases. A complimentary approach would be to do linearity analysis,
-converting problematic quadratic programs in faster, linear versions.  Finally,
+converting problematic quadratic programs in faster, linear versions. Finally,
 in the worst case, we could add references just like Haskell, but that should be
 made with a lot of caution, in order not to break the assumptions made by the
-parallel execution engine.
+parallel execution engine. For a more in depth explanation, check [read comment
+on Hacker News](https://news.ycombinator.com/edit?id=35342297).
 
 ### Is HVM's optimality only relevant for weird, academic λ-encoded terms?
 
