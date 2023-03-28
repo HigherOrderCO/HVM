@@ -1,0 +1,123 @@
+// This file contains multiplication experiments. All algorithms here use
+// Scott-encoded bitstrings and simple arithmetic, no FFT, P-adics nor CA.
+
+// Change the number to select an algorithm.
+Main = (Mul A6 1234 4321)
+
+// Results:
+// A0: 43552555
+// A1: 5332114
+// A2: 42928102
+// A3: 846518
+// A4: 197726
+// A5: 10459
+// A6: 43919 (scales better than A5)
+
+// Algorithms
+// ----------
+
+// Mul : Kind -> U60 -> U60 -> U60
+// A0 = Multiplication by repeated repeated Inc.
+// A1 = Multiplication by squared repeated Inc.
+// A2 = Multiplication by repeated squared Inc.
+// A3 = Multiplication by squared squared Inc.
+// A4 = Long Multiplication with repeated Inc.
+// A5 = Long Multiplication with squared Inc.
+// A6 = Long Multiplication with add-carry.
+
+// Mul : Kind -> U60 -> U60 -> U60
+(Mul A0 a b) = (U60 (Repeat a λx(Repeat b λx(Inc x) x) Zero))
+(Mul A1 a b) = (U60 (Square a λx(Repeat b λx(Inc x) x) Zero))
+(Mul A2 a b) = (U60 (Repeat a λx(Square b λx(Inc x) x) Zero))
+(Mul A3 a b) = (U60 (Square a λx(Square b λx(Inc x) x) Zero))
+(Mul A4 a b) = (U60 (Multiplier λx(Repeat a λx(Inc x) x) (Bin b)))
+(Mul A5 a b) = (U60 (Multiplier λx(Square a λx(Inc x) x) (Bin b)))
+(Mul A6 a b) = (U60 (Multiplier λx((Add) (Bin a) x) (Bin b)))
+
+// Dependencies
+// ------------
+
+// Bin : U60 -> Bin
+// U60 to Bin
+(Bin x) = (Bin.make 60 x)
+  (Bin.make 0 n) = E
+  (Bin.make s n) = (Bin.make.go (- s 1) (% n 2) (/ n 2))
+    (Bin.make.go s 0 n) = (O (Bin.make s n))
+    (Bin.make.go s 1 n) = (I (Bin.make s n))
+
+// Bin to U60
+(U60 x) =
+  let case_o = λx(+ 0 (* 2 (U60 x)))
+  let case_i = λx(+ 1 (* 2 (U60 x)))
+  let case_e = 0
+  (x case_o case_i case_e)
+
+// Zero : Bin
+Zero = (Bin 0)
+
+// Neg1 : Bin
+Neg1 = (Bin (- 0 1))
+
+// Repeat : U60 -> (a -> a) -> a -> a
+// Applies a function N times, sequentially.
+(Repeat 0 f x) = x
+(Repeat n f x) = (f (Repeat (- n 1) f x))
+
+// Square : U60 -> (a -> a) -> a -> a
+// Applies a function N times, with functional squaring. Has the same effect as
+// Apply, but will compute N applications of a fusible function in log2(N) time.
+(Square 0 f x) = x
+(Square n f x) = (Square (/ n 2) λk(f (f k)) (Repeat (% n 2) f x))
+
+// Scott Booleans
+T = λtλf(t)
+F = λtλf(f)
+
+// Scott Bins
+(O x) = λo λi λe (o x) // bit 0
+(I x) = λo λi λe (i x) // bit 1
+E     = λo λi λe e // bitstring end
+
+// Increments a Bin.
+// Inc : Bin -> Bin
+(Inc x) = λo λi λe
+  let case_o = i 
+  let case_i = λx (o (Inc x))
+  let case_e = e
+  (x case_o case_i case_e)
+
+// Add : Bin -> Bin -> Bin
+// Add with carry. This was the best implementation of addition without Inc I
+// could come up with, but it isn't perfect. Notice how some `λo λi λe` lambdas
+// are NOT shared, and how 'a_pred' is duplicated. A perfect addition function
+// should be able to share these lambdas, and avoid cloning 'a_pred'. How?
+Add = λa
+  (a // match a
+    λa_pred // (O a_pred) =>
+      λb λo λi λe
+        (b // match b
+          λb_pred // (O b_pred) =>
+            (o ((Add) a_pred b_pred))
+          λb_pred
+            // (I b_pred) =>
+            (i ((Add) a_pred b_pred))
+            // E =>
+          e)
+    λa_pred // (I a_pred) =>
+      λb λo λi λe
+        (b // match b
+          λb_pred // (O b_pred) =>
+            (i ((Add) a_pred b_pred))
+          λb_pred // (I b_pred) =>
+            (o (Inc ((Add) a_pred b_pred)))
+          e)
+    // E =>
+    λb (b))
+
+// Multiplier: Bin -> (Bin -> Bin) -> Bin
+// Multiplier (auxiliar function)
+(Multiplier adder b) = (b
+  λb λadder (O (Multiplier adder b))
+  λb λadder (adder (O (Multiplier adder b)))
+  λadder E
+  adder)

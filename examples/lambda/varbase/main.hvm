@@ -1,0 +1,111 @@
+// This file contains some implementations of var-base numbers. That is, binary
+// numbers are represented as sequences of binary digits and decimal numbers are
+// represented as sequences of decimal digits. Var-base numbers, instead, are
+// represented as sequences of digits that can vary in base. For example, on
+// base [2,3,10] numbers, the first digit is binary, the second digit is
+// ternary, and the third digit is decimal. This library includes arithmetic for
+// these var-base numbers. This is extremely useful because it allows one to
+// perform modular arithmetic without needing a "mod" function. For example, if
+// you operate on base [2,3,7] numbers, these operations will be "mod 42"
+// naturally. This can be useful to implement fusible algorithms that involve
+// modulus; for example, modular exponentiation. Note: this file is incomplete
+// and has some buts and issues. We must adjust it...
+
+// ~
+// ~
+// ~
+// ~
+// ~
+
+// Applies `f` `n` times to `x`, directly
+(Repeat 0 f x) = x
+(Repeat n f x) = (f (Repeat (- n 1) f x))
+
+// Given a base-list, applies `f` `n` times to `x`,
+// in such a way that is optimized for that base-list
+(Apply List.nil         n f x) = x
+(Apply (List.cons b bs) n f x) = (Apply bs (/ n b) λk(Repeat b f k) (Repeat (% n b) f x))
+
+// Given a base-list, applies `f` `n` times to `x`,
+// in such a way that is optimized for that base-list
+(Times List.nil         n f x) = x
+(Times (List.cons b bs) n f x) = ((TimesGo b b bs n) f x)
+  (TimesGo 0 b bs n) = (n λfλx(x))
+  (TimesGo i b bs n) = ((TimesGo (- i 1) b bs n) λpλfλx(Times bs p λk(Repeat b f k) (Repeat (- i 1) f x)))
+
+// Given a base, ends a digit-string
+(E base) = λend (EGo base end)
+  (EGo 0    end) = end
+  (EGo base end) = λctr (EGo (- base 1) end)
+  
+// Given a base, appends `digit` to a digit-string
+(D base digit pred) = λend (DGo base digit pred λx(x))
+  (DGo 0    n pred ctr) = (ctr pred)
+  (DGo base 0 pred ctr) = λctr (DGo (- base 1) (- 0 1) pred ctr)
+  (DGo base n pred ctr) = λera (DGo (- base 1) (- n 1) pred ctr)
+
+// Given a base-list, converts a digit-string to a list
+(ToList List.nil         xs) = List.nil
+(ToList (List.cons b bs) xs) = (ToListGo b bs xs)
+  (ToListGo 0 bs xs) = (xs List.nil)
+  (ToListGo b bs xs) = ((ToListGo (- b 1) bs xs) λp(List.cons (- b 1) (ToList bs p)))
+
+// Given a base-list, converts a digit-string to a number
+(ToU32 bases xs) = (ToU32Go bases (ToList bases xs) 1)
+  (ToU32Go List.nil         List.nil         m) = 0
+  (ToU32Go (List.cons b bs) (List.cons x xs) m) = (+ (* x m) (ToU32Go bs xs (* m b)))
+
+// Given a base-list, returns the number 0
+(Zero List.nil        ) = End
+(Zero (List.cons b bs)) = (D b 0 (Zero bs))
+
+// Giben a base-list, and a u32 `i`, returns the number `n`
+(Number bases i) = (Apply bases i λx(Inc bases x) (Zero bases))
+
+// Given a base, applies a function to the predecessor
+// (Inj [3] f λeλaλbλc(a pred)) == λeλaλbλc(a (f pred))
+(Inj base f xs) = λen (InjGo base f (xs λf(en)))
+  (InjGo 0 f xs) = (xs f)
+  (InjGo b f xs) = λv (InjGo (- b 1) f (xs λpλf(v (f p))))
+
+// Given a base-list, increments a digit-string
+(Inc List.nil         xs) = List.nil
+(Inc (List.cons b bs) xs) = λen λn0 (IncMake (- b 1) bs (xs en) λp(n0 (Inc bs p)))
+  (IncMake 0 bs xs ic) = (xs ic)
+  (IncMake n bs xs ic) = λv (IncMake (- n 1) bs (xs v) ic)
+
+// Given a base-list, increments `b` a total of `a` times
+// This is equivalent to addition, and is fast due to fusion
+(Add bases a b) = (Times bases a λx(Inc bases x) b)
+
+// Given a base-list, creates an adder for two digit-strings, with carry bits
+(AdderCarry List.nil         xs) = λys(ys)
+(AdderCarry (List.cons b bs) xs) = (AdderCarryGo b b bs xs)
+  (AdderCarryGo 0 b bs xs) = (xs λys(ys))
+  (AdderCarryGo i b bs xs) = ((AdderCarryGo (- i 1) b bs xs) (λxs λys (Repeat (- i 1) λx(Inc (List.cons b bs) x) (Inj b (AdderCarry bs xs) ys))))
+
+// Given a base-list, adds two bit-strings, with carry bits
+(AddCarry bases xs ys) = ((AdderCarry bases xs) ys)
+
+// FIXME: this is wrong, only works if all bases are the same
+(Mul bases xs ys) = (MulGo bases xs λk(Add bases ys k))
+  (MulGo List.nil         xs add) = End
+  (MulGo (List.cons b bs) xs add) = (MulDo b b bs xs add)
+  (MulDo b 0 bs           xs add) = (xs End)
+  (MulDo b i bs           xs add) = ((MulDo b (- i 1) bs xs add) λp(Repeat (- i 1) add (D b 0 (MulGo bs p add))))
+
+(Main x) =
+  let bases   = [2 2 2 2 2 2 2 2 , 2 2 2 2 2 2 2 2 , 2 2 2 2 2 2 2 2 , 2 2 2 2 2 2 2 2]
+  let to_list = λx(ToList bases x)
+  let to_u32  = λx(ToU32 bases x)
+  let times   = λnλfλx(Times bases n f x)
+  let apply   = λnλfλx(Apply bases n f x)
+  let zero    = (Zero bases)
+  let inc     = λx(Inc bases x)
+  let add     = λaλb(Add bases a b)
+  let addc    = λaλb(AddCarry bases a b)
+  let mul_a   = λaλb(Times bases a (add b) zero)  // mul by repeated add by repeated inc
+  let mul_b   = λaλb(Times bases a (addc b) zero) // mul by repeated add with carry
+  let mul_c   = λaλb(Mul bases a b)               // mul using the incorrect algorithm
+  let num     = λi(Number bases i)
+  (to_u32 (mul_c (num 12345) (num 54321)))

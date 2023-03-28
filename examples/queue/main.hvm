@@ -15,7 +15,8 @@ Main =
   let queue = (Queue.add 1 queue)
   let queue = (Queue.add 2 queue)
   let queue = (Queue.add 3 queue)
-  ((Queue.rem queue) λv0 λqueue
-  ((Queue.rem queue) λv1 λqueue
-  ((Queue.rem queue) λv2 λqueue
-  [v0 v1 v2])))
+  queue
+  //((Queue.rem queue) λv0 λqueue
+  //((Queue.rem queue) λv1 λqueue
+  //((Queue.rem queue) λv2 λqueue
+  //[v0 v1 v2])))
