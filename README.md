@@ -8,7 +8,7 @@ some cases, be exponentially (in the asymptotical sense) faster than alternative
 That is possible due to a new model of computation, the **Interaction Net**, which supersedes the **Turing Machine** and
 the **Lambda Calculus**. Previous implementations of this model have been inefficient in practice, however, a recent
 breakthrough has drastically improved its efficiency, resulting in the HVM. Despite being relatively new, it already
-beats mature compilers in some cases, and is being improved continuously.
+beats mature compilers in some cases, and is being continuously improved.
 
 **Welcome to the massively parallel future of computers!**
 
