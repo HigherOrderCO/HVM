@@ -162,8 +162,8 @@ evaluation**. For example, consider the expression `foo(2 * 2, 3 * 3)`. In a
 ```javascript
 foo(2 * 2, 3 * 3) // the input
 foo(4    , 9    ) // arguments are reduced
-4 + 4             // foo is applied
-8                 // the output
+4 + 9             // foo is applied
+13                // the output
 ```
 
 But this computation has a silly issue: the `3 * 3` value is not necessary to
