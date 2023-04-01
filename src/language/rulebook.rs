@@ -35,13 +35,22 @@ pub fn new_rulebook() -> RuleBook {
     ctr_is_fun: HashMap::new(),
   };
   for precomp in runtime::PRECOMP {
-    book.name_count = book.name_count + 1;
-    book.name_to_id.insert(precomp.name.to_string(), precomp.id);
-    book.id_to_name.insert(precomp.id, precomp.name.to_string());
-    book.id_to_smap.insert(precomp.id, precomp.smap.to_vec());
-    book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
+    add_precomp_fn(&mut book, precomp)
   }
   return book;
+}
+
+pub fn add_precomp_fn(book: &mut RuleBook, precomp: &runtime::Precomp, use_fixed_id: bool) {
+  let id = if use_fixed_id {
+    precomp.id 
+  } else {
+    book.name_count
+  };
+  book.name_count = book.name_count + 1;
+  book.name_to_id.insert(precomp.name.to_string(), id);
+  book.id_to_name.insert(id, precomp.name.to_string());
+  book.id_to_smap.insert(id, precomp.smap.to_vec());
+  book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
 }
 
 // Adds a group to a rulebook

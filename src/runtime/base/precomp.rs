@@ -46,6 +46,7 @@ pub const HVM_PRINT : u64 = 26;
 pub const HVM_SLEEP : u64 = 27;
 pub const HVM_STORE : u64 = 28;
 pub const HVM_LOAD : u64 = 29;
+pub const HVM_SEQ : u64 = 30;
 //[[CODEGEN:PRECOMP-IDS]]//
 
 pub const PRECOMP : &[Precomp] = &[
@@ -253,6 +254,15 @@ pub const PRECOMP : &[Precomp] = &[
       apply: hvm_load_apply,
     }),
   },
+  Precomp {
+    id: HVM_SEQ,
+    name: "HVM.seq",
+    smap: &[false; 1],
+    funs: Some(PrecompFuns {
+      visit: hvm_seq_visit,
+      apply: hvm_seq_apply,
+    })
+  }
 //[[CODEGEN:PRECOMP-ELS]]//
 ];
 
@@ -479,5 +489,18 @@ fn hvm_load_apply(ctx: ReduceCtx) -> bool {
   println!("Runtime failure on: {}", show_at(ctx.heap, ctx.prog, *ctx.host, &[]));
   std::process::exit(0);
 }
+
+// HVM.seq (reduce: T): T
+// ---------------------------------------------
+fn hvm_seq_visit(ctx: ReduceCtx) -> bool {
+  return false;
+}
+
+fn hvm_seq_apply(ctx: ReduceCtx) -> bool {
+  normalize(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), false);
+  link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 0));
+  return true;
+}
+
 
 //[[CODEGEN:PRECOMP-FNS]]//
