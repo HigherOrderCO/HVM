@@ -1,0 +1,76 @@
+// The main effects of call/cc are:
+// 1. create a "hole" where it was called
+// 2. create a function 'k' which fills that hole when applied
+// For example, consider the following Scheme expression:
+//
+// (+ 10 (call/cc (lambda (k) (+ (k 42) 1729))))
+//
+// To evaluate it, the entire `(call/cc ...)` part is replaced by a hole:
+//
+// (+ 10 _)
+//
+// Then, Scheme creates an internal function, `k`, which, when called `(k arg)`,
+// will replace the hole `_` by `arg`. That function is sent to the user's
+// callback `(lambda (k) ...)`, allowing they to decide when and how to fill
+// that hole. In the example above, the user calls `(k 42)`, so the result is:
+//
+// (+ 10 42)
+// 
+// And the remaining of the expression, `(+ _ 1729)`, will be garbage collected.
+// 
+// This ability can be used for various useful purposes, such as exceptions.
+// It's impossible to implement this behavior on the pure lambda calculus. On
+// interaction combinators, call/cc can be implemented by manipulating some
+// edges. For example, consider the graph below:
+// 
+//   result              garbage   
+//      |                  |     
+//      +                  @ 
+//     / \_____,          / \________,
+//    |        |     _____λ          |
+//    10       |     |    |       ,--λ <-(very illegal)
+//             |     |    +       |  |
+//             |     |   / \      |  *
+//             |     |  @  1729   |
+//             |     |_/ \        |
+//             |         42       |
+//             |                  |
+//             |__________________|
+//  
+// After some reductions, an intermediate result will be:
+//
+//          result      garbage
+//            |            |
+//           [+]          [+]
+//           / \         /   \
+//         10   42      *    1729
+// 
+// Here, the user-defined callback `(λ (k) (+ (k 42) 1729))` received a
+// continuation `k` and applied it to `42`, "filling" the hole `(+ 10 _)`,
+// giving us the correct result. We could implement continuations on the HVM  by
+// including a `call/cc` syntax, and then doing the transformation above when
+// converting from text to graphs. Meanwhile, it is possible to implement an
+// uglier version of it as a library, using scopeless λs. Here is an example:
+
+// Creates a program capable of performing call/cc.
+(CC.lang program) =
+  let callcc  = λcallback (λ$garbage($hole) (callback λ$hole(0)))
+  let result  = (Result (program callcc))
+  let garbage = (Garbage $garbage)
+  (Pair result garbage)
+
+// Notice the call/cc function receives the user-defined callback. It then gives
+// the user an internal function that, when called, will fill the hole, and
+// return it on the position where call/cc was called. The value returned by the
+// callback itself is then moved to the garbage, to be collected. Note: we must
+// return the garbage since, otherwise, the `callback` function would never be
+// called, due to HVM's lazy evaluator. This could be avoided with a `seq`
+// operator, that forced the call of `callback`.
+
+// Example usage
+Main = (CC.lang λcallcc
+  (+ 10 (callcc λk(+ (k 42) 1729))))
+
+// Result: (Pair (Result 52) (Garbage 1729))
+
+// Reference: http://www.madore.org/~david/computers/callcc.html
