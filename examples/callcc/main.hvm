@@ -71,6 +71,42 @@
 Main = (CC.lang λcallcc
   (+ 10 (callcc λk(+ (k 42) 1729))))
 
-// Result: (Pair (Result 52) (Garbage 1729))
-
+// The result is `(Pair (Result 52) (Garbage 1729))`, as expected.
 // Reference: http://www.madore.org/~david/computers/callcc.html
+
+// -----------------------------------------------------------------------------
+
+// Note: to be really useful, we must also be able to use a continuation more
+// than once. For example, consider the following Scheme program:
+// > (define k 0)
+// > (+ 10 (call/cc (λ (k_) (set! cont k_))))
+// > (k 3)
+// > (k 4)
+// Its result is to output `13` and `14`, which is the continuation filled with
+// `3` and `4`. In theory, we should also be able to achieve that on HVM as:
+
+//Main = (CC.lang λcallcc [
+  //(+ 10 (callcc λ$k (3)))
+  //($k 3)
+  //($k 4)
+//])
+    
+// Notice that, while we're not able to move k_ out of the closure by setting a
+// global variable, we can still do it by using scopeless lambdas. Sadly, using
+// a global variable like `$k` more than once is not supported by the graph
+// builder yet. We can kind of hack our way into having it though:
+
+//Main = (CC.lang λcallcc [
+  //(+ 10 (callcc λ$k (λfλa(f a a) λ$k0λ$k1(3) $k)))
+  //($k0 3)
+  //($k1 4)
+//])
+
+// Which correctly computes 13 and 14 by filling the `(+ 10 _)` continuation.
+// Note that this is *terribly* ugly as it accumulates results in a list of
+// superpositions and the garbage. Of course a proper callcc library would
+// support multiple calls, collecting intermediate garbage and results and
+// displaying or returning them appropriately. The point of this is to
+// illustrate how the ability to "freeze" a "call stack" and instantiate is
+// already present on HVM "for free". There is no need to implement anything new
+// on the evaluator, and everything can be done as a library with proper syntax.
