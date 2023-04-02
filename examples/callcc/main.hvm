@@ -69,8 +69,8 @@
 // callback itself is then moved to the garbage, which is collected.
 
 // Example usage
-//Main = (CC.lang λcallcc
-  //(+ 10 (callcc λk(+ (k 42) 1729))))
+Main = (CC.lang λcallcc
+  (+ 10 (callcc λk(+ (k 42) 1729))))
 
 // The result is `(Pair (Result 52) (Garbage 1729))`, as expected.
 // Reference: http://www.madore.org/~david/computers/callcc.html
