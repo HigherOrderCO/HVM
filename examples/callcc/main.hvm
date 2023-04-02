@@ -55,21 +55,22 @@
 // Creates a program capable of performing call/cc.
 (CC.lang program) =
   let callcc  = λcallback (λ$garbage($hole) (callback λ$hole(0)))
-  let result  = (Result (program callcc))
-  let garbage = (Garbage $garbage)
-  (Pair result garbage)
+  let result  = (program callcc)
+  let garbage = $garbage
+  (Seq garbage result)
+
+// Helper function for strictness annotation 
+(Seq 0 b) = b
+(Seq a b) = b
 
 // Notice the call/cc function receives the user-defined callback. It then gives
 // the user an internal function that, when called, will fill the hole, and
 // return it on the position where call/cc was called. The value returned by the
-// callback itself is then moved to the garbage, to be collected. Note: we must
-// return the garbage since, otherwise, the `callback` function would never be
-// called, due to HVM's lazy evaluator. This could be avoided with a `seq`
-// operator, that forced the call of `callback`.
+// callback itself is then moved to the garbage, which is collected.
 
 // Example usage
-Main = (CC.lang λcallcc
-  (+ 10 (callcc λk(+ (k 42) 1729))))
+//Main = (CC.lang λcallcc
+  //(+ 10 (callcc λk(+ (k 42) 1729))))
 
 // The result is `(Pair (Result 52) (Garbage 1729))`, as expected.
 // Reference: http://www.madore.org/~david/computers/callcc.html
