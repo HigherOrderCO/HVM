@@ -35,7 +35,7 @@ pub fn new_rulebook() -> RuleBook {
     ctr_is_fun: HashMap::new(),
   };
   for precomp in runtime::PRECOMP {
-    add_precomp_fn(&mut book, precomp)
+    add_precomp_fn(&mut book, precomp, true)
   }
   return book;
 }

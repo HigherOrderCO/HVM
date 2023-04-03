@@ -1,4 +1,4 @@
-#![feature(atomic_from_mut, atomic_mut_ptr)]
+#![feature(atomic_from_mut)]
 
 #![allow(unused_variables)]
 #![allow(dead_code)]

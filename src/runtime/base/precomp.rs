@@ -257,7 +257,7 @@ pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: HVM_SEQ,
     name: "HVM.seq",
-    smap: &[false; 1],
+    smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_seq_visit,
       apply: hvm_seq_apply,
@@ -490,15 +490,23 @@ fn hvm_load_apply(ctx: ReduceCtx) -> bool {
   std::process::exit(0);
 }
 
-// HVM.seq (reduce: T): T
+// HVM.seq (function: T -> U) (argument: T): U
 // ---------------------------------------------
 fn hvm_seq_visit(ctx: ReduceCtx) -> bool {
   return false;
 }
 
 fn hvm_seq_apply(ctx: ReduceCtx) -> bool {
-  normalize(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0), false);
-  link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 0));
+  normalize(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 1), false);
+  let cont = load_arg(ctx.heap, ctx.term, 0);
+  let value = load_arg(ctx.heap, ctx.term, 1);
+  let app0 = alloc(ctx.heap, ctx.tid, 2);
+  link(ctx.heap, app0 + 0, cont);
+  link(ctx.heap, app0 + 1, value);
+  free(ctx.heap, 0, get_loc(ctx.term, 0), 1);
+  free(ctx.heap, 0, get_loc(ctx.term, 1), 1);
+  let done = App(app0);
+  link(ctx.heap, *ctx.host, done);
   return true;
 }
 

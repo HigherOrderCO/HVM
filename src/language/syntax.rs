@@ -405,39 +405,62 @@ pub fn parse_sym_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
 // ask x = fn; body
 // ----------------
 // (fn λx body)
-pub fn parse_ask_sugar_named(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+pub fn parse_binding_sugar_named<'a>(state: HOPA::State<'a>, prefix: &'static str, build: fn(Term, Term) -> Term) -> HOPA::Answer<'a, Option<Box<Term>>> {
   return HOPA::guard(
     Box::new(|state| {
-      let (state, asks) = HOPA::there_take_exact("ask ", state)?;
+      let (state, asks) = HOPA::there_take_exact(prefix, state)?;
+      let (state, asks_p) = HOPA::here_take_exact(" ", state)?;
       let (state, name) = HOPA::there_name(state)?;
       let (state, eqls) = HOPA::there_take_exact("=", state)?;
-      Ok((state, asks && name.len() > 0 && eqls))
+      Ok((state, asks && asks_p && name.len() > 0 && eqls))
     }),
-    Box::new(|state| {
-      let (state, _)    = HOPA::force_there_take_exact("ask ", state)?;
+    Box::new(move |state| {
+      let (state, _)    = HOPA::force_there_take_exact(prefix, state)?;
+      let (state, asks) = HOPA::here_take_exact(" ", state)?;
       let (state, name) = HOPA::there_nonempty_name(state)?;
       let (state, _)    = HOPA::force_there_take_exact("=", state)?;
-      let (state, func) = parse_term(state)?;
+      let (state, bound_value) = parse_term(state)?;
       let (state, _)    = HOPA::there_take_exact(";", state)?;
       let (state, body) = parse_term(state)?;
-      Ok((state, Box::new(Term::App { func, argm: Box::new(Term::Lam { name, body }) })))
+      let lambda = Term::Lam { name, body };
+      Ok((state, Box::new(build(*bound_value, lambda))))
     }),
     state,
   );
 }
 
-pub fn parse_ask_sugar_anon(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
+pub fn parse_binding_sugar_anon<'a>(state: HOPA::State<'a>, prefix: &'static str, build: fn(Term, Term) -> Term) -> HOPA::Answer<'a, Option<Box<Term>>> {
   return HOPA::guard(
-    HOPA::do_there_take_exact("ask "),
     Box::new(|state| {
-      let (state, _)    = HOPA::force_there_take_exact("ask ", state)?;
-      let (state, func) = parse_term(state)?;
+      let (state, prefix) = HOPA::there_take_exact(prefix, state)?;
+      let (state, space) = HOPA::here_take_exact(" ", state)?;
+      Ok((state, prefix && space))
+    }),
+    Box::new(move |state| {
+      let (state, asks) = HOPA::force_there_take_exact(prefix, state)?;
+      let (state, asks) = HOPA::here_take_exact(" ", state)?;
+      let (state, bound_value) = parse_term(state)?;
       let (state, _)    = HOPA::there_take_exact(";", state)?;
       let (state, body) = parse_term(state)?;
-      Ok((state, Box::new(Term::App { func, argm: Box::new(Term::Lam { name: "*".to_string(), body }) })))
+      let lambda = Term::Lam { name: "*".to_string(), body };
+      Ok((state, Box::new(build(*bound_value, lambda))))
     }),
     state,
   );
+}
+
+pub fn parse_binding_sugar<'a>(state: HOPA::State<'a>, prefix: &'static str, build: fn(Term, Term) -> Term)  -> HOPA::Answer<'a, Option<Box<Term>>> {
+  HOPA::attempt("Binding", &[
+    Box::new(move |state| {
+      let (state, v) = parse_binding_sugar_named(state, prefix, build)?;
+      Ok((state, v.map(Some)))
+    }),
+    Box::new(move |state| {
+      let (state, v) = parse_binding_sugar_anon(state, prefix, build)?;
+      Ok((state, v.map(Some)))
+    }),
+    Box::new(move |state| Ok((state, Some(None))))
+  ], state)
 }
 
 pub fn parse_chr_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
@@ -552,6 +575,15 @@ pub fn parse_bng(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
 }
 
 pub fn parse_term(state: HOPA::State) -> HOPA::Answer<Box<Term>> {
+  fn build_let(value: Term, body: Term) -> Term {
+    Term::App { func: Box::new(body), argm: Box::new(value) }
+  }
+  fn build_ask(value: Term, body: Term) -> Term {
+    Term::App { func: Box::new(value), argm: Box::new(body) }
+  }
+  fn build_seq(value: Term, body: Term) -> Term {
+    Term::Ctr { name: String::from("HVM.seq"), args: vec![Box::new(body), Box::new(value)] }
+  }
   HOPA::attempt("Term", &[
     Box::new(parse_let),
     Box::new(parse_dup),
@@ -567,8 +599,11 @@ pub fn parse_term(state: HOPA::State) -> HOPA::Answer<Box<Term>> {
     Box::new(parse_lst_sugar),
     Box::new(parse_if_sugar),
     Box::new(parse_bng),
-    Box::new(parse_ask_sugar_named),
-    Box::new(parse_ask_sugar_anon),
+    // This is redundant with parse_let. 
+    // It should not be replaced yet though, because that would make debugging too difficult.
+    // Box::new(|state| parse_binding_sugar(state, "let", build_ask)),
+    Box::new(|state| parse_binding_sugar(state, "ask", build_ask)),
+    Box::new(|state| parse_binding_sugar(state, "seq", build_seq)),
     Box::new(parse_var),
     Box::new(|state| Ok((state, None))),
   ], state)
