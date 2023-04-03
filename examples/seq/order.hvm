@@ -1,7 +1,7 @@
 Main = 
-	seq (HVM.log "A" 0);
-	seq (HVM.log "B" 0);
-	seq (HVM.log "C" 0);
-	seq (HVM.log "D" 0);
-	seq (HVM.log "E" 0);
-	0
+  seq (HVM.log "A" 0);
+  seq (HVM.log "B" 0);
+  seq (HVM.log "C" 0);
+  seq (HVM.log "D" 0);
+  seq (HVM.log "E" 0);
+  0

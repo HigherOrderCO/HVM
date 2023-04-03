@@ -9,18 +9,18 @@
 SideEffectful = (HVM.log "Banana" 0)
 
 Main = 
-	// Usecase one: Running functions with side-effects where you discard the value
-	// Side-effects should probably be avoided whenever possible though.
-	seq SideEffectful;
-	
-	// Usecase two: Global variables.
-	let some_val = (@$value(20) 10)
-	// Reducing some_val is neccesssary because otherwise, $value would not be set to 10
-	seq twenty = some_val; // try removing this
-	// Here, we need $value to be set when this is being reduced.
-	seq (HVM.log $value 0);
-	
-	// note that twenty is essentially equivalent to some_val from now on,
-	// however twenty's node is reduced and some_val's isn't.
-	// using twenty also avoids an extra dup.
-	twenty // try changing to some_val
+  // Usecase one: Running functions with side-effects where you discard the value
+  // Side-effects should probably be avoided whenever possible though.
+  seq SideEffectful;
+  
+  // Usecase two: Global variables.
+  let some_val = (@$value(20) 10)
+  // Reducing some_val is neccesssary because otherwise, $value would not be set to 10
+  seq twenty = some_val; // try removing this
+  // Here, we need $value to be set when this is being reduced.
+  seq (HVM.log $value 0);
+  
+  // note that twenty is essentially equivalent to some_val from now on,
+  // however twenty's node is reduced and some_val's isn't.
+  // using twenty also avoids an extra dup.
+  twenty // try changing to some_val
