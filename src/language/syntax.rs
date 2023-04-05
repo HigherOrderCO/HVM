@@ -408,22 +408,21 @@ pub fn parse_sym_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
 pub fn parse_binding_sugar_named<'a>(state: HOPA::State<'a>, prefix: &'static str, build: fn(Term, Term) -> Term) -> HOPA::Answer<'a, Option<Box<Term>>> {
   return HOPA::guard(
     Box::new(|state| {
-      let (state, asks) = HOPA::there_take_exact(prefix, state)?;
-      let (state, asks_p) = HOPA::here_take_exact(" ", state)?;
-      let (state, name) = HOPA::there_name(state)?;
-      let (state, eqls) = HOPA::there_take_exact("=", state)?;
-      Ok((state, asks && asks_p && name.len() > 0 && eqls))
+      let (state, asks)  = HOPA::there_take_exact(prefix, state)?;
+      let (state, space) = HOPA::here_take_exact(" ", state)?;
+      let (state, name)  = HOPA::there_name(state)?;
+      let (state, eqls)  = HOPA::there_take_exact("=", state)?;
+      Ok((state, asks && spac && name.len() > 0 && eqls))
     }),
     Box::new(move |state| {
-      let (state, _)    = HOPA::force_there_take_exact(prefix, state)?;
-      let (state, asks) = HOPA::here_take_exact(" ", state)?;
-      let (state, name) = HOPA::there_nonempty_name(state)?;
-      let (state, _)    = HOPA::force_there_take_exact("=", state)?;
-      let (state, bound_value) = parse_term(state)?;
-      let (state, _)    = HOPA::there_take_exact(";", state)?;
-      let (state, body) = parse_term(state)?;
-      let lambda = Term::Lam { name, body };
-      Ok((state, Box::new(build(*bound_value, lambda))))
+      let (state, _)     = HOPA::force_there_take_exact(prefix, state)?;
+      let (state, _)     = HOPA::here_take_exact(" ", state)?;
+      let (state, name)  = HOPA::there_nonempty_name(state)?;
+      let (state, _)     = HOPA::force_there_take_exact("=", state)?;
+      let (state, value) = parse_term(state)?;
+      let (state, _)     = HOPA::there_take_exact(";", state)?;
+      let (state, body)  = parse_term(state)?;
+      Ok((state, Box::new(build(*value, Term::Lam { name, body }))))
     }),
     state,
   );
@@ -433,17 +432,16 @@ pub fn parse_binding_sugar_anon<'a>(state: HOPA::State<'a>, prefix: &'static str
   return HOPA::guard(
     Box::new(|state| {
       let (state, prefix) = HOPA::there_take_exact(prefix, state)?;
-      let (state, space) = HOPA::here_take_exact(" ", state)?;
+      let (state, space)  = HOPA::here_take_exact(" ", state)?;
       Ok((state, prefix && space))
     }),
     Box::new(move |state| {
-      let (state, asks) = HOPA::force_there_take_exact(prefix, state)?;
-      let (state, asks) = HOPA::here_take_exact(" ", state)?;
-      let (state, bound_value) = parse_term(state)?;
-      let (state, _)    = HOPA::there_take_exact(";", state)?;
-      let (state, body) = parse_term(state)?;
-      let lambda = Term::Lam { name: "*".to_string(), body };
-      Ok((state, Box::new(build(*bound_value, lambda))))
+      let (state, _)     = HOPA::force_there_take_exact(prefix, state)?;
+      let (state, _)     = HOPA::here_take_exact(" ", state)?;
+      let (state, value) = parse_term(state)?;
+      let (state, _)     = HOPA::there_take_exact(";", state)?;
+      let (state, body)  = parse_term(state)?;
+      Ok((state, Box::new(build(*val, Term::Lam { name: "*".to_string(), body }))))
     }),
     state,
   );
@@ -599,11 +597,15 @@ pub fn parse_term(state: HOPA::State) -> HOPA::Answer<Box<Term>> {
     Box::new(parse_lst_sugar),
     Box::new(parse_if_sugar),
     Box::new(parse_bng),
+    
     // This is redundant with parse_let. 
     // It should not be replaced yet though, because that would make debugging too difficult.
+    // because HVM would show the desugared version which is hard to understand.
     // Box::new(|state| parse_binding_sugar(state, "let", build_ask)),
+    
     Box::new(|state| parse_binding_sugar(state, "ask", build_ask)),
     Box::new(|state| parse_binding_sugar(state, "seq", build_seq)),
+    
     Box::new(parse_var),
     Box::new(|state| Ok((state, None))),
   ], state)
