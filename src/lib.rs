@@ -8,6 +8,23 @@
 #![allow(unused_labels)]
 #![allow(non_upper_case_globals)]
 
+//! Higher-order Virtual Machine (HVM) is a pure functional runtime based on symmetric interaction combinators.
+//!
+//! to evaluate HVM source code, you can use [`Runtime`] as follows:
+//!
+//! ```
+//! # fn main() -> Result<(), String> {
+//! let code = "(Fib 0) = 0
+//! (Fib 1) = 1
+//! (Fib n) = (+ (Fib (- n 1)) (Fib (- n 2)))";
+//! let runtime = hvm::RuntimeBuilder::default().add_code(code)?.build();
+//! let term = hvm::syntax::read_term("(Fib 8)")?;
+//! let output = runtime.normalize_term(&term).as_integer();
+//! assert_eq!(Some(21), output);
+//! # Ok(())
+//! # }
+//! ```
+
 pub mod language;
 pub mod runtime;
 
