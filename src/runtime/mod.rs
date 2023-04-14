@@ -169,24 +169,10 @@ impl RuntimeBuilder {
 }
 
 impl Runtime {
-    /// reduces the term to Weak Head Normal Form,
-    /// meaning that applications in the term are evaluated,
-    /// untill the top level term is either a constructor, a function or a literal.
-    ///
-    /// constructors with strictly evaluated arguments,
-    /// will have those arguments similarly reduced.
-    pub fn reduce_term(&self, term: &language::syntax::Term) -> language::syntax::Term {
-        self.eval_term(term, false)
-    }
-
     /// reduces the term to Normal Form,
     /// meaning that applications in the term are evaluated,
     /// untill there are no more applications in the term.
     pub fn normalize_term(&self, term: &language::syntax::Term) -> language::syntax::Term {
-        self.eval_term(term, true)
-    }
-
-    fn eval_term(&self, term: &language::syntax::Term, normalize: bool) -> language::syntax::Term {
         let tid = 0;
 
         let host = alloc_term(&self.heap, &self.program, tid, &self.book, term);
@@ -195,7 +181,7 @@ impl Runtime {
             &self.program,
             &self.thread_ids,
             host,
-            normalize,
+            true,
             self.debug,
         );
 
