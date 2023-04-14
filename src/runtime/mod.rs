@@ -190,4 +190,12 @@ impl Runtime {
         collect(&self.heap, &self.program.aris, tid, ptr);
         *output
     }
+
+    /// returns the number graph rewrites made by the runtime,
+    /// since its initialization.
+    ///
+    /// this serves as a measure of the computational cost of normalizing terms.
+    pub fn get_rewrite_count(&self) -> usize {
+        get_cost(&self.heap) as _
+    }
 }
