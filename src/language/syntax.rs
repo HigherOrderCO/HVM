@@ -165,6 +165,144 @@ impl std::fmt::Display for Term {
   }
 }
 
+impl Term {
+    /// returns a term representing the integer `value`
+    pub fn integer(value: u64) -> Self {
+        // HVM uses 60 bit numbers, converted at parsing,
+        // so mask its last 4 bits, to match its behavior
+        Self::U6O {
+            numb: value & !(0b1111 << 60),
+        }
+    }
+
+    /// returns a term representing the floating point number `value`
+    pub fn float(value: f64) -> Self {
+        // HVM uses f60 numbers, converted at parsing,
+        // so shift it by 4 bits, to match its behavior
+        Self::F6O {
+            numb: value.to_bits() >> 4,
+        }
+    }
+
+    /// returns a term representing the expression `(func arg)`
+    pub fn application(func: Self, arg: Self) -> Self {
+        Self::App {
+            func: Box::new(func),
+            argm: Box::new(arg),
+        }
+    }
+
+    /// returns a term representing the variable called `name`
+    pub fn variable(name: impl Into<String>) -> Self {
+        Self::Var { name: name.into() }
+    }
+
+    /// returns a term representing the expression `λparam. body`
+    pub fn lambda(param: impl Into<String>, body: Self) -> Self {
+        Self::Lam {
+            name: param.into(),
+            body: Box::new(body),
+        }
+    }
+
+    /// returns a term representing the expression `lhs @ rhs`,
+    /// where `@` is a binary operator from [`Oper`]
+    pub fn binary_operator(op: Oper, lhs: Self, rhs: Self) -> Self {
+        Self::Op2 {
+            oper: op,
+            val0: Box::new(lhs),
+            val1: Box::new(rhs),
+        }
+    }
+
+    /// returns a term representing the expression `(name args...)`,
+    /// where `name` is a constructor
+    pub fn constructor(name: impl Into<String>, args: impl IntoIterator<Item = Self>) -> Self {
+        Self::Ctr {
+            name: name.into(),
+            args: args.into_iter().map(Box::new).collect(),
+        }
+    }
+
+    /// returns a term representing the expression `if cond { expr } else { alt }`
+    pub fn if_expression(cond: Self, expr: Self, alt: Self) -> Self {
+        Self::constructor("U60.if", [cond, expr, alt])
+    }
+
+    /// returns a term representing the list `[values...]`
+    pub fn list(values: impl IntoIterator<Item = Self>) -> Self {
+        let terminator = Self::constructor("List.nil", []);
+        // a list [a, b, c, ...] is represented by cons a (cons b cons c (...))
+        // so to built it starting from the terminator,
+        // the order must be reversed first
+        let values: Vec<_> = values.into_iter().collect();
+        values
+            .into_iter()
+            .rev()
+            .fold(terminator, |acc, val| Self::constructor("List.cons", [val, acc]))
+    }
+
+    /// returns a term representing the string with the given content
+    pub fn string(content: impl Into<String>) -> Self {
+        let terminator = Self::constructor("String.nil", []);
+        content
+            .into()
+            .chars()
+            .rev() // see the comment in [`list`] for why the order is reversed
+            .into_iter()
+            .fold(terminator, |acc, val| {
+                Self::constructor("String.cons", [Self::integer(val as u64), acc])
+            })
+    }
+
+    /// returns an integer if the term represents one,
+    /// returns None otherwise
+    pub fn as_integer(&self) -> Option<u64> {
+        if let Self::U6O { numb: v } = self {
+            Some(*v)
+        } else {
+            None
+        }
+    }
+
+    /// returns a floating point number if the term represents one,
+    /// returns None otherwise
+    pub fn as_float(&self) -> Option<f64> {
+        if let Self::F6O { numb: v } = self {
+            // undo the shift done at construction
+            Some(f64::from_bits(v << 4))
+        } else {
+            None
+        }
+    }
+
+    /// returns a unicode character if the term represents one,
+    /// returns None otherwise
+    pub fn as_char(&self) -> Option<char> {
+        self.as_integer()
+            .and_then(|c| c.try_into().ok())
+            .and_then(char::from_u32)
+    }
+
+    /// returns the string represented by the term if it represents one,
+    /// returns None otherwise
+    pub fn as_string(&self) -> Option<String> {
+        let mut current_term = self;
+        let mut string = String::new();
+        loop {
+            match current_term {
+                Self::Ctr { name, args } if name == "String.cons" => {
+                    string.push(args.get(0).and_then(|c| Self::as_char(c))?);
+                    current_term = args.get(1)?;
+                    continue;
+                }
+                Self::Ctr { name, args: _ } if name == "String.nil" => return Some(string),
+                _ => return None,
+            }
+        }
+    }
+}
+
 // Rule
 // ----
 
@@ -172,6 +310,16 @@ impl std::fmt::Display for Rule {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{} = {}", self.lhs, self.rhs)
   }
+}
+
+impl Rule {
+    /// returns an a HVM rule of the form `lhs = rhs`
+    pub fn new(lhs: Term, rhs: Term) -> Self {
+        Self {
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        }
+    }
 }
 
 // File
