@@ -533,3 +533,4 @@ Related Work
 ============
 
 - [Inpla](https://github.com/inpla/inpla) - a pure interaction net framework, without the "functional/calculus" style of HVM
+- [HINet](http://www.cas.mcmaster.ca/~kahl/Haskell/HINet/) - implementation of interaction nets in Haskell
