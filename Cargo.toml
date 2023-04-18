@@ -13,7 +13,7 @@ test = true
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["sysinfo"]
+default = ["sysinfo", "cli"]
 cli = ["clap"]
 
 [[bin]]
