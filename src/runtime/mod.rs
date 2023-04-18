@@ -8,8 +8,6 @@ pub mod base;
 pub mod data;
 pub mod rule;
 
-use sysinfo::{System, SystemExt, RefreshKind};
-
 pub use base::{*};
 pub use data::{*};
 pub use rule::{*};
@@ -20,13 +18,25 @@ pub const CELLS_PER_KB: usize = 0x80;
 pub const CELLS_PER_MB: usize = 0x20000;
 pub const CELLS_PER_GB: usize = 0x8000000;
 
-// If unspecified, allocates `max(16 GB, 75% free_sys_mem)` memory
+/// When the `sysinfo` feature is enabled ( which is the default ) this allocates `max(16 GB, 75%
+/// free_sys_mem)` of memory.
+///
+/// When `sysinfo` is disabled, this will always allocated 2 GB of memory.
 pub fn default_heap_size() -> usize {
-  use sysinfo::SystemExt;
-  let available_memory = System::new_with_specifics(RefreshKind::new().with_memory()).free_memory();
-  let heap_size = (available_memory * 3 / 4) / 8;
-  let heap_size = std::cmp::min(heap_size as usize, 16 * CELLS_PER_GB);
-  return heap_size as usize;
+  #[cfg(feature = "sysinfo")]
+  {
+    use sysinfo::{RefreshKind, System, SystemExt};
+    let available_memory =
+      System::new_with_specifics(RefreshKind::new().with_memory()).free_memory();
+    let heap_size = (available_memory * 3 / 4) / 8;
+
+    std::cmp::min(heap_size as usize, 16 * CELLS_PER_GB)
+  }
+
+  #[cfg(not(feature = "sysinfo"))]
+  {
+    2 * CELLS_PER_GB
+  }
 }
 
 // If unspecified, spawns 1 thread for each available core
