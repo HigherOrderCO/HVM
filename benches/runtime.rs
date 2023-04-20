@@ -35,14 +35,12 @@ fn run_example(c: &mut Criterion, name: &str, code: &str, params: &str) {
 
   c.bench_function(&format!("{name}, serial"), |b| {
     b.iter(|| {
-        // Allocates the main term
         hvm::normalize(&heap, &prog, &tids[..1], black_box(host), false);
     })
   });
 
   c.bench_function(&format!("{name}, parallel"), |b| {
     b.iter(|| {
-        // Allocates the main term
         hvm::normalize(&heap, &prog, &tids, black_box(host), false);
     })
   });
