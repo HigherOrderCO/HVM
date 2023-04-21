@@ -51,9 +51,8 @@ fn run_example(c: &mut Criterion, name: &str, code: &str, params: &str) {
 }
 
 benchmark_example!(radix_sort, "../examples/sort/radix/main.hvm", "16");
-benchmark_example!(bubble_sort, "../examples/sort/bubble/main.hvm", "16");
 benchmark_example!(piadic_clifford, "../examples/lambda/padic_clifford/main.hvm", "");
 benchmark_example!(lambda_multiplication, "../examples/lambda/multiplication/main.hvm", "16");
 
-criterion_group!(benches, radix_sort, bubble_sort, piadic_clifford, lambda_multiplication);
+criterion_group!(benches, radix_sort, piadic_clifford, lambda_multiplication);
 criterion_main!(benches);
