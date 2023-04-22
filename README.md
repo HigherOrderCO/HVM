@@ -67,7 +67,7 @@ swapGT 1 v x xs = Cons x (insert v xs)
 </tr>
 </table>
 
-![](bench/_results_/sort-bubble.png)
+![](benches/_results_/sort-bubble.png)
 
 On this example, we run a simple, recursive [Bubble Sort](https://en.wikipedia.org/wiki/Bubble_sort) on both HVM and GHC
 (Haskell's compiler). Notice the algorithms are identical. The chart shows how much time each runtime took to sort a
@@ -153,7 +153,7 @@ merge (Both a b) (Both c d) =
 </table>
 
 
-![](bench/_results_/sort-radix.png)
+![](benches/_results_/sort-radix.png)
 
 On this example, we try a [Radix Sort](https://en.wikipedia.org/wiki/Radix_sort), based on merging immutable trees. In
 this test, for now, single-thread performance was superior on GHC - and this is often the case, since GHC is much older
@@ -227,7 +227,7 @@ mul xs ys =
 </tr>
 </table>
 
-![](bench/_results_/lambda-multiplication.png)
+![](benches/_results_/lambda-multiplication.png)
 
 This example implements bitwise multiplication using [λ-encodings](https://en.wikipedia.org/wiki/Church_encoding). Its
 purpose is to show yet another important advantage of HVM: beta-optimality. This chart isn't wrong: HVM multiplies

@@ -35,7 +35,7 @@ Let's get started with a simple algorithm: Bubble Sort.
 
 Complete file: [examples/sort/bubble/main.hvm](../examples/sort/bubble/main.hvm)
 
-![bubble-sort](../bench/_results_/sort-bubble.png)
+![bubble-sort](../benches/_results_/sort-bubble.png)
 
 A Bubble Sort is **inherently sequential**, so HVM can't parallelize it.
 
@@ -86,7 +86,7 @@ Complete file: [examples/sort/quick/main.hvm](../examples/sort/quick/main.hvm)
 
 Benchmark:
 
-![quick-sort](../bench/_results_/sort-quick.png)
+![quick-sort](../benches/_results_/sort-quick.png)
 
 TODO: comment on TIME, COST and RPS
 
@@ -137,7 +137,7 @@ Complete file: [examples/sort/bitonic/main.hvm](../examples/sort/bitonic/main.hv
 
 Benchmark:
 
-![bitonic-sort](../bench/_results_/sort-bitonic.png)
+![bitonic-sort](../benches/_results_/sort-bitonic.png)
 
 The RPS was greatly increased w.r.t the Quick Sort version, and its performance
 scales quasi-linearly with the number of cores! In other words, we achieved
@@ -189,7 +189,7 @@ Complete file: [examples/sort/radix/main.hvm](../examples/sort/radix/main.hvm)
 
 Benchmark:
 
-![radix-sort](../bench/_results_/sort-radix.png)
+![radix-sort](../benches/_results_/sort-radix.png)
 
 Now this is an algorithm! It has the parallelization of the Bitonic Sort, and
 the complexity of the Quick Sort, without the worst cases. Of all algorithms I
