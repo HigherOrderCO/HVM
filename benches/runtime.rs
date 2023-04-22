@@ -1,22 +1,22 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 macro_rules! benchmark_example {
-    // This macro takes a name, a path to an example HVM file and a string of paramters,
+    // This macro takes a name, a path to an example HVM file and a term,
     // and creates a benchmark which interprets the given HVM file,
-    // and runs its main with the parameters.
-    ($func_name:ident, $path:expr, $params:expr) => {
+    // and evaluates the given term with it.
+    ($func_name:ident, $path:expr, $term:expr) => {
         fn $func_name(c: &mut Criterion) {
-            run_example(c, stringify!($func_name), include_str!($path), $params);
+            run_example(c, stringify!($func_name), include_str!($path), $term);
         }
     };
 }
 
-fn run_example(c: &mut Criterion, name: &str, code: &str, params: &str) {
+fn run_example(c: &mut Criterion, name: &str, code: &str, term: &str) {
   let thread_count = hvm::default_heap_tids();
   let file = hvm::syntax::read_file(code).unwrap();
 
   // Parses and reads the input file
-  let file = hvm::syntax::read_file(&format!("{file}\nHVM_MAIN_CALL = (Main {params})")).unwrap();
+  let file = hvm::syntax::read_file(&format!("{file}\nHVM_MAIN_CALL = {term}")).unwrap();
   // Converts the file to a Rulebook
   let book = hvm::rulebook::gen_rulebook(&file);
 
@@ -50,9 +50,9 @@ fn run_example(c: &mut Criterion, name: &str, code: &str, params: &str) {
   hvm::free(&heap, 0, 0, 1);
 }
 
-benchmark_example!(radix_sort, "../examples/sort/radix/main.hvm", "16");
-benchmark_example!(piadic_clifford, "../examples/lambda/padic_clifford/main.hvm", "");
-benchmark_example!(lambda_multiplication, "../examples/lambda/multiplication/main.hvm", "16");
+benchmark_example!(radix_sort, "../examples/sort/radix/main.hvm", "(Main 16)");
+benchmark_example!(piadic_clifford, "../examples/lambda/padic_clifford/main.hvm", "(Main)");
+benchmark_example!(lambda_multiplication, "../examples/lambda/multiplication/main.hvm", "(Main 16)");
 
 criterion_group!(benches, radix_sort, piadic_clifford, lambda_multiplication);
 criterion_main!(benches);
