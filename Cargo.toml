@@ -30,7 +30,7 @@ instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
 itertools = "0.10"
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.4"
 
 [[bench]]
 name = "runtime"
