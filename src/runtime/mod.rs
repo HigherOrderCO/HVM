@@ -191,6 +191,13 @@ impl Runtime {
         *output
     }
 
+    /// attempts to reduce the given term to the target type if possible.
+    /// on failure returns the error produced in the conversion of the reduced term.
+    pub fn eval_term<T, E>(&self, term: &language::syntax::Term) -> Result<T, E>
+    where language::syntax::Term: TryInto<T, Error=E> {
+        self.normalize_term(term).try_into()
+    }
+
     /// returns the number graph rewrites made by the runtime,
     /// since its initialization.
     ///
