@@ -301,6 +301,30 @@ impl Term {
             }
         }
     }
+
+    /// returns an iterator over the list represented by the term if it represents one
+    /// returns None otherwise.
+    ///
+    /// improper lists, i.e. those of the form `List.cons a b` where `b` is not a list,
+    /// terminate after `a`.
+    pub fn as_list(&self) -> Option<impl Iterator<Item=&Term>> {
+        match self {
+            Self::Ctr { name, args } if (name == "List.cons" || name == "List.nil") => {
+                let mut current_term = Some(self);
+                Some(std::iter::from_fn(move || {
+                    match current_term {
+                        Some(Self::Ctr { name, args }) if name == "List.cons" => {
+                            let elem = args.get(0).map(|x| x as &Self);
+                            current_term = args.get(1).map(|x| x as &Self);
+                            elem
+                        }
+                        _ => None,
+                    }
+                }))
+            }
+            _ => None,
+        }
+    }
 }
 
 // Rule
