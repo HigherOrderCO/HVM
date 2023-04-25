@@ -68,13 +68,13 @@ impl Default for RuntimeBuilder {
 }
 
 impl RuntimeBuilder {
-    /// add a HVM rule to be interpreted by the runtime
+    /// add a HVM rule to be interpreted by the runtime.
     pub fn add_rule(mut self, rule: language::syntax::Rule) -> Self {
         self.rules.push(rule);
         self
     }
 
-    /// add multiple HVM rules at once
+    /// add multiple HVM rules to the runtime at once.
     pub fn add_rules(mut self, rules: impl IntoIterator<Item = language::syntax::Rule>) -> Self {
         self.rules.extend(rules.into_iter());
         self
@@ -105,7 +105,7 @@ impl RuntimeBuilder {
     /// add a function, prepared a head of time, which will be mapped to the given symbol
     ///
     /// allows precompilation of frequently used functions,
-    /// and including functionality that is not part of HVM by default, such as IO
+    /// and including functionality that is not part of HVM by default, such as IO.
     pub fn add_function(mut self, name: String, func: Function) -> Self {
         self.functions.insert(name, func);
         self
@@ -121,7 +121,7 @@ impl RuntimeBuilder {
     /// given in the number of terms that can be stored on the heap.
     ///
     /// use [`CELLS_PER_KB`], [`CELLS_PER_MB`] and [`CELLS_PER_GB`],
-    /// to add values in terms of memory size.
+    /// to choose values in terms of memory size.
     pub fn set_heap_size(mut self, heap_size: usize) -> Self {
         self.heap_size = heap_size;
         self
@@ -134,6 +134,7 @@ impl RuntimeBuilder {
         self
     }
 
+    /// builds a runtime with the configuration given to the builder.
     pub fn build(self) -> Runtime {
         let file = language::syntax::File {
             rules: self.rules,
@@ -169,9 +170,10 @@ impl RuntimeBuilder {
 }
 
 impl Runtime {
-    /// reduces the term to Normal Form,
-    /// meaning that applications in the term are evaluated,
-    /// untill there are no more applications in the term.
+    /// reduces the given term to Normal Form.
+    ///
+    /// this means that applications in the term are evaluated,
+    /// until there are no more applications in the term.
     pub fn normalize_term(&self, term: &language::syntax::Term) -> language::syntax::Term {
         let tid = 0;
 
@@ -191,8 +193,10 @@ impl Runtime {
         *output
     }
 
-    /// attempts to reduce the given term to the target type if possible.
-    /// on failure returns the error produced in the conversion of the reduced term.
+    /// attempts to evaluate the given term to the target type if possible.
+    ///
+    /// this is done by normalizing the term, and then attempting to convert the output.
+    /// on failure returns the error produced in the conversion.
     pub fn eval_term<T, E>(&self, term: &language::syntax::Term) -> Result<T, E>
     where language::syntax::Term: TryInto<T, Error=E> {
         self.normalize_term(term).try_into()
