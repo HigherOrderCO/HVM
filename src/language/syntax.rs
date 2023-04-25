@@ -9,7 +9,7 @@ use std::convert::{TryFrom, TryInto};
 // Term
 // ----
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Term {
   Var { name: String }, // TODO: add `global: bool`
   Dup { nam0: String, nam1: String, expr: Box<Term>, body: Box<Term> },
