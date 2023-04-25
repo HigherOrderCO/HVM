@@ -549,6 +549,7 @@ mod tests {
   use core::panic;
 
   use super::{gen_rulebook, sanitize_rule};
+  use crate::runtime;
   use crate::language::syntax::{read_file, read_rule};
 
   #[test]
@@ -635,11 +636,11 @@ mod tests {
 
     // id_to_name e name_to_id testing
     // check expected length
-    assert_eq!(rulebook.id_to_name.len(), 3);
+    assert_eq!(rulebook.id_to_name.len() as u64, runtime::PRECOMP_COUNT + 3);
     // check determinism and existence
-    assert_eq!(rulebook.id_to_name.get(&0).unwrap(), "Double");
-    assert_eq!(rulebook.id_to_name.get(&1).unwrap(), "Zero");
-    assert_eq!(rulebook.id_to_name.get(&2).unwrap(), "Succ");
+    assert_eq!(rulebook.id_to_name.get(&(runtime::PRECOMP_COUNT + 0)).unwrap(), "Double");
+    assert_eq!(rulebook.id_to_name.get(&(runtime::PRECOMP_COUNT + 1)).unwrap(), "Zero");
+    assert_eq!(rulebook.id_to_name.get(&(runtime::PRECOMP_COUNT + 2)).unwrap(), "Succ");
     // check cohesion
     let _size = rulebook.id_to_name.len();
     for (id, name) in rulebook.id_to_name {
@@ -654,7 +655,7 @@ mod tests {
     // expected key exist
     assert!(rulebook.ctr_is_fun.contains_key("Double"));
     // contains expected number of keys
-    assert_eq!(rulebook.ctr_is_fun.len(), 1);
+    assert_eq!(rulebook.ctr_is_fun.len() as u64, runtime::PRECOMP_COUNT + 1);
     // key contains expected value
     assert!(*rulebook.ctr_is_fun.get("Double").unwrap());
   }
