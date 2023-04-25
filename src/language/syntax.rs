@@ -1,6 +1,7 @@
 use HOPA;
 use crate::runtime::data::u60;
 use crate::runtime::data::f60;
+use std::convert::{TryFrom, TryInto};
 
 // Types
 // =====
@@ -323,6 +324,78 @@ impl Term {
                 }))
             }
             _ => None,
+        }
+    }
+}
+
+impl From<u64> for Term {
+    fn from(value: u64) -> Self {
+        Self::integer(value)
+    }
+}
+
+impl From<f64> for Term {
+    fn from(value: f64) -> Self {
+        Self::float(value)
+    }
+}
+
+impl From<char> for Term {
+    fn from(value: char) -> Self {
+        Self::integer(value as u64)
+    }
+}
+
+impl From<String> for Term {
+    fn from(value: String) -> Self {
+        Self::string(value)
+    }
+}
+
+impl TryFrom<Term> for u64 {
+    type Error = Term;
+
+    fn try_from(value: Term) -> Result<Self, Self::Error> {
+        if let Some(num) = Term::as_integer(&value) {
+            Ok(num)
+        } else {
+            Err(value)
+        }
+    }
+}
+
+impl TryFrom<Term> for f64 {
+    type Error = Term;
+
+    fn try_from(value: Term) -> Result<Self, Self::Error> {
+        if let Some(num) = Term::as_float(&value) {
+            Ok(num)
+        } else {
+            Err(value)
+        }
+    }
+}
+
+impl TryFrom<Term> for char {
+    type Error = Term;
+
+    fn try_from(value: Term) -> Result<Self, Self::Error> {
+        if let Some(chr) = Term::as_char(&value) {
+            Ok(chr)
+        } else {
+            Err(value)
+        }
+    }
+}
+
+impl TryFrom<Term> for String {
+    type Error = Term;
+
+    fn try_from(value: Term) -> Result<Self, Self::Error> {
+        if let Some(string) = Term::as_string(&value) {
+            Ok(string)
+        } else {
+            Err(value)
         }
     }
 }
