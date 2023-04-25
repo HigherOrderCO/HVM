@@ -19,8 +19,8 @@
 //! (Fib n) = (+ (Fib (- n 1)) (Fib (- n 2)))";
 //! let runtime = hvm::RuntimeBuilder::default().add_code(code)?.build();
 //! let term = hvm::syntax::read_term("(Fib 8)")?;
-//! let output = runtime.normalize_term(&term).as_integer();
-//! assert_eq!(Some(21), output);
+//! let output = runtime.eval_term(&term);
+//! assert_eq!(Ok(21), output);
 //! # Ok(())
 //! # }
 //! ```
