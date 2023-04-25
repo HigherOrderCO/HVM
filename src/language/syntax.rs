@@ -356,7 +356,7 @@ impl TryFrom<Term> for u64 {
     type Error = Term;
 
     fn try_from(value: Term) -> Result<Self, Self::Error> {
-        if let Some(num) = Term::as_integer(&value) {
+        if let Some(num) = value.as_integer() {
             Ok(num)
         } else {
             Err(value)
@@ -368,7 +368,7 @@ impl TryFrom<Term> for f64 {
     type Error = Term;
 
     fn try_from(value: Term) -> Result<Self, Self::Error> {
-        if let Some(num) = Term::as_float(&value) {
+        if let Some(num) = value.as_float() {
             Ok(num)
         } else {
             Err(value)
@@ -380,7 +380,7 @@ impl TryFrom<Term> for char {
     type Error = Term;
 
     fn try_from(value: Term) -> Result<Self, Self::Error> {
-        if let Some(chr) = Term::as_char(&value) {
+        if let Some(chr) = value.as_char() {
             Ok(chr)
         } else {
             Err(value)
@@ -392,7 +392,7 @@ impl TryFrom<Term> for String {
     type Error = Term;
 
     fn try_from(value: Term) -> Result<Self, Self::Error> {
-        if let Some(string) = Term::as_string(&value) {
+        if let Some(string) = value.as_string() {
             Ok(string)
         } else {
             Err(value)
