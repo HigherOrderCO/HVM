@@ -225,6 +225,24 @@ impl Term {
         }
     }
 
+    /// returns a term representing the expression `{val0 val1}`,
+    pub fn superposition(val0: Self, val1: Self) -> Self {
+        Self::Sup {
+            val0: Box::new(val0),
+            val1: Box::new(val1),
+        }
+    }
+
+    /// returns a term representing the expression `dup copy0 copy1 = expr body`
+    pub fn duplication(copy0: impl Into<String>, copy1: impl Into<String>, expr: Self, body: Self) -> Self {
+        Self::Dup {
+            nam0: copy0.into(),
+            nam1: copy1.into(),
+            expr: Box::new(expr),
+            body: Box::new(body),
+        }
+    }
+
     /// returns a term representing the expression `if cond { expr } else { alt }`
     pub fn if_expression(cond: Self, expr: Self, alt: Self) -> Self {
         Self::constructor("U60.if", [cond, expr, alt])
