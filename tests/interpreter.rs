@@ -169,6 +169,9 @@ fn reduce_weak(mut term: Term) -> Term {
                             Neq => Term::integer((n0 != n1).into()),
                         };
                     },
+                    // (+ N M)
+                    // --------------------- OP2-F60
+                    // N + M
                     ( val0 @ F6O { numb: _ }, val1 @ F6O { numb: _ } ) => {
                         let n0: f64 = val0.try_into().unwrap();
                         let n1: f64 = val1.try_into().unwrap();
