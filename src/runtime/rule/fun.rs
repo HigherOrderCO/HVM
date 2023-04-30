@@ -78,10 +78,15 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
           matched = matched && same_tag && same_val;
         }
         CTR => {
-          let same_tag = get_tag(load_arg(ctx.heap, ctx.term, i)) == CTR;
+          let same_tag = get_tag(load_arg(ctx.heap, ctx.term, i)) == CTR || get_tag(load_arg(ctx.heap, ctx.term, i)) == FUN;
           let same_ext = get_ext(load_arg(ctx.heap, ctx.term, i)) == get_ext(*cond);
           matched = matched && same_tag && same_ext;
         }
+        //FUN => {
+          //let same_tag = get_tag(load_arg(ctx.heap, ctx.term, i)) == CTR || get_tag(load_arg(ctx.heap, ctx.term, i)) == FUN;
+          //let same_ext = get_ext(load_arg(ctx.heap, ctx.term, i)) == get_ext(*cond);
+          //matched = matched && same_tag && same_ext;
+        //}
         VAR => {
           // If this is a strict argument, then we're in a default variable
           if unsafe { *visit.strict_map.get_unchecked(i as usize) } {
