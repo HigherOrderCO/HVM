@@ -258,7 +258,7 @@ pub fn build_function(
             matched.push(format!("({} && {})", same_tag, same_val));
           }
           if runtime::get_tag(*cond) == runtime::CTR {
-            let some_tag = format!("get_tag(arg{}) == CTR || get_tag(arg{}) == FUN", i, i);
+            let some_tag = format!("(get_tag(arg{}) == CTR || get_tag(arg{}) == FUN)", i, i);
             let some_ext = format!("get_ext(arg{}) == {}", i, runtime::get_ext(*cond));
             matched.push(format!("({} && {})", some_tag, some_ext));
           }
