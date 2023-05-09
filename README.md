@@ -270,7 +270,7 @@ More Information
 
 - To ask questions and **join our community**, check our [Discord Server](https://discord.gg/kindelia).
 
-- To **contact the author** directly, send an email to <taelin@higherorderco.org>.
+- To **contact the author** directly, send an email to <taelin@higherorderco.com>.
 
 FAQ
 ===
