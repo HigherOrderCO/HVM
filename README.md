@@ -360,7 +360,7 @@ trees, recursion) aren't affected.
 No! Unsupported λ-terms like `λx.(x x) λf.λx.(f (f x))` don't cause HVM to
 display undefined behavior. HVM will always behave deterministically, and give
 you a correct result to any input, except it will be in terms of [Interaction
-Calculus](https://github.com/Kindelia/Wikind/blob/master/IC/_.kind2) (IC)
+Calculus](https://github.com/HigherOrderCO/Kindex/blob/master/Apps/IntCalc/_.kind2) (IC)
 semantics. The IC is an alternative to the Lambda Calculus (LC) which differs
 slightly in how non-linear variables are treated. As such, these "unsupported"
 terms are just cases where the LC and the IC evaluation disagree. In theory, you
