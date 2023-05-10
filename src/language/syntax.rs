@@ -88,7 +88,7 @@ impl std::fmt::Display for Term {
     fn lst_sugar(term: &Term) -> Option<String> {
       fn go(term: &Term, text: &mut String, fst: bool) -> Option<()> {
         if let Term::Ctr { name, args } = term {
-          if name == "List.cons" && args.len() == 2 {
+          if name == "Data.List.cons" && args.len() == 2 {
             if !fst {
               text.push_str(", ");
             }
@@ -96,7 +96,7 @@ impl std::fmt::Display for Term {
             go(&args[1], text, false)?;
             return Some(());
           }
-          if name == "List.nil" && args.is_empty() {
+          if name == "Data.List.nil" && args.is_empty() {
             return Some(());
           }
         }
@@ -112,14 +112,14 @@ impl std::fmt::Display for Term {
     fn str_sugar(term: &Term) -> Option<String> {
       fn go(term: &Term, text: &mut String) -> Option<()> {
         if let Term::Ctr { name, args } = term {
-          if name == "String.cons" && args.len() == 2 {
+          if name == "Data.String.cons" && args.len() == 2 {
             if let Term::U6O { numb } = *args[0] {
               text.push(std::char::from_u32(numb as u32)?);
               go(&args[1], text)?;
               return Some(());
             }
           }
-          if name == "String.nil" && args.is_empty() {
+          if name == "Data.String.nil" && args.is_empty() {
             return Some(());
           }
         }
@@ -483,9 +483,9 @@ pub fn parse_str_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
           }
         }
       }
-      let empty = Term::Ctr { name: "String.nil".to_string(), args: Vec::new() };
+      let empty = Term::Ctr { name: "Data.String.nil".to_string(), args: Vec::new() };
       let list = Box::new(chars.iter().rfold(empty, |t, h| Term::Ctr {
-        name: "String.cons".to_string(),
+        name: "Data.String.cons".to_string(),
         args: vec![Box::new(Term::U6O { numb: *h as u64 }), Box::new(t)],
       }));
       Ok((state, list))
@@ -513,9 +513,9 @@ pub fn parse_lst_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
         }),
         state,
       )?;
-      let empty = Term::Ctr { name: "List.nil".to_string(), args: Vec::new() };
+      let empty = Term::Ctr { name: "Data.List.nil".to_string(), args: Vec::new() };
       let list = Box::new(elems.iter().rfold(empty, |t, h| Term::Ctr {
-        name: "List.cons".to_string(),
+        name: "Data.List.cons".to_string(),
         args: vec![h.clone(), Box::new(t)],
       }));
       Ok((state, list))
@@ -537,7 +537,7 @@ pub fn parse_if_sugar(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
       let (state, _)    = HOPA::force_there_take_exact("{", state)?;
       let (state, if_f) = parse_term(state)?;
       let (state, _)    = HOPA::force_there_take_exact("}", state)?;
-      Ok((state, Box::new(Term::Ctr { name: "U60.if".to_string(), args: vec![cond, if_t, if_f] })))
+      Ok((state, Box::new(Term::Ctr { name: "Data.U60.if".to_string(), args: vec![cond, if_t, if_f] })))
     }),
     state,
   );
