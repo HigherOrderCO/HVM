@@ -201,7 +201,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_LOG,
-    name: "Data.HVM.log",
+    name: "Apps.HVM.log",
     smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_log_visit,
@@ -210,7 +210,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_QUERY,
-    name: "Data.HVM.query",
+    name: "Apps.HVM.query",
     smap: &[false; 1],
     funs: Some(PrecompFuns {
       visit: hvm_query_visit,
@@ -219,7 +219,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_PRINT,
-    name: "Data.HVM.print",
+    name: "Apps.HVM.print",
     smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_print_visit,
@@ -228,7 +228,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_SLEEP,
-    name: "Data.HVM.sleep",
+    name: "Apps.HVM.sleep",
     smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_sleep_visit,
@@ -237,7 +237,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_STORE,
-    name: "Data.HVM.store",
+    name: "Apps.HVM.store",
     smap: &[false; 3],
     funs: Some(PrecompFuns {
       visit: hvm_store_visit,
@@ -246,7 +246,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_LOAD,
-    name: "Data.HVM.load",
+    name: "Apps.HVM.load",
     smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_load_visit,
