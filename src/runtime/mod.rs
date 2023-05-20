@@ -51,7 +51,7 @@ impl Runtime {
       prog: Program::new(),
       book: language::rulebook::new_rulebook(),
       tids: new_tids(tids),
-      dbug: dbug,
+      dbug,
     }
   }
 

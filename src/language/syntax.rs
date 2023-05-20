@@ -307,12 +307,10 @@ pub fn parse_num(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
       if !text.is_empty() {
         if text.starts_with("0x") {
           return Ok((state, Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(&text[2..], 16).unwrap()) })));
+        } else if text.find(".").is_some() {
+          return Ok((state, Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) })));
         } else {
-          if text.find(".").is_some() {
-            return Ok((state, Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) })));
-          } else {
-            return Ok((state, Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) })));
-          }
+          return Ok((state, Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) })));
         }
       } else {
         Ok((state, Box::new(Term::U6O { numb: 0 })))

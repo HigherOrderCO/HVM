@@ -244,7 +244,7 @@ checksum = "809e18805660d7b6b2e2b9f316a5099521b5998d5cba4dda11b5157a21aaef03"
 
 [[package]]
 name = "hvm"
-version = "1.0.6"
+version = "1.0.9"
 dependencies = [
  "HOPA",
  "backtrace",

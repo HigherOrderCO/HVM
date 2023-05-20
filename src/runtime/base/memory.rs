@@ -511,12 +511,10 @@ pub fn atomic_subst(heap: &Heap, arit: &ArityMap, tid: usize, var: Ptr, val: Ptr
       if heap.tids == 1 {
         link(heap, get_loc(arg_ptr, 0), val);
         return;
+      } else if atomic_relink(heap, get_loc(arg_ptr, 0), var, val).is_ok() {
+        return;
       } else {
-        if atomic_relink(heap, get_loc(arg_ptr, 0), var, val).is_ok() {
-          return;
-        } else {
-          continue;
-        }
+        continue;
       }
     }
     if get_tag(arg_ptr) == ERA {

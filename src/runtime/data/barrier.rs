@@ -11,7 +11,7 @@ impl Barrier {
     Barrier {
       done: AtomicUsize::new(0),
       pass: AtomicUsize::new(0),
-      tids: tids,
+      tids,
     }
   }
 

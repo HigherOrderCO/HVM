@@ -48,7 +48,7 @@ pub fn apply(ctx: ReduceCtx) -> bool {
   // y <- b    | y <- {yA yB} 
   //           | dup xA yA = a
   //           | dup xB yB = b
-  else if get_tag(arg0) == SUP {
+  if get_tag(arg0) == SUP {
 
     if tcol == get_ext(arg0) {
       inc_cost(ctx.heap, ctx.tid);
