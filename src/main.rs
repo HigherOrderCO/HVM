@@ -1,4 +1,5 @@
 #![feature(atomic_from_mut)]
+#![feature(atomic_mut_ptr)]
 
 #![allow(unused_variables)]
 #![allow(dead_code)]
@@ -7,6 +8,8 @@
 #![allow(unused_parens)]
 #![allow(unused_labels)]
 #![allow(non_upper_case_globals)]
+#[deny(clippy::never_loop)]
+#[deny(clippy::if_same_then_else)]
 
 mod language;
 mod runtime;

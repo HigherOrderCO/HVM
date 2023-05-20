@@ -1,5 +1,5 @@
 #![feature(atomic_from_mut)]
-
+#![feature(atomic_mut_ptr)]
 #![allow(unused_variables)]
 #![allow(dead_code)]
 #![allow(non_snake_case)]
@@ -7,6 +7,8 @@
 #![allow(unused_parens)]
 #![allow(unused_labels)]
 #![allow(non_upper_case_globals)]
+#[deny(clippy::never_loop)]
+#[deny(clippy::if_same_then_else)]
 
 pub mod language;
 pub mod runtime;
