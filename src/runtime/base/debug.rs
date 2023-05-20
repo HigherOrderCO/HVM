@@ -116,10 +116,8 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     tlocs: &[AtomicU64],
   ) -> String {
     let term = load_ptr(heap, host);
-    let done;
-    if term == 0 {
-      done = format!("<>");
-    } else {
+    let mut done = "<>".to_string();
+    if term != 0  {
       done = match get_tag(term) {
         DP0 => {
           if let Some(name) = names.get(&get_loc(term, 0)) {
@@ -204,7 +202,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
         return format!("<{}>{}", tid, done);
       }
     }
-    return done;
+    done
   }
   find_lets(heap, prog, host, &mut lets, &mut kinds, &mut names, &mut count);
   let mut text = go(heap, prog, host, &names, tlocs);
@@ -212,7 +210,7 @@ pub fn show_at(heap: &Heap, prog: &Program, host: u64, tlocs: &[AtomicU64]) -> S
     // todo: reverse
     let what = String::from("?h");
     //let kind = kinds.get(&pos).unwrap_or(&0);
-    let name = names.get(&pos).unwrap_or(&what);
+    let name = names.get(pos).unwrap_or(&what);
     let nam0 = if load_ptr(heap, pos + 0) == Era() { String::from("*") } else { format!("a{}", name) };
     let nam1 = if load_ptr(heap, pos + 1) == Era() { String::from("*") } else { format!("b{}", name) };
     text.push_str(&format!("\ndup {} {} = {};", nam0, nam1, go(heap, prog, pos + 2, &names, tlocs)));

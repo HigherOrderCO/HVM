@@ -9,6 +9,7 @@
 #![allow(non_upper_case_globals)]
 #[deny(clippy::never_loop)]
 #[deny(clippy::if_same_then_else)]
+#[warn(clippy::manual_strip)]
 
 pub mod language;
 pub mod runtime;

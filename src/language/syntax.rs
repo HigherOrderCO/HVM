@@ -280,7 +280,7 @@ pub fn parse_ctr(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
     Box::new(|state| {
       let (state, _) = HOPA::there_take_exact("(", state)?;
       let (state, head) = HOPA::there_take_head(state)?;
-      Ok((state, ('A'..='Z').contains(&head)))
+      Ok((state, head.is_ascii_uppercase()))
     }),
     Box::new(|state| {
       let (state, open) = HOPA::there_take_exact("(", state)?;
@@ -300,14 +300,14 @@ pub fn parse_num(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
   HOPA::guard(
     Box::new(|state| {
       let (state, head) = HOPA::there_take_head(state)?;
-      Ok((state, ('0'..='9').contains(&head)))
+      Ok((state, head.is_ascii_digit()))
     }),
     Box::new(|state| {
       let (state, text) = HOPA::there_nonempty_name(state)?;
       if !text.is_empty() {
         if text.starts_with("0x") {
-          return Ok((state, Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(&text[2..], 16).unwrap()) })));
-        } else if text.find(".").is_some() {
+          Ok((state, Box::new(Term::U6O { numb: u60::new(u64::from_str_radix(&text[2..], 16).unwrap()) })))
+        } else if text.contains('.') {
           return Ok((state, Box::new(Term::F6O { numb: f60::new(text.parse::<f64>().unwrap()) })));
         } else {
           return Ok((state, Box::new(Term::U6O { numb: u60::new(text.parse::<u64>().unwrap()) })));
@@ -372,7 +372,7 @@ pub fn parse_var(state: HOPA::State) -> HOPA::Answer<Option<Box<Term>>> {
   HOPA::guard(
     Box::new(|state| {
       let (state, head) = HOPA::there_take_head(state)?;
-      Ok((state, ('a'..='z').contains(&head) || head == '_' || head == '$'))
+      Ok((state, head.is_ascii_lowercase() || head == '_' || head == '$'))
     }),
     Box::new(|state| {
       let (state, name) = HOPA::there_name(state)?;
@@ -409,7 +409,7 @@ pub fn parse_ask_sugar_named(state: HOPA::State) -> HOPA::Answer<Option<Box<Term
       let (state, asks) = HOPA::there_take_exact("ask ", state)?;
       let (state, name) = HOPA::there_name(state)?;
       let (state, eqls) = HOPA::there_take_exact("=", state)?;
-      Ok((state, asks && name.len() > 0 && eqls))
+      Ok((state, asks && !name.is_empty() && eqls))
     }),
     Box::new(|state| {
       let (state, _)    = HOPA::force_there_take_exact("ask ", state)?;
@@ -595,9 +595,9 @@ pub fn parse_smap(state: HOPA::State) -> HOPA::Answer<Option<SMap>> {
   if init {
     let (state, name) = HOPA::there_nonempty_name(state)?;
     let (state, args) = HOPA::until(HOPA::do_there_take_exact(")"), Box::new(parse_stct), state)?;
-    return Ok((state, Some((name, args))));
+    Ok((state, Some((name, args))))
   } else {
-    return Ok((state, None));
+    Ok((state, None))
   }
 }
 

@@ -4,9 +4,9 @@ type F60 = u64;
 pub fn new(a: f64) -> F60 {
   let b = a.to_bits();
   if b & 0b1111 > 8 {
-    return (b >> 4) + 1;
+    (b >> 4) + 1
   } else {
-    return b >> 4;
+    b >> 4
   }
 }
 
@@ -17,90 +17,90 @@ pub fn val(a: F60) -> f64 {
 
 #[inline(always)]
 pub fn add(a: F60, b: F60) -> F60 {
-  return new(val(a) + val(b));
+  new(val(a) + val(b))
 }
 
 #[inline(always)]
 pub fn sub(a: F60, b: F60) -> F60 {
-  return new(val(a) - val(b));
+  new(val(a) - val(b))
 }
 
 #[inline(always)]
 pub fn mul(a: F60, b: F60) -> F60 {
-  return new(val(a) * val(b));
+  new(val(a) * val(b))
 }
 
 #[inline(always)]
 pub fn div(a: F60, b: F60) -> F60 {
-  return new(val(a) / val(b));
+  new(val(a) / val(b))
 }
 
 #[inline(always)]
 pub fn mdl(a: F60, b: F60) -> F60 {
-  return new(val(a) % val(b));
+  new(val(a) % val(b))
 }
 
 #[inline(always)]
 pub fn and(a: F60, b: F60) -> F60 {
-  return new(f64::cos(val(a)) + f64::sin(val(b)));
+  new(f64::cos(val(a)) + f64::sin(val(b)))
 }
 
 #[inline(always)]
 pub fn or(a: F60, b: F60) -> F60 {
-  return new(f64::atan2(val(a), val(b)));
+  new(f64::atan2(val(a), val(b)))
 }
 
 #[inline(always)]
 pub fn shl(a: F60, b: F60) -> F60 {
-  return new(val(b).powf(val(a)));
+  new(val(b).powf(val(a)))
 }
 
 #[inline(always)]
 pub fn shr(a: F60, b: F60) -> F60 {
-  return new(val(a).log(val(b)));
+  new(val(a).log(val(b)))
 }
 
 #[inline(always)]
 pub fn xor(a: F60, b: F60) -> F60 {
-  return new(val(a).ceil() + val(a).floor());
+  new(val(a).ceil() + val(a).floor())
 }
 
 #[inline(always)]
 pub fn ltn(a: F60, b: F60) -> F60 {
-  return new(if val(a) < val(b) { 1.0 } else { 0.0 });
+  new(if val(a) < val(b) { 1.0 } else { 0.0 })
 }
 
 #[inline(always)]
 pub fn lte(a: F60, b: F60) -> F60 {
-  return new(if val(a) <= val(b) { 1.0 } else { 0.0 });
+  new(if val(a) <= val(b) { 1.0 } else { 0.0 })
 }
 
 #[inline(always)]
 pub fn eql(a: F60, b: F60) -> F60 {
-  return new(if val(a) == val(b) { 1.0 } else { 0.0 });
+  new(if val(a) == val(b) { 1.0 } else { 0.0 })
 }
 
 #[inline(always)]
 pub fn gte(a: F60, b: F60) -> F60 {
-  return new(if val(a) >= val(b) { 1.0 } else { 0.0 });
+  new(if val(a) >= val(b) { 1.0 } else { 0.0 })
 }
 
 #[inline(always)]
 pub fn gtn(a: F60, b: F60) -> F60 {
-  return new(if val(a) > val(b) { 1.0 } else { 0.0 });
+  new(if val(a) > val(b) { 1.0 } else { 0.0 })
 }
 
 #[inline(always)]
 pub fn neq(a: F60, b: F60) -> F60 {
-  return new(if val(a) != val(b) { 1.0 } else { 0.0 });
+  new(if val(a) != val(b) { 1.0 } else { 0.0 })
 }
 
 #[inline(always)]
 pub fn show(a: F60) -> String {
   let txt = format!("{}", val(a));
-  if txt.find(".").is_none() {
-    return format!("{}.0", txt);
+  if !txt.contains('.') {
+    format!("{}.0", txt)
   } else {
-    return txt;
+    txt
   }
 }

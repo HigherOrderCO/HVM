@@ -35,13 +35,13 @@ pub fn new_rulebook() -> RuleBook {
     ctr_is_fun: HashMap::new(),
   };
   for precomp in runtime::PRECOMP {
-    book.name_count = book.name_count + 1;
+    book.name_count += 1;
     book.name_to_id.insert(precomp.name.to_string(), precomp.id);
     book.id_to_name.insert(precomp.id, precomp.name.to_string());
     book.id_to_smap.insert(precomp.id, precomp.smap.to_vec());
     book.ctr_is_fun.insert(precomp.name.to_string(), precomp.funs.is_some());
   }
-  return book;
+  book
 }
 
 // Adds a group to a rulebook
@@ -98,17 +98,12 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
         }
         // Force strictness when pattern-matching
         if lhs_top {
-          for i in 0 .. args.len() {
-            let is_strict = match *args[i] {
-              language::syntax::Term::Ctr { .. } => true,
-              language::syntax::Term::U6O { .. } => true,
-              language::syntax::Term::F6O { .. } => true,
-              _ => false,
-            };
+          (0 .. args.len()).for_each(|i| {
+            let is_strict = matches!(*args[i], language::syntax::Term::Ctr { .. } | language::syntax::Term::U6O { .. } | language::syntax::Term::F6O { .. });
             if is_strict {
               book.id_to_smap.get_mut(&id).unwrap()[i] = true;
             }
-          }
+          });
         }
         // Recurses
         for arg in args {
@@ -263,7 +258,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
     ctx: &mut CtxSanitizeTerm,
   ) -> Result<Box<language::syntax::Term>, String> {
     fn rename_erased(name: &mut String, uses: &HashMap<String, u64>) {
-      if !runtime::get_global_name_misc(name).is_some() && uses.get(name).copied() <= Some(0) {
+      if runtime::get_global_name_misc(name).is_none() && uses.get(name).copied() <= Some(0) {
         *name = "*".to_string();
       }
     }
@@ -307,7 +302,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
         if is_global_0 != is_global_1 {
           panic!("Both variables must be global: '{}' and '{}'.", nam0, nam1);
         }
-        if is_global_0 && &nam0[2..] != &nam1[2..] {
+        if is_global_0 && nam0[2..] != nam1[2..] {
           panic!("Global dup names must be identical: '{}' and '{}'.", nam0, nam1);
         }
         let new_nam0 = if is_global_0 { nam0.clone() } else { (ctx.fresh)() };
@@ -889,7 +884,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
             let new_rule = language::syntax::Rule { lhs: new_lhs, rhs: new_rhs };
             new_group.push(new_rule);
             for (j, other) in rules.iter().enumerate().skip(i) {
-              let (compatible, same_shape) = matches_together(&rule, &other);
+              let (compatible, same_shape) = matches_together(rule, other);
               if compatible {
                 if let (
                   language::syntax::Term::Ctr { name: ref _rule_name, args: ref rule_args },
@@ -944,7 +939,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                             }
                           }
                           language::syntax::Term::Var { name: ref other_arg_name } => {
-                            subst(&mut other_new_rhs, other_arg_name, &rule_arg);
+                            subst(&mut other_new_rhs, other_arg_name, rule_arg);
                           }
                           _ => {
                             panic!("Internal error. Please report."); // not possible since it matches
@@ -961,7 +956,7 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
                             }
                           }
                           language::syntax::Term::Var { name: ref other_arg_name } => {
-                            subst(&mut other_new_rhs, other_arg_name, &rule_arg);
+                            subst(&mut other_new_rhs, other_arg_name, rule_arg);
                           }
                           _ => {
                             panic!("Internal error. Please report."); // not possible since it matches
@@ -1010,8 +1005,8 @@ pub fn flatten(rules: &[language::syntax::Rule]) -> Vec<language::syntax::Rule> 
 
   // For each group, split its internal rules
   let mut new_rules = Vec::new();
-  for (_name, rules) in &groups {
-    for rule in split_group(rules, &mut name_count) {
+  for (_name, rules) in groups {
+    for rule in split_group(&rules, &mut name_count) {
       new_rules.push(rule);
     }
   }

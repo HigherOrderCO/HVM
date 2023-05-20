@@ -398,14 +398,14 @@ pub fn new_atomic_u64_array(size: usize) -> Box<[AtomicU64]> {
 }
 
 pub fn new_tids(tids: usize) -> Box<[usize]> {
-  return (0..tids).collect::<Vec<usize>>().into_boxed_slice();
+  (0..tids).collect::<Vec<usize>>().into_boxed_slice()
 }
 
 pub fn new_heap(size: usize, tids: usize) -> Heap {
   let mut lvar = vec![];
   for tid in 0..tids {
     lvar.push(CachePadded::new(LocalVars {
-      tid: tid,
+      tid,
       used: AtomicI64::new(0),
       next: AtomicU64::new((size / tids * (tid + 0)) as u64),
       amin: AtomicU64::new((size / tids * (tid + 0)) as u64),
@@ -427,7 +427,7 @@ pub fn new_heap(size: usize, tids: usize) -> Heap {
     .collect::<Vec<Box<[AtomicU64]>>>()
     .into_boxed_slice();
   let vstk = (0..tids).map(|x| VisitQueue::new()).collect::<Vec<VisitQueue>>().into_boxed_slice();
-  return Heap { tids, node, lock, lvar, rbag, aloc, vbuf, vstk };
+  Heap { tids, node, lock, lvar, rbag, aloc, vbuf, vstk }
 }
 
 // Allocator
@@ -499,7 +499,7 @@ pub fn atomic_relink(heap: &Heap, loc: u64, old: Ptr, neo: Ptr) -> Result<Ptr, P
       let arg_loc = get_loc(neo, get_tag(neo) & 0x01);
       heap.node.get_unchecked(arg_loc as usize).store(Arg(loc), Ordering::Relaxed);
     }
-    return Ok(got);
+    Ok(got)
   }
 }
 
