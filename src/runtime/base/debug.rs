@@ -24,7 +24,7 @@ pub fn show_ptr(x: Ptr) -> String {
       CTR => "Ctr",
       FUN => "Fun",
       OP2 => "Op2",
-      U60 => "U60",
+      U60 => "Data.U60",
       F60 => "F60",
       _   => "?",
     };

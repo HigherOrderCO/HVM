@@ -23,7 +23,7 @@ This will install HVM's command-line interface. Make sure it worked with:
 hvm --version
 ```
 
-You should see `hvm 1.0.VERSION-beta`.
+You should see `hvm 1.0.VERSION`.
 
 Basic Usage
 -----------
@@ -53,7 +53,7 @@ First program
 
 HVM allows you to extend its machine with user-supplied functions, which are
 defined in files, using an equational style that resembles other functional
-languages like Haskelll. For example, the function below computes the
+languages like Haskell. For example, the function below computes the
 [BMI](https://en.wikipedia.org/wiki/Body_mass_index) of a person:
 
 ```javascript
@@ -189,7 +189,7 @@ The way this function branches generates independent additions: it is
 significantly boosting the performance. If we run it:
 
 ```
-time hvm run -c true-f summation.hvm "(Sum 0 0 5000000)"
+time hvm run -c true -f summation.hvm "(Sum 0 0 5000000)"
 ```
 
 It will output:

@@ -482,6 +482,9 @@ pub fn as_string(heap: &Heap, prog: &Program, tids: &[usize], host: u64) -> Opti
         }
       }
       return None;
+    } else if runtime::get_tag(term) == runtime::SUP {
+      host = runtime::get_loc(term, 0);
+      continue;
     } else {
       return None;
     }

@@ -51,13 +51,13 @@ pub const HVM_LOAD : u64 = 29;
 pub const PRECOMP : &[Precomp] = &[
   Precomp {
     id: STRING_NIL,
-    name: "String.nil",
+    name: "Data.String.nil",
     smap: &[false; 0],
     funs: None,
   },
   Precomp {
     id: STRING_CONS,
-    name: "String.cons",
+    name: "Data.String.cons",
     smap: &[false; 2],
     funs: None,
   },
@@ -69,121 +69,121 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: KIND_TERM_CT0,
-    name: "Kind.Term.ct0",
+    name: "Apps.Kind.Term.ct0",
     smap: &[false; 2],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT1,
-    name: "Kind.Term.ct1",
+    name: "Apps.Kind.Term.ct1",
     smap: &[false; 3],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT2,
-    name: "Kind.Term.ct2",
+    name: "Apps.Kind.Term.ct2",
     smap: &[false; 4],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT3,
-    name: "Kind.Term.ct3",
+    name: "Apps.Kind.Term.ct3",
     smap: &[false; 5],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT4,
-    name: "Kind.Term.ct4",
+    name: "Apps.Kind.Term.ct4",
     smap: &[false; 6],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT5,
-    name: "Kind.Term.ct5",
+    name: "Apps.Kind.Term.ct5",
     smap: &[false; 7],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT6,
-    name: "Kind.Term.ct6",
+    name: "Apps.Kind.Term.ct6",
     smap: &[false; 8],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT7,
-    name: "Kind.Term.ct7",
+    name: "Apps.Kind.Term.ct7",
     smap: &[false; 9],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT8,
-    name: "Kind.Term.ct8",
+    name: "Apps.Kind.Term.ct8",
     smap: &[false; 10],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CT9,
-    name: "Kind.Term.ct9",
+    name: "Apps.Kind.Term.ct9",
     smap: &[false; 11],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CTA,
-    name: "Kind.Term.ctA",
+    name: "Apps.Kind.Term.ctA",
     smap: &[false; 12],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CTB,
-    name: "Kind.Term.ctB",
+    name: "Apps.Kind.Term.ctB",
     smap: &[false; 13],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CTC,
-    name: "Kind.Term.ctC",
+    name: "Apps.Kind.Term.ctC",
     smap: &[false; 14],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CTD,
-    name: "Kind.Term.ctD",
+    name: "Apps.Kind.Term.ctD",
     smap: &[false; 15],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CTE,
-    name: "Kind.Term.ctE",
+    name: "Apps.Kind.Term.ctE",
     smap: &[false; 16],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CTF,
-    name: "Kind.Term.ctF",
+    name: "Apps.Kind.Term.ctF",
     smap: &[false; 17],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_CTG,
-    name: "Kind.Term.ctG",
+    name: "Apps.Kind.Term.ctG",
     smap: &[false; 18],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_U60,
-    name: "Kind.Term.u60",
+    name: "Apps.Kind.Term.u60",
     smap: &[false; 2],
     funs: None,
   },
   Precomp {
     id: KIND_TERM_F60,
-    name: "Kind.Term.f60",
+    name: "Apps.Kind.Term.f60",
     smap: &[false; 2],
     funs: None,
   },
   Precomp {
     id: U60_IF,
-    name: "U60.if",
+    name: "Data.U60.if",
     smap: &[true, false, false],
     funs: Some(PrecompFuns {
       visit: u60_if_visit,
@@ -192,7 +192,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: U60_SWAP,
-    name: "U60.swap",
+    name: "Data.U60.swap",
     smap: &[true, false, false],
     funs: Some(PrecompFuns {
       visit: u60_swap_visit,
@@ -201,7 +201,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_LOG,
-    name: "HVM.log",
+    name: "Apps.HVM.log",
     smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_log_visit,
@@ -210,7 +210,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_QUERY,
-    name: "HVM.query",
+    name: "Apps.HVM.query",
     smap: &[false; 1],
     funs: Some(PrecompFuns {
       visit: hvm_query_visit,
@@ -219,7 +219,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_PRINT,
-    name: "HVM.print",
+    name: "Apps.HVM.print",
     smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_print_visit,
@@ -228,7 +228,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_SLEEP,
-    name: "HVM.sleep",
+    name: "Apps.HVM.sleep",
     smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_sleep_visit,
@@ -237,7 +237,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_STORE,
-    name: "HVM.store",
+    name: "Apps.HVM.store",
     smap: &[false; 3],
     funs: Some(PrecompFuns {
       visit: hvm_store_visit,
@@ -246,7 +246,7 @@ pub const PRECOMP : &[Precomp] = &[
   },
   Precomp {
     id: HVM_LOAD,
-    name: "HVM.load",
+    name: "Apps.HVM.load",
     smap: &[false; 2],
     funs: Some(PrecompFuns {
       visit: hvm_load_visit,

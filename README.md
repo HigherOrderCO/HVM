@@ -3,12 +3,12 @@ Higher-order Virtual Machine (HVM)
 
 **Higher-order Virtual Machine (HVM)** is a pure functional runtime that is **lazy**, **non-garbage-collected** and
 **massively parallel**. It is also **beta-optimal**, meaning that, for higher-order computations, it can, in
-some cases, be up to exponentially faster than alternatives, including Haskell's GHC.
+some cases, be exponentially (in the asymptotical sense) faster than alternatives, including Haskell's GHC.
 
 That is possible due to a new model of computation, the **Interaction Net**, which supersedes the **Turing Machine** and
 the **Lambda Calculus**. Previous implementations of this model have been inefficient in practice, however, a recent
 breakthrough has drastically improved its efficiency, resulting in the HVM. Despite being relatively new, it already
-beats mature compilers in many cases, and is set to scale towards uncharted levels of performance.
+beats mature compilers in some cases, and is being continuously improved.
 
 **Welcome to the massively parallel future of computers!**
 
@@ -270,7 +270,7 @@ More Information
 
 - To ask questions and **join our community**, check our [Discord Server](https://discord.gg/kindelia).
 
-- To **contact the author** directly, send an email to <taelin@kindelia.org>.
+- To **contact the author** directly, send an email to <taelin@higherorderco.com>.
 
 FAQ
 ===
@@ -322,10 +322,14 @@ book, up to page 40. As such, it doesn't support some λ-terms, such as:
 (λx.(x x) λf.λx.(f (f x)))
 ```
 
-It is, though, Turing complete, and covers a wide subset of the λ-calculus,
-including terms such as the Y-combinator, church encodings (including algorithms
-like addition, multiplication and exponentiation), as well as arbitrary
-datatypes (both native and scott encoded) and recursion.
+HVM is, though, Turing complete, so you could implement a full λ-calculus
+interpreter on it - that limitation only addresses built-in closures. Keep in
+mind many popular languages don't include the full λ-calculus closures either;
+Rust, for example, covers a very restricted subset, due to the borrow system.
+That said, HVM covers a wide class of λ-terms, including the the Y-combinator,
+church encodings (even algorithms like addition, multiplication and
+exponentiation), as well as arbitrary datatypes (both native and scott encoded)
+and recursion.
 
 ### Will HVM support the full λ-Calculus, or System-F?
 
@@ -356,7 +360,7 @@ trees, recursion) aren't affected.
 No! Unsupported λ-terms like `λx.(x x) λf.λx.(f (f x))` don't cause HVM to
 display undefined behavior. HVM will always behave deterministically, and give
 you a correct result to any input, except it will be in terms of [Interaction
-Calculus](https://github.com/Kindelia/Wikind/blob/master/IC/_.kind2) (IC)
+Calculus](https://github.com/HigherOrderCO/Kindex/blob/master/Apps/IntCalc/_.kind2) (IC)
 semantics. The IC is an alternative to the Lambda Calculus (LC) which differs
 slightly in how non-linear variables are treated. As such, these "unsupported"
 terms are just cases where the LC and the IC evaluation disagree. In theory, you
@@ -418,10 +422,11 @@ there are multiple ways to alleviate, or solve, this problem. One approach would
 be to implement "safe pointers", also described on the book, which would reduce
 the cloning overhead and make some quadratic cases linear. But that wouldn't
 work for all cases. A complimentary approach would be to do linearity analysis,
-converting problematic quadratic programs in faster, linear versions.  Finally,
+converting problematic quadratic programs in faster, linear versions. Finally,
 in the worst case, we could add references just like Haskell, but that should be
 made with a lot of caution, in order not to break the assumptions made by the
-parallel execution engine.
+parallel execution engine. For a more in depth explanation, check [read comment
+on Hacker News](https://news.ycombinator.com/edit?id=35342297).
 
 ### Is HVM's optimality only relevant for weird, academic λ-encoded terms?
 
@@ -490,7 +495,7 @@ relation to C and Rust programs. Thankfully, there is no theoretical limitation
 preventing us from adding loops and local mutability, and, once/if we do, one
 can expect the same memory footprint as Rust. The only caveat, though, is shared
 references: we're not sure if we want to add these, as they might impact
-parallelism. As such, it is posible that we choose to let lazy clones to be the
+parallelism. As such, it is possible that we choose to let lazy clones to be the
 only form of non-linearity, which would preserve parallelism, at the cost of
 making some algorithms more memory-hungry.
 
@@ -524,12 +529,8 @@ HVM is a prototype. Bugs are expected. Please, open an issue!
 
 I quit.
 
-Disclaimers
-===========
-
-(Removed in favor of the FAQ above!)
-
 Related Work
 ============
 
 - [Inpla](https://github.com/inpla/inpla) - a pure interaction net framework, without the "functional/calculus" style of HVM
+- [HINet](http://www.cas.mcmaster.ca/~kahl/Haskell/HINet/) - implementation of interaction nets in Haskell

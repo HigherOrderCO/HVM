@@ -444,10 +444,10 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
       loop {
         //count += 1;
         //if tid == 9 && count > 5000000 {
-        //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_mut_ptr());
+        //println!("[9] slow-alloc {} | {}", count, *lvar.next.as_ptr());
         //}
         // Loads value on cursor
-        let val = heap.node.get_unchecked(*lvar.next.as_mut_ptr() as usize).load(Ordering::Relaxed);
+        let val = heap.node.get_unchecked(*lvar.next.as_ptr() as usize).load(Ordering::Relaxed);
         // If it is empty, increment length
         if val == 0 {
           length += 1;
@@ -456,11 +456,11 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
           length = 0;
         };
         // Moves cursor right
-        *lvar.next.as_mut_ptr() += 1;
+        *lvar.next.as_ptr() += 1;
         // If it is out of bounds, warp around
-        if *lvar.next.as_mut_ptr() >= *lvar.amax.as_mut_ptr() {
+        if *lvar.next.as_ptr() >= *lvar.amax.as_ptr() {
           length = 0;
-          *lvar.next.as_mut_ptr() = *lvar.amin.as_mut_ptr();
+          *lvar.next.as_ptr() = *lvar.amin.as_ptr();
         }
         // If length equals arity, allocate that space
         if length == arity {
@@ -468,9 +468,9 @@ pub fn alloc(heap: &Heap, tid: usize, arity: u64) -> u64 {
           //println!("[{}] alloc {} at {}", lvar.tid, arity, lvar.next - length);
           //lvar.used.fetch_add(arity as i64, Ordering::Relaxed);
           //if tid == 9 && count > 50000 {
-          //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_mut_ptr() - length);
+          //println!("[{}] allocated {}! {}", 9, length, *lvar.next.as_ptr() - length);
           //}
-          return *lvar.next.as_mut_ptr() - length;
+          return *lvar.next.as_ptr() - length;
         }
       }
     }

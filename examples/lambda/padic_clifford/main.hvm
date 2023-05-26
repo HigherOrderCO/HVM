@@ -1,0 +1,145 @@
+// This file implements λ-encoded Clifford Algebra geometric product using
+// 2-adic elements. This is one of the cleanest and most elegant implementation
+// of numbers in a pure functional language that features negative numbers and
+// fractions without the need to explicitly implement them. Although this looks
+// pretty, some bits still look ugly and unnatural, like Adic ADD and MUL. Most
+// of the functions here fuse perfectly, but these 2 do not.
+
+// Adics
+// =====
+
+(O x) = λo λi (o x) // bit 0
+(I x) = λo λi (i x) // bit 1
+
+// Integers
+P0 = (O P0)   // +0
+P1 = (Inc P0) // +1
+P2 = (Inc P1) // +2
+P3 = (Inc P2) // +3
+P4 = (Inc P3) // +4
+P5 = (Inc P4) // +5
+P6 = (Inc P5) // +6
+P7 = (Inc P6) // +7
+P8 = (Inc P7) // +8
+P9 = (Inc P8) // +9
+
+// Integers
+M1 = (I M1)   // -1
+M2 = (Dec M1) // -2
+M3 = (Dec M2) // -3
+M4 = (Dec M3) // -4
+M5 = (Dec M4) // -5
+M6 = (Dec M5) // -6
+M7 = (Dec M6) // -7
+M8 = (Dec M7) // -8
+M9 = (Dec M8) // -9
+
+// Fractions
+M1D3 = (I (O M1D3)) // -1/3
+P1D3 = (Neg M1D3)   // +1/3
+
+// Inc : Adic -> Adic
+// Increments an Adic.
+(Inc x) = λo λi
+  let case_o = i 
+  let case_i = λx(o (Inc x))
+  (x case_o case_i)
+  
+// Dec : Adic -> Adic
+// Decrements an Adic.
+(Dec x) = λ o λi
+  let case_o = λx(i (Dec x))
+  let case_i = o
+  (x case_o case_i)
+  
+// Add : Adic -> Adic -> Adic
+// Adic addition with carry.
+(Add a b) = (a
+  λap λb λo λi (b
+    λbp (o (Add ap bp))
+    λbp (i (Add ap bp)))
+  λap λb λo λi (b
+    λbp (i (Add ap bp))
+    λbp (o (Inc (Add ap bp))))
+  b)
+
+// Mul : Adic -> Adic -> Adic
+// Adic long multiplication.
+(Mul a b) = (a
+  λap λb        (O (Mul ap b))
+  λap λb (Add b (O (Mul ap b)))
+  b)
+
+// Neg : Adic -> Adic
+// Negates a number.
+(Neg a) = (Mul a M1)
+
+// Adic : U60 -> Adic
+// U60 to Adic.
+(Adic x) = (Adic.go 60 x)
+  (Adic.go 0 n) = P0
+  (Adic.go s n) = (Adic.go.next (- s 1) (% n 2) (/ n 2))
+    (Adic.go.next s 0 n) = (O (Adic.go s n))
+    (Adic.go.next s 1 n) = (I (Adic.go s n))
+
+// U60 : Adic -> U64
+// Adic to U60.
+(U60 x) = (U60.go 60 x)
+  (U60.go 0 n) = 0
+  (U60.go s x) =
+    let case_o = λx(+ 0 (* 2 (U60.go (- s 1) x)))
+    let case_i = λx(+ 1 (* 2 (U60.go (- s 1) x)))
+    (x case_o case_i)
+
+// U60 : Adic -> String
+// Adic to String.
+(Show x) = (Show.go 60 x)
+  (Show.go 0 n) = String.nil
+  (Show.go s x) =
+    let case_o = λx(String.cons '0' (Show.go (- s 1) x))
+    let case_i = λx(String.cons '1' (Show.go (- s 1) x))
+    (x case_o case_i)
+
+// Clifford Algebra
+// ================
+
+(T a0 a1) = λt (t a0 a1) // tree branch
+
+// CNeg : Nat -> Clif -> Clif
+(CNeg 0 a) = (Neg a)
+(CNeg d a) = λt (a λa0 λa1 (t (CNeg (- d 1) a0) (CNeg (- d 1) a1)))
+
+// CCon : Nat -> Clif -> Clif
+(CCon 0 a) = a
+(CCon d a) = λt (a λa0 λa1 (t (CCon (- d 1) a0) (CCon (- d 1) (CNeg (- d 1) a1))))
+
+// CAdd : Nat -> Clif -> Clif -> Clif
+(CAdd 0 a b) = (Add a b)
+(CAdd d a b) = λt (a λa0 λa1 (b λb0 λb1 (t (CAdd (- d 1) a0 b0) (CAdd (- d 1) a1 b1))))
+
+// CMul : Nat -> Clif -> Clif -> Clif
+(CMul 0 a b) = (Mul a b)
+(CMul d a b) = λt (a λa0 λa1 (b λb0 λb1 (t
+  (CAdd (- d 1) (CMul (- d 1) a0 b0) (CMul (- d 1) a1 (CCon (- d 1) b1)))
+  (CAdd (- d 1) (CMul (- d 1) a0 b1) (CMul (- d 1) a1 (CCon (- d 1) b0))))))
+    
+// CGet : Nat -> Clif -> Clif
+(CGet 0 a) = [(U60 a)]
+(CGet d a) = (a λa0 λa1 (List.concat (CGet (- d 1) a0) (CGet (- d 1) a1)))
+
+// Utils
+// =====
+
+(List.concat (List.cons x xs) ys) = (List.cons x (List.concat xs ys))
+(List.concat List.nil         ys) = ys
+
+// Tests
+// =====
+
+Main =
+  let d = 2
+  let f = λa λb (CMul d a b)
+  let a = (T (T P1 P2) (T P3 P4)) // (1 + 2X + 3Y + 4XY)
+  let b = (T (T P4 P3) (T P2 P1)) // (4 + 3X + 2Y + 4XY)
+  let c = (f a b)
+  (CGet d c)
