@@ -8,6 +8,9 @@
 #![allow(unused_labels)]
 #![allow(non_upper_case_globals)]
 
+pub mod api;
+pub mod compiler;
+pub mod cli;
 pub mod language;
 pub mod runtime;
 

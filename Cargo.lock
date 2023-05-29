@@ -307,12 +307,19 @@ version = "1.0.9"
 dependencies = [
  "HOPA",
  "backtrace",
- "clap",
  "crossbeam",
  "highlight_error",
  "instant",
  "itertools",
  "sysinfo",
+]
+
+[[package]]
+name = "hvm-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "hvm",
 ]
 
 [[package]]

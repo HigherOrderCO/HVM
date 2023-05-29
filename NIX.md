@@ -9,9 +9,9 @@ Usage (Nix)
 git clone https://github.com/Kindelia/HVM.git
 cd HVM
 # Start a shell that has the `hvm` command without installing it.
-nix shell .#hvm
+nix shell .
 # Or install it to your Nix profile.
-nix profile install .#hvm
+nix profile install .
 ```
 
 #### 2. Create an HVM file

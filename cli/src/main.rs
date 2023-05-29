@@ -10,12 +10,13 @@
 
 use clap::{Parser, Subcommand};
 use std::io::{self, prelude::*};
+use hvm::{api,cli,compiler};
 
-mod cli;
-mod language;
-mod runtime;
-mod compiler;
-mod api;
+// mod cli;
+// mod language;
+// mod runtime;
+// mod compiler;
+// mod api;
 
 #[derive(Subcommand)]
 enum Commands {
@@ -64,7 +65,7 @@ struct Cli {
   pub command: Option<Commands>,
 }
 
-fn run_cli() -> Result<(), String> {
+fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
   let Cli { size, tids, cost: show_cost, debug, command } = Cli::parse();
 
   let run = |file: &str, expr: &str| {
@@ -78,9 +79,9 @@ fn run_cli() -> Result<(), String> {
     Ok(())
   };
 
-  fn prompt(prompt: &str) {
+  fn prompt(prompt: &str) -> std::io::Result<()> {
     print!("{prompt}");
-    io::stdout().flush();
+    io::stdout().flush()
   }
 
   let repl = || {
@@ -96,12 +97,12 @@ r#" __  __   __  __  __.   __
  \ \_\/\_\. `._/  \ \_\-\ \_\
   \/_/\/_/ `/_/    \/_/  \/_/ REPL"#);
     loop {
-      prompt("> ");
+      prompt("> ")?;
       let line = readline();
       if line.is_empty() {
         continue;
       }
-      run("", &line);
+      run("", &line)?;
     }
   };
 

@@ -1,0 +1,27 @@
+[package]
+name = "hvm"
+version = "1.0.9"
+edition = "2021"
+description = "A massively parallel functional runtime."
+repository = "https://github.com/HigherOrderCO/HVM"
+license = "MIT"
+keywords = ["functional", "language", "runtime", "compiler", "target"]
+categories = ["compilers"]
+readme = "../README.md"
+
+[lib]
+test = true
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = 3
+
+[dependencies]
+HOPA = "0.1.1"
+backtrace = "0.3.66"
+sysinfo = "0.26.7"
+# clap = { version = "4.1", features = ["derive"] }
+crossbeam = "0.8.2"
+highlight_error = "0.1.1"
+instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
+itertools = "0.10"

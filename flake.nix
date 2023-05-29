@@ -6,6 +6,10 @@
       inputs.nixpkgs.follows = "nixpkgs";
       url = "github:cachix/devenv";
     };
+    fenix = {
+      inputs.nixpkgs.follows = "nixpkgs";
+      url = "github:nix-community/fenix/monthly";
+    };
     flake-compat = {
       flake = false;
       url = "github:edolstra/flake-compat";
@@ -26,7 +30,13 @@
       imports = builtins.map (item: inputs.${item}.flakeModule) ["devenv" "nci"];
       nci.source = (import inputs.nix-filter) {
         root = ./.;
-        include = ["Cargo.lock" "Cargo.toml" "rust-toolchain.toml" "src"];
+        include = [
+          "cli"
+          "Cargo.lock"
+          "Cargo.toml"
+          "hvm"
+          "rust-toolchain.toml"
+        ];
       };
       perSystem = {
         config,
@@ -36,27 +46,33 @@
         system,
         ...
       }: let
-        crate_name = "hvm";
-        crate_outputs = config.nci.outputs.${crate_name};
+        project = "hvm";
+        executable_crate = "hvm-cli";
+        outputs = config.nci.outputs;
         override.overrideAttrs = old: {buildInputs = (old.buildInputs or []) ++ pkgs.lib.attrsets.attrVals ["openssl" "pkg-config"] pkgs;};
       in {
         devenv.shells.default = {
           languages = {
             javascript.enable = true;
-            rust.enable = true;
+            rust = {
+              enable = true;
+              version = "latest";
+            };
             haskell.enable = true;
           };
           packages = [config.packages.default];
         };
-        nci.projects.${crate_name}.relPath = "";
-        nci.crates.${crate_name} = {
-          depsOverrides = {inherit override;};
+        nci.projects.${project} = {
+          relPath = "";
           export = true;
+        };
+        nci.crates.${executable_crate} = {
+          depsOverrides = {inherit override;};
           overrides = {inherit override;};
           profiles.release.runTests = false;
           runtimeLibs = pkgs.lib.attrsets.attrVals ["openssl"] pkgs;
         };
-        packages.default = crate_outputs.packages.release;
+        packages.default = outputs.${executable_crate}.packages.release;
       };
       systems = ["x86_64-linux" "aarch64-darwin"];
     };
