@@ -56,12 +56,14 @@
 (CC.lang program) =
   let callcc  = λcallback (λ$garbage($hole) (callback λ$hole(0)))
   let result  = (program callcc)
-  let garbage = $garbage
-  (Seq garbage result)
-
-// Helper function for strictness annotation 
-(Seq 0 b) = b
-(Seq a b) = b
+  
+  // "seq" means: reduce this before proceeding
+  // We need to reduce $garbage since otherwise (callback λ$hole(0)) will never be applied
+  // and $hole won't be set.
+  // result is what needs to be reduced first though, because that's where $hole gets set, which is used by $garbage.
+  seq result;
+  seq $garbage;
+  result
 
 // Notice the call/cc function receives the user-defined callback. It then gives
 // the user an internal function that, when called, will fill the hole, and
