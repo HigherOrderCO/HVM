@@ -1,0 +1,29 @@
+[package]
+name = "hvm-cli"
+version = "0.1.0"
+edition = "2021"
+description = "HVM CLI."
+repository = "https://github.com/HigherOrderCO/HVM"
+license = "MIT"
+keywords = ["functional", "language", "runtime", "compiler", "target"]
+categories = ["compilers"]
+readme = "../README.md"
+
+[[bin]]
+name = "hvm"
+path = "src/main.rs"
+test = false
+
+[profile.release]
+opt-level = 3
+
+[dependencies]
+# HOPA = "0.1.1"
+# backtrace = "0.3.66"
+# sysinfo = "0.26.7"
+clap = { version = "4.1", features = ["derive"] }
+# crossbeam = "0.8.2"
+# highlight_error = "0.1.1"
+hvm = { path = "../hvm" }
+# instant = { version = "0.1", features = [ "wasm-bindgen", "inaccurate" ] }
+# itertools = "0.10"
