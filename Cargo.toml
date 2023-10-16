@@ -1,6 +1,6 @@
 [package]
 name = "hvm"
-version = "1.0.9"
+version = "1.0.10"
 edition = "2021"
 description = "A massively parallel functional runtime."
 repository = "https://github.com/HigherOrderCO/HVM"
@@ -21,8 +21,8 @@ opt-level = 3
 
 [dependencies]
 HOPA = "0.1.1"
-backtrace = "0.3.66"
-sysinfo = "0.29.0"
+backtrace = "0.3.69"
+sysinfo = "0.29.10"
 clap = { version = "3.1.8", features = ["derive"] }
 crossbeam = "0.8.2"
 highlight_error = "0.1.1"
