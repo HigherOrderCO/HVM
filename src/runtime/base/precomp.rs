@@ -264,12 +264,12 @@ pub const PRECOMP_COUNT : u64 = PRECOMP.len() as u64;
 #[inline(always)]
 pub fn u60_if_visit(ctx: ReduceCtx) -> bool {
   if is_whnf(load_arg(ctx.heap, ctx.term, 0)) {
-    return false;
+    false
   } else {
     let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
     *ctx.cont = goup;
     *ctx.host = get_loc(ctx.term, 0);
-    return true;
+    true
   }
 }
 
@@ -298,7 +298,7 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
       return true;
     }
   }
-  return false;
+  false
 }
 
 // U60.swap (cond: Term) (pair: Term)
@@ -307,12 +307,12 @@ pub fn u60_if_apply(ctx: ReduceCtx) -> bool {
 #[inline(always)]
 pub fn u60_swap_visit(ctx: ReduceCtx) -> bool {
   if is_whnf(load_arg(ctx.heap, ctx.term, 0)) {
-    return false;
+    false
   } else {
     let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
     *ctx.cont = goup;
     *ctx.host = get_loc(ctx.term, 0);
-    return true;
+    true
   }
 }
 
@@ -345,14 +345,14 @@ pub fn u60_swap_apply(ctx: ReduceCtx) -> bool {
       return true;
     }
   }
-  return false;
+  false
 }
 
 // HVM.log (term: Term)
 // --------------------
 
 fn hvm_log_visit(ctx: ReduceCtx) -> bool {
-  return false;
+  false
 }
 
 fn hvm_log_apply(ctx: ReduceCtx) -> bool {
@@ -362,14 +362,14 @@ fn hvm_log_apply(ctx: ReduceCtx) -> bool {
   link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 1));
   collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
-  return true;
+  true
 }
 
 // HVM.query (cont: String -> Term)
 // --------------------------------
 
 fn hvm_query_visit(ctx: ReduceCtx) -> bool {
-  return false;
+  false
 }
 
 fn hvm_query_apply(ctx: ReduceCtx) -> bool {
@@ -379,7 +379,7 @@ fn hvm_query_apply(ctx: ReduceCtx) -> bool {
     stdin().read_line(&mut input).expect("string");
     if let Some('\n') = input.chars().next_back() { input.pop(); }
     if let Some('\r') = input.chars().next_back() { input.pop(); }
-    return input;
+    input
   }
   let cont = load_arg(ctx.heap, ctx.term, 0);
   let text = make_string(ctx.heap, ctx.tid, &read_input());
@@ -389,14 +389,14 @@ fn hvm_query_apply(ctx: ReduceCtx) -> bool {
   free(ctx.heap, 0, get_loc(ctx.term, 0), 1);
   let done = App(app0);
   link(ctx.heap, *ctx.host, done);
-  return true;
+  true
 }
 
 // HVM.print (text: String) (cont: Term)
 // -----------------------------------------------
 
 fn hvm_print_visit(ctx: ReduceCtx) -> bool {
-  return false;
+  false
 }
 
 fn hvm_print_apply(ctx: ReduceCtx) -> bool {
@@ -407,14 +407,14 @@ fn hvm_print_apply(ctx: ReduceCtx) -> bool {
   link(ctx.heap, *ctx.host, load_arg(ctx.heap, ctx.term, 1));
   collect(ctx.heap, &ctx.prog.aris, ctx.tid, load_ptr(ctx.heap, get_loc(ctx.term, 0)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
-  return true;
+  true
 }
 
 // HVM.sleep (time: U60) (cont: Term)
 // ----------------------------------
 
 fn hvm_sleep_visit(ctx: ReduceCtx) -> bool {
-  return false;
+  false
 }
 
 fn hvm_sleep_apply(ctx: ReduceCtx) -> bool {
@@ -422,14 +422,14 @@ fn hvm_sleep_apply(ctx: ReduceCtx) -> bool {
   std::thread::sleep(std::time::Duration::from_nanos(get_num(time)));
   link(ctx.heap, *ctx.host, load_ptr(ctx.heap, get_loc(ctx.term, 1)));
   free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 2);
-  return true;
+  true
 }
 
 // HVM.store (key: String) (val: String) (cont: Term)
 // --------------------------------------------------
 
 fn hvm_store_visit(ctx: ReduceCtx) -> bool {
-  return false;
+  false
 }
 
 fn hvm_store_apply(ctx: ReduceCtx) -> bool {
@@ -457,7 +457,7 @@ fn hvm_store_apply(ctx: ReduceCtx) -> bool {
 // ---------------------------------------------
 
 fn hvm_load_visit(ctx: ReduceCtx) -> bool {
-  return false;
+  false
 }
 
 fn hvm_load_apply(ctx: ReduceCtx) -> bool {

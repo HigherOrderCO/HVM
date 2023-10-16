@@ -20,19 +20,19 @@ pub struct RedexBag {
 }
 
 pub fn new_redex(host: u64, cont: u64, left: u64) -> Redex {
-  return (host << 32) | (cont << 6) | left;
+  (host << 32) | (cont << 6) | left
 }
 
 pub fn get_redex_host(redex: Redex) -> u64 {
-  return redex >> 32;
+  redex >> 32
 }
 
 pub fn get_redex_cont(redex: Redex) -> u64 {
-  return (redex >> 6) & 0x3FFFFFF;
+  (redex >> 6) & 0x3FFFFFF
 }
 
 pub fn get_redex_left(redex: Redex) -> u64 {
-  return redex & 0x3F;
+  redex & 0x3F
 }
 
 impl RedexBag {
@@ -43,7 +43,7 @@ impl RedexBag {
     }
     let next = next.into_boxed_slice();
     let data = crate::runtime::new_atomic_u64_array(REDEX_BAG_SIZE);
-    return RedexBag { tids, next, data };
+    RedexBag { tids, next, data }
   }
 
   //pub fn min_index(&self, tid: usize) -> usize {
@@ -72,9 +72,9 @@ impl RedexBag {
     let redex = unsafe { self.data.get_unchecked(index as usize) }.fetch_sub(1, Ordering::Relaxed);
     if get_redex_left(redex) == 1 {
       unsafe { self.data.get_unchecked(index as usize) }.store(0, Ordering::Relaxed);
-      return Some((get_redex_cont(redex), get_redex_host(redex)));
+      Some((get_redex_cont(redex), get_redex_host(redex)))
     } else {
-      return None;
+      None
     }
   }
 }

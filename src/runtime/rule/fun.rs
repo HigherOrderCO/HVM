@@ -5,7 +5,7 @@ use std::sync::atomic::{Ordering};
 pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
   let len = sidxs.len() as u64;
   if len == 0 {
-    return false;
+    false
   } else {
     let mut vlen = 0;
     let vbuf = unsafe { ctx.heap.vbuf.get_unchecked(ctx.tid) };
@@ -16,7 +16,7 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
       }
     }
     if vlen == 0 {
-      return false;
+      false
     } else {
       let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, vlen as u64));
       for i in 0 .. vlen - 1 {
@@ -24,7 +24,7 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
       }
       *ctx.cont = goup;
       *ctx.host = unsafe { vbuf.get_unchecked(vlen - 1).load(Ordering::Relaxed) };
-      return true;
+      true
     }
   }
   //OLD_VISITER:
@@ -145,7 +145,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
 
       // free the matched ctrs
       for (i, arity) in &rule.free {
-        free(ctx.heap, ctx.tid, get_loc(load_arg(ctx.heap, ctx.term, *i as u64), 0), *arity);
+        free(ctx.heap, ctx.tid, get_loc(load_arg(ctx.heap, ctx.term, *i), 0), *arity);
       }
       free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), arity_of(&ctx.prog.aris, fid));
 
@@ -153,7 +153,7 @@ pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bo
     }
   }
 
-  return false;
+  false
 }
 
 #[inline(always)]

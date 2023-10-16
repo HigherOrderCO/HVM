@@ -6,7 +6,7 @@ pub fn visit(ctx: ReduceCtx) -> bool {
   ctx.visit.push(new_visit(get_loc(ctx.term, 1), ctx.hold, goup));
   *ctx.cont = goup;
   *ctx.host = get_loc(ctx.term, 0);
-  return true;
+  true
 }
 
 #[inline(always)]
@@ -128,5 +128,5 @@ pub fn apply(ctx: ReduceCtx) -> bool {
     return false;
   }
 
-  return false;
+  false
 }
