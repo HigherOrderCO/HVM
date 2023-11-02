@@ -33,7 +33,7 @@ Bubble Sort
 <td>
 
 ```javascript
-// sort : List -> List
+// Sort : List -> List
 (Sort Nil)         = Nil
 (Sort (Cons x xs)) = (Insert x (Sort xs))
 
