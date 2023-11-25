@@ -12,6 +12,14 @@ beats mature compilers in some cases, and is being continuously improved.
 
 **Welcome to the massively parallel future of computers!**
 
+Production Ready Soon!
+======================
+
+The code here is a prototype, but the first production ready version is coming soon, with tons of optimizations and -
+most importantly - correctness work. Follow the progress here: [HVM-Core](https://github.com/HigherOrderCO/HVM-Core).
+
+
+
 Examples
 ========
 
