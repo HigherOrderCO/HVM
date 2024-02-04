@@ -14,7 +14,7 @@ rustup install nightly
 Then, install HVM:
 
 ```bash
-cargo +nightly install --force --git https://github.com/Kindelia/HVM.git
+cargo +nightly install --force --git https://github.com/HigherOrderCO/HVM.git
 ```
 
 This will install HVM's command-line interface. Make sure it worked with:
