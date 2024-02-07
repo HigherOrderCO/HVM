@@ -1,9 +1,9 @@
 [package]
-name = "hvm"
-version = "1.0.11"
+name = "hvm1"
+version = "1.0.12"
 edition = "2021"
 description = "A massively parallel functional runtime."
-repository = "https://github.com/HigherOrderCO/HVM"
+repository = "https://github.com/HigherOrderCO/HVM1"
 license = "MIT"
 keywords = ["functional", "language", "runtime", "compiler", "target"]
 categories = ["compilers"]
@@ -13,7 +13,7 @@ test = true
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "hvm"
+name = "hvm1"
 test = false
 
 [profile.release]
