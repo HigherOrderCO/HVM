@@ -242,7 +242,7 @@ purpose is to show yet another important advantage of HVM: beta-optimality. This
 λ-encoded numbers **exponentially faster** than GHC, since it can deal with very higher-order programs with optimal
 asymptotics, while GHC can not. As esoteric as this technique may look, it can actually be very useful to design
 efficient functional algorithms. One application, for example, is to implement [runtime
-deforestation](https://github.com/Kindelia/HVM/issues/167#issuecomment-1314665474) for immutable datatypes. In general,
+deforestation](https://github.com/HigherOrderCO/HVM/issues/167#issuecomment-1314665474) for immutable datatypes. In general,
 HVM is capable of applying any fusible function `2^n` times in linear time, which sounds impossible, but is indeed true.
 
 *Charts made on [plotly.com](https://chart-studio.plotly.com/).*
@@ -276,7 +276,7 @@ More Information
 
 - To learn more about the **underlying tech**, check [guide/HOW.md](guide/HOW.md).
 
-- To ask questions and **join our community**, check our [Discord Server](https://discord.gg/kindelia).
+- To ask questions and **join our community**, check our [Discord Server](https://discord.higherorderco.com).
 
 - To **contact the author** directly, send an email to <taelin@higherorderco.com>.
 
@@ -416,13 +416,13 @@ let f = (2 + x) in [λx. f, λx. f]
 
 The solution to that question is the main insight that the Interaction Net model
 brought to the table, and it is described in more details on the
-[HOW.md](https://github.com/Kindelia/HVM/blob/master/guide/HOW.md) document.
+[HOW.md](https://github.com/HigherOrderCO/HVM/blob/master/guide/HOW.md) document.
 
 ### Is HVM always *asymptotically* faster than GHC?
 
 No. In most common cases, it will have the same asymptotics. In some cases, it
 is exponentially faster. In [this
-issue](https://github.com/Kindelia/HVM/issues/60), a user noticed that HVM
+issue](https://github.com/HigherOrderCO/HVM/issues/60), a user noticed that HVM
 displays quadratic asymptotics for certain functions that GHC computes in linear
 time. That was a surprise to me, and, as far as I can tell, despite the
 "optimal" brand, seems to be a limitation of the underlying theory. That said,
@@ -458,7 +458,7 @@ foldr (.) id funcs :: [Int -> Int]
 
 GHC won't be able to "fuse" the functions on the `funcs` list, since they're not
 known at compile time. HVM will do that just fine. See [this
-issue](https://github.com/Kindelia/HVM/issues/167) for a practical example.
+issue](https://github.com/HigherOrderCO/HVM/issues/167) for a practical example.
 
 Another practical application for λ-encodings is for monads. On Haskell, the
 Free Monad library uses Church encodings as an important optimization. Without

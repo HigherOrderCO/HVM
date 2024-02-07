@@ -463,9 +463,9 @@ hvm::runtime::eval(file, term, funs, size, tids, dbug);
 
 *To learn how to design the `apply` function, first learn HVM's memory model
 (documented on
-[runtime/base/memory.rs](https://github.com/Kindelia/HVM/blob/master/src/runtime/base/memory.rs)),
+[runtime/base/memory.rs](https://github.com/HigherOrderCO/HVM/blob/master/src/runtime/base/memory.rs)),
 and then consult some of the precompiled IO functions
-[here](https://github.com/Kindelia/HVM/blob/master/src/runtime/base/precomp.rs).
+[here](https://github.com/HigherOrderCO/HVM/blob/master/src/runtime/base/precomp.rs).
 You can also use this API to extend HVM with new compute primitives, but to make
 this efficient, you'll need to use the `visit` function too. You can see some
 examples by compiling a `.hvm` file to Rust, and then checking the `precomp.rs`
