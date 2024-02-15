@@ -323,7 +323,7 @@ benchmarks are NOT claiming that HVM is faster than GHC today.
 ### Does HVM support the full λ-Calculus, or System-F?
 
 Not yet! HVM is an impementation of the bookkeeping-free version of the
-reduction algorithm proposed on [TOIOFPL](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages)
+reduction algorithm proposed on [TOIOFPL](https://www.cambridge.org/us/universitypress/subjects/computer-science/programming-languages-and-applied-logic/optimal-implementation-functional-programming-languages)
 book, up to page 40. As such, it doesn't support some λ-terms, such as:
 
 ```
@@ -342,7 +342,7 @@ and recursion.
 ### Will HVM support the full λ-Calculus, or System-F?
 
 Yes! We plan to, by implementing the full algorithm described on the
-[TOIOFPL](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages),
+[TOIOFPL](https://www.cambridge.org/us/universitypress/subjects/computer-science/programming-languages-and-applied-logic/optimal-implementation-functional-programming-languages),
 i.e., after page 40. Sadly, this results in an overhead that affects
 the performance of beta-reduction by about 10x. As such, we want to
 do so with caution to keep HVM efficient. Currently, the plan is:
