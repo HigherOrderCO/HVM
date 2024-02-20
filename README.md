@@ -81,7 +81,7 @@ On this example, we run a simple, recursive [Bubble Sort](https://en.wikipedia.o
 (Haskell's compiler). Notice the algorithms are identical. The chart shows how much time each runtime took to sort a
 list of given size (the lower, the better). The purple line shows GHC (single-thread), the green lines show HVM (1, 2, 4
 and 8 threads). As you can see, both perform similarly, with HVM having a small edge.  Sadly, here, its performance
-doesn't improve with added cores. That's because Bubble Sort is an *inherently sequential* algorithm, so HVM can't
+doesn't improve with added cores. That's because this implementation of Bubble Sort is *inherently sequential*, so HVM can't
 improve it.
 
 Radix Sort
