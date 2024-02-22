@@ -462,18 +462,17 @@ fn hvm_load_visit(ctx: ReduceCtx) -> bool {
 
 fn hvm_load_apply(ctx: ReduceCtx) -> bool {
   if let Some(key) = crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0)) {
-    if let Ok(file) = std::fs::read(key) {
-      if let Ok(file) = std::str::from_utf8(&file) {
-        let cont = load_arg(ctx.heap, ctx.term, 1); 
-        let text = make_string(ctx.heap, ctx.tid, file);
-        let app0 = alloc(ctx.heap, ctx.tid, 2);
-        link(ctx.heap, app0 + 0, cont);
-        link(ctx.heap, app0 + 1, text);
-        free(ctx.heap, 0, get_loc(ctx.term, 0), 2);
-        let done = App(app0);
-        link(ctx.heap, *ctx.host, done);
-        return true;
-      }
+    let file = std::fs::read(key).unwrap_or_else(|_| Vec::new());
+    if let Ok(file) = std::str::from_utf8(&file) {
+      let cont = load_arg(ctx.heap, ctx.term, 1);
+      let text = make_string(ctx.heap, ctx.tid, file);
+      let app0 = alloc(ctx.heap, ctx.tid, 2);
+      link(ctx.heap, app0 + 0, cont);
+      link(ctx.heap, app0 + 1, text);
+      free(ctx.heap, 0, get_loc(ctx.term, 0), 2);
+      let done = App(app0);
+      link(ctx.heap, *ctx.host, done);
+      return true;
     }
   }
   println!("Runtime failure on: {}", show_at(ctx.heap, ctx.prog, *ctx.host, &[]));
