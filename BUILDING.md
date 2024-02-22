@@ -4,7 +4,7 @@ Building
 Clone the repo:
 
 ```sh
-git clone https://github.com/Kindelia/HVM.git
+git clone https://github.com/HigherOrderCO/HVM.git
 cd HVM
 ```
 

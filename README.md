@@ -81,7 +81,7 @@ On this example, we run a simple, recursive [Bubble Sort](https://en.wikipedia.o
 (Haskell's compiler). Notice the algorithms are identical. The chart shows how much time each runtime took to sort a
 list of given size (the lower, the better). The purple line shows GHC (single-thread), the green lines show HVM (1, 2, 4
 and 8 threads). As you can see, both perform similarly, with HVM having a small edge.  Sadly, here, its performance
-doesn't improve with added cores. That's because Bubble Sort is an *inherently sequential* algorithm, so HVM can't
+doesn't improve with added cores. That's because this implementation of Bubble Sort is *inherently sequential*, so HVM can't
 improve it.
 
 Radix Sort
@@ -242,7 +242,7 @@ purpose is to show yet another important advantage of HVM: beta-optimality. This
 λ-encoded numbers **exponentially faster** than GHC, since it can deal with very higher-order programs with optimal
 asymptotics, while GHC can not. As esoteric as this technique may look, it can actually be very useful to design
 efficient functional algorithms. One application, for example, is to implement [runtime
-deforestation](https://github.com/Kindelia/HVM/issues/167#issuecomment-1314665474) for immutable datatypes. In general,
+deforestation](https://github.com/HigherOrderCO/HVM/issues/167#issuecomment-1314665474) for immutable datatypes. In general,
 HVM is capable of applying any fusible function `2^n` times in linear time, which sounds impossible, but is indeed true.
 
 *Charts made on [plotly.com](https://chart-studio.plotly.com/).*
@@ -276,7 +276,7 @@ More Information
 
 - To learn more about the **underlying tech**, check [guide/HOW.md](guide/HOW.md).
 
-- To ask questions and **join our community**, check our [Discord Server](https://discord.gg/kindelia).
+- To ask questions and **join our community**, check our [Discord Server](https://discord.higherorderco.com).
 
 - To **contact the author** directly, send an email to <taelin@higherorderco.com>.
 
@@ -323,7 +323,7 @@ benchmarks are NOT claiming that HVM is faster than GHC today.
 ### Does HVM support the full λ-Calculus, or System-F?
 
 Not yet! HVM is an impementation of the bookkeeping-free version of the
-reduction algorithm proposed on [TOIOFPL](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages)
+reduction algorithm proposed on [TOIOFPL](https://www.cambridge.org/us/universitypress/subjects/computer-science/programming-languages-and-applied-logic/optimal-implementation-functional-programming-languages)
 book, up to page 40. As such, it doesn't support some λ-terms, such as:
 
 ```
@@ -342,7 +342,7 @@ and recursion.
 ### Will HVM support the full λ-Calculus, or System-F?
 
 Yes! We plan to, by implementing the full algorithm described on the
-[TOIOFPL](https://www.researchgate.net/publication/235778993_The_optimal_implementation_of_functional_programming_languages),
+[TOIOFPL](https://www.cambridge.org/us/universitypress/subjects/computer-science/programming-languages-and-applied-logic/optimal-implementation-functional-programming-languages),
 i.e., after page 40. Sadly, this results in an overhead that affects
 the performance of beta-reduction by about 10x. As such, we want to
 do so with caution to keep HVM efficient. Currently, the plan is:
@@ -416,13 +416,13 @@ let f = (2 + x) in [λx. f, λx. f]
 
 The solution to that question is the main insight that the Interaction Net model
 brought to the table, and it is described in more details on the
-[HOW.md](https://github.com/Kindelia/HVM/blob/master/guide/HOW.md) document.
+[HOW.md](https://github.com/HigherOrderCO/HVM/blob/master/guide/HOW.md) document.
 
 ### Is HVM always *asymptotically* faster than GHC?
 
 No. In most common cases, it will have the same asymptotics. In some cases, it
 is exponentially faster. In [this
-issue](https://github.com/Kindelia/HVM/issues/60), a user noticed that HVM
+issue](https://github.com/HigherOrderCO/HVM/issues/60), a user noticed that HVM
 displays quadratic asymptotics for certain functions that GHC computes in linear
 time. That was a surprise to me, and, as far as I can tell, despite the
 "optimal" brand, seems to be a limitation of the underlying theory. That said,
@@ -458,7 +458,7 @@ foldr (.) id funcs :: [Int -> Int]
 
 GHC won't be able to "fuse" the functions on the `funcs` list, since they're not
 known at compile time. HVM will do that just fine. See [this
-issue](https://github.com/Kindelia/HVM/issues/167) for a practical example.
+issue](https://github.com/HigherOrderCO/HVM/issues/167) for a practical example.
 
 Another practical application for λ-encodings is for monads. On Haskell, the
 Free Monad library uses Church encodings as an important optimization. Without
