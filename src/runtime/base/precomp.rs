@@ -44,7 +44,7 @@ pub const HVM_LOG : u64 = 24;
 pub const HVM_QUERY : u64 = 25;
 pub const HVM_PRINT : u64 = 26;
 pub const HVM_SLEEP : u64 = 27;
-pub const HVM_STORE : u64 = 28;
+pub const HVM_SAVE : u64 = 28;
 pub const HVM_LOAD : u64 = 29;
 //[[CODEGEN:PRECOMP-IDS]]//
 
@@ -236,12 +236,12 @@ pub const PRECOMP : &[Precomp] = &[
     }),
   },
   Precomp {
-    id: HVM_STORE,
-    name: "HVM.store",
+    id: HVM_SAVE,
+    name: "HVM.save",
     smap: &[false; 3],
     funs: Some(PrecompFuns {
-      visit: hvm_store_visit,
-      apply: hvm_store_apply,
+      visit: hvm_save_visit,
+      apply: hvm_save_apply,
     }),
   },
   Precomp {
@@ -425,14 +425,14 @@ fn hvm_sleep_apply(ctx: ReduceCtx) -> bool {
   return true;
 }
 
-// HVM.store (key: String) (val: String) (cont: Term)
-// --------------------------------------------------
+// HVM.save (key: String) (val: String) (cont: Term)
+// -------------------------------------------------
 
-fn hvm_store_visit(ctx: ReduceCtx) -> bool {
+fn hvm_save_visit(ctx: ReduceCtx) -> bool {
   return false;
 }
 
-fn hvm_store_apply(ctx: ReduceCtx) -> bool {
+fn hvm_save_apply(ctx: ReduceCtx) -> bool {
   if let Some(key) = crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 0)) {
     if let Some(val) = crate::language::readback::as_string(ctx.heap, ctx.prog, &[ctx.tid], get_loc(ctx.term, 1)) {
       if std::fs::write(key, val).is_ok() {
