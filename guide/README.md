@@ -216,7 +216,7 @@ hard. On HVM, you just write the function as it is, and HVM will smoothly
 distribute the workload evenly across all available cores.
 
 ```javascript
-(Fib 0) = 1
+(Fib 0) = 0
 (Fib 1) = 1
 (Fib n) = (+ (Fib (- n 1)) (Fib (- n 2)))
 ```
