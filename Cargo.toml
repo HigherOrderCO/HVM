@@ -1,6 +1,6 @@
 [package]
 name = "hvm1"
-version = "1.0.14"
+version = "1.0.15"
 edition = "2021"
 description = "A massively parallel functional runtime."
 repository = "https://github.com/HigherOrderCO/HVM1"
