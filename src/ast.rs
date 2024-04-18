@@ -268,6 +268,7 @@ impl Tree {
         return hvm::Port::new(hvm::CON, index as hvm::Val);
       }
       Tree::Dup { fst, snd } => {
+        def.safe = false;
         let index = def.node.len();
         def.node.push(hvm::Pair(0));
         let p1 = fst.build(def, fids, vars);
@@ -293,7 +294,6 @@ impl Tree {
       },
     }
   }
-  
 }
 
 impl Net {
@@ -322,6 +322,7 @@ impl Book {
     for (name, net) in &self.defs {
       let mut def = hvm::Def {
         name: name.clone(),
+        safe: true,
         rbag: Vec::new(), 
         node: Vec::new(),
         vars: 0,

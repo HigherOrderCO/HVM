@@ -75,6 +75,7 @@ pub struct TMem {
 // Top-Level Definition
 pub struct Def {
   pub name: String, // def name
+  pub safe: bool, // has no dups
   pub rbag: Vec<Pair>, // def redex bag
   pub node: Vec<Pair>, // def node buffer
   pub vars: usize, // def vars count
@@ -395,6 +396,11 @@ impl TMem {
     let fid = a.get_val() as usize;
     let def = &book.defs[fid];
 
+    // Copy Optimization.
+    if def.safe && b.get_tag() == DUP {
+      return self.interact_eras(net, a, b);
+    }
+
     // Allocates needed nodes and vars.
     if !self.get_resources(net, def.rbag.len() + 1, def.node.len() - 1, def.vars as usize) {
       return false;
@@ -657,6 +663,9 @@ impl Book {
       buf.extend_from_slice(&name_bytes[..32.min(name_bytes.len())]);
       buf.resize(buf.len() + (32 - name_bytes.len()), 0);
 
+      // Writes the safe flag
+      buf.extend_from_slice(&(def.safe as u32).to_ne_bytes());
+
       // Writes the rbag length
       buf.extend_from_slice(&(def.rbag.len() as u32).to_ne_bytes());
       
@@ -750,7 +759,7 @@ impl Book {
   pub fn show(&self) -> String {
     let mut s = String::new();
     for def in &self.defs {
-      s.push_str(&format!("==== | ============ | ============ {}\n", def.name));
+      s.push_str(&format!("==== | ============ | ============ {} (vars={},safe={})\n", def.name, def.vars, def.safe));
       s.push_str("NODE | FST-PORT     | SND-PORT     \n");
       s.push_str("---- | ------------ | ------------\n");  
       for (i, node) in def.node.iter().enumerate() {
@@ -777,43 +786,49 @@ impl Book {
   // Or, in core syntax:
   //   @fun  = (?<(@fun0 @fun1) a> a)
   //   @fun0 = a & @lop ~ (#65536 a)
-  //   @fun1 = ({3 a b} c) & @fun ~ (a <+ d c>) & @fun ~ (b d)
+  //   @fun1 = ({a b} c) & @fun ~ (a <+ d c>) & @fun ~ (b d)
   //   @lop  = (?<(#0 @lop0) a> a)
   //   @lop0 = (a b) & @lop ~ (a b)
   //   @main = a & @fun ~ (#10 a)
   pub fn new_demo(depth: u32, loops: u32) -> Self {
     let fun = Def {
       name: "fun".to_string(),
+      safe: true,
       rbag: vec![],
       node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x1F),Port(0x00)), Pair::new(Port(0x09),Port(0x11)), Pair::new(Port(0x14),Port(0x00))],
       vars: 1,
     };
     let fun0 = Def {
       name: "fun0".to_string(),
+      safe: true,
       rbag: vec![Pair::new(Port(0x19),Port(0x0C))],
       node: vec![Pair::new(Port(0x00),Port(0x00)), Pair::new(Port::new(NUM,loops),Port(0x00))],
       vars: 1,
     };
     let fun1 = Def {
       name: "fun1".to_string(),
+      safe: false,
       rbag: vec![Pair::new(Port(0x01),Port(0x1C)), Pair::new(Port(0x01),Port(0x2C))],
       node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x15),Port(0x10)), Pair::new(Port(0x00),Port(0x08)), Pair::new(Port(0x00),Port(0x26)), Pair::new(Port(0x18),Port(0x10)), Pair::new(Port(0x08),Port(0x18))],
       vars: 4,
     };
     let lop = Def {
       name: "lop".to_string(),
+      safe: true,
       rbag: vec![],
       node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x1F),Port(0x00)), Pair::new(Port(0x03),Port(0x21)), Pair::new(Port(0x14),Port(0x00))],
       vars: 1,  
     };
     let lop0 = Def {
       name: "lop0".to_string(),
+      safe: true,
       rbag: vec![Pair::new(Port(0x19),Port(0x14))],
       node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x00),Port(0x08)), Pair::new(Port(0x00),Port(0x08))],
       vars: 2,
     };
     let main = Def {
       name: "main".to_string(),
+      safe: true,
       rbag: vec![Pair::new(Port(0x01),Port(0x0C))],
       node: vec![Pair::new(Port(0x00),Port(0x00)), Pair::new(Port::new(NUM,depth),Port(0x00))],
       vars: 1,

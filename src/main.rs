@@ -27,4 +27,6 @@ fn main() {
   let mut buff = Vec::new();
   book.to_buffer(&mut buff);
   println!("{:?}", buff);
+
+  //println!("{}", book.show());
 }
