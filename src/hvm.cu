@@ -1,3 +1,6 @@
+// TODO: use NONE on VARS
+// TODO: add node_create and similar GNet fns
+
 // HVM-CUDA: an Interaction Combinator evaluator in CUDA.
 // 
 // # Format
@@ -273,6 +276,9 @@ const Rule COMM = 0x5;
 const Rule OPER = 0x6;
 const Rule SWIT = 0x7;
 
+// Empty Port
+const Port NONE = 0xfffffff9;
+
 // Thread Redex Bag Length
 const u32 RLEN = 32; // max 32 redexes
 
@@ -533,8 +539,8 @@ __device__ __host__ inline bool is_var(Port a) {
 
 // Given two tags, gets their interaction rule. Uses a u64mask lookup table.
 __device__ __host__ inline Rule get_rule(Port A, Port B) {
-  const u64 x = 0b0111111010110110110111101110111010110000111100001111000000000000;
-  const u64 y = 0b0000110000001100000011000000110011111110111111100000111000000000;
+  const u64 x = 0b0111111010110110110111101110111010110000111100001111000100000010;
+  const u64 y = 0b0000110000001100000011100000110011111110111111100010111000000000;
   const u64 z = 0b1111100011111000111100001111000011000000000000000000000000000000;
   const u64 i = ((u64)get_tag(A) << 3) | (u64)get_tag(B);
   return (Rule)((x>>i&1) | (y>>i&1)<<1 | (z>>i&1)<<2);

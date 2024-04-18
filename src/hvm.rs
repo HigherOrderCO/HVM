@@ -41,6 +41,9 @@ pub const COMM : Rule = 0x5;
 pub const OPER : Rule = 0x6;
 pub const SWIT : Rule = 0x7;
 
+// None
+pub const NONE : Port = Port(0xFFFFFFF9);
+
 // RBag
 pub struct RBag {
   pub lo: Vec<Pair>,
@@ -357,9 +360,9 @@ impl TMem {
       // While `B` is VAR: extend it (as an optimization)
       while b.get_tag() == VAR {
         // Takes the current `B` substitution as `B'`
-        let b_ = net.vars_exchange(b.get_val() as usize, b);
+        let b_ = net.vars_exchange(b.get_val() as usize, NONE);
         // If there was no `B'`, stop, as there is no extension
-        if b_ == b || b_ == Port(0) {
+        if b_ == NONE || b_ == Port(0) {
           break;
         }
         // Otherwise, delete `B` (we own both) and continue as `A ~> B'`
@@ -372,7 +375,7 @@ impl TMem {
         // Stores `A -> B`, taking the current `A` subst as `A'`
         let a_ = net.vars_exchange(a.get_val() as usize, b);
         // If there was no `A'`, stop, as we lost B's ownership
-        if a_ == a {
+        if a_ == NONE {
           break;
         }
         // Otherwise, delete `A` (we own both) and link `A' ~ B`
@@ -415,7 +418,7 @@ impl TMem {
 
     // Stores new vars.
     for i in 0..def.vars {
-      net.vars_create(self.vloc[i], Port::new(VAR, self.vloc[i] as u32));
+      net.vars_create(self.vloc[i], NONE);
       //println!("vars_create vars_loc[{:04X}] {:04X}", i, self.vloc[i]);
     }
 
@@ -511,10 +514,10 @@ impl TMem {
     let b2 = b_.get_snd();
       
     // Stores new vars.
-    net.vars_create(self.vloc[0], Port::new(VAR, self.vloc[0] as u32));
-    net.vars_create(self.vloc[1], Port::new(VAR, self.vloc[1] as u32));
-    net.vars_create(self.vloc[2], Port::new(VAR, self.vloc[2] as u32));
-    net.vars_create(self.vloc[3], Port::new(VAR, self.vloc[3] as u32));
+    net.vars_create(self.vloc[0], NONE);
+    net.vars_create(self.vloc[1], NONE);
+    net.vars_create(self.vloc[2], NONE);
+    net.vars_create(self.vloc[3], NONE);
 
     // Stores new nodes.  
     net.node_create(self.nloc[0], Pair::new(Port::new(VAR, self.vloc[0] as u32), Port::new(VAR, self.vloc[1] as u32)));
@@ -609,7 +612,7 @@ impl TMem {
     let mut rule = Port::get_rule(a, b);
 
     // Used for root redex.
-    if a.get_tag() == REF && b.get_tag() == VAR {
+    if a.get_tag() == REF && b == NONE {
       rule = CALL;
     // Swaps ports if necessary.
     } else if Port::should_swap(a,b) {
@@ -715,19 +718,18 @@ pub fn test_demo() {
   let net = GNet::new(1 << 29, 1 << 29);
 
   // Initializes a demo book
-  let book = Book::new_demo(10, 65536/8);
+  let book = Book::new_demo(10, 65536);
 
   // Initializes threads
   let mut tm = TMem::new(0, 1);
 
   // Sets the initial redex
-  tm.rbag.push_redex(Pair::new(Port::new(REF, 5), Port::new(VAR, 0)));
+  tm.rbag.push_redex(Pair::new(Port::new(REF, 5), NONE));
 
   // Evaluates
   tm.evaluator(&net, &book);
 
   // Prints interactions
   println!("itrs: {}", net.itrs.load(Ordering::Relaxed));
-  println!("{:016x}", book.defs[5].node[0].0);
 }
     //|                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ move occurs because value has type `runtime::Pair`, which does not implement the `Copy` trait

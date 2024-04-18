@@ -1,5 +1,8 @@
-target/
-tmp/
-src/tmp/
+.fill.tmp
+hvm-cuda-experiments/
 src/hvm
 src/old_cmp.rs
+src/tmp/
+target/
+tmp/
+.hvm/

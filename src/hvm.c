@@ -66,6 +66,9 @@ const Rule COMM = 0x5;
 const Rule OPER = 0x6;
 const Rule SWIT = 0x7;
 
+// None Port
+const Port NONE = 0xFFFFFFF9;
+
 // Thread Redex Bag Length  
 const u32 RLEN = 1 << 22; // max 4m redexes
 
@@ -257,8 +260,6 @@ void rbag_init(RBag* rbag) {
   rbag->hi_idx = RLEN - 1;
 }
 
-// Keep going
-
 static inline void push_redex(TMem* tm, Pair redex) {
   Rule rule = get_pair_rule(redex);
   if (is_high_priority(rule)) {
@@ -396,6 +397,35 @@ static inline u32 vars_alloc(GNet* net, TMem* tm, u32 num) {
   return got;
 }
 
+// Allocs on node buffer. Optimized for 1 alloc.
+static inline u32 node_alloc_1(GNet* net, TMem* tm) {
+  u32* idx = &tm->nidx;
+  u32* loc = tm->node_loc;
+  u32  len = G_NODE_LEN;
+  for (u32 i = 0; i < len; ++i) {
+    *idx += 1;
+    if (*idx < len || is_node_free(net, *idx % len)) {
+      return *idx % len;
+    }
+  }
+  return 0;
+}
+
+// Allocs on vars buffer. Optimized for 1 alloc.
+static inline u32 vars_alloc_1(GNet* net, TMem* tm) {
+  u32* idx = &tm->vidx;
+  u32* loc = tm->vars_loc;
+  u32  len = G_VARS_LEN;
+  u32  got = 0;
+  for (u32 i = 0; i < len; ++i) {
+    *idx += 1;
+    if (*idx < len || is_vars_free(net, *idx % len)) {
+      return *idx % len;
+    }
+  }
+  return 0;
+}
+
 // Gets the necessary resources for an interaction. Returns success.
 static inline bool get_resources(GNet* net, TMem* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
   u32 got_rbag = RLEN - rbag_len(&tm->rbag);
@@ -409,6 +439,23 @@ static inline bool get_resources(GNet* net, TMem* tm, u8 need_rbag, u8 need_node
 // Linking
 // -------
  
+// Finds a variable's value.
+static inline Port enter(GNet* net, TMem* tm, Port var) {
+  // While `B` is VAR: extend it (as an optimization)
+  while (get_tag(var) == VAR) {
+    // Takes the current `var` substitution as `val`
+    Port val = vars_exchange(net, get_val(var), NONE);
+    // If there was no `val`, stop, as there is no extension
+    if (val == NONE || val == 0) {
+      break;
+    }
+    // Otherwise, delete `B` (we own both) and continue
+    vars_take(net, get_val(var));
+    var = val;
+  }
+  return var;
+}
+
 // Atomically Links `A ~ B`.
 static inline void link(GNet* net, TMem* tm, Port A, Port B) {
   //printf("LINK %s ~> %s\n", show_port(A).x, show_port(B).x);
@@ -426,25 +473,15 @@ static inline void link(GNet* net, TMem* tm, Port A, Port B) {
       break;
     }
 
-    // While `B` is VAR: extend it (as an optimization)
-    while (get_tag(B) == VAR) {
-      // Takes the current `B` substitution as `B'`
-      Port B_ = vars_exchange(net, get_val(B), B);
-      // If there was no `B'`, stop, as there is no extension
-      if (B_ == B || B_ == 0) {
-        break;
-      }
-      // Otherwise, delete `B` (we own both) and continue as `A ~> B'`
-      vars_take(net, get_val(B));
-      B = B_;
-    }
+    // Extends B (as an optimization)
+    B = enter(net, tm, B);
 
     // Since `A` is VAR: point `A ~> B`.  
     if (true) {
       // Stores `A -> B`, taking the current `A` subst as `A'`
       Port A_ = vars_exchange(net, get_val(A), B);
       // If there was no `A'`, stop, as we lost B's ownership
-      if (A_ == A) {
+      if (A_ == NONE) {
         break;
       }
       //if (A_ == 0) { ??? } // FIXME: must handle on the move-to-global algo
@@ -496,6 +533,276 @@ void share_redexes(TMem* tm, APair* steal, u32 tid) {
   }
 }
 
+// Compiled FNs
+// ------------
+
+//bool interact_call_fun(GNet *net, TMem *tm, Port a, Port b) {
+  //Val v0 = vars_alloc_1(net, tm);
+  //Val n0 = node_alloc_1(net, tm);
+  //Val n1 = node_alloc_1(net, tm);
+  //Val n2 = node_alloc_1(net, tm);
+  //if (0 || !v0 || !n0 || !n1 || !n2) {
+    //return false;
+  //}
+  //vars_create(net, v0, NONE);
+  //bool k1 = 0;
+  //Pair k2 = 0;
+  //Port k5 = 0;
+  //Port k3 = 0;
+  //Port k4 = 0;
+  ////fast switch
+  //if (get_tag(b) == CON) {
+    //k2 = node_load(net, get_val(b));
+    //k5 = enter(net,tm,get_fst(k2));
+    //if (get_tag(k5) == NUM) {
+      //tm->itrs += 3;
+      //k1 = 1;
+      //if (get_val(k5) == 0) {
+        //node_take(net, get_val(b));
+        //k3 = get_snd(k2);
+        //k4 = new_port(ERA,0);
+      //} else {
+        //node_store(net, get_val(b), new_pair(new_port(NUM,get_val(k5)-1), get_snd(k2)));
+        //k3 = new_port(ERA,0);
+        //k4 = b;
+      //}
+    //} else {
+      //node_store(net, get_val(b), new_pair(k5,get_snd(k2)));
+    //}
+  //}
+  //// fast void
+  //if (get_tag(k3) == ERA || get_tag(k3) == NUM || get_tag(k3) == REF) {
+    //tm->itrs += 1;
+  //} else {
+    //if (k3) {
+      //link(net, tm, k3, new_port(REF,0x00000001));
+    //} else {
+      //k3 = new_port(REF,0x00000001);
+    //}
+  //}
+  //// fast void
+  //if (get_tag(k4) == ERA || get_tag(k4) == NUM || get_tag(k4) == REF) {
+    //tm->itrs += 1;
+  //} else {
+    //if (k4) {
+      //link(net, tm, k4, new_port(REF,0x00000002));
+    //} else {
+      //k4 = new_port(REF,0x00000002);
+    //}
+  //}
+  //if (!k1) {
+    //node_create(net, n0, new_pair(new_port(SWI,n2),new_port(VAR,v0)));
+    //node_create(net, n2, new_pair(new_port(CON,n1),new_port(VAR,v0)));
+    //node_create(net, n1, new_pair(k3,k4));
+    //link(net, tm, new_port(CON, n0), b);
+  //}
+  //return true;
+//}
+
+//bool interact_call_fun0(GNet *net, TMem *tm, Port a, Port b) {
+  //Val v0 = vars_alloc_1(net, tm);
+  //Val n0 = node_alloc_1(net, tm);
+  //if (0 || !v0 || !n0) {
+    //return false;
+  //}
+  //vars_create(net, v0, NONE);
+  //node_create(net, n0, new_pair(new_port(NUM,0x00010000),new_port(VAR,v0)));
+  //link(net, tm, new_port(REF,0x00000003), new_port(CON,n0));
+  //if (b) {
+    //link(net, tm, b, new_port(VAR,v0));
+  //} else {
+    //b = new_port(VAR,v0);
+  //}
+  //return true;
+//}
+
+//bool interact_call_fun1(GNet *net, TMem *tm, Port a, Port b) {
+  //Val v0 = vars_alloc_1(net, tm);
+  //Val v1 = vars_alloc_1(net, tm);
+  //Val v2 = vars_alloc_1(net, tm);
+  //Val v3 = vars_alloc_1(net, tm);
+  //Val n0 = node_alloc_1(net, tm);
+  //Val n1 = node_alloc_1(net, tm);
+  //Val n2 = node_alloc_1(net, tm);
+  //Val n3 = node_alloc_1(net, tm);
+  //Val n4 = node_alloc_1(net, tm);
+  //if (0 || !v0 || !v1 || !v2 || !v3 || !n0 || !n1 || !n2 || !n3 || !n4) {
+    //return false;
+  //}
+  //vars_create(net, v0, NONE);
+  //vars_create(net, v1, NONE);
+  //vars_create(net, v2, NONE);
+  //vars_create(net, v3, NONE);
+  //node_create(net, n3, new_pair(new_port(VAR,v3),new_port(VAR,v2)));
+  //node_create(net, n2, new_pair(new_port(VAR,v0),new_port(OPR,n3)));
+  //link(net, tm, new_port(REF,0x00000000), new_port(CON,n2));
+  //node_create(net, n4, new_pair(new_port(VAR,v1),new_port(VAR,v3)));
+  //link(net, tm, new_port(REF,0x00000000), new_port(CON,n4));
+  //Pair k1 = 0;
+  //Port k2 = 0;
+  //Port k3 = 0;
+  //// fast anni
+  //if (get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
+    //tm->itrs += 1;
+    //k1 = node_take(net, get_val(b));
+    //k2 = get_fst(k1);
+    //k3 = get_snd(k1);
+  //}
+  //if (k3) {
+    //link(net, tm, k3, new_port(VAR,v2));
+  //} else {
+    //k3 = new_port(VAR,v2);
+  //}
+  //bool k4 = 0;
+  //Port k5 = 0;
+  //Port k6 = 0;
+  //// fast copy
+  //if (get_tag(k2) == NUM) {
+    //tm->itrs += 1;
+    //k4 = 1;
+    //k5 = k2;
+    //k6 = k2;
+  //}
+  //if (k6) {
+    //link(net, tm, k6, new_port(VAR,v1));
+  //} else {
+    //k6 = new_port(VAR,v1);
+  //}
+  //if (k5) {
+    //link(net, tm, k5, new_port(VAR,v0));
+  //} else {
+    //k5 = new_port(VAR,v0);
+  //}
+  //if (!k4) {
+    //node_create(net, n1, new_pair(k5,k6));
+    //link(net, tm, new_port(DUP,n1), k2);
+  //}
+  //if (!k1) {
+    //node_create(net, n0, new_pair(k2,k3));
+    //link(net, tm, new_port(CON,n0), b);
+  //}
+  //return true;
+//}
+
+//bool interact_call_lop(GNet *net, TMem *tm, Port a, Port b) {
+  //Val v0 = vars_alloc_1(net, tm);
+  //Val n0 = node_alloc_1(net, tm);
+  //Val n1 = node_alloc_1(net, tm);
+  //Val n2 = node_alloc_1(net, tm);
+  //if (0 || !v0 || !n0 || !n1 || !n2) {
+    //return false;
+  //}
+  //vars_create(net, v0, NONE);
+  //bool k1 = 0;
+  //Pair k2 = 0;
+  //Port k5 = 0;
+  //Port k3 = 0;
+  //Port k4 = 0;
+  ////fast switch
+  //if (get_tag(b) == CON) {
+    //k2 = node_load(net, get_val(b));
+    //k5 = enter(net,tm,get_fst(k2));
+    //if (get_tag(k5) == NUM) {
+      //tm->itrs += 3;
+      //k1 = 1;
+      //if (get_val(k5) == 0) {
+        //node_take(net, get_val(b));
+        //k3 = get_snd(k2);
+        //k4 = new_port(ERA,0);
+      //} else {
+        //node_store(net, get_val(b), new_pair(new_port(NUM,get_val(k5)-1), get_snd(k2)));
+        //k3 = new_port(ERA,0);
+        //k4 = b;
+      //}
+    //} else {
+      //node_store(net, get_val(b), new_pair(k5,get_snd(k2)));
+    //}
+  //}
+  //// fast void
+  //if (get_tag(k3) == ERA || get_tag(k3) == NUM || get_tag(k3) == REF) {
+    //tm->itrs += 1;
+  //} else {
+    //if (k3) {
+      //link(net, tm, k3, new_port(NUM,0x00000000));
+    //} else {
+      //k3 = new_port(NUM,0x00000000);
+    //}
+  //}
+  //// fast void
+  //if (get_tag(k4) == ERA || get_tag(k4) == NUM || get_tag(k4) == REF) {
+    //tm->itrs += 1;
+  //} else {
+    //if (k4) {
+      //link(net, tm, k4, new_port(REF,0x00000004));
+    //} else {
+      //k4 = new_port(REF,0x00000004);
+    //}
+  //}
+  //if (!k1) {
+    //node_create(net, n0, new_pair(new_port(SWI,n2),new_port(VAR,v0)));
+    //node_create(net, n2, new_pair(new_port(CON,n1),new_port(VAR,v0)));
+    //node_create(net, n1, new_pair(k3,k4));
+    //link(net, tm, new_port(CON, n0), b);
+  //}
+  //return true;
+//}
+
+//bool interact_call_lop0(GNet *net, TMem *tm, Port a, Port b) {
+  //Val v0 = vars_alloc_1(net, tm);
+  //Val v1 = vars_alloc_1(net, tm);
+  //Val n0 = node_alloc_1(net, tm);
+  //Val n1 = node_alloc_1(net, tm);
+  //if (0 || !v0 || !v1 || !n0 || !n1) {
+    //return false;
+  //}
+  //vars_create(net, v0, NONE);
+  //vars_create(net, v1, NONE);
+  //node_create(net, n1, new_pair(new_port(VAR,v0),new_port(VAR,v1)));
+  //link(net, tm, new_port(REF,0x00000003), new_port(CON,n1));
+  //Pair k1 = 0;
+  //Port k2 = 0;
+  //Port k3 = 0;
+  //// fast anni
+  //if (get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
+    //tm->itrs += 1;
+    //k1 = node_take(net, get_val(b));
+    //k2 = get_fst(k1);
+    //k3 = get_snd(k1);
+  //}
+  //if (k3) {
+    //link(net, tm, k3, new_port(VAR,v1));
+  //} else {
+    //k3 = new_port(VAR,v1);
+  //}
+  //if (k2) {
+    //link(net, tm, k2, new_port(VAR,v0));
+  //} else {
+    //k2 = new_port(VAR,v0);
+  //}
+  //if (!k1) {
+    //node_create(net, n0, new_pair(k2,k3));
+    //link(net, tm, new_port(CON,n0), b);
+  //}
+  //return true;
+//}
+
+//bool interact_call_main(GNet *net, TMem *tm, Port a, Port b) {
+  //Val v0 = vars_alloc_1(net, tm);
+  //Val n0 = node_alloc_1(net, tm);
+  //if (0 || !v0 || !n0) {
+    //return false;
+  //}
+  //vars_create(net, v0, NONE);
+  //node_create(net, n0, new_pair(new_port(NUM,0x0000000a),new_port(VAR,v0)));
+  //link(net, tm, new_port(REF,0x00000000), new_port(CON,n0));
+  //if (b) {
+    //link(net, tm, b, new_port(VAR,v0));
+  //} else {
+    //b = new_port(VAR,v0);
+  //}
+  //return true;
+//}
+
 // Interactions
 // ------------
 
@@ -516,6 +823,16 @@ static inline bool interact_link(GNet* net, TMem* tm, Port a, Port b) {
 static inline bool interact_call(GNet* net, TMem* tm, Port a, Port b, Book* book) {
   u32  fid = get_val(a);
   Def* def = &book->defs_buf[fid];
+
+  // Compiled FNs
+  //switch (fid) {
+    //case 0: return interact_call_fun(net, tm, a, b);
+    //case 1: return interact_call_fun0(net, tm, a, b);
+    //case 2: return interact_call_fun1(net, tm, a, b);
+    //case 3: return interact_call_lop(net, tm, a, b);
+    //case 4: return interact_call_lop0(net, tm, a, b);
+    //case 5: return interact_call_main(net, tm, a, b);
+  //}
   
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, def->rbag_len + 1, def->node_len - 1, def->vars_len)) {
@@ -524,7 +841,7 @@ static inline bool interact_call(GNet* net, TMem* tm, Port a, Port b, Book* book
 
   // Stores new vars.  
   for (u32 i = 0; i < def->vars_len; ++i) {
-    vars_create(net, tm->vars_loc[i], new_port(VAR, tm->vars_loc[i]));
+    vars_create(net, tm->vars_loc[i], NONE);
     //printf("vars_create vars_loc[%04x] %04x\n", i, tm->vars_loc[i]);
   }
 
@@ -633,10 +950,10 @@ static inline bool interact_comm(GNet* net, TMem* tm, Port a, Port b) {
   //if (B == 0) printf("[%04x] ERROR6: %s\n", tid, show_port(b).x);
 
   // Stores new vars.
-  vars_create(net, tm->vars_loc[0], new_port(VAR, tm->vars_loc[0]));
-  vars_create(net, tm->vars_loc[1], new_port(VAR, tm->vars_loc[1]));
-  vars_create(net, tm->vars_loc[2], new_port(VAR, tm->vars_loc[2]));
-  vars_create(net, tm->vars_loc[3], new_port(VAR, tm->vars_loc[3]));
+  vars_create(net, tm->vars_loc[0], NONE);
+  vars_create(net, tm->vars_loc[1], NONE);
+  vars_create(net, tm->vars_loc[2], NONE);
+  vars_create(net, tm->vars_loc[3], NONE);
   
   // Stores new nodes.
   node_create(net, tm->node_loc[0], new_pair(new_port(VAR, tm->vars_loc[0]), new_port(VAR, tm->vars_loc[1])));
@@ -734,7 +1051,7 @@ static inline bool interact(GNet* net, TMem* tm, Book* book) {
     Rule rule = get_rule(a, b);
 
     // Used for root redex.
-    if (get_tag(a) == REF && get_tag(b) == VAR) {
+    if (get_tag(a) == REF && b == NONE) {
       rule = CALL;
     // Swaps ports if necessary.  
     } else if (should_swap(a,b)) {
@@ -871,6 +1188,117 @@ void print_net(GNet* net) {
   printf("==== | ============ |\n");
 }
 
+void pretty_print_port(GNet* net, Port port) {
+  Port stack[32];
+  stack[0] = port;
+  u32 len = 1;
+  u32 num = 0;
+  while (len > 0) {
+    if (++num > 256) {
+      printf("(...)\n");
+      return;
+    }
+    if (len > 32) {
+      printf("...");
+      --len;
+      continue;
+    }
+    Port cur = stack[--len];
+    if (cur > 0xFFFFFF00) {
+      printf("%c", (char)(cur&0xFF));
+      continue;
+    }
+    switch (get_tag(cur)) {
+      case CON: {
+        Pair node = node_load(net,get_val(cur));
+        Port p2   = get_snd(node);
+        Port p1   = get_fst(node);
+        printf("(");
+        stack[len++] = (0xFFFFFF00) | (u32)(')');
+        stack[len++] = p2;
+        stack[len++] = (0xFFFFFF00) | (u32)(' ');
+        stack[len++] = p1;
+        break;
+      }
+      case ERA: {
+        printf("*");
+        break;
+      }
+      case VAR: {
+        printf("x%x", get_val(cur));
+        Port got = vars_load(net, get_val(cur));
+        if (got != cur) {
+          printf("=");
+          stack[len++] = got;
+        }
+        break;
+      }
+      case NUM: {
+        printf("#%d", get_val(cur));
+        break;
+      }
+      case DUP: {
+        Pair node = node_load(net,get_val(cur));
+        Port p2   = get_snd(node);
+        Port p1   = get_fst(node);
+        printf("{");
+        stack[len++] = (0xFFFFFF00) | (u32)('}');
+        stack[len++] = p2;
+        stack[len++] = (0xFFFFFF00) | (u32)(' ');
+        stack[len++] = p1;
+        break;
+      }
+      case OPR: {
+        Pair node = node_load(net,get_val(cur));
+        Port p2   = get_snd(node);
+        Port p1   = get_fst(node);
+        printf("<+ ");
+        stack[len++] = (0xFFFFFF00) | (u32)('>');
+        stack[len++] = p2;
+        stack[len++] = (0xFFFFFF00) | (u32)(' ');
+        stack[len++] = p1;
+        break;
+      }
+      case SWI: {
+        Pair node = node_load(net,get_val(cur));
+        Port p2   = get_snd(node);
+        Port p1   = get_fst(node);
+        printf("?<"); 
+        stack[len++] = (0xFFFFFF00) | (u32)('>');
+        stack[len++] = p2;
+        stack[len++] = (0xFFFFFF00) | (u32)(' ');
+        stack[len++] = p1;
+        break;
+      }
+      case REF: {
+        printf("@%d", get_val(cur));
+        break;
+      }
+    }
+  }
+}
+
+void pretty_print_rbag(GNet* net, RBag* rbag) {
+  for (u32 i = 0; i < rbag->lo_idx; ++i) {
+    Pair redex = rbag->buf[i];
+    if (redex != 0) {
+      pretty_print_port(net, get_fst(redex)); 
+      printf(" ~ ");
+      pretty_print_port(net, get_snd(redex));
+      printf("\n");
+    }
+  }
+  for (u32 i = RLEN-1; i > rbag->hi_idx; --i) {
+    Pair redex = rbag->buf[i];
+    if (redex != 0) {
+      pretty_print_port(net, get_fst(redex));
+      printf(" ~ ");
+      pretty_print_port(net, get_snd(redex));
+      printf("\n");
+    }
+  }
+}
+
 // Example Books  
 // -------------
 
@@ -929,7 +1357,7 @@ int main() {
   }
 
   // Set the initial redex
-  push_redex(tm[0], new_pair(new_port(REF, 5), new_port(VAR, 0)));
+  push_redex(tm[0], new_pair(new_port(REF, 5), NONE));
 
   // Evaluates
   evaluator(gnet, tm[0], book);
