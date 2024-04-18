@@ -3,32 +3,24 @@
 #![allow(unused_variables)]
 
 mod ast;
-mod hvm;
 mod cmp;
+mod hvm;
 
 const CODE : &str = "
-@F    = (?<(@FC0 @FC1) a> a)
-@FC0  = a & @L ~ (#65536 a)
-@FC1  = ({a b} c) & @F ~ (a <d c>) & @F ~ (b d)
-@L    = (?<(#0 @LC0) a> a)
-@LC0  = (a b) & @L ~ (a b)
-@main = a & @F ~ (#10 a)
+@fun  = (?<(@fun0 @fun1) a> a)
+@fun0 = a & @lop ~ (#65536 a)
+@fun1 = ({a b} c) & @fun ~ (a <d c>) & @fun ~ (b d)
+@lop  = (?<(#0 @lop0) a> a)
+@lop0 = (a b) & @lop ~ (a b)
+@main = a & @fun ~ (#10 a)
 ";
 
 fn main() {
-  println!("Hello, world!");
-
-  match ast::CoreParser::new(CODE).parse_book() {
-    Ok(book) => {
-      println!("BOOK:\n{}", book.show());
-    }
-    Err(er) => println!("{}", er),
-  }
-
-  println!("----------");
-
-  println!("COMP:\n{}", cmp::compile_book(&hvm::Book::new_demo(10,65536)));
-
-  hvm::test_demo();
-
+    let ast_book = match ast::CoreParser::new(CODE).parse_book() {
+      Ok(got) => got,
+      Err(er) => panic!("{}", er),
+    };
+  
+    let book = ast_book.build();
+    println!("{}", cmp::compile_book(cmp::Target::C, &book));
 }

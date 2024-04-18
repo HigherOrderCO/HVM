@@ -314,7 +314,7 @@ struct GNet {
 };
 
 // View Net: includes both GNet and LNet
-struct VNet {
+struct Net {
   u32   l_node_len; // local node buffer length
   Pair *l_node_buf; // local node buffer values
   u32   l_vars_len; // local vars buffer length
@@ -337,8 +337,8 @@ struct TMem {
   u32  page; // page index
   u32  newN; // next node allocation attempt index
   u32  newV; // next vars allocation attempt index
-  u32  node_loc[256]; // node allocation indices
-  u32  vars_loc[256]; // vars allocation indices
+  u32  node_loc[32]; // node allocation indices
+  u32  vars_loc[32]; // vars allocation indices
   u32  itrs; // interaction count
 };
 
@@ -371,12 +371,12 @@ __device__ __host__ void put_u16(char* B, u16 val);
 __device__ __host__ Show show_port(Port port);
 __device__ Show show_rule(Rule rule);
 __device__ void print_rbag(RBag* rbag);
-__device__ __host__ void print_net(VNet* net);
-__device__ void pretty_print_port(VNet* net, Port port);
-__device__ void pretty_print_rbag(VNet* net, RBag* rbag);
+__device__ __host__ void print_net(Net* net);
+__device__ void pretty_print_port(Net* net, Port port);
+__device__ void pretty_print_rbag(Net* net, RBag* rbag);
 __device__ u32 count_rbag(RBag* rbag);
-__device__ u32 count_node(VNet* net);
-__device__ u32 count_vars(VNet* net);
+__device__ u32 count_node(Net* net);
+__device__ u32 count_vars(Net* net);
 
 // Port: Constructor and Getters
 // -----------------------------
@@ -515,7 +515,7 @@ __device__ __host__ inline bool is_high_priority(Rule rule) {
 }
 
 // Adjusts a newly allocated port.
-__device__ inline Port adjust_port(VNet* net, TMem* tm, Port port) {
+__device__ inline Port adjust_port(Net* net, TMem* tm, Port port) {
   Tag tag = get_tag(port);
   Val val = get_val(port);
   if (is_nod(port)) return new_port(tag, tm->node_loc[val-1]);
@@ -524,7 +524,7 @@ __device__ inline Port adjust_port(VNet* net, TMem* tm, Port port) {
 }
 
 // Adjusts a newly allocated pair.
-__device__ inline Pair adjust_pair(VNet* net, TMem* tm, Pair pair) {
+__device__ inline Pair adjust_pair(Net* net, TMem* tm, Pair pair) {
   Port p1 = adjust_port(net, tm, get_fst(pair));
   Port p2 = adjust_port(net, tm, get_snd(pair));
   return new_pair(p1, p2);
@@ -580,11 +580,11 @@ __device__ TMem tmem_new() {
   return tm;
 }
 
-// VNet
+// Net
 // ----
 
-__device__ VNet vnet_new(GNet* gnet, void* smem) {
-  VNet net;
+__device__ Net vnet_new(GNet* gnet, void* smem) {
+  Net net;
   net.g_page_idx = 0;
   net.l_node_len = L_NODE_LEN;
   net.l_vars_len = L_VARS_LEN;
@@ -602,20 +602,20 @@ __device__ VNet vnet_new(GNet* gnet, void* smem) {
 }
 
 // Reserves a page.
-__device__ u32 reserve_page(VNet* net) {
+__device__ u32 reserve_page(Net* net) {
   u32 free_idx = atomicAdd(net->g_free_pop, 1);
   u32 page_idx = net->g_free_buf[free_idx % G_PAGE_MAX];
   return page_idx;
 }
 
 // Releases a page.
-__device__ void release_page(VNet* net, u32 page) {
+__device__ void release_page(Net* net, u32 page) {
   u32 free_idx = atomicAdd(net->g_free_put, 1);
   net->g_free_buf[free_idx % G_PAGE_MAX] = page;
 }
 
 // If page is on global, decreases its length.
-__device__ void decrease_page(VNet* net, u32 page) {
+__device__ void decrease_page(Net* net, u32 page) {
   if (page != net->g_page_idx) {
     u32 prev_len = atomicSub(&net->g_page_len[page], 1);
     if (prev_len == 1) {
@@ -625,7 +625,7 @@ __device__ void decrease_page(VNet* net, u32 page) {
 }
 
 // Gets the target of a given port.
-__device__ __host__ inline Pair* node_ref(VNet* net, u32 loc) {
+__device__ __host__ inline Pair* node_ref(Net* net, u32 loc) {
   if (get_page(loc) == net->g_page_idx) {
     return &net->l_node_buf[loc - L_NODE_LEN*net->g_page_idx];
   } else {
@@ -634,7 +634,7 @@ __device__ __host__ inline Pair* node_ref(VNet* net, u32 loc) {
 }
 
 // Gets the target of a given port.
-__device__ __host__ inline Port* vars_ref(VNet* net, u32 var) {
+__device__ __host__ inline Port* vars_ref(Net* net, u32 var) {
   if (get_page(var) == net->g_page_idx) {
     return &net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx];
   } else {
@@ -643,53 +643,53 @@ __device__ __host__ inline Port* vars_ref(VNet* net, u32 var) {
 }
 
 // Stores a new node on global.
-__device__ inline void node_create(VNet* net, u32 loc, Pair val) {
+__device__ inline void node_create(Net* net, u32 loc, Pair val) {
   atomicExch(node_ref(net,loc), val);
 }
 
 // Stores a var on global.
-__device__ inline void vars_create(VNet* net, u32 var, Port val) {
+__device__ inline void vars_create(Net* net, u32 var, Port val) {
   atomicExch(vars_ref(net,var), val);
 }
 
 // Reads a node from global.
-__device__ __host__ inline Pair node_load(VNet* net, u32 loc) {
+__device__ __host__ inline Pair node_load(Net* net, u32 loc) {
   return *node_ref(net,loc);
 }
 
 // Reads a var from global.
-__device__ __host__ inline Port vars_load(VNet* net, u32 var) {
+__device__ __host__ inline Port vars_load(Net* net, u32 var) {
   return *vars_ref(net,var);  
 }
 
 // Stores a node on global.
-__device__ inline void node_store(VNet* net, u32 loc, Pair val) {
+__device__ inline void node_store(Net* net, u32 loc, Pair val) {
   *node_ref(net,loc) = val;
 }
 
 // Stores a var on global.
-__device__ inline void vars_store(VNet* net, u32 var, Port val) {
+__device__ inline void vars_store(Net* net, u32 var, Port val) {
   *vars_ref(net,var) = val;
 }
 
 // Exchanges a node on global by a value. Returns old.
-__device__ inline Pair node_exchange(VNet* net, u32 loc, Pair val) {  
+__device__ inline Pair node_exchange(Net* net, u32 loc, Pair val) {  
   return atomicExch(node_ref(net,loc), val);
 }
 
 // Exchanges a var on global by a value. Returns old.
-__device__ inline Port vars_exchange(VNet* net, u32 var, Port val) {
+__device__ inline Port vars_exchange(Net* net, u32 var, Port val) {
   return atomicExch(vars_ref(net,var), val);
 }
 
 // Takes a node.
-__device__ inline Pair node_take(VNet* net, u32 loc) {
+__device__ inline Pair node_take(Net* net, u32 loc) {
   decrease_page(net, get_page(loc));
   return atomicExch(node_ref(net,loc), 0);
 }
 
 // Takes a var.
-__device__ inline Port vars_take(VNet* net, u32 var) {
+__device__ inline Port vars_take(Net* net, u32 var) {
   decrease_page(net, get_page(var));
   return atomicExch(vars_ref(net,var), 0);
 }
@@ -728,44 +728,42 @@ __device__ u32 alloc(u32* idx, u32* res, u32 num, A* arr, u32 len, u32 add) {
   return got;
 }
 
-// FIXME: must receive lps from outside
-__device__ u32 node_alloc_1(VNet* net, TMem* tm, u32* lps) {
-  u32 tid = threadIdx.x;
-  u32 got = 0;
-  while (got == 0) {
-    Pair elem = net->l_node_buf[tm->newN];
-    if (elem == 0 && tm->newN > 0) {
-      return tm->newN + L_NODE_LEN*net->g_page_idx;
-    }
-    tm->newN = (tm->newN + TPB) % net->l_node_len;
-    *lps += 1;
-    if (*lps >= net->l_node_len / TPB) {
+// Allocates just 1 slot from node buffer.
+__device__ u32 node_alloc_1(Net* net, TMem* tm, u32* lps) {
+  u32  tid = threadIdx.x;
+  u32* idx = &tm->newN;
+  while (true) {
+    Pair elem = net->l_node_buf[*idx];
+    u32 index = *idx + L_NODE_LEN*net->g_page_idx;
+    *idx = (*idx + TPB) % L_NODE_LEN;
+    if ((*lps)++ >= L_VARS_LEN / TPB) {
       return 0;
     }
+    if (elem == 0 && index > 0) {
+      return index;
+    }
   }
-  return got;
 }
 
-// FIXME: must receive lps from outside
-__device__ u32 vars_alloc_1(VNet* net, TMem* tm, u32* lps) {
-  u32 tid = threadIdx.x;
-  u32 got = 0;
-  while (got == 0) {
-    Port elem = net->l_vars_buf[tm->newV];
-    if (elem == 0 && tm->newV > 0) {
-      return tm->newV + L_VARS_LEN*net->g_page_idx;
-    }
-    tm->newV = (tm->newV + TPB) % net->l_vars_len;
-    *lps += 1;
-    if (*lps >= net->l_vars_len / TPB) {
+// Allocates just 1 slot from vars buffer.
+__device__ u32 vars_alloc_1(Net* net, TMem* tm, u32* lps) {
+  u32 tid  = threadIdx.x;
+  u32* idx = &tm->newV;
+  while (true) {
+    Port elem = net->l_vars_buf[*idx];
+    u32 index = *idx + L_VARS_LEN*net->g_page_idx;
+    *idx = (*idx + TPB) % L_VARS_LEN;
+    if ((*lps)++ >= L_VARS_LEN / TPB) {
       return 0;
     }
+    if (elem == 0 && index > 0) {
+      return index;
+    }
   }
-  return got;
 }
 
 // Gets the necessary resources for an interaction.
-__device__ bool get_resources(VNet* net, TMem* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
+__device__ bool get_resources(Net* net, TMem* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
   u32 got_rbag = RLEN - rbag_len(&tm->rbag);
   u32 got_node = alloc(&tm->newN, tm->node_loc, need_node, net->l_node_buf, net->l_node_len, L_NODE_LEN*net->g_page_idx);
   u32 got_vars = alloc(&tm->newV, tm->vars_loc, need_vars, net->l_vars_buf, net->l_vars_len, L_VARS_LEN*net->g_page_idx);
@@ -776,7 +774,7 @@ __device__ bool get_resources(VNet* net, TMem* tm, u8 need_rbag, u8 need_node, u
 // -------
 
 // Finds a variable's value.
-__device__ inline Port enter(VNet* net, TMem* tm, Port var) {
+__device__ inline Port enter(Net* net, TMem* tm, Port var) {
   // While `B` is VAR: extend it (as an optimization)
   while (get_tag(var) == VAR) {
     // Takes the current `var` substitution as `val`
@@ -793,7 +791,7 @@ __device__ inline Port enter(VNet* net, TMem* tm, Port var) {
 }
 
 // Atomically Links `A ~ B`.
-__device__ void link(VNet* net, TMem* tm, Port A, Port B) {
+__device__ void link(Net* net, TMem* tm, Port A, Port B) {
   //printf("LINK %s ~> %s\n", show_port(A).x, show_port(B).x);
   u32 tid = threadIdx.x;
   u32 gid = tid + blockIdx.x * blockDim.x;
@@ -831,7 +829,7 @@ __device__ void link(VNet* net, TMem* tm, Port A, Port B) {
 }
 
 // Links `A ~ B` (as a pair).
-__device__ void link_pair(VNet* net, TMem* tm, Pair AB) {
+__device__ void link_pair(Net* net, TMem* tm, Pair AB) {
   link(net, tm, get_fst(AB), get_snd(AB));
 }
 
@@ -902,15 +900,16 @@ __device__ void share_redexes(TMem* tm, Pair* steal, u32 tid) {
 // Compiled FNs
 // ------------
 
-__device__ bool interact_call_fun(VNet *net, TMem *tm, Port a, Port b) {
-  // Allocates needed resources.
-  if (!get_resources(net, tm, 1, 3, 1)) {
+__device__ bool interact_call_fun(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  Val n1 = node_alloc_1(net, tm, &nl);
+  Val n2 = node_alloc_1(net, tm, &nl);
+  if (0 || !v0 || !n0 || !n1 || !n2) {
     return false;
   }
-  Val n0 = tm->node_loc[0x0];
-  Val n1 = tm->node_loc[0x1];
-  Val n2 = tm->node_loc[0x2];
-  Val v0 = tm->vars_loc[0x0];
   vars_create(net, v0, NONE);
   Pair k1 = 0;
   Port k2 = 0;
@@ -941,13 +940,14 @@ __device__ bool interact_call_fun(VNet *net, TMem *tm, Port a, Port b) {
   return true;
 }
 
-__device__ bool interact_call_fun0(VNet *net, TMem *tm, Port a, Port b) {
-  // Allocates needed resources.
-  if (!get_resources(net, tm, 2, 1, 1)) {
+__device__ bool interact_call_fun0(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  if (0 || !v0 || !n0) {
     return false;
   }
-  Val n0 = tm->node_loc[0x0];
-  Val v0 = tm->vars_loc[0x0];
   vars_create(net, v0, NONE);
   node_create(net, n0, new_pair(new_port(NUM,0x00010000),new_port(VAR,v0)));
   link(net, tm, new_port(REF,0x00000003), new_port(CON,n0));
@@ -959,20 +959,21 @@ __device__ bool interact_call_fun0(VNet *net, TMem *tm, Port a, Port b) {
   return true;
 }
 
-__device__ bool interact_call_fun1(VNet *net, TMem *tm, Port a, Port b) {
-  // Allocates needed resources.
-  if (!get_resources(net, tm, 3, 5, 4)) {
+__device__ bool interact_call_fun1(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val v1 = vars_alloc_1(net, tm, &vl);
+  Val v2 = vars_alloc_1(net, tm, &vl);
+  Val v3 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  Val n1 = node_alloc_1(net, tm, &nl);
+  Val n2 = node_alloc_1(net, tm, &nl);
+  Val n3 = node_alloc_1(net, tm, &nl);
+  Val n4 = node_alloc_1(net, tm, &nl);
+  if (0 || !v0 || !v1 || !v2 || !v3 || !n0 || !n1 || !n2 || !n3 || !n4) {
     return false;
   }
-  Val n0 = tm->node_loc[0x0];
-  Val n1 = tm->node_loc[0x1];
-  Val n2 = tm->node_loc[0x2];
-  Val n3 = tm->node_loc[0x3];
-  Val n4 = tm->node_loc[0x4];
-  Val v0 = tm->vars_loc[0x0];
-  Val v1 = tm->vars_loc[0x1];
-  Val v2 = tm->vars_loc[0x2];
-  Val v3 = tm->vars_loc[0x3];
   vars_create(net, v0, NONE);
   vars_create(net, v1, NONE);
   vars_create(net, v2, NONE);
@@ -997,11 +998,29 @@ __device__ bool interact_call_fun1(VNet *net, TMem *tm, Port a, Port b) {
   } else {
     k3 = new_port(VAR,v2);
   }
-  node_create(net, n1, new_pair(new_port(VAR,v0),new_port(VAR,v1)));
-  if (k2) {
-    link(net, tm, k2, new_port(DUP,n1));
+  bool k4 = 0;
+  Port k5 = 0;
+  Port k6 = 0;
+  // fast copy
+  if (get_tag(k2) == NUM) {
+    tm->itrs += 1;
+    k4 = 1;
+    k5 = k2;
+    k6 = k2;
+  }
+  if (k6) {
+    link(net, tm, k6, new_port(VAR,v1));
   } else {
-    k2 = new_port(DUP,n1);
+    k6 = new_port(VAR,v1);
+  }
+  if (k5) {
+    link(net, tm, k5, new_port(VAR,v0));
+  } else {
+    k5 = new_port(VAR,v0);
+  }
+  if (!k4) {
+    node_create(net, n1, new_pair(k5,k6));
+    link(net, tm, new_port(DUP,n1), k2);
   }
   if (!k1) {
     node_create(net, n0, new_pair(k2,k3));
@@ -1010,15 +1029,16 @@ __device__ bool interact_call_fun1(VNet *net, TMem *tm, Port a, Port b) {
   return true;
 }
 
-__device__ bool interact_call_lop(VNet *net, TMem *tm, Port a, Port b) {
-  // Allocates needed resources.
-  if (!get_resources(net, tm, 1, 3, 1)) {
+__device__ bool interact_call_lop(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  Val n1 = node_alloc_1(net, tm, &nl);
+  Val n2 = node_alloc_1(net, tm, &nl);
+  if (0 || !v0 || !n0 || !n1 || !n2) {
     return false;
   }
-  Val n0 = tm->node_loc[0x0];
-  Val n1 = tm->node_loc[0x1];
-  Val n2 = tm->node_loc[0x2];
-  Val v0 = tm->vars_loc[0x0];
   vars_create(net, v0, NONE);
   Pair k1 = 0;
   Port k2 = 0;
@@ -1049,15 +1069,16 @@ __device__ bool interact_call_lop(VNet *net, TMem *tm, Port a, Port b) {
   return true;
 }
 
-__device__ bool interact_call_lop0(VNet *net, TMem *tm, Port a, Port b) {
-  // Allocates needed resources.
-  if (!get_resources(net, tm, 2, 2, 2)) {
+__device__ bool interact_call_lop0(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val v1 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  Val n1 = node_alloc_1(net, tm, &nl);
+  if (0 || !v0 || !v1 || !n0 || !n1) {
     return false;
   }
-  Val n0 = tm->node_loc[0x0];
-  Val n1 = tm->node_loc[0x1];
-  Val v0 = tm->vars_loc[0x0];
-  Val v1 = tm->vars_loc[0x1];
   vars_create(net, v0, NONE);
   vars_create(net, v1, NONE);
   node_create(net, n1, new_pair(new_port(VAR,v0),new_port(VAR,v1)));
@@ -1089,13 +1110,14 @@ __device__ bool interact_call_lop0(VNet *net, TMem *tm, Port a, Port b) {
   return true;
 }
 
-__device__ bool interact_call_main(VNet *net, TMem *tm, Port a, Port b) {
-  // Allocates needed resources.
-  if (!get_resources(net, tm, 2, 1, 1)) {
+__device__ bool interact_call_main(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  if (0 || !v0 || !n0) {
     return false;
   }
-  Val n0 = tm->node_loc[0x0];
-  Val v0 = tm->vars_loc[0x0];
   vars_create(net, v0, NONE);
   node_create(net, n0, new_pair(new_port(NUM,0x00000012),new_port(VAR,v0)));
   link(net, tm, new_port(REF,0x00000000), new_port(CON,n0));
@@ -1111,7 +1133,7 @@ __device__ bool interact_call_main(VNet *net, TMem *tm, Port a, Port b) {
 // ------------
 
 // The Link Interaction.
-__device__ bool interact_link(VNet* net, TMem* tm, Port a, Port b) {
+__device__ bool interact_link(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 0, 0)) {
     return false;
@@ -1124,7 +1146,7 @@ __device__ bool interact_link(VNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Call Interaction.
-__device__ bool interact_call(VNet* net, TMem* tm, Port a, Port b) {
+__device__ bool interact_call(Net* net, TMem* tm, Port a, Port b) {
   u32  fid = get_val(a);
   Def* def = &D_BOOK.DEFS_BUF[fid];
 
@@ -1163,12 +1185,12 @@ __device__ bool interact_call(VNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Void Interaction.
-__device__ bool interact_void(VNet* net, TMem* tm, Port a, Port b) {
+__device__ bool interact_void(Net* net, TMem* tm, Port a, Port b) {
   return true;
 }
 
 // The Eras Interaction.
-__device__ bool interact_eras(VNet* net, TMem* tm, Port a, Port b) {
+__device__ bool interact_eras(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
     return false;
@@ -1195,7 +1217,7 @@ __device__ bool interact_eras(VNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Anni Interaction.
-__device__ bool interact_anni(VNet* net, TMem* tm, Port a, Port b) {
+__device__ bool interact_anni(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
     return false;
@@ -1226,7 +1248,7 @@ __device__ bool interact_anni(VNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Comm Interaction.
-__device__ bool interact_comm(VNet* net, TMem* tm, Port a, Port b) {
+__device__ bool interact_comm(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 4, 4, 4)) {
     return false;
@@ -1271,7 +1293,7 @@ __device__ bool interact_comm(VNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Oper Interaction.
-__device__ bool interact_oper(VNet* net, TMem* tm, Port a, Port b) {
+__device__ bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 1, 0)) {
     return false;
@@ -1305,7 +1327,7 @@ __device__ bool interact_oper(VNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Swit Interaction.
-__device__ bool interact_swit(VNet* net, TMem* tm, Port a, Port b) {
+__device__ bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.  
   if (!get_resources(net, tm, 1, 2, 0)) {
     return false;
@@ -1337,7 +1359,7 @@ __device__ bool interact_swit(VNet* net, TMem* tm, Port a, Port b) {
 }
 
 // Pops a local redex and performs a single interaction.
-__device__ bool interact(VNet* net, TMem* tm) {
+__device__ bool interact(Net* net, TMem* tm) {
   u32 tid = threadIdx.x;
 
   // Pops a redex.
@@ -1409,7 +1431,7 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   TMem tm = tmem_new();
 
   // Net (Local-Global View)
-  VNet net = vnet_new(gnet, shared_mem);
+  Net net = vnet_new(gnet, shared_mem);
 
   // Loads Redexes
   for (u32 i = 0; i < RLEN; ++i) {
@@ -1562,7 +1584,7 @@ __device__ void print_rbag(RBag* rbag) {
   printf("==== | ============ | ============\n");
 }
 
-__device__ __host__ void print_net(VNet* net) {
+__device__ __host__ void print_net(Net* net) {
   printf("NODE | PORT-1       | PORT-2      \n");
   printf("---- | ------------ | ------------\n");
   for (u32 i = 0; i < net->g_node_len; ++i) {
@@ -1583,7 +1605,7 @@ __device__ __host__ void print_net(VNet* net) {
   printf("==== | ============ |\n");
 }
 
-__device__ void pretty_print_port(VNet* net, Port port) {
+__device__ void pretty_print_port(Net* net, Port port) {
   Port stack[32];
   stack[0] = port;
   u32 len = 1;
@@ -1673,7 +1695,7 @@ __device__ void pretty_print_port(VNet* net, Port port) {
   }
 }
 
-__device__ void pretty_print_rbag(VNet* net, RBag* rbag) {
+__device__ void pretty_print_rbag(Net* net, RBag* rbag) {
   for (u32 i = 0; i < rbag->lo_idx; ++i) {
     Pair redex = rbag->buf[i];
     if (redex != 0) {

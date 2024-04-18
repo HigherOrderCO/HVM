@@ -141,19 +141,6 @@ impl Port {
     }
   }
 
-  pub fn show(&self) -> String {
-    match self.get_tag() {
-      VAR => format!("VAR:{:08X}", self.get_val()),
-      REF => format!("REF:{:08X}", self.get_val()),
-      ERA => format!("ERA:{:08X}", self.get_val()),
-      NUM => format!("NUM:{:08X}", self.get_val()),
-      CON => format!("CON:{:08X}", self.get_val()),
-      DUP => format!("DUP:{:08X}", self.get_val()),
-      OPR => format!("OPR:{:08X}", self.get_val()),
-      SWI => format!("SWI:{:08X}", self.get_val()),
-      _   => panic!("Invalid tag"),
-    }
-  }
 }
 
 impl Pair {
@@ -173,10 +160,6 @@ impl Pair {
     let p1 = self.get_fst().adjust_port(tm);
     let p2 = self.get_snd().adjust_port(tm);
     Pair::new(p1, p2)
-  }
-
-  pub fn show(&self) -> String {
-    format!("{} ~ {}", self.get_fst().show(), self.get_snd().show())
   }
 }
 
@@ -272,6 +255,7 @@ impl<'a> GNet<'a> {
   pub fn is_vars_free(&self, var: usize) -> bool {
     self.vars_load(var).0 == 0
   }
+
 }
 
 impl<'a> Drop for GNet<'a> {
@@ -658,6 +642,96 @@ impl TMem {
   }
 }
 
+// Debug
+// -----
+
+impl Port {
+  pub fn show(&self) -> String {
+    match self.get_tag() {
+      VAR => format!("VAR:{:08X}", self.get_val()),
+      REF => format!("REF:{:08X}", self.get_val()),
+      ERA => format!("ERA:{:08X}", self.get_val()),
+      NUM => format!("NUM:{:08X}", self.get_val()),
+      CON => format!("CON:{:08X}", self.get_val()),
+      DUP => format!("DUP:{:08X}", self.get_val()),
+      OPR => format!("OPR:{:08X}", self.get_val()),
+      SWI => format!("SWI:{:08X}", self.get_val()),
+      _   => panic!("Invalid tag"),
+    }
+  }
+}
+
+impl Pair {
+  pub fn show(&self) -> String {
+    format!("{} ~ {}", self.get_fst().show(), self.get_snd().show())
+  }
+}
+
+impl RBag {
+  pub fn show(&self) -> String {
+    let mut s = String::new();
+    s.push_str("RBAG | FST-TREE     | SND-TREE    \n");
+    s.push_str("---- | ------------ | ------------\n");
+    for (i, pair) in self.hi.iter().enumerate() {
+      s.push_str(&format!("{:04X} | {} | {}\n", i, pair.get_fst().show(), pair.get_snd().show()));
+    }
+    s.push_str("~~~~ | ~~~~~~~~~~~~ | ~~~~~~~~~~~~\n");
+    for (i, pair) in self.lo.iter().enumerate() {
+      s.push_str(&format!("{:04X} | {} | {}\n", i + self.hi.len(), pair.get_fst().show(), pair.get_snd().show()));
+    }
+    s.push_str("==== | ============ | ============\n");
+    return s;
+  }
+}
+
+impl<'a> GNet<'a> {
+  pub fn show(&self) -> String {
+    let mut s = String::new();
+    s.push_str("NODE | FST-PORT     | SND-PORT     \n");
+    s.push_str("---- | ------------ | ------------\n");  
+    for i in 0..self.nlen {
+      let node = self.node_load(i);
+      if node.0 != 0 {
+        s.push_str(&format!("{:04X} | {} | {}\n", i, node.get_fst().show(), node.get_snd().show()));
+      }
+    }
+    s.push_str("==== | ============ | ============\n");  
+    s.push_str("VARS | VALUE        |\n");
+    s.push_str("---- | ------------ |\n");  
+    for i in 0..self.vlen {
+      let var = self.vars_load(i);
+      if var.0 != 0 {
+        s.push_str(&format!("{:04X} | {} |\n", i, var.show()));
+      }
+    }
+    s.push_str("==== | ============ |\n");
+    return s;
+  }
+}
+
+impl Book {
+  pub fn show(&self) -> String {
+    let mut s = String::new();
+    for def in &self.defs {
+      s.push_str(&format!("==== | ============ | ============ {}\n", def.name));
+      s.push_str("NODE | FST-PORT     | SND-PORT     \n");
+      s.push_str("---- | ------------ | ------------\n");  
+      for (i, node) in def.node.iter().enumerate() {
+        s.push_str(&format!("{:04X} | {} | {}\n", i, node.get_fst().show(), node.get_snd().show()));
+      }
+      s.push_str("==== | ============ | ============\n");  
+      s.push_str("RBAG | FST-TREE     | SND-TREE    \n");
+      s.push_str("---- | ------------ | ------------\n");
+      for (i, node) in def.rbag.iter().enumerate() {
+        s.push_str(&format!("{:04X} | {} | {}\n", i, node.get_fst().show(), node.get_snd().show()));
+      }
+      s.push_str("==== | ============ | ============\n");
+
+    }
+    return s;
+  }
+}
+
 impl Book {
   // Creates a demo program that is equivalent to:
   //   lop  = λn switch n { 0: 0; _: (lop n-1) }
@@ -732,4 +806,4 @@ pub fn test_demo() {
   // Prints interactions
   println!("itrs: {}", net.itrs.load(Ordering::Relaxed));
 }
-    //|                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ move occurs because value has type `runtime::Pair`, which does not implement the `Copy` trait
+

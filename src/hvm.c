@@ -84,12 +84,12 @@ const u32 G_NODE_LEN = 1 << 29; // max 536m nodes
 const u32 G_VARS_LEN = 1 << 29; // max 536m vars 
 const u32 G_RBAG_LEN = TPC * RLEN;
 
-typedef struct GNet {
+typedef struct Net {
   APair node_buf[G_NODE_LEN]; // global node buffer
   APort vars_buf[G_VARS_LEN]; // global vars buffer
   APair steal[TPC/2]; // steal buffer
   a64 itrs; // interaction count
-} GNet;
+} Net;
 
 typedef struct TMem {
   u32  tid; // thread id
@@ -135,9 +135,9 @@ void put_u16(char* B, u16 val);
 Show show_port(Port port);
 Show show_rule(Rule rule);
 void print_rbag(RBag* rbag);
-void print_net(GNet* net);
-void pretty_print_port(GNet* net, Port port);
-void pretty_print_rbag(GNet* net, RBag* rbag);
+void print_net(Net* net);
+void pretty_print_port(Net* net, Port port);
+void pretty_print_rbag(Net* net, RBag* rbag);
 
 // Port: Constructor and Getters
 // -----------------------------
@@ -237,7 +237,7 @@ static inline bool is_high_priority(Rule rule) {
 }
 
 // Adjusts a newly allocated port.
-static inline Port adjust_port(GNet* net, TMem* tm, Port port) {
+static inline Port adjust_port(Net* net, TMem* tm, Port port) {
   Tag tag = get_tag(port);
   Val val = get_val(port);
   if (is_nod(port)) return new_port(tag, tm->node_loc[val-1]);
@@ -246,7 +246,7 @@ static inline Port adjust_port(GNet* net, TMem* tm, Port port) {
 }
 
 // Adjusts a newly allocated pair.
-static inline Pair adjust_pair(GNet* net, TMem* tm, Pair pair) {
+static inline Pair adjust_pair(Net* net, TMem* tm, Pair pair) {
   Port p1 = adjust_port(net, tm, get_fst(pair));
   Port p2 = adjust_port(net, tm, get_snd(pair));
   return new_pair(p1, p2);
@@ -299,56 +299,56 @@ void tmem_init(TMem* tm, u32 tid) {
   tm->itrs = 0;
 }
 
-// GNet
+// Net
 // ----
 
 // Stores a new node on global.
-static inline void node_create(GNet* net, u32 loc, Pair val) {
+static inline void node_create(Net* net, u32 loc, Pair val) {
   atomic_store_explicit(&net->node_buf[loc], val, memory_order_relaxed);
 }
 
 // Stores a var on global. Returns old.
-static inline void vars_create(GNet* net, u32 var, Port val) {
+static inline void vars_create(Net* net, u32 var, Port val) {
   atomic_store_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
 
 // Reads a node from global.
-static inline Pair node_load(GNet* net, u32 loc) {
+static inline Pair node_load(Net* net, u32 loc) {
   return atomic_load_explicit(&net->node_buf[loc], memory_order_relaxed);
 }
 
 // Reads a var from global.
-static inline Port vars_load(GNet* net, u32 var) {
+static inline Port vars_load(Net* net, u32 var) {
   return atomic_load_explicit(&net->vars_buf[var], memory_order_relaxed);  
 }
 
 // Stores a node on global.
-static inline void node_store(GNet* net, u32 loc, Pair val) {
+static inline void node_store(Net* net, u32 loc, Pair val) {
   atomic_store_explicit(&net->node_buf[loc], val, memory_order_relaxed);
 }
 
 // Stores a var on global. Returns old.
-static inline void vars_store(GNet* net, u32 var, Port val) {
+static inline void vars_store(Net* net, u32 var, Port val) {
   atomic_store_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
 
 // Exchanges a node on global by a value. Returns old.
-static inline Pair node_exchange(GNet* net, u32 loc, Pair val) {  
+static inline Pair node_exchange(Net* net, u32 loc, Pair val) {  
   return atomic_exchange_explicit(&net->node_buf[loc], val, memory_order_relaxed);
 }
 
 // Exchanges a var on global by a value. Returns old.
-static inline Port vars_exchange(GNet* net, u32 var, Port val) {
+static inline Port vars_exchange(Net* net, u32 var, Port val) {
   return atomic_exchange_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
 
 // Takes a node.
-static inline Pair node_take(GNet* net, u32 loc) {
+static inline Pair node_take(Net* net, u32 loc) {
   return node_exchange(net, loc, 0);
 }
 
 // Takes a var.
-static inline Port vars_take(GNet* net, u32 var) {
+static inline Port vars_take(Net* net, u32 var) {
   return vars_exchange(net, var, 0);
 }
 
@@ -356,7 +356,7 @@ static inline Port vars_take(GNet* net, u32 var) {
 // ---------
 
 // Allocs on node buffer. Returns the number of successful allocs.
-static inline u32 node_alloc(GNet* net, TMem* tm, u32 num) {
+static inline u32 node_alloc(Net* net, TMem* tm, u32 num) {
   u32* idx = &tm->nidx;
   u32* loc = tm->node_loc;
   u32  len = G_NODE_LEN;
@@ -372,7 +372,7 @@ static inline u32 node_alloc(GNet* net, TMem* tm, u32 num) {
 }
 
 // Allocs on vars buffer. Returns the number of successful allocs.
-static inline u32 vars_alloc(GNet* net, TMem* tm, u32 num) {
+static inline u32 vars_alloc(Net* net, TMem* tm, u32 num) {
   u32* idx = &tm->vidx;
   u32* loc = tm->vars_loc;
   u32  len = G_VARS_LEN;
@@ -388,7 +388,7 @@ static inline u32 vars_alloc(GNet* net, TMem* tm, u32 num) {
 }
 
 // Allocs on node buffer. Optimized for 1 alloc.
-static inline u32 node_alloc_1(GNet* net, TMem* tm) {
+static inline u32 node_alloc_1(Net* net, TMem* tm, u32* lap) {
   u32* idx = &tm->nidx;
   u32* loc = tm->node_loc;
   u32  len = G_NODE_LEN;
@@ -402,7 +402,7 @@ static inline u32 node_alloc_1(GNet* net, TMem* tm) {
 }
 
 // Allocs on vars buffer. Optimized for 1 alloc.
-static inline u32 vars_alloc_1(GNet* net, TMem* tm) {
+static inline u32 vars_alloc_1(Net* net, TMem* tm, u32* lap) {
   u32* idx = &tm->vidx;
   u32* loc = tm->vars_loc;
   u32  len = G_VARS_LEN;
@@ -417,7 +417,7 @@ static inline u32 vars_alloc_1(GNet* net, TMem* tm) {
 }
 
 // Gets the necessary resources for an interaction. Returns success.
-static inline bool get_resources(GNet* net, TMem* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
+static inline bool get_resources(Net* net, TMem* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
   u32 got_rbag = RLEN - rbag_len(&tm->rbag);
   u32 got_node = node_alloc(net, tm, need_node); 
   u32 got_vars = vars_alloc(net, tm, need_vars);
@@ -430,7 +430,7 @@ static inline bool get_resources(GNet* net, TMem* tm, u8 need_rbag, u8 need_node
 // -------
  
 // Finds a variable's value.
-static inline Port enter(GNet* net, TMem* tm, Port var) {
+static inline Port enter(Net* net, TMem* tm, Port var) {
   // While `B` is VAR: extend it (as an optimization)
   while (get_tag(var) == VAR) {
     // Takes the current `var` substitution as `val`
@@ -447,7 +447,7 @@ static inline Port enter(GNet* net, TMem* tm, Port var) {
 }
 
 // Atomically Links `A ~ B`.
-static inline void link(GNet* net, TMem* tm, Port A, Port B) {
+static inline void link(Net* net, TMem* tm, Port A, Port B) {
   //printf("LINK %s ~> %s\n", show_port(A).x, show_port(B).x);
 
   // Attempts to directionally point `A ~> B` 
@@ -483,7 +483,7 @@ static inline void link(GNet* net, TMem* tm, Port A, Port B) {
 }
 
 // Links `A ~ B` (as a pair).
-static inline void link_pair(GNet* net, TMem* tm, Pair AB) {
+static inline void link_pair(Net* net, TMem* tm, Pair AB) {
   //printf("link_pair %016llx\n", AB);
   link(net, tm, get_fst(AB), get_snd(AB));
 }
@@ -526,11 +526,13 @@ void share_redexes(TMem* tm, APair* steal, u32 tid) {
 // Compiled FNs
 // ------------
 
-bool interact_call_fun(GNet *net, TMem *tm, Port a, Port b) {
-  Val v0 = vars_alloc_1(net, tm);
-  Val n0 = node_alloc_1(net, tm);
-  Val n1 = node_alloc_1(net, tm);
-  Val n2 = node_alloc_1(net, tm);
+bool interact_call_fun(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  Val n1 = node_alloc_1(net, tm, &nl);
+  Val n2 = node_alloc_1(net, tm, &nl);
   if (0 || !v0 || !n0 || !n1 || !n2) {
     return false;
   }
@@ -561,28 +563,40 @@ bool interact_call_fun(GNet *net, TMem *tm, Port a, Port b) {
       node_store(net, get_val(b), new_pair(k5,get_snd(k2)));
     }
   }
-  if (k3) {
-    link(net, tm, k3, new_port(REF,0x00000001));
+  // fast void
+  if (get_tag(k3) == ERA || get_tag(k3) == NUM || get_tag(k3) == REF) {
+    tm->itrs += 1;
   } else {
-    k3 = new_port(REF,0x00000001);
+    if (k3) {
+      link(net, tm, k3, new_port(REF,0x00000001));
+    } else {
+      k3 = new_port(REF,0x00000001);
+    }
   }
-  if (k4) {
-    link(net, tm, k4, new_port(REF,0x00000002));
+  // fast void
+  if (get_tag(k4) == ERA || get_tag(k4) == NUM || get_tag(k4) == REF) {
+    tm->itrs += 1;
   } else {
-    k4 = new_port(REF,0x00000002);
+    if (k4) {
+      link(net, tm, k4, new_port(REF,0x00000002));
+    } else {
+      k4 = new_port(REF,0x00000002);
+    }
   }
   if (!k1) {
-    node_create(net, n0, new_pair(new_port(SWI,n2),new_port(VAR,v0)));
-    node_create(net, n2, new_pair(new_port(CON,n1),new_port(VAR,v0)));
-    node_create(net, n1, new_pair(k3,k4));
+    node_create(net, n0, new_pair(new_port(SWI,n1),new_port(VAR,v0)));
+    node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
+    node_create(net, n2, new_pair(k3,k4));
     link(net, tm, new_port(CON, n0), b);
   }
   return true;
 }
 
-bool interact_call_fun0(GNet *net, TMem *tm, Port a, Port b) {
-  Val v0 = vars_alloc_1(net, tm);
-  Val n0 = node_alloc_1(net, tm);
+bool interact_call_fun0(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
   if (0 || !v0 || !n0) {
     return false;
   }
@@ -597,16 +611,18 @@ bool interact_call_fun0(GNet *net, TMem *tm, Port a, Port b) {
   return true;
 }
 
-bool interact_call_fun1(GNet *net, TMem *tm, Port a, Port b) {
-  Val v0 = vars_alloc_1(net, tm);
-  Val v1 = vars_alloc_1(net, tm);
-  Val v2 = vars_alloc_1(net, tm);
-  Val v3 = vars_alloc_1(net, tm);
-  Val n0 = node_alloc_1(net, tm);
-  Val n1 = node_alloc_1(net, tm);
-  Val n2 = node_alloc_1(net, tm);
-  Val n3 = node_alloc_1(net, tm);
-  Val n4 = node_alloc_1(net, tm);
+bool interact_call_fun1(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val v1 = vars_alloc_1(net, tm, &vl);
+  Val v2 = vars_alloc_1(net, tm, &vl);
+  Val v3 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  Val n1 = node_alloc_1(net, tm, &nl);
+  Val n2 = node_alloc_1(net, tm, &nl);
+  Val n3 = node_alloc_1(net, tm, &nl);
+  Val n4 = node_alloc_1(net, tm, &nl);
   if (0 || !v0 || !v1 || !v2 || !v3 || !n0 || !n1 || !n2 || !n3 || !n4) {
     return false;
   }
@@ -665,11 +681,13 @@ bool interact_call_fun1(GNet *net, TMem *tm, Port a, Port b) {
   return true;
 }
 
-bool interact_call_lop(GNet *net, TMem *tm, Port a, Port b) {
-  Val v0 = vars_alloc_1(net, tm);
-  Val n0 = node_alloc_1(net, tm);
-  Val n1 = node_alloc_1(net, tm);
-  Val n2 = node_alloc_1(net, tm);
+bool interact_call_lop(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  Val n1 = node_alloc_1(net, tm, &nl);
+  Val n2 = node_alloc_1(net, tm, &nl);
   if (0 || !v0 || !n0 || !n1 || !n2) {
     return false;
   }
@@ -700,30 +718,42 @@ bool interact_call_lop(GNet *net, TMem *tm, Port a, Port b) {
       node_store(net, get_val(b), new_pair(k5,get_snd(k2)));
     }
   }
-  if (k3) {
-    link(net, tm, k3, new_port(NUM,0x00000000));
+  // fast void
+  if (get_tag(k3) == ERA || get_tag(k3) == NUM || get_tag(k3) == REF) {
+    tm->itrs += 1;
   } else {
-    k3 = new_port(NUM,0x00000000);
+    if (k3) {
+      link(net, tm, k3, new_port(NUM,0x00000000));
+    } else {
+      k3 = new_port(NUM,0x00000000);
+    }
   }
-  if (k4) {
-    link(net, tm, k4, new_port(REF,0x00000004));
+  // fast void
+  if (get_tag(k4) == ERA || get_tag(k4) == NUM || get_tag(k4) == REF) {
+    tm->itrs += 1;
   } else {
-    k4 = new_port(REF,0x00000004);
+    if (k4) {
+      link(net, tm, k4, new_port(REF,0x00000004));
+    } else {
+      k4 = new_port(REF,0x00000004);
+    }
   }
   if (!k1) {
-    node_create(net, n0, new_pair(new_port(SWI,n2),new_port(VAR,v0)));
-    node_create(net, n2, new_pair(new_port(CON,n1),new_port(VAR,v0)));
-    node_create(net, n1, new_pair(k3,k4));
+    node_create(net, n0, new_pair(new_port(SWI,n1),new_port(VAR,v0)));
+    node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
+    node_create(net, n2, new_pair(k3,k4));
     link(net, tm, new_port(CON, n0), b);
   }
   return true;
 }
 
-bool interact_call_lop0(GNet *net, TMem *tm, Port a, Port b) {
-  Val v0 = vars_alloc_1(net, tm);
-  Val v1 = vars_alloc_1(net, tm);
-  Val n0 = node_alloc_1(net, tm);
-  Val n1 = node_alloc_1(net, tm);
+bool interact_call_lop0(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val v1 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
+  Val n1 = node_alloc_1(net, tm, &nl);
   if (0 || !v0 || !v1 || !n0 || !n1) {
     return false;
   }
@@ -758,9 +788,11 @@ bool interact_call_lop0(GNet *net, TMem *tm, Port a, Port b) {
   return true;
 }
 
-bool interact_call_main(GNet *net, TMem *tm, Port a, Port b) {
-  Val v0 = vars_alloc_1(net, tm);
-  Val n0 = node_alloc_1(net, tm);
+bool interact_call_main(Net *net, TMem *tm, Port a, Port b) {
+  u32 vl = 0;
+  u32 nl = 0;
+  Val v0 = vars_alloc_1(net, tm, &vl);
+  Val n0 = node_alloc_1(net, tm, &nl);
   if (0 || !v0 || !n0) {
     return false;
   }
@@ -779,7 +811,7 @@ bool interact_call_main(GNet *net, TMem *tm, Port a, Port b) {
 // ------------
 
 // The Link Interaction.
-static inline bool interact_link(GNet* net, TMem* tm, Port a, Port b) {
+static inline bool interact_link(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 0, 0)) {
     return false;
@@ -792,7 +824,7 @@ static inline bool interact_link(GNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Call Interaction.
-static inline bool interact_call(GNet* net, TMem* tm, Port a, Port b, Book* book) {
+static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book) {
   u32  fid = get_val(a);
   Def* def = &book->defs_buf[fid];
 
@@ -833,12 +865,12 @@ static inline bool interact_call(GNet* net, TMem* tm, Port a, Port b, Book* book
 }
 
 // The Void Interaction.  
-static inline bool interact_void(GNet* net, TMem* tm, Port a, Port b) {
+static inline bool interact_void(Net* net, TMem* tm, Port a, Port b) {
   return true;
 }
 
 // The Eras Interaction.
-static inline bool interact_eras(GNet* net, TMem* tm, Port a, Port b) {
+static inline bool interact_eras(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.  
   if (!get_resources(net, tm, 2, 0, 0)) {
     return false;
@@ -865,7 +897,7 @@ static inline bool interact_eras(GNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Anni Interaction.  
-static inline bool interact_anni(GNet* net, TMem* tm, Port a, Port b) {
+static inline bool interact_anni(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
     //printf("AAA\n");
@@ -898,7 +930,7 @@ static inline bool interact_anni(GNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Comm Interaction.
-static inline bool interact_comm(GNet* net, TMem* tm, Port a, Port b) {
+static inline bool interact_comm(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.  
   if (!get_resources(net, tm, 4, 4, 4)) {
     return false;
@@ -943,7 +975,7 @@ static inline bool interact_comm(GNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Oper Interaction.  
-static inline bool interact_oper(GNet* net, TMem* tm, Port a, Port b) {
+static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 1, 0)) {
     return false;
@@ -977,7 +1009,7 @@ static inline bool interact_oper(GNet* net, TMem* tm, Port a, Port b) {
 }
 
 // The Swit Interaction.
-static inline bool interact_swit(GNet* net, TMem* tm, Port a, Port b) {
+static inline bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.  
   if (!get_resources(net, tm, 1, 2, 0)) {
     return false;
@@ -1009,7 +1041,7 @@ static inline bool interact_swit(GNet* net, TMem* tm, Port a, Port b) {
 }
 
 // Pops a local redex and performs a single interaction.
-static inline bool interact(GNet* net, TMem* tm, Book* book) {
+static inline bool interact(Net* net, TMem* tm, Book* book) {
   // Pops a redex.
   Pair redex = pop_redex(tm);
 
@@ -1063,7 +1095,7 @@ static inline bool interact(GNet* net, TMem* tm, Book* book) {
 // Evaluator
 // ---------
 
-void evaluator(GNet* net, TMem* tm, Book* book) {
+void evaluator(Net* net, TMem* tm, Book* book) {
   // Increments the tick
   tm->tick += 1;
 
@@ -1139,7 +1171,7 @@ void print_rbag(RBag* rbag) {
   printf("==== | ============ | ============\n");
 }
 
-void print_net(GNet* net) {
+void print_net(Net* net) {
   printf("NODE | PORT-1       | PORT-2      \n");
   printf("---- | ------------ | ------------\n");  
   for (u32 i = 0; i < G_NODE_LEN; ++i) {
@@ -1160,7 +1192,7 @@ void print_net(GNet* net) {
   printf("==== | ============ |\n");
 }
 
-void pretty_print_port(GNet* net, Port port) {
+void pretty_print_port(Net* net, Port port) {
   Port stack[32];
   stack[0] = port;
   u32 len = 1;
@@ -1250,7 +1282,7 @@ void pretty_print_port(GNet* net, Port port) {
   }
 }
 
-void pretty_print_rbag(GNet* net, RBag* rbag) {
+void pretty_print_rbag(Net* net, RBag* rbag) {
   for (u32 i = 0; i < rbag->lo_idx; ++i) {
     Pair redex = rbag->buf[i];
     if (redex != 0) {
@@ -1315,7 +1347,7 @@ Book BOOK = {
 
 int main() {
   // GMem
-  GNet *gnet = malloc(sizeof(GNet));
+  Net *gnet = malloc(sizeof(Net));
 
   // TODO: copy the const book to a local allocated book here
   Book* book = malloc(sizeof(Book));
