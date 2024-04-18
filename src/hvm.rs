@@ -642,6 +642,43 @@ impl TMem {
   }
 }
 
+// Serialization
+// -------------
+
+impl Book {
+  pub fn to_buffer(&self, buf: &mut Vec<u8>) {
+    // Writes the number of defs
+    buf.extend_from_slice(&(self.defs.len() as u32).to_ne_bytes());
+
+    // For each def
+    for def in &self.defs {
+      // Writes the name
+      let name_bytes = def.name.as_bytes();
+      buf.extend_from_slice(&name_bytes[..32.min(name_bytes.len())]);
+      buf.resize(buf.len() + (32 - name_bytes.len()), 0);
+
+      // Writes the rbag length
+      buf.extend_from_slice(&(def.rbag.len() as u32).to_ne_bytes());
+      
+      // Writes the node length  
+      buf.extend_from_slice(&(def.node.len() as u32).to_ne_bytes());
+
+      // Writes the vars length
+      buf.extend_from_slice(&(def.vars as u32).to_ne_bytes());
+      
+      // Writes the rbag buffer
+      for pair in &def.rbag {
+        buf.extend_from_slice(&pair.0.to_ne_bytes());
+      }
+
+      // Writes the node buffer
+      for pair in &def.node {
+        buf.extend_from_slice(&pair.0.to_ne_bytes());
+      }
+    }
+  }
+}
+
 // Debug
 // -----
 

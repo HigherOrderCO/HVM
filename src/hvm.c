@@ -98,24 +98,25 @@ typedef struct TMem {
   u32  itrs; // interaction count
   u32  nidx; // next node allocation attempt index
   u32  vidx; // next vars allocation attempt index
-  u32  node_loc[32]; // node allocation indices
-  u32  vars_loc[32]; // vars allocation indices
+  u32  nloc[32]; // node allocation indices
+  u32  vloc[32]; // vars allocation indices
   RBag rbag; // local bag
 } TMem;  
 
 // Top-Level Definition
 typedef struct Def {
+  char name[32];
   u32  rbag_len;
-  Pair rbag_buf[32];
   u32  node_len; 
-  Pair node_buf[32];
   u32  vars_len;
+  Pair rbag_buf[32];
+  Pair node_buf[32];
 } Def;
 
 // Book of Definitions
 typedef struct Book {
   u32 defs_len;
-  Def defs_buf[64];
+  Def defs_buf[256];
 } Book;
 
 // Booleans
@@ -240,8 +241,8 @@ static inline bool is_high_priority(Rule rule) {
 static inline Port adjust_port(Net* net, TMem* tm, Port port) {
   Tag tag = get_tag(port);
   Val val = get_val(port);
-  if (is_nod(port)) return new_port(tag, tm->node_loc[val-1]);
-  if (is_var(port)) return new_port(tag, tm->vars_loc[val]);
+  if (is_nod(port)) return new_port(tag, tm->nloc[val-1]);
+  if (is_var(port)) return new_port(tag, tm->vloc[val]);
   return new_port(tag, val);
 }
 
@@ -358,13 +359,13 @@ static inline Port vars_take(Net* net, u32 var) {
 // Allocs on node buffer. Returns the number of successful allocs.
 static inline u32 node_alloc(Net* net, TMem* tm, u32 num) {
   u32* idx = &tm->nidx;
-  u32* loc = tm->node_loc;
+  u32* loc = tm->nloc;
   u32  len = G_NODE_LEN;
   u32  got = 0;
   for (u32 i = 0; i < len && got < num; ++i) {
     *idx += 1;
     if (*idx < len || node_load(net, *idx % len) == 0) {
-      tm->node_loc[got++] = *idx % len;
+      tm->nloc[got++] = *idx % len;
       //printf("ALLOC NODE %d %d\n", got, *idx);
     }
   }
@@ -374,7 +375,7 @@ static inline u32 node_alloc(Net* net, TMem* tm, u32 num) {
 // Allocs on vars buffer. Returns the number of successful allocs.
 static inline u32 vars_alloc(Net* net, TMem* tm, u32 num) {
   u32* idx = &tm->vidx;
-  u32* loc = tm->vars_loc;
+  u32* loc = tm->vloc;
   u32  len = G_VARS_LEN;
   u32  got = 0;
   for (u32 i = 0; i < len && got < num; ++i) {
@@ -390,7 +391,7 @@ static inline u32 vars_alloc(Net* net, TMem* tm, u32 num) {
 // Allocs on node buffer. Optimized for 1 alloc.
 static inline u32 node_alloc_1(Net* net, TMem* tm, u32* lap) {
   u32* idx = &tm->nidx;
-  u32* loc = tm->node_loc;
+  u32* loc = tm->nloc;
   u32  len = G_NODE_LEN;
   for (u32 i = 0; i < len; ++i) {
     *idx += 1;
@@ -404,7 +405,7 @@ static inline u32 node_alloc_1(Net* net, TMem* tm, u32* lap) {
 // Allocs on vars buffer. Optimized for 1 alloc.
 static inline u32 vars_alloc_1(Net* net, TMem* tm, u32* lap) {
   u32* idx = &tm->vidx;
-  u32* loc = tm->vars_loc;
+  u32* loc = tm->vloc;
   u32  len = G_VARS_LEN;
   u32  got = 0;
   for (u32 i = 0; i < len; ++i) {
@@ -829,14 +830,14 @@ static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book)
   Def* def = &book->defs_buf[fid];
 
   // Compiled FNs
-  switch (fid) {
-    case 0: return interact_call_fun(net, tm, a, b);
-    case 1: return interact_call_fun0(net, tm, a, b);
-    case 2: return interact_call_fun1(net, tm, a, b);
-    case 3: return interact_call_lop(net, tm, a, b);
-    case 4: return interact_call_lop0(net, tm, a, b);
-    case 5: return interact_call_main(net, tm, a, b);
-  }
+  //switch (fid) {
+    //case 0: return interact_call_fun(net, tm, a, b);
+    //case 1: return interact_call_fun0(net, tm, a, b);
+    //case 2: return interact_call_fun1(net, tm, a, b);
+    //case 3: return interact_call_lop(net, tm, a, b);
+    //case 4: return interact_call_lop0(net, tm, a, b);
+    //case 5: return interact_call_main(net, tm, a, b);
+  //}
   
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, def->rbag_len + 1, def->node_len - 1, def->vars_len)) {
@@ -845,14 +846,14 @@ static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book)
 
   // Stores new vars.  
   for (u32 i = 0; i < def->vars_len; ++i) {
-    vars_create(net, tm->vars_loc[i], NONE);
-    //printf("vars_create vars_loc[%04x] %04x\n", i, tm->vars_loc[i]);
+    vars_create(net, tm->vloc[i], NONE);
+    //printf("vars_create vloc[%04x] %04x\n", i, tm->vloc[i]);
   }
 
   // Stores new nodes.  
   for (u32 i = 1; i < def->node_len; ++i) {
-    node_create(net, tm->node_loc[i-1], adjust_pair(net, tm, def->node_buf[i]));
-    //printf("node_create node_loc[%04x] %08llx\n", i-1, def->node_buf[i]);
+    node_create(net, tm->nloc[i-1], adjust_pair(net, tm, def->node_buf[i]));
+    //printf("node_create nloc[%04x] %08llx\n", i-1, def->node_buf[i]);
   }
 
   // Links.
@@ -954,22 +955,22 @@ static inline bool interact_comm(Net* net, TMem* tm, Port a, Port b) {
   //if (B == 0) printf("[%04x] ERROR6: %s\n", tid, show_port(b).x);
 
   // Stores new vars.
-  vars_create(net, tm->vars_loc[0], NONE);
-  vars_create(net, tm->vars_loc[1], NONE);
-  vars_create(net, tm->vars_loc[2], NONE);
-  vars_create(net, tm->vars_loc[3], NONE);
+  vars_create(net, tm->vloc[0], NONE);
+  vars_create(net, tm->vloc[1], NONE);
+  vars_create(net, tm->vloc[2], NONE);
+  vars_create(net, tm->vloc[3], NONE);
   
   // Stores new nodes.
-  node_create(net, tm->node_loc[0], new_pair(new_port(VAR, tm->vars_loc[0]), new_port(VAR, tm->vars_loc[1])));
-  node_create(net, tm->node_loc[1], new_pair(new_port(VAR, tm->vars_loc[2]), new_port(VAR, tm->vars_loc[3])));
-  node_create(net, tm->node_loc[2], new_pair(new_port(VAR, tm->vars_loc[0]), new_port(VAR, tm->vars_loc[2])));
-  node_create(net, tm->node_loc[3], new_pair(new_port(VAR, tm->vars_loc[1]), new_port(VAR, tm->vars_loc[3])));
+  node_create(net, tm->nloc[0], new_pair(new_port(VAR, tm->vloc[0]), new_port(VAR, tm->vloc[1])));
+  node_create(net, tm->nloc[1], new_pair(new_port(VAR, tm->vloc[2]), new_port(VAR, tm->vloc[3])));
+  node_create(net, tm->nloc[2], new_pair(new_port(VAR, tm->vloc[0]), new_port(VAR, tm->vloc[2])));
+  node_create(net, tm->nloc[3], new_pair(new_port(VAR, tm->vloc[1]), new_port(VAR, tm->vloc[3])));
 
   // Links.
-  link_pair(net, tm, new_pair(A1, new_port(get_tag(b), tm->node_loc[0])));
-  link_pair(net, tm, new_pair(A2, new_port(get_tag(b), tm->node_loc[1])));  
-  link_pair(net, tm, new_pair(B1, new_port(get_tag(a), tm->node_loc[2])));
-  link_pair(net, tm, new_pair(B2, new_port(get_tag(a), tm->node_loc[3])));
+  link_pair(net, tm, new_pair(A1, new_port(get_tag(b), tm->nloc[0])));
+  link_pair(net, tm, new_pair(A2, new_port(get_tag(b), tm->nloc[1])));  
+  link_pair(net, tm, new_pair(B1, new_port(get_tag(a), tm->nloc[2])));
+  link_pair(net, tm, new_pair(B2, new_port(get_tag(a), tm->nloc[3])));
 
   return true;  
 }
@@ -1001,8 +1002,8 @@ static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
     u32 rv = av + bv;
     link_pair(net, tm, new_pair(B2, new_port(NUM, rv))); 
   } else {
-    node_create(net, tm->node_loc[0], new_pair(a, B2));
-    link_pair(net, tm, new_pair(B1, new_port(OPR, tm->node_loc[0])));
+    node_create(net, tm->nloc[0], new_pair(a, B2));
+    link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
   return true;  
@@ -1029,12 +1030,12 @@ static inline bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
  
   // Stores new nodes.  
   if (av == 0) {
-    node_create(net, tm->node_loc[0], new_pair(B2, new_port(ERA,0)));
-    link_pair(net, tm, new_pair(new_port(CON, tm->node_loc[0]), B1));
+    node_create(net, tm->nloc[0], new_pair(B2, new_port(ERA,0)));
+    link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
   } else {
-    node_create(net, tm->node_loc[0], new_pair(new_port(ERA,0), new_port(CON, tm->node_loc[1])));
-    node_create(net, tm->node_loc[1], new_pair(new_port(NUM, av-1), B2));
-    link_pair(net, tm, new_pair(new_port(CON, tm->node_loc[0]), B1));
+    node_create(net, tm->nloc[0], new_pair(new_port(ERA,0), new_port(CON, tm->nloc[1])));
+    node_create(net, tm->nloc[1], new_pair(new_port(NUM, av-1), B2));
+    link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
   }
 
   return true;
@@ -1112,6 +1113,36 @@ void evaluator(Net* net, TMem* tm, Book* book) {
 
   atomic_fetch_add(&net->itrs, tm->itrs);
   tm->itrs = 0;
+}
+
+// Book Loader
+// -----------
+
+void book_load(u32* buf, Book* book) {
+  // Reads defs_len
+  book->defs_len = *buf++;
+
+  // Parses each def
+  for (u32 i = 0; i < book->defs_len; ++i) {
+    Def* def = &book->defs_buf[i];
+    
+    // Reads name
+    memcpy(def->name, buf, 32);
+    buf += 8;
+
+    // Reads lengths
+    def->rbag_len = *buf++;
+    def->node_len = *buf++;
+    def->vars_len = *buf++;
+
+    // Reads rbag_buf
+    memcpy(def->rbag_buf, buf, 8*def->rbag_len);  
+    buf += def->rbag_len * 2;
+    
+    // Reads node_buf
+    memcpy(def->node_buf, buf, 8*def->node_len);
+    buf += def->node_len * 2;
+  }
 }
 
 // Debug Printing
@@ -1303,57 +1334,20 @@ void pretty_print_rbag(Net* net, RBag* rbag) {
   }
 }
 
-// Example Books  
-// -------------
-
-Book BOOK = {
-  6,
-  {
-    { // fun
-      0, { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      4, { 0x000000000000000C, 0x000000000000001F, 0x0000001100000009, 0x0000000000000014, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },  
-      1,
-    },
-    { // fun$C0
-      1, { 0x0000000C00000019, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      2, { 0x0000000000000000, NUM|(LOOPS<<3), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      1,
-    },
-    { // fun$C1
-      2, { 0x0000001C00000001, 0x0000002C00000001, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      6, { 0x000000000000000C, 0x0000001000000015, 0x0000000800000000, 0x0000002600000000, 0x0000001000000018, 0x0000001800000008, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      4,
-    },
-    { // loop
-      0, { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      4, { 0x000000000000000C, 0x000000000000001F, 0x0000002100000003, 0x0000000000000014, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      1,  
-    },
-    { // loop$C0  
-      1, { 0x0000001400000019, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      3, { 0x000000000000000C, 0x0000000800000000, 0x0000000800000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      2,
-    },
-    { // main  
-      1, { 0x0000000C00000001, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      2, { 0x0000000000000000, NUM|(DEPTH<<3), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, },
-      1,  
-    },
-  }
-};
-
-// Main  
+// Main
 // ----
 
+static const u8 BOOK_BUF[] = {6, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 17, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 8, 0, 0, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 28, 0, 0, 0, 1, 0, 0, 0, 44, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 33, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 20, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 83, 0, 0, 0, 0, 0, 0, 0};
+
 int main() {
+  // Load the book from a binary buffer
+  Book* book = malloc(sizeof(Book));
+  book_load((u32*)BOOK_BUF, book);
+
   // GMem
   Net *gnet = malloc(sizeof(Net));
 
-  // TODO: copy the const book to a local allocated book here
-  Book* book = malloc(sizeof(Book));
-  memcpy(book, &BOOK, sizeof(Book));
-
-  // TODO: alloc and init 16 TMem's
+  // Alloc and init TPC TMem's
   TMem* tm[TPC];
   for (u32 t = 0; t < TPC; ++t) {
     tm[t] = malloc(sizeof(TMem));
@@ -1378,4 +1372,3 @@ int main() {
 
   return 0;
 }
-

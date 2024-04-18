@@ -12,15 +12,19 @@ const CODE : &str = "
 @fun1 = ({a b} c) & @fun ~ (a <d c>) & @fun ~ (b d)
 @lop  = (?<(#0 @lop0) a> a)
 @lop0 = (a b) & @lop ~ (a b)
-@main = a & @fun ~ (#10 a)
+@main = a & @fun ~ (#18 a)
 ";
 
 fn main() {
-    let ast_book = match ast::CoreParser::new(CODE).parse_book() {
-      Ok(got) => got,
-      Err(er) => panic!("{}", er),
-    };
-  
-    let book = ast_book.build();
-    println!("{}", cmp::compile_book(cmp::Target::C, &book));
+  let ast_book = match ast::CoreParser::new(CODE).parse_book() {
+    Ok(got) => got,
+    Err(er) => panic!("{}", er),
+  };
+
+  let book = ast_book.build();
+  println!("{}", cmp::compile_book(cmp::Target::C, &book));
+
+  let mut buff = Vec::new();
+  book.to_buffer(&mut buff);
+  println!("{:?}", buff);
 }
