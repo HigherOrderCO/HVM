@@ -5,6 +5,8 @@
 #include <pthread.h>
 #include <stdatomic.h>
 
+#define INTERPRETED
+
 // Integers
 // --------
 
@@ -123,8 +125,6 @@ typedef struct Book {
 // Booleans
 const bool true  = 1;
 const bool false = 0;
-
-// good job, that compiles. implement the rest of the code now.
 
 // Debugger
 // --------
@@ -525,310 +525,6 @@ void share_redexes(TMem* tm, APair* steal, u32 tid) {
   }
 }
 
-// Compiled FNs
-// ------------
-
-bool interact_call_fun(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  Val n1 = node_alloc_1(net, tm, &nl);
-  Val n2 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !n0 || !n1 || !n2) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  bool k1 = 0;
-  Pair k2 = 0;
-  Port k5 = 0;
-  Port k3 = 0;
-  Port k4 = 0;
-  //fast switch
-  if (get_tag(b) == CON) {
-    k2 = node_load(net, get_val(b));
-    k5 = enter(net,tm,get_fst(k2));
-    if (get_tag(k5) == NUM) {
-      tm->itrs += 3;
-      vars_take(net, v0);
-      k1 = 1;
-      if (get_val(k5) == 0) {
-        node_take(net, get_val(b));
-        k3 = get_snd(k2);
-        k4 = new_port(ERA,0);
-      } else {
-        node_store(net, get_val(b), new_pair(new_port(NUM,get_val(k5)-1), get_snd(k2)));
-        k3 = new_port(ERA,0);
-        k4 = b;
-      }
-    } else {
-      node_store(net, get_val(b), new_pair(k5,get_snd(k2)));
-    }
-  }
-  // fast void
-  if (get_tag(k3) == ERA || get_tag(k3) == NUM || get_tag(k3) == REF) {
-    tm->itrs += 1;
-  } else {
-    if (k3) {
-      link(net, tm, k3, new_port(REF,0x00000001));
-    } else {
-      k3 = new_port(REF,0x00000001);
-    }
-  }
-  // fast void
-  if (get_tag(k4) == ERA || get_tag(k4) == NUM || get_tag(k4) == REF) {
-    tm->itrs += 1;
-  } else {
-    if (k4) {
-      link(net, tm, k4, new_port(REF,0x00000002));
-    } else {
-      k4 = new_port(REF,0x00000002);
-    }
-  }
-  if (!k1) {
-    node_create(net, n0, new_pair(new_port(SWI,n1),new_port(VAR,v0)));
-    node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
-    node_create(net, n2, new_pair(k3,k4));
-    if (b) {
-      link(net, tm, b, new_port(CON, n0));
-    } else {
-      b = new_port(CON, n0);
-    }
-  }
-  return true;
-}
-
-bool interact_call_fun0(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !n0) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  node_create(net, n0, new_pair(new_port(NUM,0x00010000),new_port(VAR,v0)));
-  link(net, tm, new_port(REF,0x00000003), new_port(CON,n0));
-  if (b) {
-    link(net, tm, b, new_port(VAR,v0));
-  } else {
-    b = new_port(VAR,v0);
-  }
-  return true;
-}
-
-bool interact_call_fun1(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val v1 = vars_alloc_1(net, tm, &vl);
-  Val v2 = vars_alloc_1(net, tm, &vl);
-  Val v3 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  Val n1 = node_alloc_1(net, tm, &nl);
-  Val n2 = node_alloc_1(net, tm, &nl);
-  Val n3 = node_alloc_1(net, tm, &nl);
-  Val n4 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !v1 || !v2 || !v3 || !n0 || !n1 || !n2 || !n3 || !n4) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  vars_create(net, v1, NONE);
-  vars_create(net, v2, NONE);
-  vars_create(net, v3, NONE);
-  node_create(net, n3, new_pair(new_port(VAR,v3),new_port(VAR,v2)));
-  node_create(net, n2, new_pair(new_port(VAR,v0),new_port(OPR,n3)));
-  link(net, tm, new_port(REF,0x00000000), new_port(CON,n2));
-  node_create(net, n4, new_pair(new_port(VAR,v1),new_port(VAR,v3)));
-  link(net, tm, new_port(REF,0x00000000), new_port(CON,n4));
-  Pair k1 = 0;
-  Port k2 = 0;
-  Port k3 = 0;
-  // fast anni
-  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
-    tm->itrs += 1;
-    k1 = node_take(net, get_val(b));
-    k2 = get_fst(k1);
-    k3 = get_snd(k1);
-  }
-  if (k3) {
-    link(net, tm, k3, new_port(VAR,v2));
-  } else {
-    k3 = new_port(VAR,v2);
-  }
-  bool k4 = 0;
-  Port k5 = 0;
-  Port k6 = 0;
-  // fast copy
-  if (get_tag(k2) == NUM) {
-    tm->itrs += 1;
-    k4 = 1;
-    k5 = k2;
-    k6 = k2;
-  }
-  if (k6) {
-    link(net, tm, k6, new_port(VAR,v1));
-  } else {
-    k6 = new_port(VAR,v1);
-  }
-  if (k5) {
-    link(net, tm, k5, new_port(VAR,v0));
-  } else {
-    k5 = new_port(VAR,v0);
-  }
-  if (!k4) {
-    node_create(net, n1, new_pair(k5,k6));
-    if (k2) {
-      link(net, tm, k2, new_port(DUP,n1));
-    } else {
-      k2 = new_port(DUP,n1);
-    }
-  }
-  if (!k1) {
-    node_create(net, n0, new_pair(k2,k3));
-    if (b) {
-      link(net, tm, b, new_port(CON,n0));
-    } else {
-      b = new_port(CON,n0);
-    }
-  }
-  return true;
-}
-
-bool interact_call_lop(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  Val n1 = node_alloc_1(net, tm, &nl);
-  Val n2 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !n0 || !n1 || !n2) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  bool k1 = 0;
-  Pair k2 = 0;
-  Port k5 = 0;
-  Port k3 = 0;
-  Port k4 = 0;
-  //fast switch
-  if (get_tag(b) == CON) {
-    k2 = node_load(net, get_val(b));
-    k5 = enter(net,tm,get_fst(k2));
-    if (get_tag(k5) == NUM) {
-      tm->itrs += 3;
-      vars_take(net, v0);
-      k1 = 1;
-      if (get_val(k5) == 0) {
-        node_take(net, get_val(b));
-        k3 = get_snd(k2);
-        k4 = new_port(ERA,0);
-      } else {
-        node_store(net, get_val(b), new_pair(new_port(NUM,get_val(k5)-1), get_snd(k2)));
-        k3 = new_port(ERA,0);
-        k4 = b;
-      }
-    } else {
-      node_store(net, get_val(b), new_pair(k5,get_snd(k2)));
-    }
-  }
-  // fast void
-  if (get_tag(k3) == ERA || get_tag(k3) == NUM || get_tag(k3) == REF) {
-    tm->itrs += 1;
-  } else {
-    if (k3) {
-      link(net, tm, k3, new_port(NUM,0x00000000));
-    } else {
-      k3 = new_port(NUM,0x00000000);
-    }
-  }
-  // fast void
-  if (get_tag(k4) == ERA || get_tag(k4) == NUM || get_tag(k4) == REF) {
-    tm->itrs += 1;
-  } else {
-    if (k4) {
-      link(net, tm, k4, new_port(REF,0x00000004));
-    } else {
-      k4 = new_port(REF,0x00000004);
-    }
-  }
-  if (!k1) {
-    node_create(net, n0, new_pair(new_port(SWI,n1),new_port(VAR,v0)));
-    node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
-    node_create(net, n2, new_pair(k3,k4));
-    if (b) {
-      link(net, tm, b, new_port(CON, n0));
-    } else {
-      b = new_port(CON, n0);
-    }
-  }
-  return true;
-}
-
-bool interact_call_lop0(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val v1 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  Val n1 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !v1 || !n0 || !n1) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  vars_create(net, v1, NONE);
-  node_create(net, n1, new_pair(new_port(VAR,v0),new_port(VAR,v1)));
-  link(net, tm, new_port(REF,0x00000003), new_port(CON,n1));
-  Pair k1 = 0;
-  Port k2 = 0;
-  Port k3 = 0;
-  // fast anni
-  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
-    tm->itrs += 1;
-    k1 = node_take(net, get_val(b));
-    k2 = get_fst(k1);
-    k3 = get_snd(k1);
-  }
-  if (k3) {
-    link(net, tm, k3, new_port(VAR,v1));
-  } else {
-    k3 = new_port(VAR,v1);
-  }
-  if (k2) {
-    link(net, tm, k2, new_port(VAR,v0));
-  } else {
-    k2 = new_port(VAR,v0);
-  }
-  if (!k1) {
-    node_create(net, n0, new_pair(k2,k3));
-    if (b) {
-      link(net, tm, b, new_port(CON,n0));
-    } else {
-      b = new_port(CON,n0);
-    }
-  }
-  return true;
-}
-
-bool interact_call_main(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !n0) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  node_create(net, n0, new_pair(new_port(NUM,0x0000000a),new_port(VAR,v0)));
-  link(net, tm, new_port(REF,0x00000000), new_port(CON,n0));
-  if (b) {
-    link(net, tm, b, new_port(VAR,v0));
-  } else {
-    b = new_port(VAR,v0);
-  }
-  return true;
-}
-
 // Interactions
 // ------------
 
@@ -846,25 +542,18 @@ static inline bool interact_link(Net* net, TMem* tm, Port a, Port b) {
 }
 
 // The Call Interaction.
+#ifdef COMPILED
+///COMPILED_INTERACT_CALL///
+#else
 static inline bool interact_eras(Net* net, TMem* tm, Port a, Port b);
 static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book) {
+  // Loads Definition.
   u32  fid = get_val(a);
   Def* def = &book->defs_buf[fid];
 
   // Copy Optimization.
   if (def->safe && get_tag(b) == DUP) {
     return interact_eras(net, tm, a, b);
-  }
-
-  // Compiled FNs
-  switch (fid) {
-    case 0: return interact_call_fun(net, tm, a, b);
-    case 1: return interact_call_fun0(net, tm, a, b);
-    case 2: return interact_call_fun1(net, tm, a, b);
-    case 3: return interact_call_lop(net, tm, a, b);
-    case 4: return interact_call_lop0(net, tm, a, b);
-    case 5: return interact_call_main(net, tm, a, b);
-    default: return false;
   }
 
   // Allocates needed nodes and vars.
@@ -892,6 +581,7 @@ static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book)
 
   return true;
 }
+#endif
 
 // The Void Interaction.  
 static inline bool interact_void(Net* net, TMem* tm, Port a, Port b) {
@@ -1099,7 +789,11 @@ static inline bool interact(Net* net, TMem* tm, Book* book) {
     bool success;
     switch (rule) {
       case LINK: success = interact_link(net, tm, a, b); break;
+      #ifdef COMPILED
+      case CALL: success = interact_call(net, tm, a, b); break;
+      #else
       case CALL: success = interact_call(net, tm, a, b, book); break;
+      #endif
       case VOID: success = interact_void(net, tm, a, b); break;
       case ERAS: success = interact_eras(net, tm, a, b); break;
       case ANNI: success = interact_anni(net, tm, a, b); break;
@@ -1152,7 +846,11 @@ void book_load(u32* buf, Book* book) {
 
   // Parses each def
   for (u32 i = 0; i < book->defs_len; ++i) {
-    Def* def = &book->defs_buf[i];
+    // Reads fid
+    u32 fid = *buf++;
+
+    // Gets def
+    Def* def = &book->defs_buf[fid];
     
     // Reads name
     memcpy(def->name, buf, 32);
@@ -1368,12 +1066,31 @@ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
-static const u8 BOOK_BUF[] = {6, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 17, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 8, 0, 0, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 28, 0, 0, 0, 1, 0, 0, 0, 44, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 33, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 20, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 83, 0, 0, 0, 0, 0, 0, 0};
+int main(int argc, char* argv[]) {
+  Book* book = NULL;
 
-int main() {
-  // Load the book from a binary buffer
-  Book* book = malloc(sizeof(Book));
-  book_load((u32*)BOOK_BUF, book);
+  #ifdef INTERPRETED
+  if (argc != 2) {
+    printf("Usage: hvm-c <file.hvm.bin>\n");
+    return 1;
+  }
+  
+  FILE* file = fopen(argv[1], "rb");
+  if (!file) {
+    printf("HVM book file not found: %s\n", argv[1]);
+    return 1;  
+  }
+  
+  fseek(file, 0, SEEK_END);
+  long size = ftell(file);
+  fseek(file, 0, SEEK_SET);
+  u8* buf = (u8*)malloc(size);
+  fread(buf, 1, size, file);
+  fclose(file);
+  book = (Book*)malloc(sizeof(Book));
+  book_load((u32*)buf, book);
+  free(buf);
+  #endif
 
   // GMem
   Net *gnet = malloc(sizeof(Net));
@@ -1386,18 +1103,13 @@ int main() {
   }
 
   // Creates an initial redex that calls main
-  for (u32 fid = 0; fid < book->defs_len; ++fid) {
-    if (strcmp(book->defs_buf[fid].name, "main") == 0) {
-      push_redex(tm[0], new_pair(new_port(REF, fid), NONE));
-      break;
-    }
-  }
+  push_redex(tm[0], new_pair(new_port(REF, 0), NONE));
 
   // Evaluates
   evaluator(gnet, tm[0], book);
 
   // Interactions
-  printf("itrs: %llu\n", atomic_load(&gnet->itrs));
+  printf("- itrs: %llu\n", atomic_load(&gnet->itrs));
 
   // Frees values
   for (u32 t = 0; t < TPC; ++t) {

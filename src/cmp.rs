@@ -9,7 +9,18 @@ pub enum Target { CUDA, C }
 // Compiles a whole Book.
 pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
   let mut code = String::new();
-  code.push_str(&format!("bool interact_call_native(GNet *net, TMem *tm, Port a, Port b) {{\n"));
+
+  // Compiles functions
+  for fid in 0..book.defs.len() {
+    compile_def(trg, &mut code, book, 0, fid as hvm::Val);
+    code.push_str(&format!("\n"));
+  }
+
+  // Compiles interact_call
+  if trg == Target::CUDA {
+    code.push_str(&format!("__device__ "));
+  }
+  code.push_str(&format!("bool interact_call(Net *net, TMem *tm, Port a, Port b) {{\n"));
   code.push_str(&format!("  u32 fid = get_val(a);\n"));
   code.push_str(&format!("  switch (fid) {{\n"));
   for (fid, def) in book.defs.iter().enumerate() {
@@ -17,11 +28,8 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
   }
   code.push_str(&format!("    default: return false;\n"));
   code.push_str(&format!("  }}\n"));
-  code.push_str(&format!("}}\n\n"));
-  for fid in 0..book.defs.len() {
-    compile_def(trg, &mut code, book, 0, fid as hvm::Val);
-    code.push_str(&format!("\n"));
-  }
+  code.push_str(&format!("}}"));
+
   return code;
 }
 

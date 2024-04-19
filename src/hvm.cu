@@ -212,6 +212,8 @@
 // - 0005 | VAR 0003 | VAR 0002 // '{y x}' node
 // - ---- | -------- | --------
 
+#define INTERPRETED
+
 #include <stdint.h>
 #include <stdio.h>
 
@@ -360,7 +362,7 @@ struct Book {
 };
 
 // Static Book
-__device__ Book D_BOOK;
+__device__ Book BOOK;
 
 // Debugger
 // --------
@@ -899,258 +901,6 @@ __device__ void share_redexes(TMem* tm, Pair* steal, u32 tid) {
 
 }
 
-// Compiled FNs
-// ------------
-
-__device__ bool interact_call_fun(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  Val n1 = node_alloc_1(net, tm, &nl);
-  Val n2 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !n0 || !n1 || !n2) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  Pair k1 = 0;
-  Port k2 = 0;
-  Port k3 = 0;
-  // fast anni
-  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
-    tm->itrs += 1;
-    k1 = node_take(net, get_val(b));
-    k2 = get_fst(k1);
-    k3 = get_snd(k1);
-  }
-  if (k3) {
-    link(net, tm, k3, new_port(VAR,v0));
-  } else {
-    k3 = new_port(VAR,v0);
-  }
-  node_create(net, n2, new_pair(new_port(REF,0x00000001),new_port(REF,0x00000002)));
-  node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
-  if (k2) {
-    link(net, tm, k2, new_port(SWI,n1));
-  } else {
-    k2 = new_port(SWI,n1);
-  }
-  if (!k1) {
-    node_create(net, n0, new_pair(k2,k3));
-    if (b) {
-      link(net, tm, b, new_port(CON,n0));
-    } else {
-      b = new_port(CON,n0);
-    }
-  }
-  return true;
-}
-
-__device__ bool interact_call_fun0(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !n0) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  node_create(net, n0, new_pair(new_port(NUM,0x00010000),new_port(VAR,v0)));
-  link(net, tm, new_port(REF,0x00000003), new_port(CON,n0));
-  if (b) {
-    link(net, tm, b, new_port(VAR,v0));
-  } else {
-    b = new_port(VAR,v0);
-  }
-  return true;
-}
-
-__device__ bool interact_call_fun1(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val v1 = vars_alloc_1(net, tm, &vl);
-  Val v2 = vars_alloc_1(net, tm, &vl);
-  Val v3 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  Val n1 = node_alloc_1(net, tm, &nl);
-  Val n2 = node_alloc_1(net, tm, &nl);
-  Val n3 = node_alloc_1(net, tm, &nl);
-  Val n4 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !v1 || !v2 || !v3 || !n0 || !n1 || !n2 || !n3 || !n4) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  vars_create(net, v1, NONE);
-  vars_create(net, v2, NONE);
-  vars_create(net, v3, NONE);
-  node_create(net, n3, new_pair(new_port(VAR,v3),new_port(VAR,v2)));
-  node_create(net, n2, new_pair(new_port(VAR,v0),new_port(OPR,n3)));
-  link(net, tm, new_port(REF,0x00000000), new_port(CON,n2));
-  node_create(net, n4, new_pair(new_port(VAR,v1),new_port(VAR,v3)));
-  link(net, tm, new_port(REF,0x00000000), new_port(CON,n4));
-  Pair k1 = 0;
-  Port k2 = 0;
-  Port k3 = 0;
-  // fast anni
-  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
-    tm->itrs += 1;
-    k1 = node_take(net, get_val(b));
-    k2 = get_fst(k1);
-    k3 = get_snd(k1);
-  }
-  if (k3) {
-    link(net, tm, k3, new_port(VAR,v2));
-  } else {
-    k3 = new_port(VAR,v2);
-  }
-  bool k4 = 0;
-  Port k5 = 0;
-  Port k6 = 0;
-  // fast copy
-  if (get_tag(k2) == NUM) {
-    tm->itrs += 1;
-    k4 = 1;
-    k5 = k2;
-    k6 = k2;
-  }
-  if (k6) {
-    link(net, tm, k6, new_port(VAR,v1));
-  } else {
-    k6 = new_port(VAR,v1);
-  }
-  if (k5) {
-    link(net, tm, k5, new_port(VAR,v0));
-  } else {
-    k5 = new_port(VAR,v0);
-  }
-  if (!k4) {
-    node_create(net, n1, new_pair(k5,k6));
-    if (k2) {
-      link(net, tm, k2, new_port(DUP,n1));
-    } else {
-      k2 = new_port(DUP,n1);
-    }
-  }
-  if (!k1) {
-    node_create(net, n0, new_pair(k2,k3));
-    if (b) {
-      link(net, tm, b, new_port(CON,n0));
-    } else {
-      b = new_port(CON,n0);
-    }
-  }
-  return true;
-}
-
-__device__ bool interact_call_lop(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  Val n1 = node_alloc_1(net, tm, &nl);
-  Val n2 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !n0 || !n1 || !n2) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  Pair k1 = 0;
-  Port k2 = 0;
-  Port k3 = 0;
-  // fast anni
-  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
-    tm->itrs += 1;
-    k1 = node_take(net, get_val(b));
-    k2 = get_fst(k1);
-    k3 = get_snd(k1);
-  }
-  if (k3) {
-    link(net, tm, k3, new_port(VAR,v0));
-  } else {
-    k3 = new_port(VAR,v0);
-  }
-  node_create(net, n2, new_pair(new_port(NUM,0x00000000),new_port(REF,0x00000004)));
-  node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
-  if (k2) {
-    link(net, tm, k2, new_port(SWI,n1));
-  } else {
-    k2 = new_port(SWI,n1);
-  }
-  if (!k1) {
-    node_create(net, n0, new_pair(k2,k3));
-    if (b) {
-      link(net, tm, b, new_port(CON,n0));
-    } else {
-      b = new_port(CON,n0);
-    }
-  }
-  return true;
-}
-
-__device__ bool interact_call_lop0(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val v1 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  Val n1 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !v1 || !n0 || !n1) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  vars_create(net, v1, NONE);
-  node_create(net, n1, new_pair(new_port(VAR,v0),new_port(VAR,v1)));
-  link(net, tm, new_port(REF,0x00000003), new_port(CON,n1));
-  Pair k1 = 0;
-  Port k2 = 0;
-  Port k3 = 0;
-  // fast anni
-  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
-    tm->itrs += 1;
-    k1 = node_take(net, get_val(b));
-    k2 = get_fst(k1);
-    k3 = get_snd(k1);
-  }
-  if (k3) {
-    link(net, tm, k3, new_port(VAR,v1));
-  } else {
-    k3 = new_port(VAR,v1);
-  }
-  if (k2) {
-    link(net, tm, k2, new_port(VAR,v0));
-  } else {
-    k2 = new_port(VAR,v0);
-  }
-  if (!k1) {
-    node_create(net, n0, new_pair(k2,k3));
-    if (b) {
-      link(net, tm, b, new_port(CON,n0));
-    } else {
-      b = new_port(CON,n0);
-    }
-  }
-  return true;
-}
-
-__device__ bool interact_call_main(Net *net, TMem *tm, Port a, Port b) {
-  u32 vl = 0;
-  u32 nl = 0;
-  Val v0 = vars_alloc_1(net, tm, &vl);
-  Val n0 = node_alloc_1(net, tm, &nl);
-  if (0 || !v0 || !n0) {
-    return false;
-  }
-  vars_create(net, v0, NONE);
-  node_create(net, n0, new_pair(new_port(NUM,0x00000012),new_port(VAR,v0)));
-  link(net, tm, new_port(REF,0x00000000), new_port(CON,n0));
-  if (b) {
-    link(net, tm, b, new_port(VAR,v0));
-  } else {
-    b = new_port(VAR,v0);
-  }
-  return true;
-}
-
 // Interactions
 // ------------
 
@@ -1168,24 +918,17 @@ __device__ bool interact_link(Net* net, TMem* tm, Port a, Port b) {
 }
 
 // The Call Interaction.
+#ifdef COMPILED
+///COMPILED_INTERACT_CALL///
+#else
 __device__ bool interact_eras(Net* net, TMem* tm, Port a, Port b);
 __device__ bool interact_call(Net* net, TMem* tm, Port a, Port b) {
-  u32  fid = get_val(a);
-  Def* def = &D_BOOK.defs_buf[fid];
+  u32 fid  = get_val(a);
+  Def* def = &BOOK.defs_buf[fid];
 
   // Copy Optimization.
   if (def->safe && get_tag(b) == DUP) {
     return interact_eras(net, tm, a, b);
-  }
-
-  // Compiled FNs
-  switch (fid) {
-    case 0: return interact_call_fun(net, tm, a, b);
-    case 1: return interact_call_fun0(net, tm, a, b);
-    case 2: return interact_call_fun1(net, tm, a, b);
-    case 3: return interact_call_lop(net, tm, a, b);
-    case 4: return interact_call_lop0(net, tm, a, b);
-    case 5: return interact_call_main(net, tm, a, b);
   }
 
   // Allocates needed nodes and vars.
@@ -1211,6 +954,7 @@ __device__ bool interact_call(Net* net, TMem* tm, Port a, Port b) {
 
   return true;
 }
+#endif
 
 // The Void Interaction.
 __device__ bool interact_void(Net* net, TMem* tm, Port a, Port b) {
@@ -1561,13 +1305,23 @@ void book_load(u32* buf, Book* book) {
   // Reads defs_len
   book->defs_len = *buf++;
 
+  printf("defs: %d\n", book->defs_len);
+
   // Parses each def
   for (u32 i = 0; i < book->defs_len; ++i) {
-    Def* def = &book->defs_buf[i];
+    // Reads fid
+    u32 fid = *buf++;
+
+    printf("fid: %d\n", fid);
+
+    // Gets def
+    Def* def = &book->defs_buf[fid];
     
     // Reads name
     memcpy(def->name, buf, 32);
     buf += 8;
+
+    printf("name: %s\n", def->name);
 
     // Reads safe flag
     def->safe = *buf++;
@@ -1781,12 +1535,32 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
-static const u8 BOOK_BUFFER[] = {6, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 17, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 8, 0, 0, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 28, 0, 0, 0, 1, 0, 0, 0, 44, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 21, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 23, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 33, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 20, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 147, 0, 0, 0, 0, 0, 0, 0};
+int main(int argc, char* argv[]) {
+  Book* book = NULL;
 
-int main() {
-  // Load the book from a binary buffer
-  Book* book = (Book*)malloc(sizeof(Book));
-  book_load((u32*)BOOK_BUFFER, book);
+  #ifdef INTERPRETED
+  if (argc != 2) {
+    printf("Usage: hvm-c <file.hvm.bin>\n");
+    return 1;
+  }
+  
+  FILE* file = fopen(argv[1], "rb");
+  if (!file) {
+    printf("HVM book file not found: %s\n", argv[1]);
+    return 1;  
+  }
+  
+  fseek(file, 0, SEEK_END);
+  long size = ftell(file);
+  fseek(file, 0, SEEK_SET);
+  u8* buf = (u8*)malloc(size);
+  fread(buf, 1, size, file);
+  fclose(file);
+  book = (Book*)malloc(sizeof(Book));
+  book_load((u32*)buf, book);
+  free(buf);
+  cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
+  #endif
 
   // GMem
   GNet *d_gnet;
@@ -1794,15 +1568,8 @@ int main() {
   cudaMemset(&d_gnet, 0, sizeof(GNet));
 
   // Set the initial redex
-  for (u32 fid = 0; fid < book->defs_len; ++fid) {
-    if (strcmp(book->defs_buf[fid].name, "main") == 0) {
-      Pair pair = new_pair(new_port(REF, fid), NONE);
-      cudaMemcpy(&d_gnet->rbag_buf[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
-      break;
-    }
-  }
-
-  //printf("GNet size: %lu MB\n", sizeof(GNet) / (1024 * 1024));
+  Pair pair = new_pair(new_port(REF, 0), NONE);
+  cudaMemcpy(&d_gnet->rbag_buf[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
 
   // Shows some info about the evaluator
   cudaFuncAttributes attr;
@@ -1814,9 +1581,6 @@ int main() {
   printf("Num regs: %d\n", attr.numRegs);
   printf("PTX version: %d\n", attr.ptxVersion);
   printf("Binary version: %d\n", attr.binaryVersion);
-
-  // Copy the Book to the constant memory before launching the kernel
-  cudaMemcpyToSymbol(D_BOOK, book, sizeof(Book));
 
   // Configures Shared Memory Sinze
   cudaFuncSetAttribute(evaluator, cudaFuncAttributeMaxDynamicSharedMemorySize, sizeof(LNet));

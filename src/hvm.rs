@@ -655,7 +655,10 @@ impl Book {
     buf.extend_from_slice(&(self.defs.len() as u32).to_ne_bytes());
 
     // For each def
-    for def in &self.defs {
+    for (fid, def) in self.defs.iter().enumerate() {
+      // Writes the safe flag
+      buf.extend_from_slice(&(fid as u32).to_ne_bytes());
+
       // Writes the name
       let name_bytes = def.name.as_bytes();
       buf.extend_from_slice(&name_bytes[..32.min(name_bytes.len())]);
@@ -837,7 +840,7 @@ impl Book {
   }
 }
 
-pub fn test(book: &Book) {
+pub fn run(book: &Book) {
   // Initializes the global net
   let net = GNet::new(1 << 29, 1 << 29);
 
@@ -848,13 +851,22 @@ pub fn test(book: &Book) {
   let main_id = book.defs.iter().position(|def| def.name == "main").unwrap();
   tm.rbag.push_redex(Pair::new(Port::new(REF, main_id as u32), NONE));
 
+  // Starts the timer
+  let start = std::time::Instant::now();
+
   // Evaluates
   tm.evaluator(&net, &book);
+  
+  // Stops the timer
+  let duration = start.elapsed();
 
-  // Prints interactions
-  println!("itrs: {}", net.itrs.load(Ordering::Relaxed));
+  // Prints interactions and time
+  let itrs = net.itrs.load(Ordering::Relaxed);
+  println!("itrs: {}", itrs);
+  println!("time: {:.2}s", duration.as_secs_f64());
+  println!("MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
 }
 
-pub fn test_demo() {
-  test(&Book::new_demo(10, 65536));
+pub fn run_demo() {
+  run(&Book::new_demo(10, 65536));
 }

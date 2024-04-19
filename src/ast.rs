@@ -313,23 +313,28 @@ impl Net {
 }
 
 impl Book {
+  pub fn parse(code: &str) -> Result<Self, String> {
+    CoreParser::new(code).parse_book()
+  }
+
   pub fn build(&self) -> hvm::Book {
-    let mut fids = BTreeMap::new();
+    let mut name_to_fid = BTreeMap::new();
+    let mut fid_to_name = BTreeMap::new();
+    fid_to_name.insert(0, "main".to_string());
+    name_to_fid.insert("main".to_string(), 0);
     for (i, (name, _)) in self.defs.iter().enumerate() {
-      fids.insert(name.clone(), i as hvm::Val);
+      if name != "main" {
+        fid_to_name.insert(name_to_fid.len() as hvm::Val, name.clone());
+        name_to_fid.insert(name.clone(), name_to_fid.len() as hvm::Val);
+      }
     }
     let mut book = hvm::Book { defs: Vec::new() };
-    for (name, net) in &self.defs {
-      let mut def = hvm::Def {
-        name: name.clone(),
-        safe: true,
-        rbag: Vec::new(), 
-        node: Vec::new(),
-        vars: 0,
-      };
-      let mut vars = BTreeMap::new();
-      net.build(&mut def, &fids, &mut vars);
-      book.defs.push(def);
+    for (fid, name) in &fid_to_name {
+      if let Some(ast_def) = self.defs.get(name) {
+        let mut def = hvm::Def { name: name.clone(), safe: true, rbag: vec![], node: vec![], vars: 0 };
+        ast_def.build(&mut def, &name_to_fid, &mut BTreeMap::new());
+        book.defs.push(def);
+      }
     }
     return book;
   }

@@ -1,5 +1,5 @@
 [package]
-name = "hvm2"
+name = "hvm"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 TSPL = "0.0.10"
+clap = "4.5.2"
