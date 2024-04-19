@@ -15,18 +15,36 @@ const CODE : &str = "
 @main = a & @fun ~ (#18 a)
 ";
 
+//const CODE : &str = "
+//@Tup8 = (a (b (c (d (e (f (g (h ((a (b (c (d (e (f (g (h i)))))))) i)))))))))
+//@app  = (?<((* (a a)) @app0) b> b)
+//@app0 = (a ({b (c d)} (c e))) & @app ~ (a (b (d e)))
+//@rot  = ((@rot0 a) a)
+//@rot0 = (a (b (c (d (e (f (g (h i)))))))) & @Tup8 ~ (b (c (d (e (f (g (h (a i))))))))
+//@main = a
+  //& @app ~ (#10000 (@rot (b a)))
+  //& @Tup8 ~ (#1 (#2 (#3 (#4 (#5 (#6 (#7 (#8 b))))))))
+//";
+
 fn main() {
-  let ast_book = match ast::CoreParser::new(CODE).parse_book() {
-    Ok(got) => got,
+  cmp();
+}
+
+fn run() {
+  let book = match ast::CoreParser::new(CODE).parse_book() {
+    Ok(got) => got.build(),
     Err(er) => panic!("{}", er),
   };
+  hvm::test(&book);
+}
 
-  let book = ast_book.build();
-  println!("{}", cmp::compile_book(cmp::Target::C, &book));
-
+fn cmp() {
+  let book = match ast::CoreParser::new(CODE).parse_book() {
+    Ok(got) => got.build(),
+    Err(er) => panic!("{}", er),
+  };
+  println!("{}", cmp::compile_book(cmp::Target::CUDA, &book));
   let mut buff = Vec::new();
   book.to_buffer(&mut buff);
   println!("{:?}", buff);
-
-  //println!("{}", book.show());
 }

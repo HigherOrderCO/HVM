@@ -589,7 +589,11 @@ bool interact_call_fun(Net *net, TMem *tm, Port a, Port b) {
     node_create(net, n0, new_pair(new_port(SWI,n1),new_port(VAR,v0)));
     node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
     node_create(net, n2, new_pair(k3,k4));
-    link(net, tm, new_port(CON, n0), b);
+    if (b) {
+      link(net, tm, b, new_port(CON, n0));
+    } else {
+      b = new_port(CON, n0);
+    }
   }
   return true;
 }
@@ -641,7 +645,7 @@ bool interact_call_fun1(Net *net, TMem *tm, Port a, Port b) {
   Port k2 = 0;
   Port k3 = 0;
   // fast anni
-  if (get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
+  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
     tm->itrs += 1;
     k1 = node_take(net, get_val(b));
     k2 = get_fst(k1);
@@ -674,11 +678,19 @@ bool interact_call_fun1(Net *net, TMem *tm, Port a, Port b) {
   }
   if (!k4) {
     node_create(net, n1, new_pair(k5,k6));
-    link(net, tm, new_port(DUP,n1), k2);
+    if (k2) {
+      link(net, tm, k2, new_port(DUP,n1));
+    } else {
+      k2 = new_port(DUP,n1);
+    }
   }
   if (!k1) {
     node_create(net, n0, new_pair(k2,k3));
-    link(net, tm, new_port(CON,n0), b);
+    if (b) {
+      link(net, tm, b, new_port(CON,n0));
+    } else {
+      b = new_port(CON,n0);
+    }
   }
   return true;
 }
@@ -744,7 +756,11 @@ bool interact_call_lop(Net *net, TMem *tm, Port a, Port b) {
     node_create(net, n0, new_pair(new_port(SWI,n1),new_port(VAR,v0)));
     node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
     node_create(net, n2, new_pair(k3,k4));
-    link(net, tm, new_port(CON, n0), b);
+    if (b) {
+      link(net, tm, b, new_port(CON, n0));
+    } else {
+      b = new_port(CON, n0);
+    }
   }
   return true;
 }
@@ -767,7 +783,7 @@ bool interact_call_lop0(Net *net, TMem *tm, Port a, Port b) {
   Port k2 = 0;
   Port k3 = 0;
   // fast anni
-  if (get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
+  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
     tm->itrs += 1;
     k1 = node_take(net, get_val(b));
     k2 = get_fst(k1);
@@ -785,7 +801,11 @@ bool interact_call_lop0(Net *net, TMem *tm, Port a, Port b) {
   }
   if (!k1) {
     node_create(net, n0, new_pair(k2,k3));
-    link(net, tm, new_port(CON,n0), b);
+    if (b) {
+      link(net, tm, b, new_port(CON,n0));
+    } else {
+      b = new_port(CON,n0);
+    }
   }
   return true;
 }
@@ -837,15 +857,16 @@ static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book)
   }
 
   // Compiled FNs
-  //switch (fid) {
-    //case 0: return interact_call_fun(net, tm, a, b);
-    //case 1: return interact_call_fun0(net, tm, a, b);
-    //case 2: return interact_call_fun1(net, tm, a, b);
-    //case 3: return interact_call_lop(net, tm, a, b);
-    //case 4: return interact_call_lop0(net, tm, a, b);
-    //case 5: return interact_call_main(net, tm, a, b);
-  //}
-  
+  switch (fid) {
+    case 0: return interact_call_fun(net, tm, a, b);
+    case 1: return interact_call_fun0(net, tm, a, b);
+    case 2: return interact_call_fun1(net, tm, a, b);
+    case 3: return interact_call_lop(net, tm, a, b);
+    case 4: return interact_call_lop0(net, tm, a, b);
+    case 5: return interact_call_main(net, tm, a, b);
+    default: return false;
+  }
+
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, def->rbag_len + 1, def->node_len - 1, def->vars_len)) {
     return false;
@@ -1364,8 +1385,13 @@ int main() {
     tmem_init(tm[t], t);
   }
 
-  // Set the initial redex
-  push_redex(tm[0], new_pair(new_port(REF, 5), NONE));
+  // Creates an initial redex that calls main
+  for (u32 fid = 0; fid < book->defs_len; ++fid) {
+    if (strcmp(book->defs_buf[fid].name, "main") == 0) {
+      push_redex(tm[0], new_pair(new_port(REF, fid), NONE));
+      break;
+    }
+  }
 
   // Evaluates
   evaluator(gnet, tm[0], book);

@@ -609,8 +609,6 @@ impl TMem {
       let x = a; a = b; b = x;
     }
 
-    //println!("REDUCE {} ~ {} | {}", a.show(), b.show(), rule);
-
     let success = match rule {
       LINK => self.interact_link(net, a, b),
       CALL => self.interact_call(net, a, b, book),
@@ -839,18 +837,16 @@ impl Book {
   }
 }
 
-pub fn test_demo() {
+pub fn test(book: &Book) {
   // Initializes the global net
   let net = GNet::new(1 << 29, 1 << 29);
-
-  // Initializes a demo book
-  let book = Book::new_demo(10, 65536);
 
   // Initializes threads
   let mut tm = TMem::new(0, 1);
 
-  // Sets the initial redex
-  tm.rbag.push_redex(Pair::new(Port::new(REF, 5), NONE));
+  // Creates an initial redex that calls main
+  let main_id = book.defs.iter().position(|def| def.name == "main").unwrap();
+  tm.rbag.push_redex(Pair::new(Port::new(REF, main_id as u32), NONE));
 
   // Evaluates
   tm.evaluator(&net, &book);
@@ -859,3 +855,6 @@ pub fn test_demo() {
   println!("itrs: {}", net.itrs.load(Ordering::Relaxed));
 }
 
+pub fn test_demo() {
+  test(&Book::new_demo(10, 65536));
+}

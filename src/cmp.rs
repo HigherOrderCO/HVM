@@ -153,7 +153,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
         code.push_str(&format!("{}node_create(net, n{:x}, new_pair(new_port(SWI,n{}),new_port(VAR,v{})));\n", indent(tab+1), a.get_val()-1, a1.get_val()-1, a2.get_val()));
         code.push_str(&format!("{}node_create(net, n{:x}, new_pair(new_port(CON,n{}),new_port(VAR,v{})));\n", indent(tab+1), a1.get_val()-1, a11.get_val()-1, a12.get_val()));
         code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a11.get_val()-1, &x1, &x2));
-        code.push_str(&format!("{}link(net, tm, new_port(CON, n{:x}), {});\n", indent(tab+1), a.get_val()-1, b));
+        link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(CON, n{:x})", a.get_val()-1), b);
         code.push_str(&format!("{}}}\n", indent(tab)));
         return;
       }
@@ -182,7 +182,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     compile_link_fast(trg, code, book, neo, tab, def, a2, &x2);
     code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &op));
     code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val()-1, &x1, &x2));
-    code.push_str(&format!("{}link(net, tm, new_port(OPR, n{:x}), {});\n", indent(tab+1), a.get_val()-1, b));
+    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(OPR, n{:x})", a.get_val()-1), b);
     code.push_str(&format!("{}}}\n", indent(tab)));
     return;
   }
@@ -213,7 +213,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     compile_link_fast(trg, code, book, neo, tab, def, p1, &x1);
     code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &op));
     code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val()-1, x1, x2));
-    code.push_str(&format!("{}link(net, tm, new_port(DUP,n{:x}), {});\n", indent(tab+1), a.get_val()-1, b));
+    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(DUP,n{:x})", a.get_val()-1), b);
     code.push_str(&format!("{}}}\n", indent(tab)));
     return;
   }
@@ -233,7 +233,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     code.push_str(&format!("{}Port {} = 0;\n", indent(tab), &x1));
     code.push_str(&format!("{}Port {} = 0;\n", indent(tab), &x2));
     code.push_str(&format!("{}// fast anni\n", indent(tab)));
-    code.push_str(&format!("{}if (get_tag({}) == CON && node_load(net, get_val({})) != 0) {{\n", indent(tab), b, b));
+    code.push_str(&format!("{}if (0 && get_tag({}) == CON && node_load(net, get_val({})) != 0) {{\n", indent(tab), b, b));
     code.push_str(&format!("{}tm->itrs += 1;\n", indent(tab+1)));
     code.push_str(&format!("{}{} = node_take(net, get_val({}));\n", indent(tab+1), &bv, b));
     code.push_str(&format!("{}{} = get_fst({});\n", indent(tab+1), x1, &bv));
@@ -243,7 +243,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     compile_link_fast(trg, code, book, neo, tab, def, a1, &x1);
     code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &bv));
     code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val()-1, x1, x2));
-    code.push_str(&format!("{}link(net, tm, new_port(CON,n{:x}), {});\n", indent(tab+1), a.get_val()-1, b));
+    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(CON,n{:x})", a.get_val()-1), b);
     code.push_str(&format!("{}}}\n", indent(tab)));
     return;
   }
@@ -267,10 +267,15 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
 // Compiles a link, without pre-defined reductions.
 pub fn compile_link_slow(trg: Target, code: &mut String, book: &hvm::Book, neo: &mut usize, tab: usize, def: &hvm::Def, a: hvm::Port, b: &str) {
   let a_node = compile_node(trg, code, book, neo, tab, def, a);
+  link_or_store(trg, code, book, neo, tab, def, &a_node, b);
+}
+
+// TODO: comment
+pub fn link_or_store(trg: Target, code: &mut String, book: &hvm::Book, neo: &mut usize, tab: usize, def: &hvm::Def, a: &str, b: &str) {
   code.push_str(&format!("{}if ({}) {{\n", indent(tab), b));
-  code.push_str(&format!("{}link(net, tm, {}, {});\n", indent(tab+1), b, a_node));  
+  code.push_str(&format!("{}link(net, tm, {}, {});\n", indent(tab+1), b, a));  
   code.push_str(&format!("{}}} else {{\n", indent(tab)));
-  code.push_str(&format!("{}{} = {};\n", indent(tab+1), b, a_node));
+  code.push_str(&format!("{}{} = {};\n", indent(tab+1), b, a));
   code.push_str(&format!("{}}}\n", indent(tab)));
 }
 

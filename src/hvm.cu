@@ -917,7 +917,7 @@ __device__ bool interact_call_fun(Net *net, TMem *tm, Port a, Port b) {
   Port k2 = 0;
   Port k3 = 0;
   // fast anni
-  if (get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
+  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
     tm->itrs += 1;
     k1 = node_take(net, get_val(b));
     k2 = get_fst(k1);
@@ -928,16 +928,20 @@ __device__ bool interact_call_fun(Net *net, TMem *tm, Port a, Port b) {
   } else {
     k3 = new_port(VAR,v0);
   }
-  node_create(net, n1, new_pair(new_port(REF,0x00000001),new_port(REF,0x00000002)));
-  node_create(net, n2, new_pair(new_port(CON,n1),new_port(VAR,v0)));
+  node_create(net, n2, new_pair(new_port(REF,0x00000001),new_port(REF,0x00000002)));
+  node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
   if (k2) {
-    link(net, tm, k2, new_port(SWI,n2));
+    link(net, tm, k2, new_port(SWI,n1));
   } else {
-    k2 = new_port(SWI,n2);
+    k2 = new_port(SWI,n1);
   }
   if (!k1) {
     node_create(net, n0, new_pair(k2,k3));
-    link(net, tm, new_port(CON,n0), b);
+    if (b) {
+      link(net, tm, b, new_port(CON,n0));
+    } else {
+      b = new_port(CON,n0);
+    }
   }
   return true;
 }
@@ -989,7 +993,7 @@ __device__ bool interact_call_fun1(Net *net, TMem *tm, Port a, Port b) {
   Port k2 = 0;
   Port k3 = 0;
   // fast anni
-  if (get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
+  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
     tm->itrs += 1;
     k1 = node_take(net, get_val(b));
     k2 = get_fst(k1);
@@ -1022,11 +1026,19 @@ __device__ bool interact_call_fun1(Net *net, TMem *tm, Port a, Port b) {
   }
   if (!k4) {
     node_create(net, n1, new_pair(k5,k6));
-    link(net, tm, new_port(DUP,n1), k2);
+    if (k2) {
+      link(net, tm, k2, new_port(DUP,n1));
+    } else {
+      k2 = new_port(DUP,n1);
+    }
   }
   if (!k1) {
     node_create(net, n0, new_pair(k2,k3));
-    link(net, tm, new_port(CON,n0), b);
+    if (b) {
+      link(net, tm, b, new_port(CON,n0));
+    } else {
+      b = new_port(CON,n0);
+    }
   }
   return true;
 }
@@ -1046,7 +1058,7 @@ __device__ bool interact_call_lop(Net *net, TMem *tm, Port a, Port b) {
   Port k2 = 0;
   Port k3 = 0;
   // fast anni
-  if (get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
+  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
     tm->itrs += 1;
     k1 = node_take(net, get_val(b));
     k2 = get_fst(k1);
@@ -1057,16 +1069,20 @@ __device__ bool interact_call_lop(Net *net, TMem *tm, Port a, Port b) {
   } else {
     k3 = new_port(VAR,v0);
   }
-  node_create(net, n1, new_pair(new_port(NUM,0x00000000),new_port(REF,0x00000004)));
-  node_create(net, n2, new_pair(new_port(CON,n1),new_port(VAR,v0)));
+  node_create(net, n2, new_pair(new_port(NUM,0x00000000),new_port(REF,0x00000004)));
+  node_create(net, n1, new_pair(new_port(CON,n2),new_port(VAR,v0)));
   if (k2) {
-    link(net, tm, k2, new_port(SWI,n2));
+    link(net, tm, k2, new_port(SWI,n1));
   } else {
-    k2 = new_port(SWI,n2);
+    k2 = new_port(SWI,n1);
   }
   if (!k1) {
     node_create(net, n0, new_pair(k2,k3));
-    link(net, tm, new_port(CON,n0), b);
+    if (b) {
+      link(net, tm, b, new_port(CON,n0));
+    } else {
+      b = new_port(CON,n0);
+    }
   }
   return true;
 }
@@ -1089,7 +1105,7 @@ __device__ bool interact_call_lop0(Net *net, TMem *tm, Port a, Port b) {
   Port k2 = 0;
   Port k3 = 0;
   // fast anni
-  if (get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
+  if (0 && get_tag(b) == CON && node_load(net, get_val(b)) != 0) {
     tm->itrs += 1;
     k1 = node_take(net, get_val(b));
     k2 = get_fst(k1);
@@ -1107,7 +1123,11 @@ __device__ bool interact_call_lop0(Net *net, TMem *tm, Port a, Port b) {
   }
   if (!k1) {
     node_create(net, n0, new_pair(k2,k3));
-    link(net, tm, new_port(CON,n0), b);
+    if (b) {
+      link(net, tm, b, new_port(CON,n0));
+    } else {
+      b = new_port(CON,n0);
+    }
   }
   return true;
 }
@@ -1159,14 +1179,14 @@ __device__ bool interact_call(Net* net, TMem* tm, Port a, Port b) {
   }
 
   // Compiled FNs
-  //switch (fid) {
-    //case 0: return interact_call_fun(net, tm, a, b);
-    //case 1: return interact_call_fun0(net, tm, a, b);
-    //case 2: return interact_call_fun1(net, tm, a, b);
-    //case 3: return interact_call_lop(net, tm, a, b);
-    //case 4: return interact_call_lop0(net, tm, a, b);
-    //case 5: return interact_call_main(net, tm, a, b);
-  //}
+  switch (fid) {
+    case 0: return interact_call_fun(net, tm, a, b);
+    case 1: return interact_call_fun0(net, tm, a, b);
+    case 2: return interact_call_fun1(net, tm, a, b);
+    case 3: return interact_call_lop(net, tm, a, b);
+    case 4: return interact_call_lop0(net, tm, a, b);
+    case 5: return interact_call_main(net, tm, a, b);
+  }
 
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, def->rbag_len + 1, def->node_len - 1, def->vars_len)) {
@@ -1774,8 +1794,13 @@ int main() {
   cudaMemset(&d_gnet, 0, sizeof(GNet));
 
   // Set the initial redex
-  Pair pair = new_pair(new_port(REF, 5), NONE);
-  cudaMemcpy(&d_gnet->rbag_buf[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
+  for (u32 fid = 0; fid < book->defs_len; ++fid) {
+    if (strcmp(book->defs_buf[fid].name, "main") == 0) {
+      Pair pair = new_pair(new_port(REF, fid), NONE);
+      cudaMemcpy(&d_gnet->rbag_buf[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
+      break;
+    }
+  }
 
   //printf("GNet size: %lu MB\n", sizeof(GNet) / (1024 * 1024));
 
