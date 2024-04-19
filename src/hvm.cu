@@ -228,9 +228,6 @@ typedef unsigned long long int u64;
 // Configuration
 // -------------
 
-// Clocks per Second
-const u64 S = 2520000000;
-
 // Threads per Block
 const u32 TPB_L2 = 8;
 const u32 TPB    = 1 << TPB_L2;
@@ -260,10 +257,6 @@ const Tag CON = 0x4; // constructor
 const Tag DUP = 0x5; // duplicator
 const Tag OPR = 0x6; // operator
 const Tag SWI = 0x7; // switch
-
-// Port Number
-const Tag P1 = 0; // PORT-1
-const Tag P2 = 1; // PORT-2
 
 // Interaction Rule Values
 const Rule LINK = 0x0;
@@ -716,7 +709,6 @@ __global__ void gnet_init(GNet* gnet) {
 // Allocates empty slots in an array.
 template <typename A>
 __device__ u32 alloc(u32* idx, u32* res, u32 num, A* arr, u32 len, u32 add) {
-  u32 tid = threadIdx.x;
   u32 got = 0;
   u32 lps = 0;
   while (got < num) {
@@ -734,7 +726,6 @@ __device__ u32 alloc(u32* idx, u32* res, u32 num, A* arr, u32 len, u32 add) {
 
 // Allocates just 1 slot from node buffer.
 __device__ u32 node_alloc_1(Net* net, TMem* tm, u32* lps) {
-  u32  tid = threadIdx.x;
   u32* idx = &tm->newN;
   while (true) {
     Pair elem = net->l_node_buf[*idx];
@@ -751,7 +742,6 @@ __device__ u32 node_alloc_1(Net* net, TMem* tm, u32* lps) {
 
 // Allocates just 1 slot from vars buffer.
 __device__ u32 vars_alloc_1(Net* net, TMem* tm, u32* lps) {
-  u32 tid  = threadIdx.x;
   u32* idx = &tm->newV;
   while (true) {
     Port elem = net->l_vars_buf[*idx];
@@ -797,9 +787,7 @@ __device__ inline Port enter(Net* net, TMem* tm, Port var) {
 // Atomically Links `A ~ B`.
 __device__ void link(Net* net, TMem* tm, Port A, Port B) {
   //printf("LINK %s ~> %s\n", show_port(A).x, show_port(B).x);
-  u32 tid = threadIdx.x;
-  u32 gid = tid + blockIdx.x * blockDim.x;
-
+  
   // Attempts to directionally point `A ~> B`
   while (true) {
     // If `A` is PRI: swap `A` and `B`, and continue
@@ -1132,8 +1120,6 @@ __device__ bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
 
 // Pops a local redex and performs a single interaction.
 __device__ bool interact(Net* net, TMem* tm) {
-  u32 tid = threadIdx.x;
-
   // Pops a redex.
   Pair redex = pop_redex(tm);
 
@@ -1535,32 +1521,14 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
-int main(int argc, char* argv[]) {
-  Book* book = NULL;
-
-  #ifdef INTERPRETED
-  if (argc != 2) {
-    printf("Usage: hvm-c <file.hvm.bin>\n");
-    return 1;
+void hvm_cu(u32* book_buffer) {
+  // Loads the Book
+  if (book_buffer) {
+    Book* book = (Book*)malloc(sizeof(Book));
+    book_load((u32*)book_buffer, book);
+    cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
+    free(book);
   }
-  
-  FILE* file = fopen(argv[1], "rb");
-  if (!file) {
-    printf("HVM book file not found: %s\n", argv[1]);
-    return 1;  
-  }
-  
-  fseek(file, 0, SEEK_END);
-  long size = ftell(file);
-  fseek(file, 0, SEEK_SET);
-  u8* buf = (u8*)malloc(size);
-  fread(buf, 1, size, file);
-  fclose(file);
-  book = (Book*)malloc(sizeof(Book));
-  book_load((u32*)buf, book);
-  free(buf);
-  cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
-  #endif
 
   // GMem
   GNet *d_gnet;
@@ -1585,19 +1553,22 @@ int main(int argc, char* argv[]) {
   // Configures Shared Memory Sinze
   cudaFuncSetAttribute(evaluator, cudaFuncAttributeMaxDynamicSharedMemorySize, sizeof(LNet));
 
-  // Invokes the Kernel
+  // Inits the GNet
   gnet_init<<<G_PAGE_MAX/TPB, TPB>>>(d_gnet);
 
+  // Invokes the Evaluator Kernel
   for (u32 i = 0; i < 65536; ++i) {
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, i);
   }
 
+  // Reports errors
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
     fprintf(stderr, "Failed to launch evaluator (error code %s)!\n", cudaGetErrorString(err));
     exit(EXIT_FAILURE);
   }
 
+  // Gets interaction count
   u64 itrs;
   cudaMemcpy(&itrs, &d_gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
   printf("itrs: %llu\n", itrs);
@@ -1610,6 +1581,9 @@ int main(int argc, char* argv[]) {
       //printf("page %04x: %d\n", i, page_len[i]);
     }
   }
+}
 
+int main() {
+  hvm_cu(NULL);
   return 0;
 }

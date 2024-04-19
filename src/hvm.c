@@ -1066,31 +1066,14 @@ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
-int main(int argc, char* argv[]) {
+void hvm_c(u32* book_buffer) {
   Book* book = NULL;
 
-  #ifdef INTERPRETED
-  if (argc != 2) {
-    printf("Usage: hvm-c <file.hvm.bin>\n");
-    return 1;
+  // Loads the Book
+  if (book_buffer) {
+    book = (Book*)malloc(sizeof(Book));
+    book_load(book_buffer, book);
   }
-  
-  FILE* file = fopen(argv[1], "rb");
-  if (!file) {
-    printf("HVM book file not found: %s\n", argv[1]);
-    return 1;  
-  }
-  
-  fseek(file, 0, SEEK_END);
-  long size = ftell(file);
-  fseek(file, 0, SEEK_SET);
-  u8* buf = (u8*)malloc(size);
-  fread(buf, 1, size, file);
-  fclose(file);
-  book = (Book*)malloc(sizeof(Book));
-  book_load((u32*)buf, book);
-  free(buf);
-  #endif
 
   // GMem
   Net *gnet = malloc(sizeof(Net));
@@ -1117,6 +1100,9 @@ int main(int argc, char* argv[]) {
   }
   free(gnet);
   free(book);
+}
 
+int main(int argc, char* argv[]) {
+  hvm_c(NULL);
   return 0;
 }
