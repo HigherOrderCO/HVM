@@ -23,7 +23,7 @@ extern "C" {
 
 fn main() {
   let matches = Command::new("kind2")
-    .about("HVM2 - Higher-order Virtual Machine 2")
+    .about("HVM2: Higher-order Virtual Machine 2 (32-bit Version)")
     .subcommand_required(true)
     .arg_required_else_help(true)
     .subcommand(Command::new("run").about("Interprets a file (using Rust)").arg(Arg::new("file").required(true)))

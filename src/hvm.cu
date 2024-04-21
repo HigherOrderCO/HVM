@@ -344,6 +344,7 @@ struct Def {
   u32  rbag_len;
   u32  node_len;
   u32  vars_len;
+  Port root;
   Pair rbag_buf[32];
   Pair node_buf[32];
 };
@@ -515,7 +516,7 @@ __device__ __host__ inline bool is_high_priority(Rule rule) {
 __device__ inline Port adjust_port(Net* net, TMem* tm, Port port) {
   Tag tag = get_tag(port);
   Val val = get_val(port);
-  if (is_nod(port)) return new_port(tag, tm->nloc[val-1]);
+  if (is_nod(port)) return new_port(tag, tm->nloc[val]);
   if (is_var(port)) return new_port(tag, tm->vloc[val]);
   return new_port(tag, val);
 }
@@ -911,6 +912,7 @@ __device__ bool interact_link(Net* net, TMem* tm, Port a, Port b) {
 #else
 __device__ bool interact_eras(Net* net, TMem* tm, Port a, Port b);
 __device__ bool interact_call(Net* net, TMem* tm, Port a, Port b) {
+  // Loads Definition.
   u32 fid  = get_val(a);
   Def* def = &BOOK.defs_buf[fid];
 
@@ -920,7 +922,7 @@ __device__ bool interact_call(Net* net, TMem* tm, Port a, Port b) {
   }
 
   // Allocates needed nodes and vars.
-  if (!get_resources(net, tm, def->rbag_len + 1, def->node_len - 1, def->vars_len)) {
+  if (!get_resources(net, tm, def->rbag_len + 1, def->node_len, def->vars_len)) {
     return false;
   }
 
@@ -930,12 +932,12 @@ __device__ bool interact_call(Net* net, TMem* tm, Port a, Port b) {
   }
 
   // Stores new nodes.  
-  for (u32 i = 1; i < def->node_len; ++i) {
-    node_create(net, tm->nloc[i-1], adjust_pair(net, tm, def->node_buf[i]));
+  for (u32 i = 0; i < def->node_len; ++i) {
+    node_create(net, tm->nloc[i], adjust_pair(net, tm, def->node_buf[i]));
   }
 
   // Links.
-  link_pair(net, tm, new_pair(b, adjust_port(net, tm, get_fst(def->node_buf[0]))));
+  link_pair(net, tm, new_pair(b, adjust_port(net, tm, def->root)));
   for (u32 i = 0; i < def->rbag_len; ++i) {
     link_pair(net, tm, adjust_pair(net, tm, def->rbag_buf[i]));
   }
@@ -1291,14 +1293,12 @@ void book_load(u32* buf, Book* book) {
   // Reads defs_len
   book->defs_len = *buf++;
 
-  printf("defs: %d\n", book->defs_len);
+  printf("len %d\n", book->defs_len);
 
   // Parses each def
   for (u32 i = 0; i < book->defs_len; ++i) {
     // Reads fid
     u32 fid = *buf++;
-
-    printf("fid: %d\n", fid);
 
     // Gets def
     Def* def = &book->defs_buf[fid];
@@ -1306,8 +1306,6 @@ void book_load(u32* buf, Book* book) {
     // Reads name
     memcpy(def->name, buf, 32);
     buf += 8;
-
-    printf("name: %s\n", def->name);
 
     // Reads safe flag
     def->safe = *buf++;
@@ -1317,6 +1315,9 @@ void book_load(u32* buf, Book* book) {
     def->node_len = *buf++;
     def->vars_len = *buf++;
 
+    // Reads root
+    def->root = *buf++;
+
     // Reads rbag_buf
     memcpy(def->rbag_buf, buf, 8*def->rbag_len);  
     buf += def->rbag_len * 2;
@@ -1324,6 +1325,8 @@ void book_load(u32* buf, Book* book) {
     // Reads node_buf
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
+
+    printf("loaded %s\n", def->name);
   }
 }
 
@@ -1521,6 +1524,8 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
+static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 147, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 3, 0, 8, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+
 void hvm_cu(u32* book_buffer) {
   // Loads the Book
   if (book_buffer) {
@@ -1584,6 +1589,7 @@ void hvm_cu(u32* book_buffer) {
 }
 
 int main() {
-  hvm_cu(NULL);
+  hvm_cu((u32*)DEMO_BOOK);
+  //hvm_cu(NULL);
   return 0;
 }

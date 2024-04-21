@@ -112,6 +112,7 @@ typedef struct Def {
   u32  rbag_len;
   u32  node_len; 
   u32  vars_len;
+  Port root;
   Pair rbag_buf[32];
   Pair node_buf[32];
 } Def;
@@ -242,7 +243,7 @@ static inline bool is_high_priority(Rule rule) {
 static inline Port adjust_port(Net* net, TMem* tm, Port port) {
   Tag tag = get_tag(port);
   Val val = get_val(port);
-  if (is_nod(port)) return new_port(tag, tm->nloc[val-1]);
+  if (is_nod(port)) return new_port(tag, tm->nloc[val]);
   if (is_var(port)) return new_port(tag, tm->vloc[val]);
   return new_port(tag, val);
 }
@@ -476,7 +477,7 @@ static inline void link(Net* net, TMem* tm, Port A, Port B) {
       if (A_ == NONE) {
         break;
       }
-      //if (A_ == 0) { ??? } // FIXME: must handle on the move-to-global algo
+      //if (A_ == 0) { ? } // FIXME: must handle on the move-to-global algo
       // Otherwise, delete `A` (we own both) and link `A' ~ B`
       vars_take(net, get_val(A));
       A = A_;  
@@ -557,24 +558,24 @@ static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book)
   }
 
   // Allocates needed nodes and vars.
-  if (!get_resources(net, tm, def->rbag_len + 1, def->node_len - 1, def->vars_len)) {
+  if (!get_resources(net, tm, def->rbag_len + 1, def->node_len, def->vars_len)) {
     return false;
   }
 
-  // Stores new vars.  
+  // Stores new vars.
   for (u32 i = 0; i < def->vars_len; ++i) {
     vars_create(net, tm->vloc[i], NONE);
     //printf("vars_create vloc[%04x] %04x\n", i, tm->vloc[i]);
   }
 
   // Stores new nodes.  
-  for (u32 i = 1; i < def->node_len; ++i) {
-    node_create(net, tm->nloc[i-1], adjust_pair(net, tm, def->node_buf[i]));
+  for (u32 i = 0; i < def->node_len; ++i) {
+    node_create(net, tm->nloc[i], adjust_pair(net, tm, def->node_buf[i]));
     //printf("node_create nloc[%04x] %08llx\n", i-1, def->node_buf[i]);
   }
 
   // Links.
-  link_pair(net, tm, new_pair(b, adjust_port(net, tm, get_fst(def->node_buf[0]))));
+  link_pair(net, tm, new_pair(b, adjust_port(net, tm, def->root)));
   for (u32 i = 0; i < def->rbag_len; ++i) {
     link_pair(net, tm, adjust_pair(net, tm, def->rbag_buf[i]));
   }
@@ -864,6 +865,9 @@ void book_load(u32* buf, Book* book) {
     def->node_len = *buf++;
     def->vars_len = *buf++;
 
+    // Reads root
+    def->root = *buf++;
+
     // Reads rbag_buf
     memcpy(def->rbag_buf, buf, 8*def->rbag_len);  
     buf += def->rbag_len * 2;
@@ -871,6 +875,8 @@ void book_load(u32* buf, Book* book) {
     // Reads node_buf
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
+
+    printf("loaded %s %d %d %d\n", def->name, def->rbag_len, def->node_len, def->vars_len);
   }
 }
 

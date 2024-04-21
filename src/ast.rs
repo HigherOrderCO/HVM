@@ -226,11 +226,12 @@ impl Tree {
 
 impl Net {
   // TODO: implement RBag readback
-  pub fn readback(net: &hvm::GNet, fids: &BTreeMap<hvm::Val, String>, vars: &BTreeMap<hvm::Val, String>) -> Option<Net> {
-    let root = Tree::readback(net, net.node_load(0).get_fst(), fids, vars)?;
-    let rbag = Vec::new();
-    return Some(Net { root, rbag });
-  }
+  // FIXME: should get root correctly
+  //pub fn readback(net: &hvm::GNet, fids: &BTreeMap<hvm::Val, String>, vars: &BTreeMap<hvm::Val, String>) -> Option<Net> {
+    //let root = Tree::readback(net, net.node_load(0).get_fst(), fids, vars)?;
+    //let rbag = Vec::new();
+    //return Some(Net { root, rbag });
+  //}
 }
 
 // Def Builder
@@ -299,9 +300,7 @@ impl Tree {
 impl Net {
   pub fn build(&self, def: &mut hvm::Def, fids: &BTreeMap<String, hvm::Val>, vars: &mut BTreeMap<String, hvm::Val>) {
     let index = def.node.len();
-    def.node.push(hvm::Pair(0));
-    let root = self.root.build(def, fids, vars);
-    def.node[index] = hvm::Pair::new(root, hvm::Port(0));
+    def.root = self.root.build(def, fids, vars);
     for (fst, snd) in &self.rbag {
       let index = def.rbag.len();
       def.rbag.push(hvm::Pair(0));
@@ -331,7 +330,14 @@ impl Book {
     let mut book = hvm::Book { defs: Vec::new() };
     for (fid, name) in &fid_to_name {
       if let Some(ast_def) = self.defs.get(name) {
-        let mut def = hvm::Def { name: name.clone(), safe: true, rbag: vec![], node: vec![], vars: 0 };
+        let mut def = hvm::Def {
+          name: name.clone(),
+          safe: true,
+          root: hvm::Port(0),
+          rbag: vec![],
+          node: vec![],
+          vars: 0,
+        };
         ast_def.build(&mut def, &name_to_fid, &mut BTreeMap::new());
         book.defs.push(def);
       }

@@ -76,6 +76,7 @@ pub struct TMem {
 pub struct Def {
   pub name: String, // def name
   pub safe: bool, // has no dups
+  pub root: Port, // root port
   pub rbag: Vec<Pair>, // def redex bag
   pub node: Vec<Pair>, // def node buffer
   pub vars: usize, // def vars count
@@ -134,7 +135,7 @@ impl Port {
     let tag = self.get_tag();
     let val = self.get_val();
     if self.is_nod() { 
-      Port::new(tag, tm.nloc[val as usize - 1] as u32)
+      Port::new(tag, tm.nloc[val as usize] as u32)
     } else if self.is_var() {
       Port::new(tag, tm.vloc[val as usize] as u32)
     } else {
@@ -326,6 +327,7 @@ impl TMem {
 
   // Atomically Links `A ~ B`.
   pub fn link(&mut self, net: &GNet, a: Port, b: Port) {
+    //println!("link {} ~ {}", a.show(), b.show());
     let mut a = a;
     let mut b = b;
 
@@ -402,7 +404,7 @@ impl TMem {
     }
 
     // Allocates needed nodes and vars.
-    if !self.get_resources(net, def.rbag.len() + 1, def.node.len() - 1, def.vars as usize) {
+    if !self.get_resources(net, def.rbag.len() + 1, def.node.len(), def.vars as usize) {
       return false;
     }
 
@@ -413,13 +415,13 @@ impl TMem {
     }
 
     // Stores new nodes.
-    for i in 1..def.node.len() {
-      net.node_create(self.nloc[i-1], def.node[i].adjust_pair(self));
+    for i in 0..def.node.len() {
+      net.node_create(self.nloc[i], def.node[i].adjust_pair(self));
       //println!("node_create node_loc[{:04X}] {:016X}", i-1, def.node[i].0);
     }
 
     // Links.
-    self.link_pair(net, Pair::new(b, def.node[0].get_fst().adjust_port(self)));
+    self.link_pair(net, Pair::new(b, def.root.adjust_port(self)));
     for pair in &def.rbag {
       self.link_pair(net, pair.adjust_pair(self));
     }
@@ -676,6 +678,9 @@ impl Book {
       // Writes the vars length
       buf.extend_from_slice(&(def.vars as u32).to_ne_bytes());
       
+      // Writes the root
+      buf.extend_from_slice(&def.root.0.to_ne_bytes());
+
       // Writes the rbag buffer
       for pair in &def.rbag {
         buf.extend_from_slice(&pair.0.to_ne_bytes());
@@ -791,53 +796,53 @@ impl Book {
   //   @lop  = (?<(#0 @lop0) a> a)
   //   @lop0 = (a b) & @lop ~ (a b)
   //   @main = a & @fun ~ (#10 a)
-  pub fn new_demo(depth: u32, loops: u32) -> Self {
-    let fun = Def {
-      name: "fun".to_string(),
-      safe: true,
-      rbag: vec![],
-      node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x1F),Port(0x00)), Pair::new(Port(0x09),Port(0x11)), Pair::new(Port(0x14),Port(0x00))],
-      vars: 1,
-    };
-    let fun0 = Def {
-      name: "fun0".to_string(),
-      safe: true,
-      rbag: vec![Pair::new(Port(0x19),Port(0x0C))],
-      node: vec![Pair::new(Port(0x00),Port(0x00)), Pair::new(Port::new(NUM,loops),Port(0x00))],
-      vars: 1,
-    };
-    let fun1 = Def {
-      name: "fun1".to_string(),
-      safe: false,
-      rbag: vec![Pair::new(Port(0x01),Port(0x1C)), Pair::new(Port(0x01),Port(0x2C))],
-      node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x15),Port(0x10)), Pair::new(Port(0x00),Port(0x08)), Pair::new(Port(0x00),Port(0x26)), Pair::new(Port(0x18),Port(0x10)), Pair::new(Port(0x08),Port(0x18))],
-      vars: 4,
-    };
-    let lop = Def {
-      name: "lop".to_string(),
-      safe: true,
-      rbag: vec![],
-      node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x1F),Port(0x00)), Pair::new(Port(0x03),Port(0x21)), Pair::new(Port(0x14),Port(0x00))],
-      vars: 1,  
-    };
-    let lop0 = Def {
-      name: "lop0".to_string(),
-      safe: true,
-      rbag: vec![Pair::new(Port(0x19),Port(0x14))],
-      node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x00),Port(0x08)), Pair::new(Port(0x00),Port(0x08))],
-      vars: 2,
-    };
-    let main = Def {
-      name: "main".to_string(),
-      safe: true,
-      rbag: vec![Pair::new(Port(0x01),Port(0x0C))],
-      node: vec![Pair::new(Port(0x00),Port(0x00)), Pair::new(Port::new(NUM,depth),Port(0x00))],
-      vars: 1,
-    };
-    return Book {
-      defs: vec![fun, fun0, fun1, lop, lop0, main],
-    };
-  }
+  //pub fn new_demo(depth: u32, loops: u32) -> Self {
+    //let fun = Def {
+      //name: "fun".to_string(),
+      //safe: true,
+      //rbag: vec![],
+      //node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x1F),Port(0x00)), Pair::new(Port(0x09),Port(0x11)), Pair::new(Port(0x14),Port(0x00))],
+      //vars: 1,
+    //};
+    //let fun0 = Def {
+      //name: "fun0".to_string(),
+      //safe: true,
+      //rbag: vec![Pair::new(Port(0x19),Port(0x0C))],
+      //node: vec![Pair::new(Port(0x00),Port(0x00)), Pair::new(Port::new(NUM,loops),Port(0x00))],
+      //vars: 1,
+    //};
+    //let fun1 = Def {
+      //name: "fun1".to_string(),
+      //safe: false,
+      //rbag: vec![Pair::new(Port(0x01),Port(0x1C)), Pair::new(Port(0x01),Port(0x2C))],
+      //node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x15),Port(0x10)), Pair::new(Port(0x00),Port(0x08)), Pair::new(Port(0x00),Port(0x26)), Pair::new(Port(0x18),Port(0x10)), Pair::new(Port(0x08),Port(0x18))],
+      //vars: 4,
+    //};
+    //let lop = Def {
+      //name: "lop".to_string(),
+      //safe: true,
+      //rbag: vec![],
+      //node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x1F),Port(0x00)), Pair::new(Port(0x03),Port(0x21)), Pair::new(Port(0x14),Port(0x00))],
+      //vars: 1,  
+    //};
+    //let lop0 = Def {
+      //name: "lop0".to_string(),
+      //safe: true,
+      //rbag: vec![Pair::new(Port(0x19),Port(0x14))],
+      //node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x00),Port(0x08)), Pair::new(Port(0x00),Port(0x08))],
+      //vars: 2,
+    //};
+    //let main = Def {
+      //name: "main".to_string(),
+      //safe: true,
+      //rbag: vec![Pair::new(Port(0x01),Port(0x0C))],
+      //node: vec![Pair::new(Port(0x00),Port(0x00)), Pair::new(Port::new(NUM,depth),Port(0x00))],
+      //vars: 1,
+    //};
+    //return Book {
+      //defs: vec![fun, fun0, fun1, lop, lop0, main],
+    //};
+  //}
 }
 
 pub fn run(book: &Book) {
@@ -860,6 +865,13 @@ pub fn run(book: &Book) {
   // Stops the timer
   let duration = start.elapsed();
 
+  //println!("{}", net.show());
+
+  // Prints the result
+  if let Some(tree) = crate::ast::Tree::readback(&net, net.vars_load(1), &mut std::collections::BTreeMap::new(), &mut std::collections::BTreeMap::new()) {
+    println!("{}", tree.show());
+  }
+
   // Prints interactions and time
   let itrs = net.itrs.load(Ordering::Relaxed);
   println!("itrs: {}", itrs);
@@ -867,6 +879,6 @@ pub fn run(book: &Book) {
   println!("MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
 }
 
-pub fn run_demo() {
-  run(&Book::new_demo(10, 65536));
-}
+//pub fn run_demo() {
+  //run(&Book::new_demo(10, 65536));
+//}

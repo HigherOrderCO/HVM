@@ -54,14 +54,14 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
   for i in 0 .. def.vars {
     code.push_str(&format!("{}Val v{:x} = vars_alloc_1(net, tm, &vl);\n", indent(tab+1), i));
   }
-  for i in 0 .. def.node.len()-1 {
+  for i in 0 .. def.node.len() {
     code.push_str(&format!("{}Val n{:x} = node_alloc_1(net, tm, &nl);\n", indent(tab+1), i));
   }
   code.push_str(&format!("{}if (0", indent(tab+1)));
   for i in 0 .. def.vars {
     code.push_str(&format!(" || !v{:x}", i));
   }
-  for i in 0 .. def.node.len()-1 {
+  for i in 0 .. def.node.len() {
     code.push_str(&format!(" || !n{:x}", i));
   }
   code.push_str(&format!(") {{\n"));
@@ -73,10 +73,10 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
 
   // Allocs resources (using slow allocator)
   //code.push_str(&format!("{}// Allocates needed resources.\n", indent(tab+1)));
-  //code.push_str(&format!("{}if (!get_resources(net, tm, {}, {}, {})) {{\n", indent(tab+1), def.rbag.len()+1, def.node.len()-1, def.vars));
+  //code.push_str(&format!("{}if (!get_resources(net, tm, {}, {}, {})) {{\n", indent(tab+1), def.rbag.len()+1, def.node.len(), def.vars));
   //code.push_str(&format!("{}return false;\n", indent(tab+2)));
   //code.push_str(&format!("{}}}\n", indent(tab+1)));
-  //for i in 0 .. def.node.len()-1 {
+  //for i in 0 .. def.node.len() {
     //code.push_str(&format!("{}Val n{:x} = tm->node_loc[0x{:x}];\n", indent(tab+1), i, i));
   //}
   //for i in 0 .. def.vars {
@@ -94,7 +94,7 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
   }
 
   // Compiles root
-  compile_link_fast(trg, code, book, neo, tab+1, def, def.node[0].get_fst(), "b");
+  compile_link_fast(trg, code, book, neo, tab+1, def, def.root, "b");
 
   // Return
   code.push_str(&format!("{}return true;\n", indent(tab+1)));
@@ -158,10 +158,10 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
         compile_link_fast(trg, code, book, neo, tab, def, a111, &x1);
         compile_link_fast(trg, code, book, neo, tab, def, a112, &x2);
         code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &op));
-        code.push_str(&format!("{}node_create(net, n{:x}, new_pair(new_port(SWI,n{}),new_port(VAR,v{})));\n", indent(tab+1), a.get_val()-1, a1.get_val()-1, a2.get_val()));
-        code.push_str(&format!("{}node_create(net, n{:x}, new_pair(new_port(CON,n{}),new_port(VAR,v{})));\n", indent(tab+1), a1.get_val()-1, a11.get_val()-1, a12.get_val()));
-        code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a11.get_val()-1, &x1, &x2));
-        link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(CON, n{:x})", a.get_val()-1), b);
+        code.push_str(&format!("{}node_create(net, n{:x}, new_pair(new_port(SWI,n{}),new_port(VAR,v{})));\n", indent(tab+1), a.get_val(), a1.get_val(), a2.get_val()));
+        code.push_str(&format!("{}node_create(net, n{:x}, new_pair(new_port(CON,n{}),new_port(VAR,v{})));\n", indent(tab+1), a1.get_val(), a11.get_val(), a12.get_val()));
+        code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a11.get_val(), &x1, &x2));
+        link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(CON, n{:x})", a.get_val()), b);
         code.push_str(&format!("{}}}\n", indent(tab)));
         return;
       }
@@ -189,8 +189,8 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     code.push_str(&format!("{}}}\n", indent(tab)));
     compile_link_fast(trg, code, book, neo, tab, def, a2, &x2);
     code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &op));
-    code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val()-1, &x1, &x2));
-    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(OPR, n{:x})", a.get_val()-1), b);
+    code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val(), &x1, &x2));
+    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(OPR, n{:x})", a.get_val()), b);
     code.push_str(&format!("{}}}\n", indent(tab)));
     return;
   }
@@ -220,8 +220,8 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     compile_link_fast(trg, code, book, neo, tab, def, p2, &x2);
     compile_link_fast(trg, code, book, neo, tab, def, p1, &x1);
     code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &op));
-    code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val()-1, x1, x2));
-    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(DUP,n{:x})", a.get_val()-1), b);
+    code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val(), x1, x2));
+    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(DUP,n{:x})", a.get_val()), b);
     code.push_str(&format!("{}}}\n", indent(tab)));
     return;
   }
@@ -250,8 +250,8 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     compile_link_fast(trg, code, book, neo, tab, def, a2, &x2);
     compile_link_fast(trg, code, book, neo, tab, def, a1, &x1);
     code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &bv));
-    code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val()-1, x1, x2));
-    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(CON,n{:x})", a.get_val()-1), b);
+    code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab+1), a.get_val(), x1, x2));
+    link_or_store(trg, code, book, neo, tab+1, def, &format!("new_port(CON,n{:x})", a.get_val()), b);
     code.push_str(&format!("{}}}\n", indent(tab)));
     return;
   }
@@ -293,8 +293,8 @@ pub fn compile_node(trg: Target, code: &mut String, book: &hvm::Book, neo: &mut 
     let nd = &def.node[a.get_val() as usize];
     let p1 = compile_node(trg, code, book, neo, tab, def, nd.get_fst());
     let p2 = compile_node(trg, code, book, neo, tab, def, nd.get_snd());
-    code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab), a.get_val()-1, p1, p2));
-    return format!("new_port({},n{:x})", compile_tag(trg, a.get_tag()), a.get_val()-1);
+    code.push_str(&format!("{}node_create(net, n{:x}, new_pair({},{}));\n", indent(tab), a.get_val(), p1, p2));
+    return format!("new_port({},n{:x})", compile_tag(trg, a.get_tag()), a.get_val());
   } else if a.is_var() {
     return format!("new_port(VAR,v{:x})", a.get_val());
   } else {
