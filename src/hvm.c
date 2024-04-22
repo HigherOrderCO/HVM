@@ -275,7 +275,7 @@ static inline Pair adjust_pair(Net* net, TMem* tm, Pair pair) {
 
 // Constructor and getters for SYM (operation selector)
 static inline Numb new_sym(u32 val) {
-  return (val << 4) | SYM;
+  return ((val & 0xF) << 4) | SYM;
 }
 
 static inline u32 get_sym(Numb word) {
@@ -284,7 +284,7 @@ static inline u32 get_sym(Numb word) {
 
 // Constructor and getters for U24 (unsigned 24-bit integer)
 static inline Numb new_u24(u32 val) {
-  return (val << 4) | U24;
+  return ((val & 0xFFFFFF) << 4) | U24;
 }
 
 static inline u32 get_u24(Numb word) {
@@ -293,7 +293,7 @@ static inline u32 get_u24(Numb word) {
 
 // Constructor and getters for I24 (signed 24-bit integer)
 static inline Numb new_i24(i32 val) {
-  return ((u32)val << 4) | I24;
+  return (((u32)val << 4) & 0xFFFFFF) | I24;
 }
 
 static inline i32 get_i24(Numb word) {
@@ -333,7 +333,7 @@ static inline bool get_flp(Numb word) {
 
 // Sets the flip flag
 static inline Numb set_flp(Numb word) {
-  return word & 0x10000000;
+  return word | 0x10000000;
 }
 
 // HVM2-32 operate function

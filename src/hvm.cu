@@ -543,7 +543,7 @@ __device__ inline Pair adjust_pair(Net* net, TMem* tm, Pair pair) {
 
 // Constructor and getters for SYM (operation selector)
 __device__ inline Numb new_sym(u32 val) {
-  return (val << 4) | SYM;
+  return ((val & 0xF) << 4) | SYM;
 }
 
 __device__ inline u32 get_sym(Numb word) {
@@ -552,7 +552,7 @@ __device__ inline u32 get_sym(Numb word) {
 
 // Constructor and getters for U24 (unsigned 24-bit integer)
 __device__ inline Numb new_u24(u32 val) {
-  return (val << 4) | U24;
+  return ((val & 0xFFFFFF) << 4) | U24;
 }
 
 __device__ inline u32 get_u24(Numb word) {
@@ -561,7 +561,7 @@ __device__ inline u32 get_u24(Numb word) {
 
 // Constructor and getters for I24 (signed 24-bit integer)
 __device__ inline Numb new_i24(i32 val) {
-  return ((u32)val << 4) | I24;
+  return (((u32)val << 4) & 0xFFFFFF) | I24;
 }
 
 __device__ inline i32 get_i24(Numb word) {
@@ -596,12 +596,12 @@ __device__ inline Tag get_typ(Numb word) {
 }
 
 __device__ inline bool get_flp(Numb word) {
-  return ((word >> 28) & 1) == 1;
+  return ((word >> 29) & 1) == 1;
 }
 
 // Sets the flip flag
 __device__ inline Numb set_flp(Numb word) {
-  return word & 0x10000000;
+  return word | 0x10000000;
 }
 
 // HVM2-32 operate function

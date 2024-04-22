@@ -1,3 +1,5 @@
+//./hvm.rs//
+
 use TSPL::{new_parser, Parser};
 use crate::hvm;
 use std::collections::BTreeMap;
@@ -6,11 +8,14 @@ use std::collections::BTreeMap;
 // -----
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct Numb(u32);
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum Tree {
   Var { nam: String },
   Ref { nam: String },
   Era,
-  Num { val: hvm::Val },
+  Num { val: Numb },
   Con { fst: Box<Tree>, snd: Box<Tree> },
   Dup { fst: Box<Tree>, snd: Box<Tree> },
   Opr { fst: Box<Tree>, snd: Box<Tree> },
@@ -35,7 +40,7 @@ pub struct Book {
 new_parser!(CoreParser);
 
 impl<'i> CoreParser<'i> {
-  pub fn parse_numb(&mut self) -> Result<Tree, String> {
+  pub fn parse_numb(&mut self) -> Result<Numb, String> {
     // Parses flip flag
     let flp = if let Some(':') = self.peek_one() {
       self.consume(":")?;
@@ -49,22 +54,23 @@ impl<'i> CoreParser<'i> {
       self.consume("[")?;
 
       // Parses the symbol
-      let num = match self.advance_one().unwrap() {
-        ' ' => 0x00, '+' => 0x10, '-' => 0x20, '*' => 0x30,
-        '/' => 0x40, '%' => 0x50, '=' => 0x60, '!' => 0x70,
-        '<' => 0x80, '>' => 0x90, '&' => 0xA0, '|' => 0xB0,
-        '^' => 0xC0, 'L' => 0xD0, 'R' => 0xE0, 'X' => 0xF0,
-        _   => panic!("non-symbol character inside symbol bracket [_]"),
-      };
+      let num = hvm::Numb(match self.peek_one().unwrap() {
+        ' ' => Ok(0x00), '+' => Ok(0x10), '-' => Ok(0x20), '*' => Ok(0x30),
+        '/' => Ok(0x40), '%' => Ok(0x50), '=' => Ok(0x60), '!' => Ok(0x70),
+        '<' => Ok(0x80), '>' => Ok(0x90), '&' => Ok(0xA0), '|' => Ok(0xB0),
+        '^' => Ok(0xC0), 'L' => Ok(0xD0), 'R' => Ok(0xE0), 'X' => Ok(0xF0),
+        _   => self.expected("operator symbol"),
+      }?);
+      self.advance_one();
 
       // Sets the flip flag, if necessary
-      let num = if flp { 0x10000000 | num } else { num };
+      let num = if flp { num.set_flp() } else { num };
 
       // Closes symbol bracket
       self.consume("]")?;
 
       // Returns the symbol
-      return Ok(Tree::Num { val: num });
+      return Ok(Numb(num.0));
 
     // Parses numbers (U24,I24,F24)
     } else {
@@ -92,18 +98,18 @@ impl<'i> CoreParser<'i> {
       }
 
       // Gets the numeric bit representation
-      let val = match (sgn, fra) {
-        (Some(s), Some(f)) => hvm::Numb::new_f24(s as f32 * make_float(num, f)).0,
-        (Some(s), None   ) => hvm::Numb::new_i24(s as i32 * num as i32).0,
-        (None   , Some(f)) => hvm::Numb::new_f24(make_float(num, f)).0,
-        (None   , None   ) => hvm::Numb::new_u24(num).0,
+      let num = match (sgn, fra) {
+        (Some(s), Some(f)) => hvm::Numb::new_f24(s as f32 * make_float(num, f)),
+        (Some(s), None   ) => hvm::Numb::new_i24(s as i32 * num as i32),
+        (None   , Some(f)) => hvm::Numb::new_f24(make_float(num, f)),
+        (None   , None   ) => hvm::Numb::new_u24(num),
       };
 
       // Sets the flip flag, if necessary
-      let val = if flp { 0x10000000 | val } else { val };
+      let num = if flp { num.set_flp() } else { num };
 
       // Return the parsed number
-      Ok(Tree::Num { val })
+      return Ok(Numb(num.0));
     }
   }
 
@@ -157,7 +163,7 @@ impl<'i> CoreParser<'i> {
       _ => {
         if let Some(c) = self.peek_one() {
           if c.is_ascii_digit() || c == '+' || c == '-' || c == '[' || c == ':' {
-            return self.parse_numb();
+            return Ok(Tree::Num { val: self.parse_numb()? });
           }
         }
         let nam = self.parse_name()?;
@@ -197,13 +203,65 @@ impl<'i> CoreParser<'i> {
 // Stringifier
 // -----------
 
+impl Numb {
+  pub fn show(&self) -> String {
+    let numb = hvm::Numb(self.0);
+    match numb.get_typ() {
+      hvm::SYM => match numb.get_sym() {
+        0x0 => "[X]".to_string(),
+        0x1 => "[+]".to_string(),
+        0x2 => "[-]".to_string(),
+        0x3 => "[*]".to_string(),
+        0x4 => "[/]".to_string(),
+        0x5 => "[%]".to_string(),
+        0x6 => "[=]".to_string(),
+        0x7 => "[!]".to_string(),
+        0x8 => "[<]".to_string(),
+        0x9 => "[>]".to_string(),
+        0xA => "[&]".to_string(),
+        0xB => "[|]".to_string(),
+        0xC => "[^]".to_string(),
+        0xD => "[L]".to_string(),
+        0xE => "[R]".to_string(),
+        _   => "[?]".to_string(),
+      },
+      hvm::U24 => {
+        let val = numb.get_u24();
+        if numb.get_flp() {
+          format!(":{}", val)
+        } else {
+          format!("{}", val)
+        }
+      },
+      hvm::I24 => {
+        let val = numb.get_i24();
+        let sng = if val < 0 { "-" } else { "+" };
+        if numb.get_flp() {
+          format!(":{}{}", sng, val.abs())  
+        } else {
+          format!("{}{}", sng, val.abs())
+        }
+      },
+      hvm::F24 => {
+        let val = numb.get_f24();
+        if numb.get_flp() {
+          format!(":{:.3}", val)
+        } else {
+          format!("{:.3}", val)
+        }
+      },
+      _ => "?".to_string(),
+    }
+  }
+}
+
 impl Tree {
   pub fn show(&self) -> String {
     match self {
       Tree::Var { nam } => nam.to_string(),
       Tree::Ref { nam } => format!("@{}", nam),
       Tree::Era => "*".to_string(),
-      Tree::Num { val } => format!("#0x{:07x}", val),
+      Tree::Num { val } => format!("{}", val.show()),
       Tree::Con { fst, snd } => format!("({} {})", fst.show(), snd.show()),
       Tree::Dup { fst, snd } => format!("{{{} {}}}", fst.show(), snd.show()),
       Tree::Opr { fst, snd } => format!("$({} {})", fst.show(), snd.show()),
@@ -255,7 +313,7 @@ impl Tree {
         return Some(Tree::Era);
       }
       hvm::NUM => {
-        return Some(Tree::Num { val: port.get_val() });  
+        return Some(Tree::Num { val: Numb(port.get_val()) });  
       }
       hvm::CON => {
         let pair = net.node_load(port.get_val() as usize);
@@ -322,7 +380,7 @@ impl Tree {
         return hvm::Port::new(hvm::ERA, 0);
       }
       Tree::Num { val } => {
-        return hvm::Port::new(hvm::NUM, *val);
+        return hvm::Port::new(hvm::NUM, val.0);
       }
       Tree::Con { fst, snd } => {
         let index = def.node.len();

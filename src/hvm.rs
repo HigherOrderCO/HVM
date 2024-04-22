@@ -179,7 +179,7 @@ impl Numb {
   // SYM: a symbolic operator
 
   pub fn new_sym(val: u32) -> Self {
-    Numb((val << 4) as Val | (SYM as Val))
+    Numb(((val & 0xF) << 4) as Val | (SYM as Val))
   }
 
   pub fn get_sym(&self) -> u32 {
@@ -189,7 +189,7 @@ impl Numb {
   // U24: unsigned 24-bit integer
   
   pub fn new_u24(val: u32) -> Self {
-    Numb((val << 4) as Val | (U24 as Val))
+    Numb(((val & 0xFFFFFF) << 4) as Val | (U24 as Val))
   }
 
   pub fn get_u24(&self) -> u32 {
@@ -199,7 +199,7 @@ impl Numb {
   // I24: signed 24-bit integer
 
   pub fn new_i24(val: i32) -> Self {
-    Numb(((val as u32) << 4) as Val | (I24 as Val))
+    Numb((((val as u32) & 0xFFFFFF) << 4) as Val | (I24 as Val))
   }
 
   pub fn get_i24(&self) -> i32 {
@@ -243,7 +243,7 @@ impl Numb {
   }
 
   pub fn set_flp(&self) -> Self {
-    return Numb(self.0 & 0x10000000);
+    return Numb(self.0 | 0x1000_0000);
   }
 
   // HVM2-32 operate function. It combines all numeric operations into a single, monolithic
