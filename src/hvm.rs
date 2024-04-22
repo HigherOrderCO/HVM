@@ -21,8 +21,8 @@ pub struct APort(pub AVal);
 pub struct Pair(pub u64);
 pub struct APair(pub AtomicU64);
 
-// Word
-pub struct Word(pub Val);
+// Number
+pub struct Numb(pub Val);
 
 // Tags
 pub const VAR : Tag = 0x0; // variable
@@ -44,7 +44,8 @@ pub const COMM : Rule = 0x5;
 pub const OPER : Rule = 0x6;
 pub const SWIT : Rule = 0x7;
 
-// Words
+// Numbs
+pub const SYM : Tag = 0x0;
 pub const U24 : Tag = 0x1;
 pub const I24 : Tag = 0x2;
 pub const F24 : Tag = 0x3;
@@ -173,26 +174,36 @@ impl Pair {
   }
 }
 
-impl Word {
+impl Numb {
+
+  // SYM: a symbolic operator
+
+  pub fn new_sym(val: u32) -> Self {
+    Numb((val << 4) as Val | (SYM as Val))
+  }
+
+  pub fn get_sym(&self) -> u32 {
+    ((self.0 >> 4) & 0xF) as u32
+  }
 
   // U24: unsigned 24-bit integer
   
   pub fn new_u24(val: u32) -> Self {
-    Word((val << 4) as Val | (U24 as Val))
+    Numb((val << 4) as Val | (U24 as Val))
   }
 
   pub fn get_u24(&self) -> u32 {
-    (self.0 >> 4) as u32
+    ((self.0 >> 4) & 0xFFFFFF) as u32
   }
 
   // I24: signed 24-bit integer
 
   pub fn new_i24(val: i32) -> Self {
-    Word(((val as u32) << 4) as Val | (I24 as Val))
+    Numb(((val as u32) << 4) as Val | (I24 as Val))
   }
 
   pub fn get_i24(&self) -> i32 {
-    ((self.0 >> 4) as i32) << 8 >> 8
+    (((self.0 >> 4) & 0xFFFFFF) as i32) << 8 >> 8
   }
 
   // F24: 24-bit float
@@ -205,11 +216,11 @@ impl Word {
     assert!(expo >= -63 && expo <= 63);
     let bits = (expo + 63) as u32;
     let bits = (sign << 23) | (bits << 16) | (mant >> 7);
-    Word((bits << 4) as Val | (F24 as Val))
+    Numb((bits << 4) as Val | (F24 as Val))
   }
 
   pub fn get_f24(&self) -> f32 {
-    let bits = self.0 >> 4;
+    let bits = (self.0 >> 4) & 0xFFFFFF;
     let sign = (bits >> 23) & 0x1;
     let expo = (bits >> 16) & 0x7F;
     let mant = bits & 0xFFFF;
@@ -219,10 +230,20 @@ impl Word {
     f32::from_bits(bits)
   }
 
-  // Gets the numeric tag.
+  // Gets the numeric type.
 
-  pub fn get_tag(&self) -> Tag {
+  pub fn get_typ(&self) -> Tag {
     return (self.0 & 0xF) as Tag;
+  }
+
+  // Flip flag.
+
+  pub fn get_flp(&self) -> bool {
+    return (self.0 >> 28) & 1 == 1;
+  }
+
+  pub fn set_flp(&self) -> Self {
+    return Numb(self.0 & 0x10000000);
   }
 
   // HVM2-32 operate function. It combines all numeric operations into a single, monolithic
@@ -232,30 +253,30 @@ impl Word {
   // by the operation type. Otherwise, we'll get the operation type from the first operand, and the
   // operation type from the second, and execute one of the 16 possible operations on each type.
   pub fn operate(a: Self, b: Self) -> Self {
-    //println!("oper {:07x} {:07x} | {} {}", a.0, b.0, a.get_tag(), b.get_tag());
-    let op = a.get_tag();
-    let ty = b.get_tag();
+    //println!("oper {:07x} {:07x} | {} {}", a.0, b.0, a.get_typ(), b.get_typ());
+    let op = a.get_typ();
+    let ty = b.get_typ();
     match ty {
       U24 => {
         let av = a.get_u24();
         let bv = b.get_u24();
         match op {
-          0x0 => Word(b.0 & 0xFFFFFFF0 | (a.0 >> 4) & 0xF),
-          0x1 => Word::new_u24(av.wrapping_add(bv)),
-          0x2 => Word::new_u24(av.wrapping_sub(bv)),
-          0x3 => Word::new_u24(av.wrapping_mul(bv)),
-          0x4 => Word::new_u24(av.wrapping_div(bv)),
-          0x5 => Word::new_u24(av.wrapping_rem(bv)),
-          0x6 => Word::new_u24((av == bv) as u32),
-          0x7 => Word::new_u24((av != bv) as u32),
-          0x8 => Word::new_u24((av <  bv) as u32),
-          0x9 => Word::new_u24((av >  bv) as u32),
-          0xA => Word::new_u24(av & bv),
-          0xB => Word::new_u24(av | bv),
-          0xC => Word::new_u24(av ^ bv),
-          0xD => Word::new_u24(av << bv),
-          0xE => Word::new_u24(av >> bv),
-          0xF => Word::new_u24(0),
+          0x0 => Numb(b.0 & 0xFFFFFFF0 | a.get_sym()),
+          0x1 => Numb::new_u24(av.wrapping_add(bv)),
+          0x2 => Numb::new_u24(av.wrapping_sub(bv)),
+          0x3 => Numb::new_u24(av.wrapping_mul(bv)),
+          0x4 => Numb::new_u24(av.wrapping_div(bv)),
+          0x5 => Numb::new_u24(av.wrapping_rem(bv)),
+          0x6 => Numb::new_u24((av == bv) as u32),
+          0x7 => Numb::new_u24((av != bv) as u32),
+          0x8 => Numb::new_u24((av <  bv) as u32),
+          0x9 => Numb::new_u24((av >  bv) as u32),
+          0xA => Numb::new_u24(av & bv),
+          0xB => Numb::new_u24(av | bv),
+          0xC => Numb::new_u24(av ^ bv),
+          0xD => Numb::new_u24(av << bv),
+          0xE => Numb::new_u24(av >> bv),
+          0xF => Numb::new_u24(0),
           _   => unreachable!(),
         }
       }
@@ -263,22 +284,22 @@ impl Word {
         let av = a.get_i24();
         let bv = b.get_i24();
         match op {
-          0x0 => Word(b.0 & 0xFFFFFFF0 | (a.0 >> 4) & 0xF),
-          0x1 => Word::new_i24(av.wrapping_add(bv)),
-          0x2 => Word::new_i24(av.wrapping_sub(bv)),
-          0x3 => Word::new_i24(av.wrapping_mul(bv)),
-          0x4 => Word::new_i24(av.wrapping_div(bv)),
-          0x5 => Word::new_i24(av.wrapping_rem(bv)),
-          0x6 => Word::new_i24((av == bv) as i32),
-          0x7 => Word::new_i24((av != bv) as i32),
-          0x8 => Word::new_i24((av <  bv) as i32),
-          0x9 => Word::new_i24((av >  bv) as i32),
-          0xA => Word::new_i24(av & bv),
-          0xB => Word::new_i24(av | bv),
-          0xC => Word::new_i24(av ^ bv),
-          0xD => Word::new_i24(av << bv),
-          0xE => Word::new_i24(av >> bv),
-          0xF => Word::new_i24(0),
+          0x0 => Numb(b.0 & 0xFFFFFFF0 | a.get_sym()),
+          0x1 => Numb::new_i24(av.wrapping_add(bv)),
+          0x2 => Numb::new_i24(av.wrapping_sub(bv)),
+          0x3 => Numb::new_i24(av.wrapping_mul(bv)),
+          0x4 => Numb::new_i24(av.wrapping_div(bv)),
+          0x5 => Numb::new_i24(av.wrapping_rem(bv)),
+          0x6 => Numb::new_i24((av == bv) as i32),
+          0x7 => Numb::new_i24((av != bv) as i32),
+          0x8 => Numb::new_i24((av <  bv) as i32),
+          0x9 => Numb::new_i24((av >  bv) as i32),
+          0xA => Numb::new_i24(av & bv),
+          0xB => Numb::new_i24(av | bv),
+          0xC => Numb::new_i24(av ^ bv),
+          0xD => Numb::new_i24(av << bv),
+          0xE => Numb::new_i24(av >> bv),
+          0xF => Numb::new_i24(0),
           _   => unreachable!(),
         }
       }
@@ -286,26 +307,26 @@ impl Word {
         let av = a.get_f24();
         let bv = b.get_f24();
         match op {
-          0x0 => Word(b.0 & 0xFFFFFFF0 | (a.0 >> 4) & 0xF),
-          0x1 => Word::new_f24(av + bv),
-          0x2 => Word::new_f24(av - bv),
-          0x3 => Word::new_f24(av * bv),
-          0x4 => Word::new_f24(av / bv),
-          0x5 => Word::new_f24(av % bv),
-          0x6 => Word::new_u24((av == bv) as u32),
-          0x7 => Word::new_u24((av != bv) as u32),
-          0x8 => Word::new_u24((av <  bv) as u32),
-          0x9 => Word::new_u24((av >  bv) as u32),
-          0xA => Word::new_u24((av <= bv) as u32),
-          0xB => Word::new_u24((av >= bv) as u32),
-          0xC => Word::new_f24(av.powf(bv)),
-          0xD => Word::new_f24(bv.log(av)), 
-          0xE => Word::new_f24(av.atan2(bv)),
-          0xF => Word::new_u24(av.floor() as u32 + bv.ceil() as u32),
+          0x0 => Numb(b.0 & 0xFFFFFFF0 | a.get_sym()),
+          0x1 => Numb::new_f24(av + bv),
+          0x2 => Numb::new_f24(av - bv),
+          0x3 => Numb::new_f24(av * bv),
+          0x4 => Numb::new_f24(av / bv),
+          0x5 => Numb::new_f24(av % bv),
+          0x6 => Numb::new_u24((av == bv) as u32),
+          0x7 => Numb::new_u24((av != bv) as u32),
+          0x8 => Numb::new_u24((av <  bv) as u32),
+          0x9 => Numb::new_u24((av >  bv) as u32),
+          0xA => Numb::new_f24(av.atan2(bv)),
+          0xB => Numb::new_u24(av.floor() as u32 + bv.ceil() as u32),
+          0xC => Numb::new_f24(av.powf(bv)),
+          0xD => Numb::new_f24(bv.log(av)), 
+          0xE => Numb::new_u24(0),
+          0xF => Numb::new_u24(0),
           _   => unreachable!(),
         }
       }
-      _ => Word::new_u24(0),
+      _ => Numb::new_u24(0),
     }
   }
 }
@@ -470,6 +491,22 @@ impl TMem {
     got_node >= need_node && got_vars >= need_vars
   }
 
+  pub fn enter(&self, net: &GNet, mut var: Port) -> Port {
+    // While `B` is VAR: extend it (as an optimization)
+    while var.get_tag() == VAR {
+      // Takes the current `B` substitution as `B'`
+      let val = net.vars_exchange(var.get_val() as usize, NONE);
+      // If there was no `B'`, stop, as there is no extension
+      if val == NONE || val == Port(0) {
+        break;
+      }
+      // Otherwise, delete `B` (we own both) and continue as `A ~> B'`
+      net.vars_take(var.get_val() as usize);
+      var = val;
+    }
+    return var;
+  }
+
   // Atomically Links `A ~ B`.
   pub fn link(&mut self, net: &GNet, a: Port, b: Port) {
     //println!("link {} ~ {}", a.show(), b.show());
@@ -490,17 +527,7 @@ impl TMem {
       }
 
       // While `B` is VAR: extend it (as an optimization)
-      while b.get_tag() == VAR {
-        // Takes the current `B` substitution as `B'`
-        let b_ = net.vars_exchange(b.get_val() as usize, NONE);
-        // If there was no `B'`, stop, as there is no extension
-        if b_ == NONE || b_ == Port(0) {
-          break;
-        }
-        // Otherwise, delete `B` (we own both) and continue as `A ~> B'`
-        net.vars_take(b.get_val() as usize);
-        b = b_;
-      }
+      b = self.enter(net, b);
 
       // Since `A` is VAR: point `A ~> B`.  
       if true {
@@ -692,14 +719,14 @@ impl TMem {
     // Performs operation.
     if b1.get_tag() == NUM {
       let bv = b1.get_val();
-      let fp = (bv >> 28) & 1 == 1;
-      let av = Word(av & 0xFFFFFFF);
-      let bv = Word(bv & 0xFFFFFFF);
-      let cv = if fp { Word::operate(bv,av) } else { Word::operate(av,bv) };
+      let av = Numb(av);
+      let bv = Numb(bv);
+      let fl = bv.get_flp();
+      let cv = if fl { Numb::operate(bv,av) } else { Numb::operate(av,bv) };
       self.link_pair(net, Pair::new(b2, Port::new(NUM, cv.0))); 
-      self.itrs += if fp { 0 } else { 1 };
+      self.itrs += if fl { 0 } else { 1 };
     } else {
-      net.node_create(self.nloc[0], Pair::new(Port::new(a.get_tag(), a.get_val() | 0x10000000), b2));
+      net.node_create(self.nloc[0], Pair::new(Port::new(a.get_tag(), Numb(a.get_val()).set_flp().0), b2));
       self.link_pair(net, Pair::new(b1, Port::new(OPR, self.nloc[0] as u32)));
     }
 
@@ -719,7 +746,7 @@ impl TMem {
     }
 
     // Loads ports.
-    let av = a.get_val();
+    let av = Numb(a.get_val()).get_u24();
     let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
     let b2 = b_.get_snd();
@@ -730,7 +757,7 @@ impl TMem {
       self.link_pair(net, Pair::new(Port::new(CON, self.nloc[0] as u32), b1));
     } else {
       net.node_create(self.nloc[0], Pair::new(Port::new(ERA,0), Port::new(CON, self.nloc[1] as u32)));
-      net.node_create(self.nloc[1], Pair::new(Port::new(NUM, av-1), b2));
+      net.node_create(self.nloc[1], Pair::new(Port::new(NUM, Numb::new_u24(av-1).0), b2));
       self.link_pair(net, Pair::new(Port::new(CON, self.nloc[0] as u32), b1));
     }
 
@@ -1018,8 +1045,11 @@ pub fn run(book: &Book) {
   //println!("{}", net.show());
 
   // Prints the result
-  if let Some(tree) = crate::ast::Tree::readback(&net, net.vars_load(1), &mut std::collections::BTreeMap::new(), &mut std::collections::BTreeMap::new()) {
+  if let Some(tree) = crate::ast::Tree::readback(&net, tm.enter(&net, Port::new(VAR,0)), &mut std::collections::BTreeMap::new(), &mut std::collections::BTreeMap::new()) {
     println!("{}", tree.show());
+  } else {
+    println!("Readback failed. Printing GNet memdump...\n");
+    println!("{}", net.show());
   }
 
   // Prints interactions and time

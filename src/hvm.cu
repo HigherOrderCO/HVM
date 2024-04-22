@@ -249,8 +249,8 @@ typedef u64 Pair; // Pair ::= Port + Port (fits a u64)
 // Rules
 typedef u8 Rule; // Rule ::= 3-bit (rounded up to 8)
 
-// Words
-typedef u32 Word; // Word ::= 29-bit (rounded up to u32)
+// Numbs
+typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 
 // Tags
 const Tag VAR = 0x0; // variable
@@ -542,135 +542,143 @@ __device__ inline Pair adjust_pair(Net* net, TMem* tm, Pair pair) {
 // -----
 
 // Constructor and getters for SYM (operation selector)
-__device__ inline Word new_sel(u32 val) {
+__device__ inline Numb new_sym(u32 val) {
   return (val << 4) | SYM;
 }
 
-__device__ inline u32 get_sel(Word word) {
-  return word >> 4;
+__device__ inline u32 get_sym(Numb word) {
+  return (word >> 4) & 0xF;
 }
 
 // Constructor and getters for U24 (unsigned 24-bit integer)
-__device__ inline Word new_u24(u32 val) {
+__device__ inline Numb new_u24(u32 val) {
   return (val << 4) | U24;
 }
 
-__device__ inline u32 get_u24(Word word) {
-  return word >> 4;
+__device__ inline u32 get_u24(Numb word) {
+  return (word >> 4) & 0xFFFFFF;
 }
 
 // Constructor and getters for I24 (signed 24-bit integer)
-__device__ inline Word new_i24(i32 val) {
+__device__ inline Numb new_i24(i32 val) {
   return ((u32)val << 4) | I24;
 }
 
-__device__ inline i32 get_i24(Word word) {
-  return (i32)(word << 8) >> 12;
+__device__ inline i32 get_i24(Numb word) {
+  return (((word >> 4) & 0xFFFFFF) << 8) >> 8;
 }
 
 // Constructor and getters for F24 (24-bit float)
-__device__ inline Word new_f24(float val) {
+__device__ inline Numb new_f24(float val) {
   u32 bits = *(u32*)&val;
   u32 sign = (bits >> 31) & 0x1;
   i32 expo = ((bits >> 23) & 0xFF) - 127;
   u32 mant = bits & 0x7FFFFF;
-  u32 res = (sign << 23) | ((expo + 63) << 16) | (mant >> 7);
-  return (res << 4) | F24;
+  u32 uexp = expo + 63;
+  u32 bts1 = (sign << 23) | (uexp << 16) | (mant >> 7);
+  return (bts1 << 4) | F24;
 }
 
-__device__ inline float get_f24(Word word) {
-  u32 bits = word >> 4;
+__device__ inline float get_f24(Numb word) {
+  u32 bits = (word >> 4) & 0xFFFFFF;
   u32 sign = (bits >> 23) & 0x1;
   u32 expo = (bits >> 16) & 0x7F;
   u32 mant = bits & 0xFFFF;
   i32 iexp = expo - 63;
-  u32 fbits = (sign << 31) | ((iexp + 127) << 23) | (mant << 7);
-  fbits = (mant == 0 && iexp == -63) ? (sign << 31) : fbits;
-  return *(float*)&fbits;
+  u32 bts0 = (sign << 31) | ((iexp + 127) << 23) | (mant << 7);
+  u32 bts1 = (mant == 0 && iexp == -63) ? (sign << 31) : bts0;
+  return *(float*)&bts1;
 }
 
-// Gets the numeric tag
-__device__ inline Tag get_word_tag(Word word) {
+// Flip flag
+__device__ inline Tag get_typ(Numb word) {
   return word & 0xF;
 }
 
+__device__ inline bool get_flp(Numb word) {
+  return ((word >> 28) & 1) == 1;
+}
+
+// Sets the flip flag
+__device__ inline Numb set_flp(Numb word) {
+  return word & 0x10000000;
+}
+
 // HVM2-32 operate function
-__device__ inline Word operate(Word a, Word b) {
-  Tag op = get_word_tag(a);
-  Tag ty = get_word_tag(b);
+__device__ inline Numb operate(Numb a, Numb b) {
+  Tag op = get_typ(a);
+  Tag ty = get_typ(b);
   switch (ty) {
     case U24: {
       u32 av = get_u24(a);
       u32 bv = get_u24(b);
       switch (op) {
-        case 0x0: return Word((b & 0xFFFFFFF0) | ((a >> 4) & 0xF));
+        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
         case 0x1: return new_u24(av + bv);
         case 0x2: return new_u24(av - bv);
         case 0x3: return new_u24(av * bv);
         case 0x4: return new_u24(av / bv);
         case 0x5: return new_u24(av % bv);
-        case 0x6: return new_u24(av == bv);
-        case 0x7: return new_u24(av != bv);
-        case 0x8: return new_u24(av < bv);
-        case 0x9: return new_u24(av > bv);
+        case 0x6: return new_u24((av == bv) ? 1 : 0);
+        case 0x7: return new_u24((av != bv) ? 1 : 0);
+        case 0x8: return new_u24((av <  bv) ? 1 : 0);
+        case 0x9: return new_u24((av >  bv) ? 1 : 0);
         case 0xA: return new_u24(av & bv);
         case 0xB: return new_u24(av | bv);
         case 0xC: return new_u24(av ^ bv);
         case 0xD: return new_u24(av << bv);
         case 0xE: return new_u24(av >> bv);
         case 0xF: return new_u24(0);
-        default: return 0;
+        default : return 0;
       }
     }
     case I24: {
       i32 av = get_i24(a);
       i32 bv = get_i24(b);
       switch (op) {
-        case 0x0: return Word((b & 0xFFFFFFF0) | ((a >> 4) & 0xF));
+        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
         case 0x1: return new_i24(av + bv);
         case 0x2: return new_i24(av - bv);
         case 0x3: return new_i24(av * bv);
         case 0x4: return new_i24(av / bv);
         case 0x5: return new_i24(av % bv);
-        case 0x6: return new_i24(av == bv);
-        case 0x7: return new_i24(av != bv);
-        case 0x8: return new_i24(av < bv);
-        case 0x9: return new_i24(av > bv);
+        case 0x6: return new_i24((av == bv) ? 1 : 0);
+        case 0x7: return new_i24((av != bv) ? 1 : 0);
+        case 0x8: return new_i24((av <  bv) ? 1 : 0);
+        case 0x9: return new_i24((av >  bv) ? 1 : 0);
         case 0xA: return new_i24(av & bv);
         case 0xB: return new_i24(av | bv);
         case 0xC: return new_i24(av ^ bv);
         case 0xD: return new_i24(av << bv);
         case 0xE: return new_i24(av >> bv);
         case 0xF: return new_i24(0);
-        default: return 0;
+        default : return 0;
       }
     }
     case F24: {
       float av = get_f24(a);
       float bv = get_f24(b);
       switch (op) {
-        case 0x0: return Word((b & 0xFFFFFFF0) | ((a >> 4) & 0xF));
+        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
         case 0x1: return new_f24(av + bv);
         case 0x2: return new_f24(av - bv);
         case 0x3: return new_f24(av * bv);
         case 0x4: return new_f24(av / bv);
         case 0x5: return new_f24(fmodf(av, bv));
-        case 0x6: return new_u24(av == bv);
-        case 0x7: return new_u24(av != bv);
-        case 0x8: return new_u24(av < bv);
-        case 0x9: return new_u24(av > bv);
-        case 0xA: return new_u24(av <= bv);
-        case 0xB: return new_u24(av >= bv);
+        case 0x6: return new_u24((av == bv) ? 1 : 0);
+        case 0x7: return new_u24((av != bv) ? 1 : 0);
+        case 0x8: return new_u24((av <  bv) ? 1 : 0);
+        case 0x9: return new_u24((av >  bv) ? 1 : 0);
+        case 0xA: return new_f24(atan2f(av, bv));
+        case 0xB: return new_u24((u32)floorf(av) + (u32)ceilf(bv));
         case 0xC: return new_f24(powf(av, bv));
         case 0xD: return new_f24(logf(bv) / logf(av));
-        case 0xE: return new_f24(atan2f(av, bv));
-        case 0xF: return new_u24(floorf(av) + ceilf(bv));
-        default: return 0;
+        default : return 0;
       }
     }
-    default:
-      return 0;
+    default: return new_u24(0);
   }
+  return 0;
 }
 
 // RBag
@@ -1201,8 +1209,8 @@ __device__ bool interact_comm(Net* net, TMem* tm, Port a, Port b) {
   return true;
 }
 
-// The Oper Interaction.
-__device__ inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
+// The Oper Interaction.  
+__device__ bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 1, 0)) {
     return false;
@@ -1222,14 +1230,14 @@ __device__ inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
   // Performs operation.
   if (get_tag(B1) == NUM) {
     Val  bv = get_val(B1);
-    bool fp = (bv >> 28) & 1;
-    Word aw = av & 0xFFFFFFF;
-    Word bw = bv & 0xFFFFFFF;
-    Word cw = fp ? operate(bw,aw) : operate(aw,bw);
-    link_pair(net, tm, new_pair(B2, new_port(NUM, (Val)cw))); 
+    Numb aw = new_u24(av);
+    Numb bw = new_u24(bv);
+    bool fp = get_flp(bw);
+    Numb cw = fp ? operate(bw,aw) : operate(aw,bw);
+    link_pair(net, tm, new_pair(B2, new_port(NUM, cw))); 
     tm->itrs += fp ? 0 : 1;
   } else {
-    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), av | 0x10000000), B2));
+    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), set_flp(new_u24(av))), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
@@ -1244,24 +1252,23 @@ __device__ bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
   }
 
   // Checks availability
-  if (node_load(net,get_val(b)) == 0) {
-    //printf("[%04x] unavailable4: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
+  if (node_load(net, get_val(b)) == 0) {
     return false;
   }
 
   // Loads ports.
-  u32  av = get_val(a);
+  u32  av = get_u24(get_val(a));
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-
+ 
   // Stores new nodes.  
   if (av == 0) {
-    node_create(net, tm->nloc[0], new_pair(B2, new_port(ERA, 0)));
+    node_create(net, tm->nloc[0], new_pair(B2, new_port(ERA,0)));
     link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
   } else {
-    node_create(net, tm->nloc[0], new_pair(new_port(ERA, 0), new_port(CON, tm->nloc[1])));
-    node_create(net, tm->nloc[1], new_pair(new_port(NUM, av-1), B2));
+    node_create(net, tm->nloc[0], new_pair(new_port(ERA,0), new_port(CON, tm->nloc[1])));
+    node_create(net, tm->nloc[1], new_pair(new_port(NUM, new_u24(av-1)), B2));
     link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
   }
 
@@ -1672,7 +1679,7 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
-static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 147, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 3, 0, 8, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
 void hvm_cu(u32* book_buffer) {
   // Loads the Book

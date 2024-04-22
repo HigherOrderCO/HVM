@@ -35,6 +35,78 @@ pub struct Book {
 new_parser!(CoreParser);
 
 impl<'i> CoreParser<'i> {
+  pub fn parse_numb(&mut self) -> Result<Tree, String> {
+    // Parses flip flag
+    let flp = if let Some(':') = self.peek_one() {
+      self.consume(":")?;
+      true
+    } else {
+      false
+    };
+
+    // Parses symbols (SYM)
+    if let Some('[') = self.peek_one() {
+      self.consume("[")?;
+
+      // Parses the symbol
+      let num = match self.advance_one().unwrap() {
+        ' ' => 0x00, '+' => 0x10, '-' => 0x20, '*' => 0x30,
+        '/' => 0x40, '%' => 0x50, '=' => 0x60, '!' => 0x70,
+        '<' => 0x80, '>' => 0x90, '&' => 0xA0, '|' => 0xB0,
+        '^' => 0xC0, 'L' => 0xD0, 'R' => 0xE0, 'X' => 0xF0,
+        _   => panic!("non-symbol character inside symbol bracket [_]"),
+      };
+
+      // Sets the flip flag, if necessary
+      let num = if flp { 0x10000000 | num } else { num };
+
+      // Closes symbol bracket
+      self.consume("]")?;
+
+      // Returns the symbol
+      return Ok(Tree::Num { val: num });
+
+    // Parses numbers (U24,I24,F24)
+    } else {
+      // Parses sign
+      let sgn = match self.peek_one() {
+        Some('+') => { self.consume("+")?; Some(1) }
+        Some('-') => { self.consume("-")?; Some(-1) }
+        _         => None,
+      };
+
+      // Parses main value 
+      let num = self.parse_u64()? as u32;
+
+      // Parses frac value (Float type)
+      let fra = if let Some('.') = self.peek_one() {
+        self.consume(".")?;
+        Some(self.parse_u64()? as u32)
+      } else {
+        None
+      };
+
+      // Creates a float from value and fraction
+      fn make_float(num: u32, fra: u32) -> f32 {
+        num as f32 + fra as f32 / 10f32.powi(fra.to_string().len() as i32)
+      }
+
+      // Gets the numeric bit representation
+      let val = match (sgn, fra) {
+        (Some(s), Some(f)) => hvm::Numb::new_f24(s as f32 * make_float(num, f)).0,
+        (Some(s), None   ) => hvm::Numb::new_i24(s as i32 * num as i32).0,
+        (None   , Some(f)) => hvm::Numb::new_f24(make_float(num, f)).0,
+        (None   , None   ) => hvm::Numb::new_u24(num).0,
+      };
+
+      // Sets the flip flag, if necessary
+      let val = if flp { 0x10000000 | val } else { val };
+
+      // Return the parsed number
+      Ok(Tree::Num { val })
+    }
+  }
+
   pub fn parse_tree(&mut self) -> Result<Tree, String> {
     self.skip_trivia();
     //println!("aaa ||{}", &self.input[self.index..]);
@@ -78,28 +150,19 @@ impl<'i> CoreParser<'i> {
         let nam = self.parse_name()?;
         Ok(Tree::Ref { nam })
       }
-      Some('#') => {
-        self.advance_one();
-        let val = self.parse_u64()? as u32;
-        Ok(Tree::Num { val })
-      }
       Some('*') => {
         self.advance_one();
         Ok(Tree::Era)
       }
       _ => {
+        if let Some(c) = self.peek_one() {
+          if c.is_ascii_digit() || c == '+' || c == '-' || c == '[' || c == ':' {
+            return self.parse_numb();
+          }
+        }
         let nam = self.parse_name()?;
         Ok(Tree::Var { nam })
       }
-    }
-  }
-
-  pub fn parse_name(&mut self) -> Result<String, String> {
-    let name = self.take_while(|c| c.is_alphanumeric() || "_.$".contains(c));
-    if name.is_empty() {
-      self.expected("name")
-    } else {
-      Ok(name.to_string())
     }
   }
 

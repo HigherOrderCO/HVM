@@ -1,7 +1,3 @@
-//./hvm.rs//
-
-// TASK: port code from Rust to C. DONT FORGET THE <COMPLETION> TAG
-
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -55,8 +51,8 @@ typedef a64 APair; // atomic Pair
 // Rules
 typedef u8 Rule; // Rule ::= 3-bit (rounded up to 8)
 
-// Words
-typedef u32 Word; // Word ::= 29-bit (rounded up to u32)
+// Numbs
+typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 
 // Tags
 const Tag VAR = 0x0; // variable
@@ -91,6 +87,9 @@ const Tag F24 = 0x3;
 const u32 RLEN = 1 << 22; // max 4m redexes
 
 // Thread Redex Bag
+// It uses the same space to store two stacks: 
+// - HI: a high-priotity stack, for shrinking reductions
+// - LO: a low-priority stack, for growing reductions
 typedef struct RBag {
   u32  lo_idx; // high-priority stack push-index
   u32  hi_idx; // low-priority stack push-index
@@ -271,142 +270,145 @@ static inline Pair adjust_pair(Net* net, TMem* tm, Pair pair) {
   return new_pair(p1, p2);
 }
 
-// Words
+// Numbs
 // -----
 
 // Constructor and getters for SYM (operation selector)
-static inline Word new_sel(u32 val) {
+static inline Numb new_sym(u32 val) {
   return (val << 4) | SYM;
 }
 
-static inline u32 get_sel(Word word) {
-  return word >> 4;
+static inline u32 get_sym(Numb word) {
+  return (word >> 4) & 0xF;
 }
 
 // Constructor and getters for U24 (unsigned 24-bit integer)
-static inline Word new_u24(u32 val) {
+static inline Numb new_u24(u32 val) {
   return (val << 4) | U24;
 }
 
-static inline u32 get_u24(Word word) {
-  return word >> 4;
+static inline u32 get_u24(Numb word) {
+  return (word >> 4) & 0xFFFFFF;
 }
 
 // Constructor and getters for I24 (signed 24-bit integer)
-static inline Word new_i24(i32 val) {
+static inline Numb new_i24(i32 val) {
   return ((u32)val << 4) | I24;
 }
 
-static inline i32 get_i24(Word word) {
-  return ((word >> 4) << 8) >> 8;
+static inline i32 get_i24(Numb word) {
+  return (((word >> 4) & 0xFFFFFF) << 8) >> 8;
 }
 
 // Constructor and getters for F24 (24-bit float)
-static inline Word new_f24(float val) {
+static inline Numb new_f24(float val) {
   u32 bits = *(u32*)&val;
   u32 sign = (bits >> 31) & 0x1;
   i32 expo = ((bits >> 23) & 0xFF) - 127;
   u32 mant = bits & 0x7FFFFF;
-  u32 res = (sign << 23) | ((expo + 63) << 16) | (mant >> 7);
-  return (res << 4) | F24;
+  u32 uexp = expo + 63;
+  u32 bts1 = (sign << 23) | (uexp << 16) | (mant >> 7);
+  return (bts1 << 4) | F24;
 }
 
-static inline float get_f24(Word word) {
-  u32 bits = word >> 4;
+static inline float get_f24(Numb word) {
+  u32 bits = (word >> 4) & 0xFFFFFF;
   u32 sign = (bits >> 23) & 0x1;
   u32 expo = (bits >> 16) & 0x7F;
   u32 mant = bits & 0xFFFF;
   i32 iexp = expo - 63;
-  u32 fbits = (sign << 31) | ((iexp + 127) << 23) | (mant << 7);
-  fbits = (mant == 0 && iexp == -63) ? (sign << 31) : fbits;
-  return *(float*)&fbits;
+  u32 bts0 = (sign << 31) | ((iexp + 127) << 23) | (mant << 7);
+  u32 bts1 = (mant == 0 && iexp == -63) ? (sign << 31) : bts0;
+  return *(float*)&bts1;
 }
 
-// Gets the numeric tag
-static inline Tag get_word_tag(Word word) {
+// Flip flag
+static inline Tag get_typ(Numb word) {
   return word & 0xF;
 }
 
+static inline bool get_flp(Numb word) {
+  return ((word >> 28) & 1) == 1;
+}
+
+// Sets the flip flag
+static inline Numb set_flp(Numb word) {
+  return word & 0x10000000;
+}
+
 // HVM2-32 operate function
-static inline Word operate(Word a, Word b) {
-  // If A is a SYM, load the operation type into B
-  if (get_word_tag(a) == SYM) {
-    return (b & 0xFFFFFFF0) | (get_sel(a) & 0xF);
-  }
-  // Otherwise, get the operation from A and type from B
-  Tag op = get_word_tag(a);
-  Tag ty = get_word_tag(b);
-  // Perform the correct operation on the correct type
+static inline Numb operate(Numb a, Numb b) {
+  Tag op = get_typ(a);
+  Tag ty = get_typ(b);
   switch (ty) {
     case U24: {
       u32 av = get_u24(a);
       u32 bv = get_u24(b);
       switch (op) {
-        case 0x0: return new_u24(av + bv);
-        case 0x1: return new_u24(av - bv);
-        case 0x2: return new_u24(av * bv);
-        case 0x3: return new_u24(av / bv);
-        case 0x4: return new_u24(av % bv);
-        case 0x5: return new_u24(av == bv);
-        case 0x6: return new_u24(av != bv);
-        case 0x7: return new_u24(av < bv);
-        case 0x8: return new_u24(av > bv);
-        case 0x9: return new_u24(av <= bv);
-        case 0xA: return new_u24(av >= bv);
-        case 0xB: return new_u24(av & bv);
-        case 0xC: return new_u24(av | bv);
-        case 0xD: return new_u24(av ^ bv);
-        case 0xE: return new_u24(av << bv);
-        case 0xF: return new_u24(av >> bv);
+        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
+        case 0x1: return new_u24(av + bv);
+        case 0x2: return new_u24(av - bv);
+        case 0x3: return new_u24(av * bv);
+        case 0x4: return new_u24(av / bv);
+        case 0x5: return new_u24(av % bv);
+        case 0x6: return new_u24((av == bv) ? 1 : 0);
+        case 0x7: return new_u24((av != bv) ? 1 : 0);
+        case 0x8: return new_u24((av <  bv) ? 1 : 0);
+        case 0x9: return new_u24((av >  bv) ? 1 : 0);
+        case 0xA: return new_u24(av & bv);
+        case 0xB: return new_u24(av | bv);
+        case 0xC: return new_u24(av ^ bv);
+        case 0xD: return new_u24(av << bv);
+        case 0xE: return new_u24(av >> bv);
+        case 0xF: return new_u24(0);
+        default : return 0;
       }
-      break;
     }
     case I24: {
       i32 av = get_i24(a);
       i32 bv = get_i24(b);
       switch (op) {
-        case 0x0: return new_i24(av + bv);
-        case 0x1: return new_i24(av - bv);
-        case 0x2: return new_i24(av * bv);
-        case 0x3: return new_i24(av / bv);
-        case 0x4: return new_i24(av % bv);
-        case 0x5: return new_i24(av == bv);
-        case 0x6: return new_i24(av != bv);
-        case 0x7: return new_i24(av < bv);
-        case 0x8: return new_i24(av > bv);
-        case 0x9: return new_i24(av <= bv);
-        case 0xA: return new_i24(av >= bv);
-        case 0xB: return new_i24(av & bv);
-        case 0xC: return new_i24(av | bv);
-        case 0xD: return new_i24(av ^ bv);
-        case 0xE: return new_i24(av << bv);
-        case 0xF: return new_i24(av >> bv);
+        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
+        case 0x1: return new_i24(av + bv);
+        case 0x2: return new_i24(av - bv);
+        case 0x3: return new_i24(av * bv);
+        case 0x4: return new_i24(av / bv);
+        case 0x5: return new_i24(av % bv);
+        case 0x6: return new_i24((av == bv) ? 1 : 0);
+        case 0x7: return new_i24((av != bv) ? 1 : 0);
+        case 0x8: return new_i24((av <  bv) ? 1 : 0);
+        case 0x9: return new_i24((av >  bv) ? 1 : 0);
+        case 0xA: return new_i24(av & bv);
+        case 0xB: return new_i24(av | bv);
+        case 0xC: return new_i24(av ^ bv);
+        case 0xD: return new_i24(av << bv);
+        case 0xE: return new_i24(av >> bv);
+        case 0xF: return new_i24(0);
+        default : return 0;
       }
-      break;
     }
     case F24: {
       float av = get_f24(a);
       float bv = get_f24(b);
       switch (op) {
-        case 0x0: return new_f24(av + bv);
-        case 0x1: return new_f24(av - bv);
-        case 0x2: return new_f24(av * bv);
-        case 0x3: return new_f24(av / bv);
-        case 0x4: return new_f24(fmodf(av, bv));
-        case 0x5: return new_u24(av == bv);
-        case 0x6: return new_u24(av != bv);
-        case 0x7: return new_u24(av < bv);
-        case 0x8: return new_u24(av > bv);
-        case 0x9: return new_u24(av <= bv);
-        case 0xA: return new_u24(av >= bv);
-        case 0xB: return new_f24(powf(av, bv));
-        case 0xC: return new_f24(logf(bv) / logf(av));
-        case 0xD: return new_f24(atan2f(av, bv));
-        case 0xE: return new_u24(ceilf(av) + floorf(bv));
-        case 0xF: return new_u24(0);
+        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
+        case 0x1: return new_f24(av + bv);
+        case 0x2: return new_f24(av - bv);
+        case 0x3: return new_f24(av * bv);
+        case 0x4: return new_f24(av / bv);
+        case 0x5: return new_f24(fmodf(av, bv));
+        case 0x6: return new_u24((av == bv) ? 1 : 0);
+        case 0x7: return new_u24((av != bv) ? 1 : 0);
+        case 0x8: return new_u24((av <  bv) ? 1 : 0);
+        case 0x9: return new_u24((av >  bv) ? 1 : 0);
+        case 0xA: return new_f24(atan2f(av, bv));
+        case 0xB: return new_u24((u32)floorf(av) + (u32)ceilf(bv));
+        case 0xC: return new_f24(powf(av, bv));
+        case 0xD: return new_f24(logf(bv) / logf(av));
+        default : return 0;
       }
-      break;
     }
+    default: return new_u24(0);
   }
   return 0;
 }
@@ -881,14 +883,14 @@ static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
   // Performs operation.
   if (get_tag(B1) == NUM) {
     Val  bv = get_val(B1);
-    bool fp = (bv >> 28) & 1;
-    Word aw = av & 0xFFFFFFF;
-    Word bw = bv & 0xFFFFFFF;
-    Word cw = fp ? operate(bw,aw) : operate(aw,bw);
-    link_pair(net, tm, new_pair(B2, new_port(NUM, (Val)cw))); 
+    Numb aw = new_u24(av);
+    Numb bw = new_u24(bv);
+    bool fp = get_flp(bw);
+    Numb cw = fp ? operate(bw,aw) : operate(aw,bw);
+    link_pair(net, tm, new_pair(B2, new_port(NUM, cw))); 
     tm->itrs += fp ? 0 : 1;
   } else {
-    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), av | 0x10000000), B2));
+    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), set_flp(new_u24(av))), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
@@ -901,15 +903,14 @@ static inline bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
   if (!get_resources(net, tm, 1, 2, 0)) {
     return false;
   }
-  
+
   // Checks availability
-  if (node_load(net,get_val(b)) == 0) {
-    //printf("[%04x] unavailable4: %s\n", tid, show_port(b).x); 
+  if (node_load(net, get_val(b)) == 0) {
     return false;
   }
 
   // Loads ports.
-  u32  av = get_val(a);
+  u32  av = get_u24(get_val(a));
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
@@ -920,7 +921,7 @@ static inline bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
     link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
   } else {
     node_create(net, tm->nloc[0], new_pair(new_port(ERA,0), new_port(CON, tm->nloc[1])));
-    node_create(net, tm->nloc[1], new_pair(new_port(NUM, av-1), B2));
+    node_create(net, tm->nloc[1], new_pair(new_port(NUM, new_u24(av-1)), B2));
     link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
   }
 

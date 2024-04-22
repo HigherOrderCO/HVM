@@ -142,12 +142,12 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
         code.push_str(&format!("{}tm->itrs += 3;\n", indent(tab+2)));
         code.push_str(&format!("{}vars_take(net, v{});\n", indent(tab+2), a2.get_val()));
         code.push_str(&format!("{}{} = 1;\n", indent(tab+2), &op));
-        code.push_str(&format!("{}if (get_val({}) == 0) {{\n", indent(tab+2), &nu));
+        code.push_str(&format!("{}if (get_u24(get_val({})) == 0) {{\n", indent(tab+2), &nu));
         code.push_str(&format!("{}node_take(net, get_val({}));\n", indent(tab+3), b));
         code.push_str(&format!("{}{} = get_snd({});\n", indent(tab+3), &x1, &bv));
         code.push_str(&format!("{}{} = new_port(ERA,0);\n", indent(tab+3), &x2));
         code.push_str(&format!("{}}} else {{\n", indent(tab+2)));
-        code.push_str(&format!("{}node_store(net, get_val({}), new_pair(new_port(NUM,get_val({})-1), get_snd({})));\n", indent(tab+3), b, &nu, &bv));
+        code.push_str(&format!("{}node_store(net, get_val({}), new_pair(new_port(NUM,new_u24(get_u24(get_val({}))-1)), get_snd({})));\n", indent(tab+3), b, &nu, &bv));
         code.push_str(&format!("{}{} = new_port(ERA,0);\n", indent(tab+3), &x1));
         code.push_str(&format!("{}{} = {};\n", indent(tab+3), &x2, b));
         code.push_str(&format!("{}}}\n", indent(tab+2)));
@@ -185,7 +185,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     code.push_str(&format!("{}if (get_tag({}) == NUM && get_tag({}) == NUM) {{\n", indent(tab), b, &x1));
     code.push_str(&format!("{}tm->itrs += 2;\n", indent(tab+1)));
     code.push_str(&format!("{}{} = 1;\n", indent(tab+1), &op));
-    code.push_str(&format!("{}{} = new_port(NUM, operate((get_val({})&0xFFFFFFF) + (get_val({})&0xFFFFFFF)));\n", indent(tab+1), &x2, b, &x1));
+    code.push_str(&format!("{}{} = new_port(NUM, operate(get_val({}) + get_val({})));\n", indent(tab+1), &x2, b, &x1));
     code.push_str(&format!("{}}}\n", indent(tab)));
     compile_link_fast(trg, code, book, neo, tab, def, a2, &x2);
     code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &op));
