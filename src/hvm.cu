@@ -633,7 +633,7 @@ __device__ __host__ inline Pair* node_ref(Net* net, u32 loc) {
 
 // Gets the target of a given port.
 __device__ __host__ inline Port* vars_ref(Net* net, u32 var) {
-  if (get_page(var) == net->g_page_idx) {
+  if (var > 0 && get_page(var) == net->g_page_idx) {
     return &net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx];
   } else {
     return &net->g_vars_buf[var];
@@ -702,6 +702,8 @@ __global__ void gnet_init(GNet* gnet) {
   if (gid < G_PAGE_MAX) {
     gnet->free_buf[gid] = gid;
   }
+  // Creates root variable.
+  gnet->vars_buf[0] = NONE;
 }
 
 // Allocator
@@ -1139,7 +1141,7 @@ __device__ bool interact(Net* net, TMem* tm) {
     //}
 
     // Used for root redex.
-    if (get_tag(a) == REF && b == NONE) {
+    if (get_tag(a) == REF && b == new_port(VAR, 0)) {
       rule = CALL;
     // Swaps ports if necessary.
     } else if (should_swap(a,b)) {
@@ -1541,7 +1543,7 @@ void hvm_cu(u32* book_buffer) {
   cudaMemset(&d_gnet, 0, sizeof(GNet));
 
   // Set the initial redex
-  Pair pair = new_pair(new_port(REF, 0), NONE);
+  Pair pair = new_pair(new_port(REF, 0), new_port(VAR, 0));
   cudaMemcpy(&d_gnet->rbag_buf[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
 
   // Shows some info about the evaluator

@@ -604,7 +604,7 @@ impl TMem {
     let mut rule = Port::get_rule(a, b);
 
     // Used for root redex.
-    if a.get_tag() == REF && b == NONE {
+    if a.get_tag() == REF && b == Port::new(VAR, 0) {
       rule = CALL;
     // Swaps ports if necessary.
     } else if Port::should_swap(a,b) {
@@ -854,7 +854,8 @@ pub fn run(book: &Book) {
 
   // Creates an initial redex that calls main
   let main_id = book.defs.iter().position(|def| def.name == "main").unwrap();
-  tm.rbag.push_redex(Pair::new(Port::new(REF, main_id as u32), NONE));
+  tm.rbag.push_redex(Pair::new(Port::new(REF, main_id as u32), Port::new(VAR, 0)));
+  net.vars_create(0, NONE);
 
   // Starts the timer
   let start = std::time::Instant::now();

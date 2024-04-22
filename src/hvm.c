@@ -355,6 +355,16 @@ static inline Port vars_take(Net* net, u32 var) {
   return vars_exchange(net, var, 0);
 }
 
+
+// Net
+// ---
+
+// Initializes a net.
+static inline void net_init(Net* net) {
+  // Initializes the root var.
+  vars_create(net, 0, NONE);
+}
+
 // Allocator
 // ---------
 
@@ -775,7 +785,7 @@ static inline bool interact(Net* net, TMem* tm, Book* book) {
     Rule rule = get_rule(a, b);
 
     // Used for root redex.
-    if (get_tag(a) == REF && b == NONE) {
+    if (get_tag(a) == REF && b == new_port(VAR, 0)) {
       rule = CALL;
     // Swaps ports if necessary.  
     } else if (should_swap(a,b)) {
@@ -875,8 +885,6 @@ void book_load(u32* buf, Book* book) {
     // Reads node_buf
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
-
-    printf("loaded %s %d %d %d\n", def->name, def->rbag_len, def->node_len, def->vars_len);
   }
 }
 
@@ -1083,6 +1091,7 @@ void hvm_c(u32* book_buffer) {
 
   // GMem
   Net *gnet = malloc(sizeof(Net));
+  net_init(gnet);
 
   // Alloc and init TPC TMem's
   TMem* tm[TPC];
@@ -1092,7 +1101,7 @@ void hvm_c(u32* book_buffer) {
   }
 
   // Creates an initial redex that calls main
-  push_redex(tm[0], new_pair(new_port(REF, 0), NONE));
+  push_redex(tm[0], new_pair(new_port(REF, 0), new_port(VAR, 0)));
 
   // Evaluates
   evaluator(gnet, tm[0], book);
