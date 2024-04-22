@@ -890,7 +890,7 @@ static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
     link_pair(net, tm, new_pair(B2, new_port(NUM, cw))); 
     tm->itrs += fp ? 0 : 1;
   } else {
-    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), set_flp(new_u24(av))), B2));
+    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(new_u24(av))), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 

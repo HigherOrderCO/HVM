@@ -246,6 +246,10 @@ impl Numb {
     return Numb(self.0 | 0x1000_0000);
   }
 
+  pub fn flp_flp(&self) -> Self {
+    Numb(self.0 ^ 0x1000_0000)
+  }
+
   // HVM2-32 operate function. It combines all numeric operations into a single, monolithic
   // operation on u28s. Numbers are represented as 4-bit type, plus a 24-bit value. There is a
   // special type of number called SYM, which just represents a standalone operator (add, sub,
@@ -726,7 +730,7 @@ impl TMem {
       self.link_pair(net, Pair::new(b2, Port::new(NUM, cv.0))); 
       self.itrs += if fl { 0 } else { 1 };
     } else {
-      net.node_create(self.nloc[0], Pair::new(Port::new(a.get_tag(), Numb(a.get_val()).set_flp().0), b2));
+      net.node_create(self.nloc[0], Pair::new(Port::new(a.get_tag(), Numb(a.get_val()).flp_flp().0), b2));
       self.link_pair(net, Pair::new(b1, Port::new(OPR, self.nloc[0] as u32)));
     }
 
