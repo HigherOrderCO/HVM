@@ -596,86 +596,81 @@ __device__ inline Tag get_word_tag(Word word) {
 
 // HVM2-32 operate function
 __device__ inline Word operate(Word a, Word b) {
-  // If A is a SYM, load the operation type into B
-  if (get_word_tag(a) == SYM) {
-    return (b & 0xFFFFFFF0) | (get_sel(a) & 0xF);
-  }
-  // Otherwise, get the operation from A and type from B
   Tag op = get_word_tag(a);
   Tag ty = get_word_tag(b);
-  // Perform the correct operation on the correct type
   switch (ty) {
     case U24: {
       u32 av = get_u24(a);
       u32 bv = get_u24(b);
       switch (op) {
-        case 0x0: return new_u24(av + bv);
-        case 0x1: return new_u24(av - bv);
-        case 0x2: return new_u24(av * bv);
-        case 0x3: return new_u24(av / bv);
-        case 0x4: return new_u24(av % bv);
-        case 0x5: return new_u24(av == bv);
-        case 0x6: return new_u24(av != bv);
-        case 0x7: return new_u24(av < bv);
-        case 0x8: return new_u24(av > bv);
-        case 0x9: return new_u24(av <= bv);
-        case 0xA: return new_u24(av >= bv);
-        case 0xB: return new_u24(av & bv);
-        case 0xC: return new_u24(av | bv);
-        case 0xD: return new_u24(av ^ bv);
-        case 0xE: return new_u24(av << bv);
-        case 0xF: return new_u24(av >> bv);
+        case 0x0: return Word((b & 0xFFFFFFF0) | ((a >> 4) & 0xF));
+        case 0x1: return new_u24(av + bv);
+        case 0x2: return new_u24(av - bv);
+        case 0x3: return new_u24(av * bv);
+        case 0x4: return new_u24(av / bv);
+        case 0x5: return new_u24(av % bv);
+        case 0x6: return new_u24(av == bv);
+        case 0x7: return new_u24(av != bv);
+        case 0x8: return new_u24(av < bv);
+        case 0x9: return new_u24(av > bv);
+        case 0xA: return new_u24(av & bv);
+        case 0xB: return new_u24(av | bv);
+        case 0xC: return new_u24(av ^ bv);
+        case 0xD: return new_u24(av << bv);
+        case 0xE: return new_u24(av >> bv);
+        case 0xF: return new_u24(0);
+        default: return 0;
       }
-      break;
     }
     case I24: {
       i32 av = get_i24(a);
       i32 bv = get_i24(b);
       switch (op) {
-        case 0x0: return new_i24(av + bv);
-        case 0x1: return new_i24(av - bv);
-        case 0x2: return new_i24(av * bv);
-        case 0x3: return new_i24(av / bv);
-        case 0x4: return new_i24(av % bv);
-        case 0x5: return new_i24(av == bv);
-        case 0x6: return new_i24(av != bv);
-        case 0x7: return new_i24(av < bv);
-        case 0x8: return new_i24(av > bv);
-        case 0x9: return new_i24(av <= bv);
-        case 0xA: return new_i24(av >= bv);
-        case 0xB: return new_i24(av & bv);
-        case 0xC: return new_i24(av | bv);
-        case 0xD: return new_i24(av ^ bv);
-        case 0xE: return new_i24(av << bv);
-        case 0xF: return new_i24(av >> bv);
+        case 0x0: return Word((b & 0xFFFFFFF0) | ((a >> 4) & 0xF));
+        case 0x1: return new_i24(av + bv);
+        case 0x2: return new_i24(av - bv);
+        case 0x3: return new_i24(av * bv);
+        case 0x4: return new_i24(av / bv);
+        case 0x5: return new_i24(av % bv);
+        case 0x6: return new_i24(av == bv);
+        case 0x7: return new_i24(av != bv);
+        case 0x8: return new_i24(av < bv);
+        case 0x9: return new_i24(av > bv);
+        case 0xA: return new_i24(av & bv);
+        case 0xB: return new_i24(av | bv);
+        case 0xC: return new_i24(av ^ bv);
+        case 0xD: return new_i24(av << bv);
+        case 0xE: return new_i24(av >> bv);
+        case 0xF: return new_i24(0);
+        default: return 0;
       }
-      break;
     }
     case F24: {
       float av = get_f24(a);
       float bv = get_f24(b);
       switch (op) {
-        case 0x0: return new_f24(av + bv);
-        case 0x1: return new_f24(av - bv);
-        case 0x2: return new_f24(av * bv);
-        case 0x3: return new_f24(av / bv);
-        case 0x4: return new_f24(fmodf(av, bv));
-        case 0x5: return new_u24(av == bv);
-        case 0x6: return new_u24(av != bv);
-        case 0x7: return new_u24(av < bv);
-        case 0x8: return new_u24(av > bv);
-        case 0x9: return new_u24(av <= bv);
-        case 0xA: return new_u24(av >= bv);
-        case 0xB: return new_f24(powf(av, bv));
-        case 0xC: return new_f24(logf(bv) / logf(av));
-        case 0xD: return new_f24(atan2f(av, bv));
-        case 0xE: return new_u24(ceilf(av) + floorf(bv));
-        case 0xF: return new_u24(0);
+        case 0x0: return Word((b & 0xFFFFFFF0) | ((a >> 4) & 0xF));
+        case 0x1: return new_f24(av + bv);
+        case 0x2: return new_f24(av - bv);
+        case 0x3: return new_f24(av * bv);
+        case 0x4: return new_f24(av / bv);
+        case 0x5: return new_f24(fmodf(av, bv));
+        case 0x6: return new_u24(av == bv);
+        case 0x7: return new_u24(av != bv);
+        case 0x8: return new_u24(av < bv);
+        case 0x9: return new_u24(av > bv);
+        case 0xA: return new_u24(av <= bv);
+        case 0xB: return new_u24(av >= bv);
+        case 0xC: return new_f24(powf(av, bv));
+        case 0xD: return new_f24(logf(bv) / logf(av));
+        case 0xE: return new_f24(atan2f(av, bv));
+        case 0xF: return new_u24(floorf(av) + ceilf(bv));
+        default: return 0;
       }
-      break;
     }
+    default:
+      return 0;
   }
-  return 0;
 }
 
 // RBag

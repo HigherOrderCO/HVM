@@ -45,7 +45,6 @@ pub const OPER : Rule = 0x6;
 pub const SWIT : Rule = 0x7;
 
 // Words
-pub const SYM : Tag = 0x0;
 pub const U24 : Tag = 0x1;
 pub const I24 : Tag = 0x2;
 pub const F24 : Tag = 0x3;
@@ -176,16 +175,6 @@ impl Pair {
 
 impl Word {
 
-  // SYM: operation selector
-  
-  pub fn new_sel(val: u32) -> Self {
-    Word((val << 4) as Val | (SYM as Val))
-  }
-
-  pub fn get_sel(&self) -> u32 {
-    (self.0 >> 4) as u32
-  }
-
   // U24: unsigned 24-bit integer
   
   pub fn new_u24(val: u32) -> Self {
@@ -244,36 +233,29 @@ impl Word {
   // operation type from the second, and execute one of the 16 possible operations on each type.
   pub fn operate(a: Self, b: Self) -> Self {
     //println!("oper {:07x} {:07x} | {} {}", a.0, b.0, a.get_tag(), b.get_tag());
-    // If A is a SYM, load the operation type into B
-    if a.get_tag() == SYM {
-      //println!("set! {:07x}", (b.0 & 0xFFFFFFF0) | (a.get_sel() as Val));
-      return Word((b.0 & 0xFFFFFFF0) | ((a.get_sel() as Val) & 0xF));
-    }
-    // Otherwise, get the operation from A and type from B 
     let op = a.get_tag();
     let ty = b.get_tag();
-    // Perform the correct operation on the correct type
     match ty {
       U24 => {
         let av = a.get_u24();
         let bv = b.get_u24();
         match op {
-          0x0 => Word::new_u24(av.wrapping_add(bv)),
-          0x1 => Word::new_u24(av.wrapping_sub(bv)),
-          0x2 => Word::new_u24(av.wrapping_mul(bv)),
-          0x3 => Word::new_u24(av.wrapping_div(bv)),
-          0x4 => Word::new_u24(av.wrapping_rem(bv)),
-          0x5 => Word::new_u24((av == bv) as u32),
-          0x6 => Word::new_u24((av != bv) as u32),
-          0x7 => Word::new_u24((av <  bv) as u32),
-          0x8 => Word::new_u24((av >  bv) as u32),
-          0x9 => Word::new_u24((av <= bv) as u32),
-          0xA => Word::new_u24((av >= bv) as u32),
-          0xB => Word::new_u24(av & bv),
-          0xC => Word::new_u24(av | bv),
-          0xD => Word::new_u24(av ^ bv),
-          0xE => Word::new_u24(av << bv),
-          0xF => Word::new_u24(av >> bv),
+          0x0 => Word(b.0 & 0xFFFFFFF0 | (a.0 >> 4) & 0xF),
+          0x1 => Word::new_u24(av.wrapping_add(bv)),
+          0x2 => Word::new_u24(av.wrapping_sub(bv)),
+          0x3 => Word::new_u24(av.wrapping_mul(bv)),
+          0x4 => Word::new_u24(av.wrapping_div(bv)),
+          0x5 => Word::new_u24(av.wrapping_rem(bv)),
+          0x6 => Word::new_u24((av == bv) as u32),
+          0x7 => Word::new_u24((av != bv) as u32),
+          0x8 => Word::new_u24((av <  bv) as u32),
+          0x9 => Word::new_u24((av >  bv) as u32),
+          0xA => Word::new_u24(av & bv),
+          0xB => Word::new_u24(av | bv),
+          0xC => Word::new_u24(av ^ bv),
+          0xD => Word::new_u24(av << bv),
+          0xE => Word::new_u24(av >> bv),
+          0xF => Word::new_u24(0),
           _   => unreachable!(),
         }
       }
@@ -281,22 +263,22 @@ impl Word {
         let av = a.get_i24();
         let bv = b.get_i24();
         match op {
-          0x0 => Word::new_i24(av.wrapping_add(bv)),
-          0x1 => Word::new_i24(av.wrapping_sub(bv)),
-          0x2 => Word::new_i24(av.wrapping_mul(bv)),
-          0x3 => Word::new_i24(av.wrapping_div(bv)),
-          0x4 => Word::new_i24(av.wrapping_rem(bv)),
-          0x5 => Word::new_i24((av == bv) as i32),
-          0x6 => Word::new_i24((av != bv) as i32),
-          0x7 => Word::new_i24((av <  bv) as i32),
-          0x8 => Word::new_i24((av >  bv) as i32),
-          0x9 => Word::new_i24((av <= bv) as i32),
-          0xA => Word::new_i24((av >= bv) as i32),
-          0xB => Word::new_i24(av & bv),
-          0xC => Word::new_i24(av | bv),
-          0xD => Word::new_i24(av ^ bv),
-          0xE => Word::new_i24(av << bv),
-          0xF => Word::new_i24(av >> bv),
+          0x0 => Word(b.0 & 0xFFFFFFF0 | (a.0 >> 4) & 0xF),
+          0x1 => Word::new_i24(av.wrapping_add(bv)),
+          0x2 => Word::new_i24(av.wrapping_sub(bv)),
+          0x3 => Word::new_i24(av.wrapping_mul(bv)),
+          0x4 => Word::new_i24(av.wrapping_div(bv)),
+          0x5 => Word::new_i24(av.wrapping_rem(bv)),
+          0x6 => Word::new_i24((av == bv) as i32),
+          0x7 => Word::new_i24((av != bv) as i32),
+          0x8 => Word::new_i24((av <  bv) as i32),
+          0x9 => Word::new_i24((av >  bv) as i32),
+          0xA => Word::new_i24(av & bv),
+          0xB => Word::new_i24(av | bv),
+          0xC => Word::new_i24(av ^ bv),
+          0xD => Word::new_i24(av << bv),
+          0xE => Word::new_i24(av >> bv),
+          0xF => Word::new_i24(0),
           _   => unreachable!(),
         }
       }
@@ -304,29 +286,28 @@ impl Word {
         let av = a.get_f24();
         let bv = b.get_f24();
         match op {
-          0x0 => Word::new_f24(av + bv),
-          0x1 => Word::new_f24(av - bv),
-          0x2 => Word::new_f24(av * bv),
-          0x3 => Word::new_f24(av / bv),
-          0x4 => Word::new_f24(av % bv),
-          0x5 => Word::new_u24((av == bv) as u32),
-          0x6 => Word::new_u24((av != bv) as u32),
-          0x7 => Word::new_u24((av <  bv) as u32),
-          0x8 => Word::new_u24((av >  bv) as u32),
-          0x9 => Word::new_u24((av <= bv) as u32),
-          0xA => Word::new_u24((av >= bv) as u32),
-          0xB => Word::new_f24(av.powf(bv)),
-          0xC => Word::new_f24(bv.log(av)), 
-          0xD => Word::new_f24(av.atan2(bv)),
-          0xE => Word::new_u24(av.ceil() as u32 + bv.floor() as u32),
-          0xF => Word::new_u24(0),
+          0x0 => Word(b.0 & 0xFFFFFFF0 | (a.0 >> 4) & 0xF),
+          0x1 => Word::new_f24(av + bv),
+          0x2 => Word::new_f24(av - bv),
+          0x3 => Word::new_f24(av * bv),
+          0x4 => Word::new_f24(av / bv),
+          0x5 => Word::new_f24(av % bv),
+          0x6 => Word::new_u24((av == bv) as u32),
+          0x7 => Word::new_u24((av != bv) as u32),
+          0x8 => Word::new_u24((av <  bv) as u32),
+          0x9 => Word::new_u24((av >  bv) as u32),
+          0xA => Word::new_u24((av <= bv) as u32),
+          0xB => Word::new_u24((av >= bv) as u32),
+          0xC => Word::new_f24(av.powf(bv)),
+          0xD => Word::new_f24(bv.log(av)), 
+          0xE => Word::new_f24(av.atan2(bv)),
+          0xF => Word::new_u24(av.floor() as u32 + bv.ceil() as u32),
           _   => unreachable!(),
         }
       }
-      _ => panic!("Operation not implemented: {:08x} {:08x}", a.0, b.0),
+      _ => Word::new_u24(0),
     }
   }
-
 }
 
 impl RBag {
