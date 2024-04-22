@@ -55,21 +55,22 @@ impl<'i> CoreParser<'i> {
         self.consume("}")?;
         Ok(Tree::Dup { fst, snd })
       }
-      Some('<') => {
+      Some('$') => {
         self.advance_one();
+        self.consume("(")?;
         let fst = Box::new(self.parse_tree()?);
         self.skip_trivia();
         let snd = Box::new(self.parse_tree()?);
-        self.consume(">")?;
+        self.consume(")")?;
         Ok(Tree::Opr { fst, snd })
       }
       Some('?') => {
         self.advance_one();
-        self.consume("<")?;
+        self.consume("(")?;
         let fst = Box::new(self.parse_tree()?);
         self.skip_trivia();
         let snd = Box::new(self.parse_tree()?);
-        self.consume(">")?;
+        self.consume(")")?;
         Ok(Tree::Swi { fst, snd })
       }
       Some('@') => {
@@ -142,8 +143,8 @@ impl Tree {
       Tree::Num { val } => format!("#{}", val),
       Tree::Con { fst, snd } => format!("({} {})", fst.show(), snd.show()),
       Tree::Dup { fst, snd } => format!("{{{} {}}}", fst.show(), snd.show()),
-      Tree::Opr { fst, snd } => format!("<{} {}>", fst.show(), snd.show()),
-      Tree::Swi { fst, snd } => format!("?<{} {}>", fst.show(), snd.show()),
+      Tree::Opr { fst, snd } => format!("$({} {})", fst.show(), snd.show()),
+      Tree::Swi { fst, snd } => format!("?({} {})", fst.show(), snd.show()),
     }
   }
 }
