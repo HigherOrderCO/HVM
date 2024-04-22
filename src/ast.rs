@@ -140,7 +140,7 @@ impl Tree {
       Tree::Var { nam } => nam.to_string(),
       Tree::Ref { nam } => format!("@{}", nam),
       Tree::Era => "*".to_string(),
-      Tree::Num { val } => format!("#{}", val),
+      Tree::Num { val } => format!("#0x{:07x}", val),
       Tree::Con { fst, snd } => format!("({} {})", fst.show(), snd.show()),
       Tree::Dup { fst, snd } => format!("{{{} {}}}", fst.show(), snd.show()),
       Tree::Opr { fst, snd } => format!("$({} {})", fst.show(), snd.show()),
