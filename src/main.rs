@@ -53,6 +53,8 @@ fn main() {
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
 
+      println!("{:?}", data);
+
       unsafe {
         hvm_c(data.as_mut_ptr() as *mut u32);
       }

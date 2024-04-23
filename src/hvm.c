@@ -19,7 +19,6 @@ typedef  int32_t i32;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
-
 typedef _Atomic(u8) a8;
 typedef _Atomic(u16) a16;
 typedef _Atomic(u32) a32; 
@@ -82,6 +81,18 @@ const Tag SYM = 0x0;
 const Tag U24 = 0x1;
 const Tag I24 = 0x2;
 const Tag F24 = 0x3;
+const Tag ADD = 0x4;
+const Tag SUB = 0x5;
+const Tag MUL = 0x6;
+const Tag DIV = 0x7;
+const Tag REM = 0x8;
+const Tag EQ  = 0x9;
+const Tag NEQ = 0xA;
+const Tag LT  = 0xB;
+const Tag GT  = 0xC;
+const Tag AND = 0xD;
+const Tag OR  = 0xE;
+const Tag XOR = 0xF;
 
 // Thread Redex Bag Length  
 const u32 RLEN = 1 << 22; // max 4m redexes
@@ -331,86 +342,103 @@ static inline bool get_flp(Numb word) {
   return ((word >> 28) & 1) == 1;
 }
 
-// Sets the flip flag
 static inline Numb set_flp(Numb word) {
   return word | 0x10000000;
 }
 
-// HVM2-32 operate function
+static inline Numb flp_flp(Numb word) {
+  return word ^ 0x10000000;
+}
+
+// Partial application
+static inline Numb partial(Numb a, Numb b) {
+  return b & 0xFFFFFFF0 | get_sym(a);
+}
+
+// Operate function
 static inline Numb operate(Numb a, Numb b) {
-  Tag op = get_typ(a);
-  Tag ty = get_typ(b);
+  if (get_flp(a) ^ get_flp(b)) {
+    Numb t = a; a = b; b = t;
+  }
+  Tag at = get_typ(a);
+  Tag bt = get_typ(b);
+  if (at == SYM && bt == SYM) {
+    return new_u24(0);
+  }
+  if (at == SYM && bt != SYM) {
+    return partial(a, b);
+  }
+  if (at != SYM && bt == SYM) {
+    return partial(b, a);
+  }
+  if (at >= ADD && bt >= ADD) {
+    return new_u24(0);
+  }
+  if (at < ADD && bt < ADD) {
+    return new_u24(0);
+  }
+  Tag op = (at >= ADD) ? at : bt;
+  Tag ty = (at >= ADD) ? bt : at;
   switch (ty) {
     case U24: {
       u32 av = get_u24(a);
       u32 bv = get_u24(b);
       switch (op) {
-        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
-        case 0x1: return new_u24(av + bv);
-        case 0x2: return new_u24(av - bv);
-        case 0x3: return new_u24(av * bv);
-        case 0x4: return new_u24(av / bv);
-        case 0x5: return new_u24(av % bv);
-        case 0x6: return new_u24((av == bv) ? 1 : 0);
-        case 0x7: return new_u24((av != bv) ? 1 : 0);
-        case 0x8: return new_u24((av <  bv) ? 1 : 0);
-        case 0x9: return new_u24((av >  bv) ? 1 : 0);
-        case 0xA: return new_u24(av & bv);
-        case 0xB: return new_u24(av | bv);
-        case 0xC: return new_u24(av ^ bv);
-        case 0xD: return new_u24(av << bv);
-        case 0xE: return new_u24(av >> bv);
-        case 0xF: return new_u24(0);
-        default : return 0;
+        case ADD: return new_u24(av + bv);
+        case SUB: return new_u24(av - bv);
+        case MUL: return new_u24(av * bv);
+        case DIV: return new_u24(av / bv);
+        case REM: return new_u24(av % bv);
+        case EQ:  return new_u24(av == bv);
+        case NEQ: return new_u24(av != bv);
+        case LT:  return new_u24(av < bv);
+        case GT:  return new_u24(av > bv);
+        case AND: return new_u24(av & bv);
+        case OR:  return new_u24(av | bv);
+        case XOR: return new_u24(av ^ bv);
+        default:  return new_u24(0);
       }
     }
     case I24: {
       i32 av = get_i24(a);
       i32 bv = get_i24(b);
       switch (op) {
-        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
-        case 0x1: return new_i24(av + bv);
-        case 0x2: return new_i24(av - bv);
-        case 0x3: return new_i24(av * bv);
-        case 0x4: return new_i24(av / bv);
-        case 0x5: return new_i24(av % bv);
-        case 0x6: return new_i24((av == bv) ? 1 : 0);
-        case 0x7: return new_i24((av != bv) ? 1 : 0);
-        case 0x8: return new_i24((av <  bv) ? 1 : 0);
-        case 0x9: return new_i24((av >  bv) ? 1 : 0);
-        case 0xA: return new_i24(av & bv);
-        case 0xB: return new_i24(av | bv);
-        case 0xC: return new_i24(av ^ bv);
-        case 0xD: return new_i24(av << bv);
-        case 0xE: return new_i24(av >> bv);
-        case 0xF: return new_i24(0);
-        default : return 0;
+        case ADD: return new_i24(av + bv);
+        case SUB: return new_i24(av - bv);
+        case MUL: return new_i24(av * bv);
+        case DIV: return new_i24(av / bv);
+        case REM: return new_i24(av % bv);
+        case EQ:  return new_i24(av == bv);
+        case NEQ: return new_i24(av != bv);
+        case LT:  return new_i24(av < bv);
+        case GT:  return new_i24(av > bv);
+        case AND: return new_i24(av & bv);
+        case OR:  return new_i24(av | bv);
+        case XOR: return new_i24(av ^ bv);
+        default:  return new_i24(0);
       }
     }
     case F24: {
       float av = get_f24(a);
       float bv = get_f24(b);
       switch (op) {
-        case 0x0: return b & 0xFFFFFFF0 | get_sym(a);
-        case 0x1: return new_f24(av + bv);
-        case 0x2: return new_f24(av - bv);
-        case 0x3: return new_f24(av * bv);
-        case 0x4: return new_f24(av / bv);
-        case 0x5: return new_f24(fmodf(av, bv));
-        case 0x6: return new_u24((av == bv) ? 1 : 0);
-        case 0x7: return new_u24((av != bv) ? 1 : 0);
-        case 0x8: return new_u24((av <  bv) ? 1 : 0);
-        case 0x9: return new_u24((av >  bv) ? 1 : 0);
-        case 0xA: return new_f24(atan2f(av, bv));
-        case 0xB: return new_u24((u32)floorf(av) + (u32)ceilf(bv));
-        case 0xC: return new_f24(powf(av, bv));
-        case 0xD: return new_f24(logf(bv) / logf(av));
-        default : return 0;
+        case ADD: return new_f24(av + bv);
+        case SUB: return new_f24(av - bv);
+        case MUL: return new_f24(av * bv);
+        case DIV: return new_f24(av / bv);
+        case REM: return new_f24(fmodf(av, bv));
+        case EQ:  return new_u24(av == bv);
+        case NEQ: return new_u24(av != bv);
+        case LT:  return new_u24(av < bv);
+        case GT:  return new_u24(av > bv);
+        case AND: return new_f24(atan2f(av, bv));
+        case OR:  return new_f24(logf(bv) / logf(av));
+        case XOR: return new_f24(powf(av, bv));
+        default:  return new_f24(0);
       }
     }
     default: return new_u24(0);
   }
-  return 0;
 }
 
 // RBag
@@ -883,12 +911,8 @@ static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
   // Performs operation.
   if (get_tag(B1) == NUM) {
     Val  bv = get_val(B1);
-    Numb aw = new_u24(av);
-    Numb bw = new_u24(bv);
-    bool fp = get_flp(bw);
-    Numb cw = fp ? operate(bw,aw) : operate(aw,bw);
-    link_pair(net, tm, new_pair(B2, new_port(NUM, cw))); 
-    tm->itrs += fp ? 0 : 1;
+    Numb cv = operate(av, bv);
+    link_pair(net, tm, new_pair(B2, new_port(NUM, cv))); 
   } else {
     node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(new_u24(av))), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));

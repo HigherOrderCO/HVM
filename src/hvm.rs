@@ -49,6 +49,18 @@ pub const SYM : Tag = 0x0;
 pub const U24 : Tag = 0x1;
 pub const I24 : Tag = 0x2;
 pub const F24 : Tag = 0x3;
+pub const ADD : Tag = 0x4;
+pub const SUB : Tag = 0x5;
+pub const MUL : Tag = 0x6;
+pub const DIV : Tag = 0x7;
+pub const REM : Tag = 0x8;
+pub const EQ  : Tag = 0x9;
+pub const NEQ : Tag = 0xA;
+pub const LT  : Tag = 0xB;
+pub const GT  : Tag = 0xC;
+pub const AND : Tag = 0xD;
+pub const OR  : Tag = 0xE;
+pub const XOR : Tag = 0xF;
 
 // None
 pub const NONE : Port = Port(0xFFFFFFF9);
@@ -250,37 +262,52 @@ impl Numb {
     Numb(self.0 ^ 0x1000_0000)
   }
 
-  // HVM2-32 operate function. It combines all numeric operations into a single, monolithic
-  // operation on u28s. Numbers are represented as 4-bit type, plus a 24-bit value. There is a
-  // special type of number called SYM, which just represents a standalone operator (add, sub,
-  // etc.). If the first operand is a SYM, it will overwrite the 4-bit type of the second operand
-  // by the operation type. Otherwise, we'll get the operation type from the first operand, and the
-  // operation type from the second, and execute one of the 16 possible operations on each type.
-  pub fn operate(a: Self, b: Self) -> Self {
-    //println!("oper {:07x} {:07x} | {} {}", a.0, b.0, a.get_typ(), b.get_typ());
-    let op = a.get_typ();
-    let ty = b.get_typ();
+  // Partial application.
+  pub fn partial(a: Self, b: Self) -> Self {
+    return Numb(b.0 & 0xFFFFFFF0 | a.get_sym());
+  }
+
+  pub fn operate(mut a: Self, mut b: Self) -> Self {
+    //println!("operate {} {}", crate::ast::Numb(a.0).show(), crate::ast::Numb(b.0).show());
+    if a.get_flp() ^ b.get_flp() {
+      (a,b) = (b,a);
+    }
+    let at = a.get_typ();
+    let bt = b.get_typ();
+    if at == SYM && bt == SYM {
+      return Numb::new_u24(0);
+    }
+    if at == SYM && bt != SYM {
+      return Numb::partial(a, b);
+    }
+    if at != SYM && bt == SYM {
+      return Numb::partial(b, a);
+    }
+    if at >= ADD && bt >= ADD {
+      return Numb::new_u24(0);
+    }
+    if at < ADD && bt < ADD {
+      return Numb::new_u24(0);
+    }
+    let op = if at >= ADD { at } else { bt };
+    let ty = if at >= ADD { bt } else { at };
     match ty {
       U24 => {
         let av = a.get_u24();
         let bv = b.get_u24();
         match op {
-          0x0 => Numb(b.0 & 0xFFFFFFF0 | a.get_sym()),
-          0x1 => Numb::new_u24(av.wrapping_add(bv)),
-          0x2 => Numb::new_u24(av.wrapping_sub(bv)),
-          0x3 => Numb::new_u24(av.wrapping_mul(bv)),
-          0x4 => Numb::new_u24(av.wrapping_div(bv)),
-          0x5 => Numb::new_u24(av.wrapping_rem(bv)),
-          0x6 => Numb::new_u24((av == bv) as u32),
-          0x7 => Numb::new_u24((av != bv) as u32),
-          0x8 => Numb::new_u24((av <  bv) as u32),
-          0x9 => Numb::new_u24((av >  bv) as u32),
-          0xA => Numb::new_u24(av & bv),
-          0xB => Numb::new_u24(av | bv),
-          0xC => Numb::new_u24(av ^ bv),
-          0xD => Numb::new_u24(av << bv),
-          0xE => Numb::new_u24(av >> bv),
-          0xF => Numb::new_u24(0),
+          ADD => Numb::new_u24(av.wrapping_add(bv)),
+          SUB => Numb::new_u24(av.wrapping_sub(bv)),
+          MUL => Numb::new_u24(av.wrapping_mul(bv)),
+          DIV => Numb::new_u24(av.wrapping_div(bv)),
+          REM => Numb::new_u24(av.wrapping_rem(bv)),
+          EQ  => Numb::new_u24((av == bv) as u32),
+          NEQ => Numb::new_u24((av != bv) as u32),
+          LT  => Numb::new_u24((av <  bv) as u32),
+          GT  => Numb::new_u24((av >  bv) as u32),
+          AND => Numb::new_u24(av & bv),
+          OR  => Numb::new_u24(av | bv),
+          XOR => Numb::new_u24(av ^ bv),
           _   => unreachable!(),
         }
       }
@@ -288,22 +315,18 @@ impl Numb {
         let av = a.get_i24();
         let bv = b.get_i24();
         match op {
-          0x0 => Numb(b.0 & 0xFFFFFFF0 | a.get_sym()),
-          0x1 => Numb::new_i24(av.wrapping_add(bv)),
-          0x2 => Numb::new_i24(av.wrapping_sub(bv)),
-          0x3 => Numb::new_i24(av.wrapping_mul(bv)),
-          0x4 => Numb::new_i24(av.wrapping_div(bv)),
-          0x5 => Numb::new_i24(av.wrapping_rem(bv)),
-          0x6 => Numb::new_i24((av == bv) as i32),
-          0x7 => Numb::new_i24((av != bv) as i32),
-          0x8 => Numb::new_i24((av <  bv) as i32),
-          0x9 => Numb::new_i24((av >  bv) as i32),
-          0xA => Numb::new_i24(av & bv),
-          0xB => Numb::new_i24(av | bv),
-          0xC => Numb::new_i24(av ^ bv),
-          0xD => Numb::new_i24(av << bv),
-          0xE => Numb::new_i24(av >> bv),
-          0xF => Numb::new_i24(0),
+          ADD => Numb::new_i24(av.wrapping_add(bv)),
+          SUB => Numb::new_i24(av.wrapping_sub(bv)),
+          MUL => Numb::new_i24(av.wrapping_mul(bv)),
+          DIV => Numb::new_i24(av.wrapping_div(bv)),
+          REM => Numb::new_i24(av.wrapping_rem(bv)),
+          EQ  => Numb::new_i24((av == bv) as i32),
+          NEQ => Numb::new_i24((av != bv) as i32),
+          LT  => Numb::new_i24((av <  bv) as i32),
+          GT  => Numb::new_i24((av >  bv) as i32),
+          AND => Numb::new_i24(av & bv),
+          OR  => Numb::new_i24(av | bv),
+          XOR => Numb::new_i24(av ^ bv),
           _   => unreachable!(),
         }
       }
@@ -311,22 +334,18 @@ impl Numb {
         let av = a.get_f24();
         let bv = b.get_f24();
         match op {
-          0x0 => Numb(b.0 & 0xFFFFFFF0 | a.get_sym()),
-          0x1 => Numb::new_f24(av + bv),
-          0x2 => Numb::new_f24(av - bv),
-          0x3 => Numb::new_f24(av * bv),
-          0x4 => Numb::new_f24(av / bv),
-          0x5 => Numb::new_f24(av % bv),
-          0x6 => Numb::new_u24((av == bv) as u32),
-          0x7 => Numb::new_u24((av != bv) as u32),
-          0x8 => Numb::new_u24((av <  bv) as u32),
-          0x9 => Numb::new_u24((av >  bv) as u32),
-          0xA => Numb::new_f24(av.atan2(bv)),
-          0xB => Numb::new_u24(av.floor() as u32 + bv.ceil() as u32),
-          0xC => Numb::new_f24(av.powf(bv)),
-          0xD => Numb::new_f24(bv.log(av)), 
-          0xE => Numb::new_u24(0),
-          0xF => Numb::new_u24(0),
+          ADD => Numb::new_f24(av + bv),
+          SUB => Numb::new_f24(av - bv),
+          MUL => Numb::new_f24(av * bv),
+          DIV => Numb::new_f24(av / bv),
+          REM => Numb::new_f24(av % bv),
+          EQ  => Numb::new_u24((av == bv) as u32),
+          NEQ => Numb::new_u24((av != bv) as u32),
+          LT  => Numb::new_u24((av <  bv) as u32),
+          GT  => Numb::new_u24((av >  bv) as u32),
+          AND => Numb::new_f24(av.atan2(bv)),
+          OR  => Numb::new_f24(bv.log(av)), 
+          XOR => Numb::new_f24(av.powf(bv)),
           _   => unreachable!(),
         }
       }
@@ -723,12 +742,8 @@ impl TMem {
     // Performs operation.
     if b1.get_tag() == NUM {
       let bv = b1.get_val();
-      let av = Numb(av);
-      let bv = Numb(bv);
-      let fl = bv.get_flp();
-      let cv = if fl { Numb::operate(bv,av) } else { Numb::operate(av,bv) };
+      let cv = Numb::operate(Numb(av), Numb(bv));
       self.link_pair(net, Pair::new(b2, Port::new(NUM, cv.0))); 
-      self.itrs += if fl { 0 } else { 1 };
     } else {
       net.node_create(self.nloc[0], Pair::new(Port::new(a.get_tag(), Numb(a.get_val()).flp_flp().0), b2));
       self.link_pair(net, Pair::new(b1, Port::new(OPR, self.nloc[0] as u32)));
