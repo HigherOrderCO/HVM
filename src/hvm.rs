@@ -448,6 +448,22 @@ impl<'a> GNet<'a> {
     self.vars_load(var).0 == 0
   }
 
+  pub fn enter(&self, mut var: Port) -> Port {
+    // While `B` is VAR: extend it (as an optimization)
+    while var.get_tag() == VAR {
+      // Takes the current `B` substitution as `B'`
+      let val = self.vars_exchange(var.get_val() as usize, NONE);
+      // If there was no `B'`, stop, as there is no extension
+      if val == NONE || val == Port(0) {
+        break;
+      }
+      // Otherwise, delete `B` (we own both) and continue as `A ~> B'`
+      self.vars_take(var.get_val() as usize);
+      var = val;
+    }
+    return var;
+  }
+
 }
 
 impl<'a> Drop for GNet<'a> {
@@ -459,6 +475,7 @@ impl<'a> Drop for GNet<'a> {
       dealloc(self.vars.as_mut_ptr() as *mut u8, vlay);
     }
   }
+
 }
 
 impl TMem {
@@ -515,22 +532,6 @@ impl TMem {
     got_node >= need_node && got_vars >= need_vars
   }
 
-  pub fn enter(&self, net: &GNet, mut var: Port) -> Port {
-    // While `B` is VAR: extend it (as an optimization)
-    while var.get_tag() == VAR {
-      // Takes the current `B` substitution as `B'`
-      let val = net.vars_exchange(var.get_val() as usize, NONE);
-      // If there was no `B'`, stop, as there is no extension
-      if val == NONE || val == Port(0) {
-        break;
-      }
-      // Otherwise, delete `B` (we own both) and continue as `A ~> B'`
-      net.vars_take(var.get_val() as usize);
-      var = val;
-    }
-    return var;
-  }
-
   // Atomically Links `A ~ B`.
   pub fn link(&mut self, net: &GNet, a: Port, b: Port) {
     //println!("link {} ~ {}", a.show(), b.show());
@@ -551,7 +552,7 @@ impl TMem {
       }
 
       // While `B` is VAR: extend it (as an optimization)
-      b = self.enter(net, b);
+      b = net.enter(b);
 
       // Since `A` is VAR: point `A ~> B`.  
       if true {

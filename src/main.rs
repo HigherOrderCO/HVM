@@ -136,7 +136,7 @@ pub fn run(book: &hvm::Book) {
   //println!("{}", net.show());
 
   // Prints the result
-  if let Some(tree) = crate::ast::Tree::readback(&net, tm.enter(&net, hvm::Port::new(hvm::VAR,0)), &mut std::collections::BTreeMap::new(), &mut std::collections::BTreeMap::new()) {
+  if let Some(tree) = ast::Net::readback(&net, book) {
     println!("Result: {}", tree.show());
   } else {
     println!("Readback failed. Printing GNet memdump...\n");

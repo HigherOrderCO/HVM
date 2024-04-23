@@ -338,10 +338,18 @@ impl Book {
 // --------
 
 impl Tree {
-  pub fn readback(net: &hvm::GNet, port: hvm::Port, fids: &BTreeMap<hvm::Val, String>, vars: &BTreeMap<hvm::Val, String>) -> Option<Tree> {
+  pub fn readback(net: &hvm::GNet, port: hvm::Port, fids: &BTreeMap<hvm::Val, String>, vars: &mut BTreeMap<hvm::Val, String>) -> Option<Tree> {
+    println!("reading {}", port.show());
     match port.get_tag() {
       hvm::VAR => {
-        return Some(Tree::Var { nam: vars.get(&port.get_val())?.clone() });
+        let got = net.enter(port);
+        if let Some(nam) = vars.get(&got.get_val()) {
+          return Some(Tree::Var { nam: nam.clone() });
+        } else {
+          let nam = format!("v{}", vars.len());
+          vars.insert(got.get_val(), nam.clone());
+          return Some(Tree::Var { nam });
+        }
       }
       hvm::REF => {
         return Some(Tree::Ref { nam: fids.get(&port.get_val())?.clone() });
@@ -384,13 +392,17 @@ impl Tree {
 }
 
 impl Net {
-  // TODO: implement RBag readback
-  // FIXME: should get root correctly
-  //pub fn readback(net: &hvm::GNet, fids: &BTreeMap<hvm::Val, String>, vars: &BTreeMap<hvm::Val, String>) -> Option<Net> {
-    //let root = Tree::readback(net, net.node_load(0).get_fst(), fids, vars)?;
-    //let rbag = Vec::new();
-    //return Some(Net { root, rbag });
-  //}
+  pub fn readback(net: &hvm::GNet, book: &hvm::Book) -> Option<Net> {
+    let mut fids = BTreeMap::new();
+    for (fid, def) in book.defs.iter().enumerate() {
+      fids.insert(fid as hvm::Val, def.name.clone());
+    }
+    let vars = &mut BTreeMap::new();
+    let root = net.enter(hvm::Port::new(hvm::VAR,0));
+    let root = Tree::readback(net, root, &fids, vars)?;
+    let rbag = Vec::new();
+    return Some(Net { root, rbag });
+  }
 }
 
 // Def Builder
