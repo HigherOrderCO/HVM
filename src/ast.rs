@@ -338,17 +338,15 @@ impl Book {
 // --------
 
 impl Tree {
-  pub fn readback(net: &hvm::GNet, port: hvm::Port, fids: &BTreeMap<hvm::Val, String>, vars: &mut BTreeMap<hvm::Val, String>) -> Option<Tree> {
-    println!("reading {}", port.show());
+  pub fn readback(net: &hvm::GNet, port: hvm::Port, fids: &BTreeMap<hvm::Val, String>) -> Option<Tree> {
+    //println!("reading {}", port.show());
     match port.get_tag() {
       hvm::VAR => {
         let got = net.enter(port);
-        if let Some(nam) = vars.get(&got.get_val()) {
-          return Some(Tree::Var { nam: nam.clone() });
+        if got != port {
+          return Tree::readback(net, got, fids);
         } else {
-          let nam = format!("v{}", vars.len());
-          vars.insert(got.get_val(), nam.clone());
-          return Some(Tree::Var { nam });
+          return Some(Tree::Var { nam: format!("v{:x}", port.get_val()) });
         }
       }
       hvm::REF => {
@@ -362,26 +360,26 @@ impl Tree {
       }
       hvm::CON => {
         let pair = net.node_load(port.get_val() as usize);
-        let fst = Tree::readback(net, pair.get_fst(), fids, vars)?;
-        let snd = Tree::readback(net, pair.get_snd(), fids, vars)?;
+        let fst = Tree::readback(net, pair.get_fst(), fids)?;
+        let snd = Tree::readback(net, pair.get_snd(), fids)?;
         return Some(Tree::Con { fst: Box::new(fst), snd: Box::new(snd) });
       }
       hvm::DUP => {
         let pair = net.node_load(port.get_val() as usize);
-        let fst = Tree::readback(net, pair.get_fst(), fids, vars)?;
-        let snd = Tree::readback(net, pair.get_snd(), fids, vars)?;
+        let fst = Tree::readback(net, pair.get_fst(), fids)?;
+        let snd = Tree::readback(net, pair.get_snd(), fids)?;
         return Some(Tree::Dup { fst: Box::new(fst), snd: Box::new(snd) });
       }
       hvm::OPR => {
         let pair = net.node_load(port.get_val() as usize);
-        let fst = Tree::readback(net, pair.get_fst(), fids, vars)?;
-        let snd = Tree::readback(net, pair.get_snd(), fids, vars)?;
+        let fst = Tree::readback(net, pair.get_fst(), fids)?;
+        let snd = Tree::readback(net, pair.get_snd(), fids)?;
         return Some(Tree::Opr { fst: Box::new(fst), snd: Box::new(snd) });
       }
       hvm::SWI => {
         let pair = net.node_load(port.get_val() as usize);
-        let fst = Tree::readback(net, pair.get_fst(), fids, vars)?;
-        let snd = Tree::readback(net, pair.get_snd(), fids, vars)?;
+        let fst = Tree::readback(net, pair.get_fst(), fids)?;
+        let snd = Tree::readback(net, pair.get_snd(), fids)?;
         return Some(Tree::Swi { fst: Box::new(fst), snd: Box::new(snd) }); 
       }
       _ => {
@@ -397,9 +395,8 @@ impl Net {
     for (fid, def) in book.defs.iter().enumerate() {
       fids.insert(fid as hvm::Val, def.name.clone());
     }
-    let vars = &mut BTreeMap::new();
     let root = net.enter(hvm::Port::new(hvm::VAR,0));
-    let root = Tree::readback(net, root, &fids, vars)?;
+    let root = Tree::readback(net, root, &fids)?;
     let rbag = Vec::new();
     return Some(Net { root, rbag });
   }
