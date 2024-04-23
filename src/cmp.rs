@@ -259,12 +259,19 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     return;
   }
 
+  // FIXME: since get_tag(NONE) == REF, comparing if something's tag is REF always has the issue of
+  // returning true when that thing is NONE. this caused a bug in the optimization below. in
+  // general, this is a potential source of bugs across the entire implementation, so we always
+  // need to check that case. an alternative, of course, would be to make get_tag handle this, but
+  // I'm concerned about the performance issues. so, instead, we should make sure that, across the
+  // entire codebase, we never use get_tag expecting a REF on something that might be NONE
+  
   // ATOM <~ *
   // --------- Fast VOID
   // nothing
-  if a.get_tag() == hvm::NUM || a.get_tag() == hvm::ERA || a.get_tag() == hvm::REF {
+  if a.get_tag() == hvm::NUM || a.get_tag() == hvm::ERA {
     code.push_str(&format!("{}// fast void\n", indent(tab)));
-    code.push_str(&format!("{}if (get_tag({}) == ERA || get_tag({}) == NUM || get_tag({}) == REF) {{\n", indent(tab), b, b, b));
+    code.push_str(&format!("{}if (get_tag({}) == ERA || get_tag({}) == NUM) {{\n", indent(tab), b, b));
     code.push_str(&format!("{}tm->itrs += 1;\n", indent(tab+1)));
     code.push_str(&format!("{}}} else {{\n", indent(tab)));
     compile_link_slow(trg, code, book, neo, tab+1, def, a, b);

@@ -6,3 +6,6 @@ src/tmp/
 target/
 tmp/
 .hvm/
+examples/**/main
+examples/**/*.c
+examples/**/*.cu
