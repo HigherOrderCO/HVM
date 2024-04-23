@@ -5,7 +5,7 @@ edition = "2021"
 build = "build.rs"
 
 [dependencies]
-TSPL = "0.0.10"
+TSPL = "0.0.11"
 clap = "4.5.2"
 
 [build-dependencies]

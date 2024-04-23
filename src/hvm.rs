@@ -12,6 +12,7 @@ pub type Val  = u32;
 pub type AVal = AtomicU32;
 pub type Rule = u8;
 
+
 // Port
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub struct Port(pub Val);
@@ -806,6 +807,8 @@ impl TMem {
       let x = a; a = b; b = x;
     }
 
+    //println!("REDUCE {} ~ {}", a.show(), b.show());
+
     let success = match rule {
       LINK => self.interact_link(net, a, b),
       CALL => self.interact_call(net, a, b, book),
@@ -1039,45 +1042,3 @@ impl Book {
     //};
   //}
 }
-
-pub fn run(book: &Book) {
-  // Initializes the global net
-  let net = GNet::new(1 << 29, 1 << 29);
-
-  // Initializes threads
-  let mut tm = TMem::new(0, 1);
-
-  // Creates an initial redex that calls main
-  let main_id = book.defs.iter().position(|def| def.name == "main").unwrap();
-  tm.rbag.push_redex(Pair::new(Port::new(REF, main_id as u32), Port::new(VAR, 0)));
-  net.vars_create(0, NONE);
-
-  // Starts the timer
-  let start = std::time::Instant::now();
-
-  // Evaluates
-  tm.evaluator(&net, &book);
-  
-  // Stops the timer
-  let duration = start.elapsed();
-
-  //println!("{}", net.show());
-
-  // Prints the result
-  if let Some(tree) = crate::ast::Tree::readback(&net, tm.enter(&net, Port::new(VAR,0)), &mut std::collections::BTreeMap::new(), &mut std::collections::BTreeMap::new()) {
-    println!("{}", tree.show());
-  } else {
-    println!("Readback failed. Printing GNet memdump...\n");
-    println!("{}", net.show());
-  }
-
-  // Prints interactions and time
-  let itrs = net.itrs.load(Ordering::Relaxed);
-  println!("itrs: {}", itrs);
-  println!("time: {:.2}s", duration.as_secs_f64());
-  println!("MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
-}
-
-//pub fn run_demo() {
-  //run(&Book::new_demo(10, 65536));
-//}

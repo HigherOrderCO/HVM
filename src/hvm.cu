@@ -1262,7 +1262,7 @@ __device__ bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
     Numb cv = operate(av, bv);
     link_pair(net, tm, new_pair(B2, new_port(NUM, cv))); 
   } else {
-    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(new_u24(av))), B2));
+    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(av)), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
@@ -1474,7 +1474,7 @@ void book_load(u32* buf, Book* book) {
   // Reads defs_len
   book->defs_len = *buf++;
 
-  printf("len %d\n", book->defs_len);
+  //printf("len %d\n", book->defs_len);
 
   // Parses each def
   for (u32 i = 0; i < book->defs_len; ++i) {
@@ -1506,8 +1506,6 @@ void book_load(u32* buf, Book* book) {
     // Reads node_buf
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
-
-    printf("loaded %s\n", def->name);
   }
 }
 
@@ -1629,14 +1627,20 @@ __device__ void pretty_print_port(Net* net, Port port) {
       case VAR: {
         printf("x%x", get_val(cur));
         Port got = vars_load(net, get_val(cur));
-        if (got != cur) {
+        if (got != NONE) {
           printf("=");
           stack[len++] = got;
         }
         break;
       }
       case NUM: {
-        printf("#%d", get_val(cur));
+        Numb word = get_val(cur);
+        switch (get_typ(word)) {
+          case SYM: printf("[%x]", get_sym(word)); break;
+          case U24: printf("%u", get_u24(word)); break;
+          case I24: printf("%d", get_i24(word)); break;
+          case F24: printf("%f", get_f24(word)); break;
+        }
         break;
       }
       case DUP: {
@@ -1706,7 +1710,30 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
 
 static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
+// Result Printer Kernel
+__global__ void print_result(GNet* gnet) {
+  // Create a view net
+  Net net;
+  net.g_node_buf = gnet->node_buf; 
+  net.g_vars_buf = gnet->vars_buf;
+  net.l_node_buf = gnet->node_buf; 
+  net.l_vars_buf = gnet->vars_buf;
+  net.g_node_len = G_NODE_LEN;
+  net.g_vars_len = G_VARS_LEN;
+  net.g_page_idx = 0;
+
+  // Print the result  
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    printf("Result: ");
+    pretty_print_port(&net, enter(&net, NULL, new_port(VAR, 0)));
+    printf("\n");
+  }
+}
+
 void hvm_cu(u32* book_buffer) {
+  // Start the timer
+  clock_t start = clock();
+  
   // Loads the Book
   if (book_buffer) {
     Book* book = (Book*)malloc(sizeof(Book));
@@ -1718,24 +1745,13 @@ void hvm_cu(u32* book_buffer) {
   // GMem
   GNet *d_gnet;
   cudaMalloc((void**)&d_gnet, sizeof(GNet));
-  cudaMemset(&d_gnet, 0, sizeof(GNet));
+  cudaMemset(d_gnet, 0, sizeof(GNet));
 
   // Set the initial redex
   Pair pair = new_pair(new_port(REF, 0), new_port(VAR, 0));
   cudaMemcpy(&d_gnet->rbag_buf[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
 
-  // Shows some info about the evaluator
-  cudaFuncAttributes attr;
-  cudaFuncGetAttributes(&attr, evaluator);
-  printf("Shared size: %d\n", (int)attr.sharedSizeBytes);
-  printf("Constant size: %d\n", (int)attr.constSizeBytes);
-  printf("Local size: %d\n", (int)attr.localSizeBytes);
-  printf("Max threads per block: %d\n", attr.maxThreadsPerBlock);
-  printf("Num regs: %d\n", attr.numRegs);
-  printf("PTX version: %d\n", attr.ptxVersion);
-  printf("Binary version: %d\n", attr.binaryVersion);
-
-  // Configures Shared Memory Sinze
+  // Configures Shared Memory Size
   cudaFuncSetAttribute(evaluator, cudaFuncAttributeMaxDynamicSharedMemorySize, sizeof(LNet));
 
   // Inits the GNet
@@ -1746,26 +1762,29 @@ void hvm_cu(u32* book_buffer) {
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, i);
   }
 
+  // Invokes the Result Printer Kernel
+  cudaDeviceSynchronize();
+  print_result<<<1,1>>>(d_gnet);
+
   // Reports errors
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
-    fprintf(stderr, "Failed to launch evaluator (error code %s)!\n", cudaGetErrorString(err));
+    fprintf(stderr, "Failed to launch kernels (error code %s)!\n", cudaGetErrorString(err));
     exit(EXIT_FAILURE);
   }
+
+  // Stops the timer
+  clock_t end = clock();
+  double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
 
   // Gets interaction count
   u64 itrs;
   cudaMemcpy(&itrs, &d_gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
-  printf("itrs: %llu\n", itrs);
 
-  // TODO: copy the page_len buffer from d_gnet and print it
-  u32 page_len[G_PAGE_MAX];
-  cudaMemcpy(page_len, d_gnet->page_len, sizeof(u32)*G_PAGE_MAX, cudaMemcpyDeviceToHost);
-  for (u32 i = 0; i < G_PAGE_MAX; ++i) {
-    if (page_len[i] > 0) {
-      //printf("page %04x: %d\n", i, page_len[i]);
-    }
-  }
+  // Prints interactions, time and MIPS
+  printf("- ITRS: %llu\n", itrs);
+  printf("- TIME: %.2fs\n", duration);  
+  printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 }
 
 int main() {

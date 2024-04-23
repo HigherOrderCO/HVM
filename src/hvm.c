@@ -580,7 +580,7 @@ static inline u32 vars_alloc(Net* net, TMem* tm, u32 num) {
     *idx += 1;
     if (*idx < len || vars_load(net, *idx % len) == 0) {
       loc[got++] = *idx % len;
-      //printf("ALLOC VARS %d %d\n", got, *idx);
+      //printf("VARS ALLOC %d\n", *idx % len);
     }
   }
   return got;
@@ -609,6 +609,7 @@ static inline u32 vars_alloc_1(Net* net, TMem* tm, u32* lap) {
   for (u32 i = 0; i < len; ++i) {
     *idx += 1;
     if (*idx < len || vars_load(net, *idx % len) == 0) {
+      //printf("VARS ALLOC %d\n", *idx % len);
       return *idx % len;
     }
   }
@@ -892,6 +893,8 @@ static inline bool interact_comm(Net* net, TMem* tm, Port a, Port b) {
 
 // The Oper Interaction.  
 static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
+  //printf("OPER %08x %08x\n", a, b);
+
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 1, 0)) {
     return false;
@@ -914,7 +917,7 @@ static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
     Numb cv = operate(av, bv);
     link_pair(net, tm, new_pair(B2, new_port(NUM, cv))); 
   } else {
-    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(new_u24(av))), B2));
+    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(av)), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
@@ -974,9 +977,7 @@ static inline bool interact(Net* net, TMem* tm, Book* book) {
       swap(&a, &b);
     }
 
-    //if (tid == 0) {
-      //printf("REDUCE %s ~ %s | %s | rlen=%d\n", show_port(a).x, show_port(b).x, show_rule(rule).x, rbag_len(&tm->rbag));
-    //}
+    //printf("REDUCE %s ~ %s | %s | rlen=%d\n", show_port(a).x, show_port(b).x, show_rule(rule).x, rbag_len(&tm->rbag));
 
     // Dispatches interaction rule.
     bool success;
@@ -1187,14 +1188,20 @@ void pretty_print_port(Net* net, Port port) {
       case VAR: {
         printf("x%x", get_val(cur));
         Port got = vars_load(net, get_val(cur));
-        if (got != cur) {
+        if (got != NONE) {
           printf("=");
           stack[len++] = got;
         }
         break;
       }
       case NUM: {
-        printf("#%d", get_val(cur));
+        Numb word = get_val(cur);
+        switch (get_typ(word)) {
+          case SYM: printf("[%x]", get_sym(word)); break;
+          case U24: printf("%u", get_u24(word)); break;
+          case I24: printf("%d", get_i24(word)); break;
+          case F24: printf("%f", get_f24(word)); break;
+        }
         break;
       }
       case DUP: {
@@ -1285,11 +1292,28 @@ void hvm_c(u32* book_buffer) {
   // Creates an initial redex that calls main
   push_redex(tm[0], new_pair(new_port(REF, 0), new_port(VAR, 0)));
 
+  // Starts the timer
+  clock_t start = clock();
+
   // Evaluates
   evaluator(gnet, tm[0], book);
 
-  // Interactions
-  printf("- itrs: %llu\n", atomic_load(&gnet->itrs));
+  // Stops the timer  
+  clock_t end = clock();
+  double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
+
+  // Prints the result
+  printf("Result: ");
+  pretty_print_port(gnet, enter(gnet, tm[0], new_port(VAR, 0)));
+  printf("\n");
+
+  // Prints interactions and time
+  u64 itrs = atomic_load(&gnet->itrs);
+  printf("- ITRS: %llu\n", itrs);
+  printf("- TIME: %.2fs\n", duration);  
+  printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
+
+  //print_net(gnet);
 
   // Frees values
   for (u32 t = 0; t < TPC; ++t) {
