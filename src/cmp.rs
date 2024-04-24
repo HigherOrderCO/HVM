@@ -243,7 +243,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     code.push_str(&format!("{}Port {} = NONE;\n", indent(tab), &x1));
     code.push_str(&format!("{}Port {} = NONE;\n", indent(tab), &x2));
     code.push_str(&format!("{}// fast anni\n", indent(tab)));
-    code.push_str(&format!("{}if (0 && get_tag({}) == CON && node_load(net, get_val({})) != 0) {{\n", indent(tab), b, b));
+    code.push_str(&format!("{}if (get_tag({}) == CON && node_load(net, get_val({})) != 0) {{\n", indent(tab), b, b));
     code.push_str(&format!("{}tm->itrs += 1;\n", indent(tab+1)));
     code.push_str(&format!("{}{} = 1;\n", indent(tab+1), &op));
     code.push_str(&format!("{}{} = node_take(net, get_val({}));\n", indent(tab+1), &bv, b));

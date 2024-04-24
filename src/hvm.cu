@@ -502,6 +502,28 @@ __device__ inline u32 block_sum(u32 x) {
   return res;
 }
 
+// Histogram, for debugging
+__device__ u64 block_histogram(u32 x) {
+  __shared__ u64 count[16];
+  const u32 tid = threadIdx.x;
+  if (x >= 16) printf("ERROR\n");
+
+  if (tid < 16) {
+    count[tid] = 0;
+  }
+  __syncthreads();
+
+  atomicAdd(&count[x], 1);
+  __syncthreads();
+
+  u64 res = 0;
+  for (u64 i = 0; i < 16; ++i) {
+    res = res | (min((count[16-i-1]+15)/16,(u64)0xF) << (i*4));
+  }
+
+  return res;
+}
+
 // Ports / Pairs / Rules
 // ---------------------
 
@@ -1502,10 +1524,33 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   //u32 total_rlen = block_sum(rbag_len(&tm.rbag));
   //u32 total_node = block_sum(node_count);
   //u32 total_vars = block_sum(vars_count);
+  //u64 histo_itrs = block_histogram((u32)log2((float)tm.itrs));
+  //u64 histo_itrs = block_histogram(0);
   //if (tid == 0) {
-    //printf("%04x:[%02x] completed itrs=%d rlen=%d node=%d vars=%d time=%llu\n", turn, bid, total_itrs, total_rlen, total_node, total_vars, (clock64() - ini) / (S/1000000));
+    //printf("%04x:[%02x] completed itrs=%d rlen=%d node=%d vars=%d time=%llu | %016llx\n", turn, bid, total_itrs, total_rlen, total_node, total_vars, (clock64() - ini) / (S/1000000), histo_itrs);
   //}
 
+}
+
+// Debugging
+// ---------
+
+__global__ void print_rbag_heatmap(GNet* gnet) {
+  if (threadIdx.x > 0 || blockIdx.x > 0) return;
+  for (u32 bid = 0; bid < BPG; bid++) {
+    for (u32 tid = 0; tid < TPB; tid++) {
+      u32 gid = bid * TPB + tid;
+      u32 len = 0;
+      for (u32 i = 0; i < RLEN; i++) {
+        if (gnet->rbag_buf[gid * RLEN + i] != 0) {
+          len++;
+        }
+      }
+      u32 heat = min(len, 0xF);
+      printf("%x", heat);
+    }
+    printf("\n");
+  }
 }
 
 // Book Loader
@@ -1799,8 +1844,11 @@ void hvm_cu(u32* book_buffer) {
   gnet_init<<<G_PAGE_MAX/TPB, TPB>>>(d_gnet);
 
   // Invokes the Evaluator Kernel
-  for (u32 i = 0; i < 65536; ++i) {
+  for (u32 i = 0; i < 128; ++i) {
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, i);
+    //cudaDeviceSynchronize();
+    //print_rbag_heatmap<<<1,1>>>(d_gnet);
+    //cudaDeviceSynchronize();
   }
 
   // Invokes the Result Printer Kernel
