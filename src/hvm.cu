@@ -217,6 +217,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+// FIXME: pages can leak when the kernel reserves it but never writes anything
+
 // Integers
 // --------
 
@@ -228,6 +230,9 @@ typedef unsigned long long int u64;
 
 // Configuration
 // -------------
+
+// Clocks per Second
+//const u64 S = 2520000000;
 
 // Threads per Block
 const u32 TPB_L2 = 8;
@@ -997,7 +1002,11 @@ __device__ void link(Net* net, TMem* tm, Port A, Port B) {
       if (A_ == NONE) {
         break;
       }
-      //if (A_ == 0) { ??? } // FIXME: must handle on the move-to-global algo
+      // If we linked into another block's unfilled VAR slot, stop
+      // This will be handled by that block when it stores the var
+      if (A_ == 0) {
+        break;
+      }
       // Otherwise, delete `A` (we own both) and link `A' ~ B`
       vars_take(net, get_val(A));
       A = A_;
@@ -1367,6 +1376,7 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   const u32 bid = blockIdx.x;
   const u32 gid = blockDim.x * bid + tid;
   const u32 rbg = turn % 2 ? transpose(gid, TPB, BPG) : gid;
+  const u64 ini = clock64();
 
   // Thread TMem
   TMem tm = tmem_new();
@@ -1400,6 +1410,10 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
     return;
   }
 
+  //if (tid == 0) {
+    //printf("%04x:[%02x] reserved %d\n", turn, bid, got_page);
+  //}
+
   // Interaction Loop
   for (u32 i = 0; i < 1 << 14; ++i) {
     // Increments the tick
@@ -1431,23 +1445,41 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   //atomicAdd(&heat[tid/D], tm.itrs);
 
   // Moves vars+node to global
-  u32 count = 0;
+  u32 node_count = 0;
+  u32 vars_count = 0;
   for (u32 i = tid; i < L_NODE_LEN; i += TPB) {
+    // Move a node from local to global buffer
     Pair node = atomicExch(&net.l_node_buf[i], 0);
     if (node != 0) {
       net.g_node_buf[L_NODE_LEN*net.g_page_idx+i] = node;
-      count += 1;
-      //if (turn > 0) {
-        //printf("[%04x] store turn=%d [%04x:%04x] <- (%s,%s)\n", gid, turn, net.g_page_idx, i, show_port(get_fst(node)).x, show_port(get_snd(node)).x);
-      //}
+      // Increase the page's size count
+      node_count += 1;
     }
   }
   for (u32 i = tid; i < L_VARS_LEN; i += TPB) {
-    // FIXME: handle var not being 0 (when other thread linked it).
-    Port var = atomicExch(&net.l_vars_buf[i],0);
-    if (var != 0) {
-      net.g_vars_buf[L_VARS_LEN*net.g_page_idx+i] = var;
-      count += 1;
+    // Take a var from local buffer
+    Port var = atomicExch(&net.l_vars_buf[i], 0);
+    // If we don't have a subst for it...
+    if (var == NONE) {
+      // Move the NONE token to global with an atomic compare-and-swap
+      Port sub = atomicCAS(&net.g_vars_buf[L_VARS_LEN*net.g_page_idx+i], 0, NONE);
+      // If we managed to move it, increment the page's size count
+      if (sub == 0) {
+        vars_count += 1;
+      }
+    // If we have a local subst for it...
+    } else if (var != 0) {
+      // Move it to global with an atomic exchange
+      Port sub = atomicExch(&net.g_vars_buf[L_VARS_LEN*net.g_page_idx+i], var);
+      // If we managed to move it, increment the page's size count
+      if (sub == 0) {
+        vars_count += 1;
+      // If there was a subst from other block, make a redex and delete it
+      } else {
+        push_redex(&tm, new_pair(var, sub));
+        net.g_vars_buf[L_VARS_LEN*net.g_page_idx+i] = 0;
+        //printf("REDEX %s ~ %s\n", show_port(var).x, show_port(sub).x);
+      }
     }
   }
 
@@ -1461,10 +1493,19 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   }
 
   // Stores count and rewrites
-  atomicAdd(&gnet->page_len[net.g_page_idx], count);
+  atomicAdd(&gnet->page_len[net.g_page_idx], node_count + vars_count);
 
   // Stores rewrites
   atomicAdd(&gnet->itrs, tm.itrs);
+
+  //u32 total_itrs = block_sum(tm.itrs);
+  //u32 total_rlen = block_sum(rbag_len(&tm.rbag));
+  //u32 total_node = block_sum(node_count);
+  //u32 total_vars = block_sum(vars_count);
+  //if (tid == 0) {
+    //printf("%04x:[%02x] completed itrs=%d rlen=%d node=%d vars=%d time=%llu\n", turn, bid, total_itrs, total_rlen, total_node, total_vars, (clock64() - ini) / (S/1000000));
+  //}
+
 }
 
 // Book Loader
