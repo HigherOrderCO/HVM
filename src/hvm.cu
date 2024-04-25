@@ -351,7 +351,6 @@ struct Net {
 
 // Thread Memory
 struct TM {
-  u32  tick; // tick counter
   u32  page; // page index
   u32  nput; // node alloc index
   u32  vput; // vars alloc index
@@ -452,21 +451,6 @@ __device__ __host__ inline Port get_snd(Pair pair) {
 // Swaps two ports.
 __device__ __host__ inline void swap(Port *a, Port *b) {
   Port x = *a; *a = *b; *b = x;
-}
-
-// ID of peer to share redex with.
-__device__ u32 peer_id(u32 id, u32 log2_len, u32 tick) {
-  u32 side = (id >> (log2_len - 1 - (tick % log2_len))) & 1;
-  u32 diff = (1 << (log2_len - 1)) >> (tick % log2_len);
-  return side ? id - diff : id + diff;
-}
-
-// Index on the steal redex buffer for this peer pair.
-__device__ u32 buck_id(u32 id, u32 log2_len, u32 tick) {
-  u32 fid = peer_id(id, log2_len, tick);
-  u32 itv = log2_len - (tick % log2_len);
-  u32 val = (id >> itv) << (itv - 1);
-  return (id < fid ? id : fid) - val;
 }
 
 // Transposes an index over a matrix.
@@ -785,7 +769,6 @@ __device__ u32 rbag_has_highs(RBag* rbag) {
 __device__ TM tmem_new() {
   TM tm;
   tm.rbag = rbag_new();
-  tm.tick = 0;
   tm.nput = threadIdx.x;
   tm.vput = threadIdx.x;
   tm.itrs = 0;
@@ -1068,64 +1051,27 @@ __device__ void link_pair(Net* net, TM* tm, Pair AB) {
 // -------
 
 // Sends redex to a friend local thread, when it is starving.
-__device__ void share_redexes(TM* tm, Pair* steal) {
-
-  //// Gets the peer ID
-  //u32 pid = peer_id(tid, TPB_L2, tm->tick);
-  //u32 idx = buck_id(tid, TPB_L2, tm->tick);
-  //bool lt = tid < pid;
-
-  //// Sends my redex count to peer
-  //u32 self_redex_count = tm->rbag.lo_idx;
-  //set_nth(&steal[idx], self_redex_count, lt ? 0 : 1);
-  //__syncthreads();
-
-  //// Receives peer's redex count 
-  //u32 peer_redex_count = (u32)get_nth(steal[idx], lt ? 1 : 0);
-  //__syncthreads();
-
-  //// Resets the stolen redex to none
-  //steal[idx] = 0;
-  //__syncthreads();
-
-  //// Causes peer to steal a redex from me
-  //if (self_redex_count > 1 && peer_redex_count == 0) {
-    //steal[idx] = pop_redex(tm);
-  //}
-  //__syncthreads();
-
-  //// If we stole a redex from them, add it
-  //if (self_redex_count == 0 && steal[idx] != 0) {
-    //push_redex(tm, steal[idx]);
-  //}
-  //__syncthreads();
-
-  const u64 NEED = 0xFFFFFFFFFFFFFFFF;
-
-  // Gets the peer ID
-  u32 pid = peer_id(TID(), TPB_L2, tm->tick);
-  u32 idx = buck_id(TID(), TPB_L2, tm->tick);
-
-  // Asks a redex from parent peer
-  if (TID() > pid) {
-    steal[idx] = tm->rbag.lo_idx == 0 ? NEED : 0;
+__device__ inline void share_redexes(TM* tm, u32 tick) {
+  __shared__ Pair pool[TPB];
+  Pair send, recv;
+  u32*  len = &tm->rbag.lo_idx;
+  Pair* bag = tm->rbag.buf;
+  u32   off = 1 << tick % TPB_L2;
+  if (off < 32) {
+    send = *len > 1 ? bag[*len-1] : 0;
+    recv = __shfl_xor_sync(__activemask(), send, off);
+    if (!send &&  recv) bag[(*len)++] = recv;
+    if ( send && !recv) --(*len);
+  } else {
+    u32 a = TID();
+    u32 b = a ^ off;
+    send = *len > 1 ? bag[*len-1] : 0;
+    pool[a] = send;
+    __syncthreads();
+    recv = pool[b];
+    if (!send &&  recv) bag[(*len)++] = recv;
+    if ( send && !recv) --(*len);
   }
-  __syncthreads();
-
-  // Sends a redex to child peer
-  if (TID() < pid && tm->rbag.lo_idx > 1 && steal[idx] == NEED) {
-    steal[idx] = pop_redex(tm);
-    //printf("[%04x] send to %04x at %04x\n", tid, pid, idx);
-  }
-  __syncthreads();
-
-  // Gets a redex from parent peer
-  if (TID() > pid && tm->rbag.lo_idx == 0 && steal[idx] != NEED) {
-    push_redex(tm, steal[idx]);
-    //printf("[%04x] rc from %04x at %04x\n", tid, pid, idx);
-  }
-  __syncthreads();
-
 }
 
 // Interactions
@@ -1506,7 +1452,7 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   extern __shared__ char shared_mem[]; // 96 KB
 
   // Shared values
-  __shared__ Pair steal[TPB/2 > 0 ? TPB/2 : 1];
+  //__shared__ Pair steal[TPB/2 > 0 ? TPB/2 : 1];
 
   // Thread Index
   const u64 ini = clock64();
@@ -1532,9 +1478,6 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
 
   // Interaction Loop
   for (u32 i = 0; i < 1 << 14; ++i) {
-    // Increments the tick
-    tm.tick += 1;
-
     // Performs some interactions
     if (interact(&net, &tm)) {
       while (rbag_has_highs(&tm.rbag)) {
@@ -1544,7 +1487,7 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
 
     // Shares a redex with neighbor thread
     if (TPB > 1) {
-      share_redexes(&tm, steal);
+      share_redexes(&tm, i);
     }
 
     // If turn 0 and all threads are full, halt
