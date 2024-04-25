@@ -12,7 +12,6 @@ pub type Val  = u32;
 pub type AVal = AtomicU32;
 pub type Rule = u8;
 
-
 // Port
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub struct Port(pub Val);

@@ -20,7 +20,7 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
   if trg == Target::CUDA {
     code.push_str(&format!("__device__ "));
   }
-  code.push_str(&format!("bool interact_call(Net *net, TMem *tm, Port a, Port b) {{\n"));
+  code.push_str(&format!("bool interact_call(Net *net, TM *tm, Port a, Port b) {{\n"));
   code.push_str(&format!("  u32 fid = get_val(a);\n"));
   code.push_str(&format!("  switch (fid) {{\n"));
   for (fid, def) in book.defs.iter().enumerate() {
@@ -45,7 +45,7 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
   if trg == Target::CUDA {
     code.push_str(&format!("__device__ "));
   }
-  code.push_str(&format!("{}bool interact_call_{}(Net *net, TMem *tm, Port a, Port b) {{\n", indent(tab), fun));
+  code.push_str(&format!("{}bool interact_call_{}(Net *net, TM *tm, Port a, Port b) {{\n", indent(tab), fun));
 
   code.push_str(&format!("{}u32 vl = 0;\n", indent(tab+1)));
   code.push_str(&format!("{}u32 nl = 0;\n", indent(tab+1)));

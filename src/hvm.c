@@ -119,7 +119,7 @@ typedef struct Net {
   a64 itrs; // interaction count
 } Net;
 
-typedef struct TMem {
+typedef struct TM {
   u32  tid; // thread id
   u32  tick; // tick counter
   u32  page; // page index
@@ -129,7 +129,7 @@ typedef struct TMem {
   u32  nloc[32]; // node allocation indices
   u32  vloc[32]; // vars allocation indices
   RBag rbag; // local bag
-} TMem;  
+} TM;  
 
 // Top-Level Definition
 typedef struct Def {
@@ -266,7 +266,7 @@ static inline bool is_high_priority(Rule rule) {
 }
 
 // Adjusts a newly allocated port.
-static inline Port adjust_port(Net* net, TMem* tm, Port port) {
+static inline Port adjust_port(Net* net, TM* tm, Port port) {
   Tag tag = get_tag(port);
   Val val = get_val(port);
   if (is_nod(port)) return new_port(tag, tm->nloc[val]);
@@ -275,7 +275,7 @@ static inline Port adjust_port(Net* net, TMem* tm, Port port) {
 }
 
 // Adjusts a newly allocated pair.
-static inline Pair adjust_pair(Net* net, TMem* tm, Pair pair) {
+static inline Pair adjust_pair(Net* net, TM* tm, Pair pair) {
   Port p1 = adjust_port(net, tm, get_fst(pair));
   Port p2 = adjust_port(net, tm, get_snd(pair));
   return new_pair(p1, p2);
@@ -449,7 +449,7 @@ void rbag_init(RBag* rbag) {
   rbag->hi_idx = RLEN - 1;
 }
 
-static inline void push_redex(TMem* tm, Pair redex) {
+static inline void push_redex(TM* tm, Pair redex) {
   Rule rule = get_pair_rule(redex);
   if (is_high_priority(rule)) {
     tm->rbag.buf[tm->rbag.hi_idx--] = redex;
@@ -458,7 +458,7 @@ static inline void push_redex(TMem* tm, Pair redex) {
   }
 }
 
-static inline Pair pop_redex(TMem* tm) {
+static inline Pair pop_redex(TM* tm) {
   if (tm->rbag.hi_idx < RLEN - 1) {
     return tm->rbag.buf[++tm->rbag.hi_idx];
   } else if (tm->rbag.lo_idx > 0) {
@@ -476,10 +476,10 @@ static inline u32 rbag_has_highs(RBag* rbag) {
   return rbag->hi_idx < RLEN-1;
 }
 
-// TMem
-// ----
+// TM
+// --
 
-void tmem_init(TMem* tm, u32 tid) {
+void tmem_init(TM* tm, u32 tid) {
   rbag_init(&tm->rbag);
   tm->tid  = tid;
   tm->tick = 0;
@@ -555,7 +555,7 @@ static inline void net_init(Net* net) {
 // ---------
 
 // Allocs on node buffer. Returns the number of successful allocs.
-static inline u32 node_alloc(Net* net, TMem* tm, u32 num) {
+static inline u32 node_alloc(Net* net, TM* tm, u32 num) {
   u32* idx = &tm->nidx;
   u32* loc = tm->nloc;
   u32  len = G_NODE_LEN;
@@ -571,7 +571,7 @@ static inline u32 node_alloc(Net* net, TMem* tm, u32 num) {
 }
 
 // Allocs on vars buffer. Returns the number of successful allocs.
-static inline u32 vars_alloc(Net* net, TMem* tm, u32 num) {
+static inline u32 vars_alloc(Net* net, TM* tm, u32 num) {
   u32* idx = &tm->vidx;
   u32* loc = tm->vloc;
   u32  len = G_VARS_LEN;
@@ -587,7 +587,7 @@ static inline u32 vars_alloc(Net* net, TMem* tm, u32 num) {
 }
 
 // Allocs on node buffer. Optimized for 1 alloc.
-static inline u32 node_alloc_1(Net* net, TMem* tm, u32* lap) {
+static inline u32 node_alloc_1(Net* net, TM* tm, u32* lap) {
   u32* idx = &tm->nidx;
   u32* loc = tm->nloc;
   u32  len = G_NODE_LEN;
@@ -601,7 +601,7 @@ static inline u32 node_alloc_1(Net* net, TMem* tm, u32* lap) {
 }
 
 // Allocs on vars buffer. Optimized for 1 alloc.
-static inline u32 vars_alloc_1(Net* net, TMem* tm, u32* lap) {
+static inline u32 vars_alloc_1(Net* net, TM* tm, u32* lap) {
   u32* idx = &tm->vidx;
   u32* loc = tm->vloc;
   u32  len = G_VARS_LEN;
@@ -617,7 +617,7 @@ static inline u32 vars_alloc_1(Net* net, TMem* tm, u32* lap) {
 }
 
 // Gets the necessary resources for an interaction. Returns success.
-static inline bool get_resources(Net* net, TMem* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
+static inline bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
   u32 got_rbag = RLEN - rbag_len(&tm->rbag);
   u32 got_node = node_alloc(net, tm, need_node); 
   u32 got_vars = vars_alloc(net, tm, need_vars);
@@ -630,7 +630,7 @@ static inline bool get_resources(Net* net, TMem* tm, u8 need_rbag, u8 need_node,
 // -------
  
 // Finds a variable's value.
-static inline Port enter(Net* net, TMem* tm, Port var) {
+static inline Port enter(Net* net, TM* tm, Port var) {
   // While `B` is VAR: extend it (as an optimization)
   while (get_tag(var) == VAR) {
     // Takes the current `var` substitution as `val`
@@ -647,7 +647,7 @@ static inline Port enter(Net* net, TMem* tm, Port var) {
 }
 
 // Atomically Links `A ~ B`.
-static inline void link(Net* net, TMem* tm, Port A, Port B) {
+static inline void link(Net* net, TM* tm, Port A, Port B) {
   //printf("LINK %s ~> %s\n", show_port(A).x, show_port(B).x);
 
   // Attempts to directionally point `A ~> B` 
@@ -683,7 +683,7 @@ static inline void link(Net* net, TMem* tm, Port A, Port B) {
 }
 
 // Links `A ~ B` (as a pair).
-static inline void link_pair(Net* net, TMem* tm, Pair AB) {
+static inline void link_pair(Net* net, TM* tm, Pair AB) {
   //printf("link_pair %016llx\n", AB);
   link(net, tm, get_fst(AB), get_snd(AB));
 }
@@ -695,7 +695,7 @@ static inline void link_pair(Net* net, TMem* tm, Pair AB) {
 // TODO: implement this function. Since we do not have a barrier, we must do it
 // by using atomics instead. Use atomics to send data. Use busy waiting to
 // receive data. Implement now the share_redex function:
-void share_redexes(TMem* tm, APair* steal, u32 tid) {
+void share_redexes(TM* tm, APair* steal, u32 tid) {
   const u64 NEED_REDEX = 0xFFFFFFFFFFFFFFFF;
 
   // Gets the peer ID
@@ -727,7 +727,7 @@ void share_redexes(TMem* tm, APair* steal, u32 tid) {
 // ------------
 
 // The Link Interaction.
-static inline bool interact_link(Net* net, TMem* tm, Port a, Port b) {
+static inline bool interact_link(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 0, 0)) {
     return false;
@@ -743,8 +743,8 @@ static inline bool interact_link(Net* net, TMem* tm, Port a, Port b) {
 #ifdef COMPILED
 ///COMPILED_INTERACT_CALL///
 #else
-static inline bool interact_eras(Net* net, TMem* tm, Port a, Port b);
-static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book) {
+static inline bool interact_eras(Net* net, TM* tm, Port a, Port b);
+static inline bool interact_call(Net* net, TM* tm, Port a, Port b, Book* book) {
   // Loads Definition.
   u32  fid = get_val(a);
   Def* def = &book->defs_buf[fid];
@@ -782,12 +782,12 @@ static inline bool interact_call(Net* net, TMem* tm, Port a, Port b, Book* book)
 #endif
 
 // The Void Interaction.  
-static inline bool interact_void(Net* net, TMem* tm, Port a, Port b) {
+static inline bool interact_void(Net* net, TM* tm, Port a, Port b) {
   return true;
 }
 
 // The Eras Interaction.
-static inline bool interact_eras(Net* net, TMem* tm, Port a, Port b) {
+static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.  
   if (!get_resources(net, tm, 2, 0, 0)) {
     return false;
@@ -814,7 +814,7 @@ static inline bool interact_eras(Net* net, TMem* tm, Port a, Port b) {
 }
 
 // The Anni Interaction.  
-static inline bool interact_anni(Net* net, TMem* tm, Port a, Port b) {
+static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
     //printf("AAA\n");
@@ -847,7 +847,7 @@ static inline bool interact_anni(Net* net, TMem* tm, Port a, Port b) {
 }
 
 // The Comm Interaction.
-static inline bool interact_comm(Net* net, TMem* tm, Port a, Port b) {
+static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.  
   if (!get_resources(net, tm, 4, 4, 4)) {
     return false;
@@ -892,7 +892,7 @@ static inline bool interact_comm(Net* net, TMem* tm, Port a, Port b) {
 }
 
 // The Oper Interaction.  
-static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
+static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   //printf("OPER %08x %08x\n", a, b);
 
   // Allocates needed nodes and vars.
@@ -925,7 +925,7 @@ static inline bool interact_oper(Net* net, TMem* tm, Port a, Port b) {
 }
 
 // The Swit Interaction.
-static inline bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
+static inline bool interact_swit(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.  
   if (!get_resources(net, tm, 1, 2, 0)) {
     return false;
@@ -956,7 +956,7 @@ static inline bool interact_swit(Net* net, TMem* tm, Port a, Port b) {
 }
 
 // Pops a local redex and performs a single interaction.
-static inline bool interact(Net* net, TMem* tm, Book* book) {
+static inline bool interact(Net* net, TM* tm, Book* book) {
   // Pops a redex.
   Pair redex = pop_redex(tm);
 
@@ -1012,7 +1012,7 @@ static inline bool interact(Net* net, TMem* tm, Book* book) {
 // Evaluator
 // ---------
 
-void evaluator(Net* net, TMem* tm, Book* book) {
+void evaluator(Net* net, TM* tm, Book* book) {
   // Increments the tick
   tm->tick += 1;
 
@@ -1282,10 +1282,10 @@ void hvm_c(u32* book_buffer) {
   Net *gnet = malloc(sizeof(Net));
   net_init(gnet);
 
-  // Alloc and init TPC TMem's
-  TMem* tm[TPC];
+  // Alloc and init TPC TM's
+  TM* tm[TPC];
   for (u32 t = 0; t < TPC; ++t) {
-    tm[t] = malloc(sizeof(TMem));
+    tm[t] = malloc(sizeof(TM));
     tmem_init(tm[t], t);
   }
 
