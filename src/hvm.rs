@@ -62,8 +62,10 @@ pub const AND : Tag = 0xD;
 pub const OR  : Tag = 0xE;
 pub const XOR : Tag = 0xF;
 
-// None
-pub const NONE : Port = Port(0xFFFFFFF9);
+// Constants
+pub const FREE : Port = Port(0x0);
+pub const ROOT : Port = Port(0xFFFFFFF8);
+pub const NONE : Port = Port(0xFFFFFFFF);
 
 // RBag
 pub struct RBag {
@@ -86,8 +88,8 @@ pub struct TMem {
   pub tids: u32, // thread count
   pub tick: u32, // tick counter
   pub itrs: u32, // interaction count
-  pub nidx: usize, // next node allocation index
-  pub vidx: usize, // next vars allocation index
+  pub nput: usize, // next node allocation index
+  pub vput: usize, // next vars allocation index
   pub nloc: Vec<usize>, // allocated node locations
   pub vloc: Vec<usize>, // allocated vars locations
   pub rbag: RBag, // local redex bag
@@ -485,8 +487,8 @@ impl TMem {
       tids,
       tick: 0,
       itrs: 0,
-      nidx: 0,
-      vidx: 0,
+      nput: 0,
+      vput: 0,
       nloc: vec![0; 32],
       vloc: vec![0; 32],  
       rbag: RBag::new(),
@@ -496,11 +498,11 @@ impl TMem {
   pub fn node_alloc(&mut self, net: &GNet, num: usize) -> usize {
     let mut got = 0;
     for _ in 0..net.nlen {
-      self.nidx += 1;
-      if self.nidx < net.nlen || net.is_node_free(self.nidx % net.nlen) {
-        self.nloc[got] = self.nidx % net.nlen;
+      self.nput += 1; // index 0 reserved
+      if self.nput < net.nlen-1 || net.is_node_free(self.nput % net.nlen) {
+        self.nloc[got] = self.nput % net.nlen;
         got += 1;
-        //println!("ALLOC NODE {} {}", got, self.nidx);
+        //println!("ALLOC NODE {} {}", got, self.nput);
       }
       if got >= num {
         break;
@@ -512,10 +514,10 @@ impl TMem {
   pub fn vars_alloc(&mut self, net: &GNet, num: usize) -> usize {
     let mut got = 0;
     for _ in 0..net.vlen {
-      self.vidx += 1;
-      if self.vidx < net.vlen || net.is_vars_free(self.vidx % net.vlen) {
-        self.vloc[got] = self.vidx % net.nlen;
-        //println!("ALLOC VARS {} {}", got, self.vidx);
+      self.vput += 1; // index 0 reserved for FREE
+      if self.vput < net.vlen-1 || net.is_vars_free(self.vput % net.vlen) {
+        self.vloc[got] = self.vput % net.nlen;
+        //println!("ALLOC VARS {} {}", got, self.vput);
         got += 1;
       }
       if got >= num {
@@ -800,7 +802,7 @@ impl TMem {
     let mut rule = Port::get_rule(a, b);
 
     // Used for root redex.
-    if a.get_tag() == REF && b == Port::new(VAR, 0) {
+    if a.get_tag() == REF && b == ROOT {
       rule = CALL;
     // Swaps ports if necessary.
     } else if Port::should_swap(a,b) {

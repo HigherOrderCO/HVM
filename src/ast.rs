@@ -395,7 +395,7 @@ impl Net {
     for (fid, def) in book.defs.iter().enumerate() {
       fids.insert(fid as hvm::Val, def.name.clone());
     }
-    let root = net.enter(hvm::Port::new(hvm::VAR,0));
+    let root = net.enter(hvm::ROOT);
     let root = Tree::readback(net, root, &fids)?;
     let rbag = Vec::new();
     return Some(Net { root, rbag });

@@ -73,9 +73,6 @@ const Rule COMM = 0x5;
 const Rule OPER = 0x6;
 const Rule SWIT = 0x7;
 
-// None Port
-const Port NONE = 0xFFFFFFF9;
-
 // Numbers
 const Tag SYM = 0x0;
 const Tag U24 = 0x1;
@@ -93,6 +90,11 @@ const Tag GT  = 0xC;
 const Tag AND = 0xD;
 const Tag OR  = 0xE;
 const Tag XOR = 0xF;
+
+// Constants
+const Port FREE = 0x00000000;
+const Port ROOT = 0xFFFFFFF8;
+const Port NONE = 0xFFFFFFFF;
 
 // Thread Redex Bag Length  
 const u32 RLEN = 1 << 22; // max 4m redexes
@@ -124,8 +126,8 @@ typedef struct TM {
   u32  tick; // tick counter
   u32  page; // page index
   u32  itrs; // interaction count
-  u32  nidx; // next node allocation attempt index
-  u32  vidx; // next vars allocation attempt index
+  u32  nput; // next node allocation attempt index
+  u32  vput; // next vars allocation attempt index
   u32  nloc[32]; // node allocation indices
   u32  vloc[32]; // vars allocation indices
   RBag rbag; // local bag
@@ -483,8 +485,8 @@ void tmem_init(TM* tm, u32 tid) {
   rbag_init(&tm->rbag);
   tm->tid  = tid;
   tm->tick = 0;
-  tm->nidx = tid;
-  tm->vidx = tid;
+  tm->nput = tid;
+  tm->vput = tid;
   tm->itrs = 0;
 }
 
@@ -548,7 +550,7 @@ static inline Port vars_take(Net* net, u32 var) {
 // Initializes a net.
 static inline void net_init(Net* net) {
   // Initializes the root var.
-  vars_create(net, 0, NONE);
+  vars_create(net, get_val(ROOT), NONE);
 }
 
 // Allocator
@@ -556,12 +558,12 @@ static inline void net_init(Net* net) {
 
 // Allocs on node buffer. Returns the number of successful allocs.
 static inline u32 node_alloc(Net* net, TM* tm, u32 num) {
-  u32* idx = &tm->nidx;
+  u32* idx = &tm->nput;
   u32* loc = tm->nloc;
-  u32  len = G_NODE_LEN;
+  u32  len = G_NODE_LEN - 1;
   u32  got = 0;
   for (u32 i = 0; i < len && got < num; ++i) {
-    *idx += 1;
+    *idx += 1; // index 0 reserved
     if (*idx < len || node_load(net, *idx % len) == 0) {
       tm->nloc[got++] = *idx % len;
       //printf("ALLOC NODE %d %d\n", got, *idx);
@@ -572,12 +574,12 @@ static inline u32 node_alloc(Net* net, TM* tm, u32 num) {
 
 // Allocs on vars buffer. Returns the number of successful allocs.
 static inline u32 vars_alloc(Net* net, TM* tm, u32 num) {
-  u32* idx = &tm->vidx;
+  u32* idx = &tm->vput;
   u32* loc = tm->vloc;
-  u32  len = G_VARS_LEN;
+  u32  len = G_VARS_LEN - 1;
   u32  got = 0;
   for (u32 i = 0; i < len && got < num; ++i) {
-    *idx += 1;
+    *idx += 1; // index 0 reserved for VOID
     if (*idx < len || vars_load(net, *idx % len) == 0) {
       loc[got++] = *idx % len;
       //printf("VARS ALLOC %d\n", *idx % len);
@@ -588,11 +590,11 @@ static inline u32 vars_alloc(Net* net, TM* tm, u32 num) {
 
 // Allocs on node buffer. Optimized for 1 alloc.
 static inline u32 node_alloc_1(Net* net, TM* tm, u32* lap) {
-  u32* idx = &tm->nidx;
+  u32* idx = &tm->nput;
   u32* loc = tm->nloc;
-  u32  len = G_NODE_LEN;
+  u32  len = G_NODE_LEN - 1;
   for (u32 i = 0; i < len; ++i) {
-    *idx += 1;
+    *idx += 1; // index 0 reserved
     if (*idx < len || node_load(net, *idx % len) == 0) {
       return *idx % len;
     }
@@ -602,12 +604,12 @@ static inline u32 node_alloc_1(Net* net, TM* tm, u32* lap) {
 
 // Allocs on vars buffer. Optimized for 1 alloc.
 static inline u32 vars_alloc_1(Net* net, TM* tm, u32* lap) {
-  u32* idx = &tm->vidx;
+  u32* idx = &tm->vput;
   u32* loc = tm->vloc;
-  u32  len = G_VARS_LEN;
+  u32  len = G_VARS_LEN - 1;
   u32  got = 0;
   for (u32 i = 0; i < len; ++i) {
-    *idx += 1;
+    *idx += 1; // index 0 reserved for FREE
     if (*idx < len || vars_load(net, *idx % len) == 0) {
       //printf("VARS ALLOC %d\n", *idx % len);
       return *idx % len;
@@ -970,7 +972,7 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
     Rule rule = get_rule(a, b);
 
     // Used for root redex.
-    if (get_tag(a) == REF && b == new_port(VAR, 0)) {
+    if (get_tag(a) == REF && b == ROOT) {
       rule = CALL;
     // Swaps ports if necessary.  
     } else if (should_swap(a,b)) {
@@ -1290,7 +1292,7 @@ void hvm_c(u32* book_buffer) {
   }
 
   // Creates an initial redex that calls main
-  push_redex(tm[0], new_pair(new_port(REF, 0), new_port(VAR, 0)));
+  push_redex(tm[0], new_pair(new_port(REF, 0), ROOT));
 
   // Starts the timer
   clock_t start = clock();
@@ -1304,7 +1306,7 @@ void hvm_c(u32* book_buffer) {
 
   // Prints the result
   printf("Result: ");
-  pretty_print_port(gnet, enter(gnet, tm[0], new_port(VAR, 0)));
+  pretty_print_port(gnet, enter(gnet, tm[0], ROOT));
   printf("\n");
 
   // Prints interactions and time

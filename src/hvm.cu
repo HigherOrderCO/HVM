@@ -227,12 +227,13 @@ typedef uint16_t u16;
 typedef uint32_t u32;
 typedef  int32_t i32;
 typedef unsigned long long int u64;
+typedef   double f64;
 
 // Configuration
 // -------------
 
 // Clocks per Second
-//const u64 S = 2520000000;
+const u64 S = 2520000000;
 
 // Threads per Block
 const u32 TPB_L2 = 8;
@@ -277,8 +278,10 @@ const Rule COMM = 0x5;
 const Rule OPER = 0x6;
 const Rule SWIT = 0x7;
 
-// Empty Port
-const Port NONE = 0xfffffff9;
+// Constants
+const Port FREE = 0x00000000;
+const Port ROOT = 0xFFFFFFF8;
+const Port NONE = 0xFFFFFFFF;
 
 // Numbers
 const Tag SYM = 0x0;
@@ -322,11 +325,13 @@ struct LNet {
 };
 
 // Global Net
-const u32 G_PAGE_MAX = 0x10000; // max 65536 pages
+const u32 G_PAGE_MAX = 0x10000 - 1; // max 65536 pages
 const u32 G_NODE_LEN = G_PAGE_MAX * L_NODE_LEN; // max 536m nodes 
 const u32 G_VARS_LEN = G_PAGE_MAX * L_VARS_LEN; // max 536m vars 
 const u32 G_RBAG_LEN = TPB * BPG * RLEN; // max 2m redexes
 struct GNet {
+  u32  rbag_use; // total rbag redex count
+  u32  rbag_tmp; // total rbag redex count
   Pair rbag_buf[G_RBAG_LEN]; // global redex bag
   Pair node_buf[G_NODE_LEN]; // global node buffer
   Port vars_buf[G_VARS_LEN]; // global vars buffer
@@ -339,8 +344,12 @@ struct GNet {
 
 // View Net: includes both GNet and LNet
 struct Net {
+  i32   l_node_dif; // delta node space
+  i32   l_vars_dif; // delta vars space
   Pair *l_node_buf; // local node buffer values
   Port *l_vars_buf; // local vars buffer values
+  u32  *g_rbag_use;
+  u32  *g_rbag_tmp;
   Pair *g_rbag_buf; // global rbag buffer values
   Pair *g_node_buf; // global node buffer values
   Port *g_vars_buf; // global vars buffer values
@@ -413,6 +422,10 @@ __device__ inline u32 GID() {
   return TID() + BID() * blockDim.x;
 }
 
+__device__ inline u32 div(u32 a, u32 b) {
+  return (a + b - 1) / b;
+}
+
 // Port: Constructor and Getters
 // -----------------------------
 
@@ -465,7 +478,7 @@ __device__ u32 transpose(u32 idx, u32 width, u32 height) {
 }
 
 // Returns true if all 'x' are true, block-wise
-__device__ inline bool block_all(bool x) {
+__device__ __noinline__ bool block_all(bool x) {
   __shared__ bool res;
   if (TID() == 0) res = true;
   __syncthreads();
@@ -475,7 +488,7 @@ __device__ inline bool block_all(bool x) {
 }
 
 // Returns true if any 'x' is true, block-wise
-__device__ inline bool block_any(bool x) {
+__device__ __noinline__ bool block_any(bool x) {
   __shared__ bool res;
   if (TID() == 0) res = false;
   __syncthreads();
@@ -485,7 +498,33 @@ __device__ inline bool block_any(bool x) {
 }
 
 // Returns the sum of a value, block-wise
-__device__ inline u32 block_sum(u32 x) {
+template <typename A>
+__device__ __noinline__ A block_sum(A x) {
+  __shared__ A res;
+  if (TID() == 0) res = 0;
+  __syncthreads();
+  atomicAdd(&res, x);
+  __syncthreads();
+  return res;
+}
+
+//__device__ __noinline__ u32 block_sum_2(u32 i) {
+  //__shared__ u32 counter;
+  //counter = 0;
+  //u32 sum = i;
+  //__syncthreads();
+  //sum += __shfl_down_sync(-1u, sum, 1);
+  //sum += __shfl_down_sync(-1u, sum, 2);
+  //sum += __shfl_down_sync(-1u, sum, 4);
+  //sum += __shfl_down_sync(-1u, sum, 8);
+  //sum += __shfl_down_sync(-1u, sum, 16);
+  //if ((threadIdx.x % 32) == 0) { atomicAdd(&counter, sum); }
+  //__syncthreads(); //wait for atomicAdd to resolve, or timings will be off
+  //return counter;
+//}
+
+// Returns the sum of a boolean, block-wise
+__device__ __noinline__ u32 block_count(bool x) {
   __shared__ u32 res;
   if (TID() == 0) res = 0;
   __syncthreads();
@@ -749,7 +788,7 @@ __device__ Pair pop_redex(TM* tm) {
   } else if (tm->rbag.lo_end - tm->rbag.lo_ini > 0) {
     return tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
   } else {
-    return 0;
+    return 0; // FIXME: is this ok?
   }
 }
 
@@ -778,8 +817,12 @@ __device__ TM tmem_new() {
 
 __device__ Net vnet_new(GNet* gnet, void* smem) {
   Net net;
+  net.l_node_dif = 0;
+  net.l_vars_dif = 0;
   net.l_node_buf = ((LNet*)smem)->node_buf;
   net.l_vars_buf = ((LNet*)smem)->vars_buf;
+  net.g_rbag_use = &gnet->rbag_use;
+  net.g_rbag_tmp = &gnet->rbag_tmp;
   net.g_rbag_buf = gnet->rbag_buf;
   net.g_node_buf = gnet->node_buf;
   net.g_vars_buf = gnet->vars_buf;
@@ -787,7 +830,7 @@ __device__ Net vnet_new(GNet* gnet, void* smem) {
   net.g_free_buf = gnet->free_buf;
   net.g_free_pop = &gnet->free_pop;
   net.g_free_put = &gnet->free_put;
-  net.g_page_idx = 0;
+  net.g_page_idx = 0xFFFFFFFF;
   return net;
 }
 
@@ -817,18 +860,22 @@ __device__ void decrease_page(Net* net, u32 page) {
 // Stores a new node on global.
 __device__ inline void node_create(Net* net, u32 loc, Pair val) {
   if (get_page(loc) == net->g_page_idx) {
+    net->l_node_dif += 1;
+    //if (GID() == 0) printf("inc-node %d\n", *net->l_node_dif);
     atomicExch(&net->l_node_buf[loc - L_NODE_LEN*net->g_page_idx], val);
   } else {
-    atomicExch(&net->g_node_buf[loc], val);
+    __builtin_unreachable(); // can't create outside of local page
   }
 }
 
 // Stores a var on global.
 __device__ inline void vars_create(Net* net, u32 var, Port val) {
   if (var > 0 && get_page(var) == net->g_page_idx) {
+    net->l_vars_dif += 1;
+    //if (GID() == 0) printf("inc-vars %d\n", *net->l_vars_dif);
     atomicExch(&net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx], val);
   } else {
-    atomicExch(&net->g_vars_buf[var], val);
+    __builtin_unreachable(); // can't create outside of local page
   }
 }
 
@@ -888,20 +935,24 @@ __device__ inline Port vars_exchange(Net* net, u32 var, Port val) {
 
 // Takes a node.
 __device__ inline Pair node_take(Net* net, u32 loc) {
-  decrease_page(net, get_page(loc));
   if (get_page(loc) == net->g_page_idx) {
+    net->l_node_dif -= 1;
+    //if (GID() == 0) printf("dec-node %d\n", *net->l_node_dif);
     return atomicExch(&net->l_node_buf[loc - L_NODE_LEN*net->g_page_idx], 0);
   } else {
+    decrease_page(net, get_page(loc));
     return atomicExch(&net->g_node_buf[loc], 0);
   }
 }
 
 // Takes a var.
 __device__ inline Port vars_take(Net* net, u32 var) {
-  decrease_page(net, get_page(var));
   if (var > 0 && get_page(var) == net->g_page_idx) {
+    net->l_vars_dif -= 1;
+    //if (GID() == 0) printf("dec-vars %d\n", *net->l_vars_dif);
     return atomicExch(&net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx], 0);
   } else {
+    decrease_page(net, get_page(var));
     return atomicExch(&net->g_vars_buf[var], 0);
   }
 }
@@ -916,7 +967,7 @@ __global__ void gnet_init(GNet* gnet) {
     gnet->free_buf[GID()] = GID();
   }
   // Creates root variable.
-  gnet->vars_buf[0] = NONE;
+  gnet->vars_buf[get_val(ROOT)] = NONE;
 }
 
 // Allocator
@@ -1049,19 +1100,19 @@ __device__ void link_pair(Net* net, TM* tm, Pair AB) {
 // -------
 
 // Sends redex to a friend local thread, when it is starving.
-__device__ inline void share_redexes(TM* tm, u32 tick) {
+__device__ void share_redexes(TM* tm) {
   __shared__ Pair pool[TPB];
   Pair send, recv;
   u32*  ini = &tm->rbag.lo_ini;
   u32*  end = &tm->rbag.lo_end;
   Pair* bag = tm->rbag.lo_buf;
-  u32   off = 1 << tick % TPB_L2;
-  if (off < 32) {
+  for (u32 off = 1; off < 32; off *= 2) {
     send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
     recv = __shfl_xor_sync(__activemask(), send, off);
     if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
     if ( send && !recv) ++(*ini);
-  } else {
+  }
+  for (u32 off = 32; off < TPB; off *= 2) {
     u32 a = TID();
     u32 b = a ^ off;
     send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
@@ -1148,7 +1199,7 @@ __device__ bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   }
 
   // Loads ports.
-  Pair B  = node_exchange(net,get_val(b),0);
+  Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
 
@@ -1319,7 +1370,7 @@ __device__ bool interact(Net* net, TM* tm) {
     //}
 
     // Used for root redex.
-    if (get_tag(a) == REF && b == new_port(VAR, 0)) {
+    if (get_tag(a) == REF && b == ROOT) {
       rule = CALL;
     // Swaps ports if necessary.
     } else if (should_swap(a,b)) {
@@ -1391,6 +1442,7 @@ __device__ u32 save_redexes(Net* net, TM *tm, u32 turn) {
   for (u32 i = 0; i > tm->rbag.hi_end; ++i) {
     net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.hi_buf[i];
   }
+  atomicAdd(net->g_rbag_tmp, rbag_len(&tm->rbag));
 }
 
 __device__ bool get_new_page(Net* net, TM* tm) {
@@ -1407,7 +1459,7 @@ __device__ bool get_new_page(Net* net, TM* tm) {
 }
 
 // Moves local page to global net
-__device__ void save_page(Net* net, TM* tm) {
+__device__ u32 save_page(Net* net, TM* tm) {
   u32 node_count = 0;
   u32 vars_count = 0;
   // Move nodes to global
@@ -1424,40 +1476,53 @@ __device__ void save_page(Net* net, TM* tm) {
   for (u32 i = TID(); i < L_VARS_LEN; i += TPB) {
     // Take a var from local buffer 
     Port var = atomicExch(&net->l_vars_buf[i], 0);
-    // If we don't have a subst for it...
+    // If we don't have a subst for it, this means both vars escaped. That means
+    // a thread will futurely link and take this var. We just increment the
+    // vars_count by 1, so that the page isn't freed until that happens.
     if (var == NONE) {
-      // Move the NONE token to global with an atomic compare-and-swap
-      Port sub = atomicCAS(&net->g_vars_buf[L_VARS_LEN*net->g_page_idx+i], 0, NONE);
-      // If we managed to move it, increment the page's size count
-      if (sub == 0) {
-        vars_count += 1;
-      }
-    // If we have a local subst for it...  
+      vars_count += 1;
+    // If we have a local subst for it, this means one var escaped.
     } else if (var != 0) {
       // Move it to global with an atomic exchange
       Port sub = atomicExch(&net->g_vars_buf[L_VARS_LEN*net->g_page_idx+i], var);
-      // If we managed to move it, increment the page's size count
+      // If it was 0, we moved it successfully. Just increment vars_count.
       if (sub == 0) {
         vars_count += 1;
-      // If there was a subst from other block, make a redex and delete it
+      // Else, that means another block substituted the other var before we had
+      // a chance to save it, so we make a redex and keep the same vars_count.
       } else {
         push_redex(tm, new_pair(var, sub));
         net->g_vars_buf[L_VARS_LEN*net->g_page_idx+i] = 0;
       }
     }
   }
+  // Resets local page counters
+  net->l_node_dif = 0;
+  net->l_vars_dif = 0;
   // Updates global page length
   atomicAdd(&net->g_page_use[net->g_page_idx], node_count + vars_count);
+  return node_count + vars_count;
+}
+
+__global__ void swap_rlen(GNet* gnet) {
+  gnet->rbag_use = gnet->rbag_tmp;
+  gnet->rbag_tmp = 0;
 }
 
 __global__ void evaluator(GNet* gnet, u32 turn) {
   extern __shared__ char shared_mem[]; // 96 KB
+  __shared__ bool halt; // halting flag
 
-  // Shared values
-  //__shared__ Pair steal[TPB/2 > 0 ? TPB/2 : 1];
+  // Constants
+  const u64  INIT = clock64(); // initial time
+  const u64  REPS = 13; // log2 of number of loops
+  const bool GROW = gnet->rbag_use < TPB*BPG; // expanding rbag?
 
-  // Thread Index
-  const u64 ini = clock64();
+  // Local State
+  u32  tick = 0; // current tick
+  u32  sv_t = 0; // next tick to save page
+  u32  sv_a = 1; // how much to add to sv_t
+  bool fail = false; // have we failed
 
   // Thread Memory
   TM tm = tmem_new();
@@ -1475,16 +1540,19 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
 
   // Allocates Page
   if (!get_new_page(&net, &tm)) {
+    if (TID() == 0) printf("[%04x] OUT OF MEMORY\n", GID());
     return;
   }
 
   // Interaction Loop
-  for (u32 i = 0; i < 1 << 14; ++i) {
+  for (tick = 0; tick < 1 << REPS; ++tick) {
+    // Magic formula to decide which turns are slow
+    bool slow = tick % (1<<(tick/(1<<(REPS-5)))) == 0;
+
     // Performs some interactions
-    if (interact(&net, &tm)) {
-      while (rbag_has_highs(&tm.rbag)) {
-        if (!interact(&net, &tm)) break;
-      }
+    fail = !interact(&net, &tm);
+    while (!fail && rbag_has_highs(&tm.rbag)) {
+      fail = fail || !interact(&net, &tm);
     }
 
     //if (!TID()) printf("TICK %d\n", i);
@@ -1493,22 +1561,44 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
     //__syncthreads();
 
     // Shares a redex with neighbor thread
-    if (TPB > 1) {
-      share_redexes(&tm, i);
+    if (TPB > 1 && slow) {
+      share_redexes(&tm);
     }
 
     //block_print(rbag_len(&tm.rbag));
     //if (!TID()) printf("\n");
     //__syncthreads();
 
-    // If turn 0 and all threads are full, halt
-    if (turn == 0 && block_all(rbag_len(&tm.rbag) > 0)) {
+    // ...
+    if (tick == sv_t) {
+      i32 ndif = block_sum(net.l_node_dif);
+      i32 vdif = block_sum(net.l_vars_dif);
+      if (ndif > L_NODE_LEN/2 || vdif > L_VARS_LEN/2) {
+        break; // TODO: save page here
+      } else {
+        sv_a *= 2;
+      }
+      sv_t += sv_a; 
+    }
+
+    // If enough threads failed, halt
+    //if (slow && block_sum((u32)fail) > TPB / 2) {
+      //break;
+    //}
+
+    // If all threads are empty, halt
+    if (slow && block_all(rbag_len(&tm.rbag) == 0)) {
+      break;
+    }
+
+    // If grow-mode and all threads are full, halt
+    if (GROW && block_all(rbag_len(&tm.rbag) > 0)) {
       break;
     }
   }
 
   // Moves vars+node to global
-  save_page(&net, &tm);
+  u32 saved = save_page(&net, &tm);
 
   // Moves rbag to global
   save_redexes(&net, &tm, turn);
@@ -1516,14 +1606,17 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   // Stores rewrites
   atomicAdd(&gnet->itrs, tm.itrs);
 
-  //u32 total_itrs = block_sum(tm.itrs);
-  //u32 total_rlen = block_sum(rbag_len(&tm.rbag));
-  //u32 total_node = block_sum(node_count);
-  //u32 total_vars = block_sum(vars_count);
-  //u64 histo_itrs = block_histogram((u32)log2((float)tm.itrs));
-  //u64 histo_itrs = block_histogram(0);
+  //u32 ITRS = block_sum(tm.itrs);
+  //u32 RLEN = block_sum(rbag_len(&tm.rbag));
+  //u32 SAVE = block_sum(saved);
+  //u32 FAIL = block_sum((u32)fail);
+  //u32 LOOP = block_sum((u32)tick);
+  //i32 NDIF = block_sum(net.l_node_dif);
+  //i32 VDIF = block_sum(net.l_vars_dif);
+  //f64 TIME = (f64)(clock64() - INIT) / (f64)S;
+  //f64 MIPS = (f64)ITRS / TIME / (f64)1000000.0;
   //if (TID() == 0) {
-    //printf("%04x:[%02x] completed itrs=%d rlen=%d node=%d vars=%d time=%llu | %016llx\n", turn, bid, total_itrs, total_rlen, total_node, total_vars, (clock64() - ini) / (S/1000000), histo_itrs);
+    //printf("%04x:[%02x]: ITRS=%d LOOP=%d RLEN=%d SAVE=%d NDIF=%d VDIF=%d FAIL=%d TIME=%f MIPS=%.0f\n", turn, BID(), ITRS, LOOP, RLEN, SAVE, NDIF, VDIF, FAIL, TIME, MIPS);
   //}
 
 }
@@ -1790,22 +1883,21 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
+// Stress 18 x 65536
 static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+
+// Bug2
+//static const u8 DEMO_BOOK[] = {8, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 11, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 41, 0, 0, 0, 4, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 76, 0, 0, 0, 25, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 6, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 20, 0, 0, 0, 49, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0};
 
 // Result Printer Kernel
 __global__ void print_result(GNet* gnet) {
   // Create a view net
-  Net net;
-  net.g_node_buf = gnet->node_buf; 
-  net.g_vars_buf = gnet->vars_buf;
-  net.l_node_buf = gnet->node_buf; 
-  net.l_vars_buf = gnet->vars_buf;
-  net.g_page_idx = 0;
+  Net net = vnet_new(gnet, NULL);
 
   // Print the result  
   if (threadIdx.x == 0 && blockIdx.x == 0) {
     printf("Result: ");
-    pretty_print_port(&net, enter(&net, NULL, new_port(VAR, 0)));
+    pretty_print_port(&net, enter(&net, NULL, ROOT));
     printf("\n");
   }
 }
@@ -1828,7 +1920,7 @@ void hvm_cu(u32* book_buffer) {
   cudaMemset(d_gnet, 0, sizeof(GNet));
 
   // Set the initial redex
-  Pair pair = new_pair(new_port(REF, 0), new_port(VAR, 0));
+  Pair pair = new_pair(new_port(REF, 0), ROOT);
   cudaMemcpy(&d_gnet->rbag_buf[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
 
   // Configures Shared Memory Size
@@ -1838,11 +1930,13 @@ void hvm_cu(u32* book_buffer) {
   gnet_init<<<G_PAGE_MAX/TPB, TPB>>>(d_gnet);
 
   // Invokes the Evaluator Kernel
-  for (u32 i = 0; i < 128; ++i) {
+  for (u32 i = 0; i < 1<<12; ++i) {
+    swap_rlen<<<1, 1>>>(d_gnet);
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, i);
     //cudaDeviceSynchronize();
     //print_rbag_heatmap<<<1,1>>>(d_gnet);
     //cudaDeviceSynchronize();
+    //printf("--------------------------------------------\n");
   }
 
   // Invokes the Result Printer Kernel

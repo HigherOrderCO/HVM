@@ -52,7 +52,7 @@ fn main() {
       // Converts Book to buffer
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
-      //println!("{:?}", data);
+      println!("{:?}", data);
 
       unsafe {
         hvm_c(data.as_mut_ptr() as *mut u32);
@@ -121,8 +121,8 @@ pub fn run(book: &hvm::Book) {
 
   // Creates an initial redex that calls main
   let main_id = book.defs.iter().position(|def| def.name == "main").unwrap();
-  tm.rbag.push_redex(hvm::Pair::new(hvm::Port::new(hvm::REF, main_id as u32), hvm::Port::new(hvm::VAR, 0)));
-  net.vars_create(0, hvm::NONE);
+  tm.rbag.push_redex(hvm::Pair::new(hvm::Port::new(hvm::REF, main_id as u32), hvm::ROOT));
+  net.vars_create(hvm::ROOT.get_val() as usize, hvm::NONE);
 
   // Starts the timer
   let start = std::time::Instant::now();
