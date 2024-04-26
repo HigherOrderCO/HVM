@@ -1,0 +1,6 @@
+@fun  = (?((@fun0 @fun1) a) a)
+@fun0 = a & @lop ~ (0x20000 a)
+@fun1 = ({a b} c) & @fun ~ (a $(d c)) & @fun ~ (b d)
+@lop  = (?((0 @lop0) a) a)
+@lop0 = (a b) & @lop ~ (a b)
+@main = a & @fun ~ (18 a)
