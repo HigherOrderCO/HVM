@@ -1003,7 +1003,7 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
       push_redex(tm, redex);
       return false;
     // Else, increments the interaction count.
-    } else {
+    } else if (rule != LINK) {
       tm->itrs += 1;
     }
   }

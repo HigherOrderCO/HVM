@@ -302,7 +302,7 @@ const Tag OR  = 0xE;
 const Tag XOR = 0xF;
 
 // Thread Redex Bag Length
-const u32 RLEN = 32; // max 32 redexes
+const u32 RLEN = 256; // max 32 redexes
 
 // Thread Redex Bag
 // It uses the same space to store two stacks: 
@@ -339,7 +339,7 @@ struct GNet {
   u32  free_buf[G_PAGE_MAX]; // set of free pages
   u32  free_pop; // index to reserve a page
   u32  free_put; // index to release a page
-  u64 itrs; // interaction count
+  u64  itrs; // interaction count
 };
 
 // View Net: includes both GNet and LNet
@@ -870,7 +870,7 @@ __device__ inline void node_create(Net* net, u32 loc, Pair val) {
 
 // Stores a var on global.
 __device__ inline void vars_create(Net* net, u32 var, Port val) {
-  if (var > 0 && get_page(var) == net->g_page_idx) {
+  if (get_page(var) == net->g_page_idx) {
     net->l_vars_dif += 1;
     //if (GID() == 0) printf("inc-vars %d\n", *net->l_vars_dif);
     atomicExch(&net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx], val);
@@ -890,7 +890,7 @@ __device__ __host__ inline Pair node_load(Net* net, u32 loc) {
 
 // Reads a var from global.
 __device__ __host__ inline Port vars_load(Net* net, u32 var) {
-  if (var > 0 && get_page(var) == net->g_page_idx) {
+  if (get_page(var) == net->g_page_idx) {
     return net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx];
   } else {
     return net->g_vars_buf[var];
@@ -908,7 +908,7 @@ __device__ inline void node_store(Net* net, u32 loc, Pair val) {
 
 // Stores a var on global.
 __device__ inline void vars_store(Net* net, u32 var, Port val) {
-  if (var > 0 && get_page(var) == net->g_page_idx) {
+  if (get_page(var) == net->g_page_idx) {
     net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx] = val;
   } else {
     net->g_vars_buf[var] = val;
@@ -926,7 +926,7 @@ __device__ inline Pair node_exchange(Net* net, u32 loc, Pair val) {
 
 // Exchanges a var on global by a value. Returns old.
 __device__ inline Port vars_exchange(Net* net, u32 var, Port val) {
-  if (var > 0 && get_page(var) == net->g_page_idx) {
+  if (get_page(var) == net->g_page_idx) {
     return atomicExch(&net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx], val);
   } else {
     return atomicExch(&net->g_vars_buf[var], val);
@@ -947,7 +947,7 @@ __device__ inline Pair node_take(Net* net, u32 loc) {
 
 // Takes a var.
 __device__ inline Port vars_take(Net* net, u32 var) {
-  if (var > 0 && get_page(var) == net->g_page_idx) {
+  if (get_page(var) == net->g_page_idx) {
     net->l_vars_dif -= 1;
     //if (GID() == 0) printf("dec-vars %d\n", *net->l_vars_dif);
     return atomicExch(&net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx], 0);
@@ -1338,7 +1338,7 @@ __device__ bool interact_swit(Net* net, TM* tm, Port a, Port b) {
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
  
-  // Stores new nodes.  
+  // Stores new nodes.
   if (av == 0) {
     node_create(net, tm->nloc[0], new_pair(B2, new_port(ERA,0)));
     link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
@@ -1395,7 +1395,7 @@ __device__ bool interact(Net* net, TM* tm) {
       push_redex(tm, redex);
       return false;
     // Else, increments the interaction count.
-    } else {
+    } else if (rule != LINK) {
       tm->itrs += 1;
     }
   }
@@ -1403,23 +1403,32 @@ __device__ bool interact(Net* net, TM* tm) {
   return true;
 }
 
-// Evaluator
-// ---------
+// RBag Save/Load
+// --------------
 
-//__device__ u32 get_page(Net* net) {
-  //__shared__ u32 got_page;
-  //if (tid == 0) {
-    //got_page = reserve_page(&net);
-  //}
-  //__syncthreads();
-  //net.g_page_idx = got_page;
-  //if (net.g_page_idx >= G_PAGE_MAX) {
-    //return NONE;
-  //}
-//}
+// Moves redexes from shared memory to global bag
+__device__ u32 save_redexes(Net* net, TM *tm, u32 turn) {
+  u32 bag = transpose(GID(), TPB, BPG);
+  u32 idx = 0;
+  // FIXME: prevent this by making lo/hi half as big
+  if (rbag_len(&tm->rbag) >= RLEN) {
+    printf("ERROR: CAN'T SAVE RBAG LEN > %d\n", RLEN);
+  }
+  // Moves low-priority redexes
+  for (u32 i = tm->rbag.lo_ini; i < tm->rbag.lo_end; ++i) {
+    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.lo_buf[i % RLEN];
+  }
+  // Moves high-priority redexes
+  for (u32 i = 0; i < tm->rbag.hi_end; ++i) {
+    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.hi_buf[i];
+  }
+  // Updates global redex counter
+  atomicAdd(net->g_rbag_tmp, rbag_len(&tm->rbag));
+}
 
+// Loads redexes from global bag to shared memory
 __device__ u32 load_redexes(Net* net, TM *tm, u32 turn) {
-  u32 bag = turn % 2 ? transpose(GID(), TPB, BPG) : GID();
+  u32 bag = GID();
   for (u32 i = 0; i < RLEN; ++i) {
     Pair redex = atomicExch(&net->g_rbag_buf[bag * RLEN + i], 0);
     if (redex != 0) {
@@ -1430,22 +1439,12 @@ __device__ u32 load_redexes(Net* net, TM *tm, u32 turn) {
   }
 }
 
-__device__ u32 save_redexes(Net* net, TM *tm, u32 turn) {
-  u32 bag = turn % 2 ? transpose(GID(), TPB, BPG) : GID();
-  u32 idx = 0;
-  if (rbag_len(&tm->rbag) > RLEN) {
-    printf("ERROR: CAN'T SAVE RBAG LEN > %d\n", RLEN);
-  }
-  for (u32 i = tm->rbag.lo_ini; i < tm->rbag.lo_end; ++i) {
-    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.lo_buf[i % RLEN];
-  }
-  for (u32 i = 0; i > tm->rbag.hi_end; ++i) {
-    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.hi_buf[i];
-  }
-  atomicAdd(net->g_rbag_tmp, rbag_len(&tm->rbag));
-}
 
-__device__ bool get_new_page(Net* net, TM* tm) {
+// Page Save/Load
+// --------------
+
+// Reserves a new page to be used by this block
+__device__ bool load_page(Net* net, TM* tm) {
   __shared__ u32 got_page;
   if (TID() == 0) {
     got_page = reserve_page(net);
@@ -1486,7 +1485,9 @@ __device__ u32 save_page(Net* net, TM* tm) {
       // Move it to global with an atomic exchange
       Port sub = atomicExch(&net->g_vars_buf[L_VARS_LEN*net->g_page_idx+i], var);
       // If it was 0, we moved it successfully. Just increment vars_count.
-      if (sub == 0) {
+      // If it was NONE, we also moved it successfully. That means another block
+      // used enter() on this slot, swapping it by NONE. We can just ignore it.
+      if (sub == 0 || sub == NONE) {
         vars_count += 1;
       // Else, that means another block substituted the other var before we had
       // a chance to save it, so we make a redex and keep the same vars_count.
@@ -1504,7 +1505,10 @@ __device__ u32 save_page(Net* net, TM* tm) {
   return node_count + vars_count;
 }
 
-__global__ void swap_rlen(GNet* gnet) {
+// Evaluator
+// ---------
+
+__global__ void comp_rlen(GNet* gnet) {
   gnet->rbag_use = gnet->rbag_tmp;
   gnet->rbag_tmp = 0;
 }
@@ -1539,8 +1543,11 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   }
 
   // Allocates Page
-  if (!get_new_page(&net, &tm)) {
-    if (TID() == 0) printf("[%04x] OUT OF MEMORY\n", GID());
+  if (!load_page(&net, &tm)) {
+    // FIXME: treat this
+    if (TID() == 0) {
+      printf("[%04x] OOM\n", GID());
+    }
     return;
   }
 
@@ -1569,22 +1576,17 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
     //if (!TID()) printf("\n");
     //__syncthreads();
 
-    // ...
+    // If the local page is more than half full, quit
     if (tick == sv_t) {
       i32 ndif = block_sum(net.l_node_dif);
       i32 vdif = block_sum(net.l_vars_dif);
       if (ndif > L_NODE_LEN/2 || vdif > L_VARS_LEN/2) {
-        break; // TODO: save page here
+        break; // TODO: don't quit; save page and continue!
       } else {
         sv_a *= 2;
       }
       sv_t += sv_a; 
     }
-
-    // If enough threads failed, halt
-    //if (slow && block_sum((u32)fail) > TPB / 2) {
-      //break;
-    //}
 
     // If all threads are empty, halt
     if (slow && block_all(rbag_len(&tm.rbag) == 0)) {
@@ -1929,14 +1931,25 @@ void hvm_cu(u32* book_buffer) {
   // Inits the GNet
   gnet_init<<<G_PAGE_MAX/TPB, TPB>>>(d_gnet);
 
-  // Invokes the Evaluator Kernel
-  for (u32 i = 0; i < 1<<12; ++i) {
-    swap_rlen<<<1, 1>>>(d_gnet);
+  // Invokes the Evaluator Kernel repeatedly
+  for (u32 i = 0; i < 0xFFFFFFFF; ++i) {
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, i);
+    comp_rlen<<<1, 1>>>(d_gnet);
+
+    if (i % 16 == 0) {
+      u32 rbag_use;
+      cudaMemcpy(&rbag_use, &d_gnet->rbag_use, sizeof(u32), cudaMemcpyDeviceToHost);
+      if (rbag_use == 0) {
+        printf("Completed after %d kernel launches!\n", i);
+        break;
+      }
+    }
+
+    // Print HeatMap (for debugging)
     //cudaDeviceSynchronize();
     //print_rbag_heatmap<<<1,1>>>(d_gnet);
     //cudaDeviceSynchronize();
-    //printf("--------------------------------------------\n");
+    //printf("-------------------------------------------- %04x\n", i);
   }
 
   // Invokes the Result Printer Kernel

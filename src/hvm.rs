@@ -828,8 +828,10 @@ impl TMem {
       self.rbag.push_redex(redex);
       false
     // Else, increments the interaction count. 
-    } else {
+    } else if rule != LINK {
       self.itrs += 1;
+      true
+    } else {
       true
     }
   }
