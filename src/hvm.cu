@@ -306,9 +306,11 @@ const u32 RLEN = 32; // max 32 redexes
 // - HI: a high-priotity stack, for shrinking reductions
 // - LO: a low-priority stack, for growing reductions
 struct RBag {
-  u32  lo_idx; // high-priority stack push-index
-  u32  hi_idx; // low-priority stack push-index
-  Pair buf[RLEN]; // a shared buffer for both stacks
+  u32  hi_end;
+  Pair hi_buf[RLEN];
+  u32  lo_ini;
+  u32  lo_end;
+  Pair lo_buf[RLEN];
 };
 
 // Local Net
@@ -731,36 +733,37 @@ __device__ inline Numb operate(Numb a, Numb b) {
 
 __device__ RBag rbag_new() {
   RBag rbag;
-  rbag.lo_idx = 0;
-  rbag.hi_idx = RLEN - 1;
+  rbag.hi_end = 0;
+  rbag.lo_ini = 0;
+  rbag.lo_end = 0;
   return rbag;
 }
 
 __device__ void push_redex(TM* tm, Pair redex) {
   Rule rule = get_pair_rule(redex);
   if (is_high_priority(rule)) {
-    tm->rbag.buf[tm->rbag.hi_idx--] = redex;
+    tm->rbag.hi_buf[tm->rbag.hi_end++ % RLEN] = redex;
   } else {
-    tm->rbag.buf[tm->rbag.lo_idx++] = redex;
+    tm->rbag.lo_buf[tm->rbag.lo_end++ % RLEN] = redex;
   }
 }
 
 __device__ Pair pop_redex(TM* tm) {
-  if (tm->rbag.hi_idx < RLEN - 1) {
-    return tm->rbag.buf[++tm->rbag.hi_idx];
-  } else if (tm->rbag.lo_idx > 0) {
-    return tm->rbag.buf[--tm->rbag.lo_idx];
+  if (tm->rbag.hi_end > 0) {
+    return tm->rbag.hi_buf[(--tm->rbag.hi_end) % RLEN];
+  } else if (tm->rbag.lo_end - tm->rbag.lo_ini > 0) {
+    return tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
   } else {
     return 0;
   }
 }
 
 __device__ u32 rbag_len(RBag* rbag) {
-  return rbag->lo_idx + (RLEN - 1 - rbag->hi_idx);
+  return rbag->hi_end + rbag->lo_end - rbag->lo_ini;
 }
 
 __device__ u32 rbag_has_highs(RBag* rbag) {
-  return rbag->hi_idx < RLEN-1;
+  return rbag->hi_end > 0;
 }
 
 // TM
@@ -976,7 +979,7 @@ __device__ u32 vars_alloc_1(Net* net, TM* tm, u32* lps) {
 
 // Gets the necessary resources for an interaction.
 __device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
-  u32 got_rbag = RLEN - rbag_len(&tm->rbag);
+  u32 got_rbag = min(RLEN - (tm->rbag.lo_end - tm->rbag.lo_ini), RLEN - tm->rbag.hi_end);
   u32 got_node = alloc(&tm->nput, tm->nloc, need_node, net->l_node_buf, L_NODE_LEN, L_NODE_LEN*net->g_page_idx);
   u32 got_vars = alloc(&tm->vput, tm->vloc, need_vars, net->l_vars_buf, L_VARS_LEN, L_VARS_LEN*net->g_page_idx);
   return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
@@ -1054,23 +1057,24 @@ __device__ void link_pair(Net* net, TM* tm, Pair AB) {
 __device__ inline void share_redexes(TM* tm, u32 tick) {
   __shared__ Pair pool[TPB];
   Pair send, recv;
-  u32*  len = &tm->rbag.lo_idx;
-  Pair* bag = tm->rbag.buf;
+  u32*  ini = &tm->rbag.lo_ini;
+  u32*  end = &tm->rbag.lo_end;
+  Pair* bag = tm->rbag.lo_buf;
   u32   off = 1 << tick % TPB_L2;
   if (off < 32) {
-    send = *len > 1 ? bag[*len-1] : 0;
+    send = (*end - *ini) > 1 ? bag[(*end-1)%RLEN] : 0;
     recv = __shfl_xor_sync(__activemask(), send, off);
-    if (!send &&  recv) bag[(*len)++] = recv;
-    if ( send && !recv) --(*len);
+    if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
+    if ( send && !recv) --(*end);
   } else {
     u32 a = TID();
     u32 b = a ^ off;
-    send = *len > 1 ? bag[*len-1] : 0;
+    send = (*end - *ini) > 1 ? bag[(*end-1)%RLEN] : 0;
     pool[a] = send;
     __syncthreads();
     recv = pool[b];
-    if (!send &&  recv) bag[(*len)++] = recv;
-    if ( send && !recv) --(*len);
+    if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
+    if ( send && !recv) --(*end);
   }
 }
 
@@ -1383,11 +1387,14 @@ __device__ u32 load_redexes(Net* net, TM *tm, u32 turn) {
 __device__ u32 save_redexes(Net* net, TM *tm, u32 turn) {
   u32 bag = turn % 2 ? transpose(GID(), TPB, BPG) : GID();
   u32 idx = 0;
-  for (u32 i = 0; i < tm->rbag.lo_idx; ++i) {
-    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.buf[i];
+  if (rbag_len(&tm->rbag) > RLEN) {
+    printf("ERROR: CAN'T SAVE RBAG LEN > %d\n", RLEN);
   }
-  for (u32 i = RLEN-1; i > tm->rbag.hi_idx; --i) {
-    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.buf[i];
+  for (u32 i = tm->rbag.lo_ini; i < tm->rbag.lo_end; ++i) {
+    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.lo_buf[i % RLEN];
+  }
+  for (u32 i = 0; i > tm->rbag.hi_end; ++i) {
+    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.hi_buf[i];
   }
 }
 
@@ -1626,13 +1633,13 @@ __device__ Show show_rule(Rule rule) {
 __device__ void print_rbag(RBag* rbag) {
   printf("RBAG | FST-TREE     | SND-TREE    \n");
   printf("---- | ------------ | ------------\n");
-  for (u32 i = 0; i < rbag->lo_idx; ++i) {
-    Pair redex = rbag->buf[i];
+  for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
+    Pair redex = rbag->lo_buf[i%RLEN];
     printf("%04X | %s | %s\n", i, show_port((Port)get_fst(redex)).x, show_port((Port)get_snd(redex)).x);
   }
 
-  for (u32 i = 15; i > rbag->hi_idx; --i) {
-    Pair redex = rbag->buf[i];
+  for (u32 i = 0; i > rbag->hi_end; ++i) {
+    Pair redex = rbag->hi_buf[i];
     printf("%04X | %s | %s\n", i, show_port((Port)get_fst(redex)).x, show_port((Port)get_snd(redex)).x);
   }
   printf("==== | ============ | ============\n");
@@ -1756,8 +1763,8 @@ __device__ void pretty_print_port(Net* net, Port port) {
 }
 
 __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
-  for (u32 i = 0; i < rbag->lo_idx; ++i) {
-    Pair redex = rbag->buf[i];
+  for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
+    Pair redex = rbag->lo_buf[i%RLEN];
     if (redex != 0) {
       pretty_print_port(net, get_fst(redex)); 
       printf(" ~ ");
@@ -1765,8 +1772,8 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
       printf("\n");
     }
   }
-  for (u32 i = RLEN-1; i > rbag->hi_idx; --i) {
-    Pair redex = rbag->buf[i];
+  for (u32 i = 0; i > rbag->hi_end; ++i) {
+    Pair redex = rbag->hi_buf[i];
     if (redex != 0) {
       pretty_print_port(net, get_fst(redex));
       printf(" ~ ");
