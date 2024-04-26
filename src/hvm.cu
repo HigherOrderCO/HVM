@@ -494,26 +494,21 @@ __device__ inline u32 block_sum(u32 x) {
   return res;
 }
 
-// Histogram, for debugging
-__device__ u64 block_histogram(u32 x) {
-  __shared__ u64 count[16];
-  if (x >= 16) printf("ERROR\n");
+// Prints a 4-bit value for each thread in a block
+__device__ void block_print(u32 x) {
+  __shared__ u8 value[TPB];
 
-  if (TID() < 16) {
-    count[TID()] = 0;
-  }
+  value[TID()] = x;
   __syncthreads();
 
-  atomicAdd(&count[x], 1);
-  __syncthreads();
-
-  u64 res = 0;
-  for (u64 i = 0; i < 16; ++i) {
-    res = res | (min((count[16-i-1]+15)/16,(u64)0xF) << (i*4));
+  if (TID() == 0) {
+    for (u32 i = 0; i < TPB; ++i) {
+      printf("%x", min(value[i],0xF));
+    }
   }
-
-  return res;
+  __syncthreads();
 }
+
 
 // Ports / Pairs / Rules
 // ---------------------
@@ -1062,19 +1057,19 @@ __device__ inline void share_redexes(TM* tm, u32 tick) {
   Pair* bag = tm->rbag.lo_buf;
   u32   off = 1 << tick % TPB_L2;
   if (off < 32) {
-    send = (*end - *ini) > 1 ? bag[(*end-1)%RLEN] : 0;
+    send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
     recv = __shfl_xor_sync(__activemask(), send, off);
     if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
-    if ( send && !recv) --(*end);
+    if ( send && !recv) ++(*ini);
   } else {
     u32 a = TID();
     u32 b = a ^ off;
-    send = (*end - *ini) > 1 ? bag[(*end-1)%RLEN] : 0;
+    send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
     pool[a] = send;
     __syncthreads();
     recv = pool[b];
     if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
-    if ( send && !recv) --(*end);
+    if ( send && !recv) ++(*ini);
   }
 }
 
@@ -1492,10 +1487,19 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
       }
     }
 
+    //if (!TID()) printf("TICK %d\n", i);
+    //block_print(rbag_len(&tm.rbag));
+    //if (!TID()) printf("\n");
+    //__syncthreads();
+
     // Shares a redex with neighbor thread
     if (TPB > 1) {
       share_redexes(&tm, i);
     }
+
+    //block_print(rbag_len(&tm.rbag));
+    //if (!TID()) printf("\n");
+    //__syncthreads();
 
     // If turn 0 and all threads are full, halt
     if (turn == 0 && block_all(rbag_len(&tm.rbag) > 0)) {
