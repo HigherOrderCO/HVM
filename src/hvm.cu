@@ -226,8 +226,9 @@ typedef  uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
 typedef  int32_t i32;
-typedef unsigned long long int u64;
+typedef    float f32;
 typedef   double f64;
+typedef unsigned long long int u64;
 
 // Configuration
 // -------------
@@ -330,9 +331,10 @@ const u32 G_NODE_LEN = G_PAGE_MAX * L_NODE_LEN; // max 536m nodes
 const u32 G_VARS_LEN = G_PAGE_MAX * L_VARS_LEN; // max 536m vars 
 const u32 G_RBAG_LEN = TPB * BPG * RLEN; // max 2m redexes
 struct GNet {
-  u32  rbag_use; // total rbag redex count
-  u32  rbag_tmp; // total rbag redex count
-  Pair rbag_buf[G_RBAG_LEN]; // global redex bag
+  u32  rbag_use_A; // total rbag redex count (buffer A)
+  u32  rbag_use_B; // total rbag redex count (buffer B)
+  Pair rbag_buf_A[G_RBAG_LEN]; // global redex bag (buffer A)
+  Pair rbag_buf_B[G_RBAG_LEN]; // global redex bag (buffer B)
   Pair node_buf[G_NODE_LEN]; // global node buffer
   Port vars_buf[G_VARS_LEN]; // global vars buffer
   u32  page_use[G_PAGE_MAX]; // node count of each page
@@ -348,9 +350,10 @@ struct Net {
   i32   l_vars_dif; // delta vars space
   Pair *l_node_buf; // local node buffer values
   Port *l_vars_buf; // local vars buffer values
-  u32  *g_rbag_use;
-  u32  *g_rbag_tmp;
-  Pair *g_rbag_buf; // global rbag buffer values
+  u32  *g_rbag_use_A; // global rbag count (active buffer)
+  u32  *g_rbag_use_B; // global rbag count (inactive buffer)
+  Pair *g_rbag_buf_A; // global rbag values (active buffer)
+  Pair *g_rbag_buf_B; // global rbag values (inactive buffer)
   Pair *g_node_buf; // global node buffer values
   Port *g_vars_buf; // global vars buffer values
   u32  *g_page_use; // usage counter of pages
@@ -508,21 +511,6 @@ __device__ __noinline__ A block_sum(A x) {
   return res;
 }
 
-//__device__ __noinline__ u32 block_sum_2(u32 i) {
-  //__shared__ u32 counter;
-  //counter = 0;
-  //u32 sum = i;
-  //__syncthreads();
-  //sum += __shfl_down_sync(-1u, sum, 1);
-  //sum += __shfl_down_sync(-1u, sum, 2);
-  //sum += __shfl_down_sync(-1u, sum, 4);
-  //sum += __shfl_down_sync(-1u, sum, 8);
-  //sum += __shfl_down_sync(-1u, sum, 16);
-  //if ((threadIdx.x % 32) == 0) { atomicAdd(&counter, sum); }
-  //__syncthreads(); //wait for atomicAdd to resolve, or timings will be off
-  //return counter;
-//}
-
 // Returns the sum of a boolean, block-wise
 __device__ __noinline__ u32 block_count(bool x) {
   __shared__ u32 res;
@@ -633,7 +621,7 @@ __device__ inline i32 get_i24(Numb word) {
 }
 
 // Constructor and getters for F24 (24-bit float)
-__device__ inline Numb new_f24(float val) {
+__device__ inline Numb new_f24(f32 val) {
   u32 bits = *(u32*)&val;
   u32 sign = (bits >> 31) & 0x1;
   i32 expo = ((bits >> 23) & 0xFF) - 127;
@@ -643,7 +631,7 @@ __device__ inline Numb new_f24(float val) {
   return (bts1 << 4) | F24;
 }
 
-__device__ inline float get_f24(Numb word) {
+__device__ inline f32 get_f24(Numb word) {
   u32 bits = (word >> 4) & 0xFFFFFF;
   u32 sign = (bits >> 23) & 0x1;
   u32 expo = (bits >> 16) & 0x7F;
@@ -651,7 +639,7 @@ __device__ inline float get_f24(Numb word) {
   i32 iexp = expo - 63;
   u32 bts0 = (sign << 31) | ((iexp + 127) << 23) | (mant << 7);
   u32 bts1 = (mant == 0 && iexp == -63) ? (sign << 31) : bts0;
-  return *(float*)&bts1;
+  return *(f32*)&bts1;
 }
 
 // Flip flag
@@ -740,8 +728,8 @@ __device__ inline Numb operate(Numb a, Numb b) {
       }
     }
     case F24: {
-      float av = get_f24(a);
-      float bv = get_f24(b);
+      f32 av = get_f24(a);
+      f32 bv = get_f24(b);
       switch (op) {
         case ADD: return new_f24(av + bv);
         case SUB: return new_f24(av - bv);
@@ -815,15 +803,16 @@ __device__ TM tmem_new() {
 // Net
 // ----
 
-__device__ Net vnet_new(GNet* gnet, void* smem) {
+__device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   Net net;
   net.l_node_dif = 0;
   net.l_vars_dif = 0;
   net.l_node_buf = ((LNet*)smem)->node_buf;
   net.l_vars_buf = ((LNet*)smem)->vars_buf;
-  net.g_rbag_use = &gnet->rbag_use;
-  net.g_rbag_tmp = &gnet->rbag_tmp;
-  net.g_rbag_buf = gnet->rbag_buf;
+  net.g_rbag_use_A = turn % 2 == 0 ? &gnet->rbag_use_A : &gnet->rbag_use_B;
+  net.g_rbag_use_B = turn % 2 == 0 ? &gnet->rbag_use_B : &gnet->rbag_use_A;
+  net.g_rbag_buf_A = turn % 2 == 0 ? gnet->rbag_buf_A : gnet->rbag_buf_B;
+  net.g_rbag_buf_B = turn % 2 == 0 ? gnet->rbag_buf_B : gnet->rbag_buf_A;
   net.g_node_buf = gnet->node_buf;
   net.g_vars_buf = gnet->vars_buf;
   net.g_page_use = gnet->page_use;
@@ -1416,21 +1405,21 @@ __device__ u32 save_redexes(Net* net, TM *tm, u32 turn) {
   }
   // Moves low-priority redexes
   for (u32 i = tm->rbag.lo_ini; i < tm->rbag.lo_end; ++i) {
-    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.lo_buf[i % RLEN];
+    net->g_rbag_buf_B[bag * RLEN + (idx++)] = tm->rbag.lo_buf[i % RLEN];
   }
   // Moves high-priority redexes
   for (u32 i = 0; i < tm->rbag.hi_end; ++i) {
-    net->g_rbag_buf[bag * RLEN + (idx++)] = tm->rbag.hi_buf[i];
+    net->g_rbag_buf_B[bag * RLEN + (idx++)] = tm->rbag.hi_buf[i];
   }
   // Updates global redex counter
-  atomicAdd(net->g_rbag_tmp, rbag_len(&tm->rbag));
+  atomicAdd(net->g_rbag_use_B, rbag_len(&tm->rbag));
 }
 
 // Loads redexes from global bag to shared memory
 __device__ u32 load_redexes(Net* net, TM *tm, u32 turn) {
   u32 bag = GID();
   for (u32 i = 0; i < RLEN; ++i) {
-    Pair redex = atomicExch(&net->g_rbag_buf[bag * RLEN + i], 0);
+    Pair redex = atomicExch(&net->g_rbag_buf_A[bag * RLEN + i], 0);
     if (redex != 0) {
       push_redex(tm, redex);
     } else {
@@ -1438,7 +1427,6 @@ __device__ u32 load_redexes(Net* net, TM *tm, u32 turn) {
     }
   }
 }
-
 
 // Page Save/Load
 // --------------
@@ -1508,19 +1496,18 @@ __device__ u32 save_page(Net* net, TM* tm) {
 // Evaluator
 // ---------
 
-__global__ void comp_rlen(GNet* gnet) {
-  gnet->rbag_use = gnet->rbag_tmp;
-  gnet->rbag_tmp = 0;
+__global__ void swap_rbuf(GNet* gnet, u32 turn) {
+  if (turn % 2 == 0) {
+    gnet->rbag_use_A = 0;
+  } else {
+    gnet->rbag_use_B = 0;
+  }
+  // no need to swap buf (already zeroed)
 }
 
 __global__ void evaluator(GNet* gnet, u32 turn) {
   extern __shared__ char shared_mem[]; // 96 KB
   __shared__ bool halt; // halting flag
-
-  // Constants
-  const u64  INIT = clock64(); // initial time
-  const u64  REPS = 13; // log2 of number of loops
-  const bool GROW = gnet->rbag_use < TPB*BPG; // expanding rbag?
 
   // Local State
   u32  tick = 0; // current tick
@@ -1532,7 +1519,7 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   TM tm = tmem_new();
 
   // Net (Local-Global View)
-  Net net = vnet_new(gnet, shared_mem);
+  Net net = vnet_new(gnet, shared_mem, turn);
 
   // Loads Redexes
   load_redexes(&net, &tm, turn);
@@ -1541,6 +1528,11 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   if (block_all(rbag_len(&tm.rbag) == 0)) {
     return;
   }
+
+  // Constants
+  const u64  INIT = clock64(); // initial time
+  const u64  REPS = 13; // log2 of number of loops
+  const bool GROW = *net.g_rbag_use_A < TPB*BPG; // expanding rbag?
 
   // Allocates Page
   if (!load_page(&net, &tm)) {
@@ -1553,9 +1545,6 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
 
   // Interaction Loop
   for (tick = 0; tick < 1 << REPS; ++tick) {
-    // Magic formula to decide which turns are slow
-    bool slow = tick % (1<<(tick/(1<<(REPS-5)))) == 0;
-
     // Performs some interactions
     fail = !interact(&net, &tm);
     while (!fail && rbag_has_highs(&tm.rbag)) {
@@ -1568,7 +1557,7 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
     //__syncthreads();
 
     // Shares a redex with neighbor thread
-    if (TPB > 1 && slow) {
+    if (TPB > 1 && tick % (1<<(tick/(1<<(REPS-5)))) == 0) {
       share_redexes(&tm);
     }
 
@@ -1578,19 +1567,18 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
 
     // If the local page is more than half full, quit
     if (tick == sv_t) {
+      u32 actv = block_count(rbag_len(&tm.rbag) > 0);
       i32 ndif = block_sum(net.l_node_dif);
       i32 vdif = block_sum(net.l_vars_dif);
-      if (ndif > L_NODE_LEN/2 || vdif > L_VARS_LEN/2) {
+      u32 thrs = L_NODE_LEN / TPB / 2 * actv;
+      if (actv == 0) {
+        break;
+      } else if (ndif > thrs || vdif > thrs) {
         break; // TODO: don't quit; save page and continue!
       } else {
         sv_a *= 2;
       }
       sv_t += sv_a; 
-    }
-
-    // If all threads are empty, halt
-    if (slow && block_all(rbag_len(&tm.rbag) == 0)) {
-      break;
     }
 
     // If grow-mode and all threads are full, halt
@@ -1623,17 +1611,28 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
 
 }
 
+u32 get_rbag_len(GNet* gnet, u32 turn) {
+  u32 rbag_use;
+  if (turn % 2 == 0) {
+    cudaMemcpy(&rbag_use, &gnet->rbag_use_B, sizeof(u32), cudaMemcpyDeviceToHost);
+  } else {
+    cudaMemcpy(&rbag_use, &gnet->rbag_use_A, sizeof(u32), cudaMemcpyDeviceToHost);
+  }
+  return rbag_use;
+}
+
 // Debugging
 // ---------
 
-__global__ void print_rbag_heatmap(GNet* gnet) {
+__global__ void print_rbag_heatmap(GNet* gnet, u32 turn) {
   if (GID() > 0) return;
   for (u32 bid = 0; bid < BPG; bid++) {
     for (u32 tid = 0; tid < TPB; tid++) {
       u32 gid = bid * TPB + tid;
       u32 len = 0;
       for (u32 i = 0; i < RLEN; i++) {
-        if (gnet->rbag_buf[gid * RLEN + i] != 0) {
+        if ( turn % 2 == 0 && gnet->rbag_buf_A[gid * RLEN + i] != 0
+          || turn % 2 == 1 && gnet->rbag_buf_B[gid * RLEN + i] != 0) {
           len++;
         }
       }
@@ -1885,16 +1884,19 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
-// Stress 18 x 65536
+// Stress 2^18 x 65536
 static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+
+// Stress 2^18 x 16
+//static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 8, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
 // Bug2
 //static const u8 DEMO_BOOK[] = {8, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 11, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 41, 0, 0, 0, 4, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 76, 0, 0, 0, 25, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 6, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 20, 0, 0, 0, 49, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0};
 
 // Result Printer Kernel
-__global__ void print_result(GNet* gnet) {
+__global__ void print_result(GNet* gnet, u32 turn) {
   // Create a view net
-  Net net = vnet_new(gnet, NULL);
+  Net net = vnet_new(gnet, NULL, turn);
 
   // Print the result  
   if (threadIdx.x == 0 && blockIdx.x == 0) {
@@ -1923,7 +1925,7 @@ void hvm_cu(u32* book_buffer) {
 
   // Set the initial redex
   Pair pair = new_pair(new_port(REF, 0), ROOT);
-  cudaMemcpy(&d_gnet->rbag_buf[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
+  cudaMemcpy(&d_gnet->rbag_buf_A[0], &pair, sizeof(Pair), cudaMemcpyHostToDevice);
 
   // Configures Shared Memory Size
   cudaFuncSetAttribute(evaluator, cudaFuncAttributeMaxDynamicSharedMemorySize, sizeof(LNet));
@@ -1932,29 +1934,25 @@ void hvm_cu(u32* book_buffer) {
   gnet_init<<<G_PAGE_MAX/TPB, TPB>>>(d_gnet);
 
   // Invokes the Evaluator Kernel repeatedly
-  for (u32 i = 0; i < 0xFFFFFFFF; ++i) {
-    evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, i);
-    comp_rlen<<<1, 1>>>(d_gnet);
-
-    if (i % 16 == 0) {
-      u32 rbag_use;
-      cudaMemcpy(&rbag_use, &d_gnet->rbag_use, sizeof(u32), cudaMemcpyDeviceToHost);
-      if (rbag_use == 0) {
-        printf("Completed after %d kernel launches!\n", i);
-        break;
-      }
+  u32 turn;
+  for (turn = 0; turn < 0xFFFF; ++turn) {
+    evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, turn);
+    swap_rbuf<<<1, 1>>>(d_gnet, turn);
+    if (get_rbag_len(d_gnet, turn) == 0) {
+      printf("Completed after %d kernel launches!\n", turn);
+      break;
     }
 
     // Print HeatMap (for debugging)
     //cudaDeviceSynchronize();
-    //print_rbag_heatmap<<<1,1>>>(d_gnet);
+    //print_rbag_heatmap<<<1,1>>>(d_gnet, turn);
     //cudaDeviceSynchronize();
     //printf("-------------------------------------------- %04x\n", i);
   }
 
   // Invokes the Result Printer Kernel
   cudaDeviceSynchronize();
-  print_result<<<1,1>>>(d_gnet);
+  print_result<<<1,1>>>(d_gnet, turn);
 
   // Reports errors
   cudaError_t err = cudaGetLastError();
