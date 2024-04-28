@@ -425,7 +425,7 @@ __device__ inline u32 GID() {
   return TID() + BID() * blockDim.x;
 }
 
-__device__ inline u32 div(u32 a, u32 b) {
+__device__ __host__ inline u32 div(u32 a, u32 b) {
   return (a + b - 1) / b;
 }
 
@@ -805,28 +805,28 @@ __device__ TM tmem_new() {
 
 __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   Net net;
-  net.l_node_dif = 0;
-  net.l_vars_dif = 0;
-  net.l_node_buf = ((LNet*)smem)->node_buf;
-  net.l_vars_buf = ((LNet*)smem)->vars_buf;
+  net.l_node_dif   = 0;
+  net.l_vars_dif   = 0;
+  net.l_node_buf   = ((LNet*)smem)->node_buf;
+  net.l_vars_buf   = ((LNet*)smem)->vars_buf;
   net.g_rbag_use_A = turn % 2 == 0 ? &gnet->rbag_use_A : &gnet->rbag_use_B;
   net.g_rbag_use_B = turn % 2 == 0 ? &gnet->rbag_use_B : &gnet->rbag_use_A;
   net.g_rbag_buf_A = turn % 2 == 0 ? gnet->rbag_buf_A : gnet->rbag_buf_B;
   net.g_rbag_buf_B = turn % 2 == 0 ? gnet->rbag_buf_B : gnet->rbag_buf_A;
-  net.g_node_buf = gnet->node_buf;
-  net.g_vars_buf = gnet->vars_buf;
-  net.g_page_use = gnet->page_use;
-  net.g_free_buf = gnet->free_buf;
-  net.g_free_pop = &gnet->free_pop;
-  net.g_free_put = &gnet->free_put;
-  net.g_page_idx = 0xFFFFFFFF;
+  net.g_node_buf   = gnet->node_buf;
+  net.g_vars_buf   = gnet->vars_buf;
+  net.g_page_use   = gnet->page_use;
+  net.g_free_buf   = gnet->free_buf;
+  net.g_free_pop   = &gnet->free_pop;
+  net.g_free_put   = &gnet->free_put;
+  net.g_page_idx   = 0xFFFFFFFF;
   return net;
 }
 
 // Reserves a page.
 __device__ u32 reserve_page(Net* net) {
   u32 free_idx = atomicAdd(net->g_free_pop, 1);
-  u32 page_idx = net->g_free_buf[free_idx % G_PAGE_MAX];
+  u32 page_idx = atomicExch(&net->g_free_buf[free_idx % G_PAGE_MAX], NONE);
   return page_idx;
 }
 
@@ -1621,28 +1621,6 @@ u32 get_rbag_len(GNet* gnet, u32 turn) {
   return rbag_use;
 }
 
-// Debugging
-// ---------
-
-__global__ void print_rbag_heatmap(GNet* gnet, u32 turn) {
-  if (GID() > 0) return;
-  for (u32 bid = 0; bid < BPG; bid++) {
-    for (u32 tid = 0; tid < TPB; tid++) {
-      u32 gid = bid * TPB + tid;
-      u32 len = 0;
-      for (u32 i = 0; i < RLEN; i++) {
-        if ( turn % 2 == 0 && gnet->rbag_buf_A[gid * RLEN + i] != 0
-          || turn % 2 == 1 && gnet->rbag_buf_B[gid * RLEN + i] != 0) {
-          len++;
-        }
-      }
-      u32 heat = min(len, 0xF);
-      printf("%x", heat);
-    }
-    printf("\n");
-  }
-}
-
 // Book Loader
 // -----------
 
@@ -1881,6 +1859,34 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
   }
 }
 
+__global__ void print_rbag_heatmap(GNet* gnet, u32 turn) {
+  if (GID() > 0) return;
+  for (u32 bid = 0; bid < BPG; bid++) {
+    for (u32 tid = 0; tid < TPB; tid++) {
+      u32 gid = bid * TPB + tid;
+      u32 len = 0;
+      for (u32 i = 0; i < RLEN; i++) {
+        if ( turn % 2 == 0 && gnet->rbag_buf_A[gid * RLEN + i] != 0
+          || turn % 2 == 1 && gnet->rbag_buf_B[gid * RLEN + i] != 0) {
+          len++;
+        }
+      }
+      u32 heat = min(len, 0xF);
+      printf("%x", heat);
+    }
+    printf("\n");
+  }
+}
+
+__global__ void print_result(GNet* gnet, u32 turn) {
+  Net net = vnet_new(gnet, NULL, turn);
+  if (threadIdx.x == 0 && blockIdx.x == 0) {
+    printf("Result: ");
+    pretty_print_port(&net, enter(&net, NULL, ROOT));
+    printf("\n");
+  }
+}
+
 // Main
 // ----
 
@@ -1892,19 +1898,6 @@ static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 
 
 // Bug2
 //static const u8 DEMO_BOOK[] = {8, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 11, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 41, 0, 0, 0, 4, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 76, 0, 0, 0, 25, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 6, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 20, 0, 0, 0, 49, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0};
-
-// Result Printer Kernel
-__global__ void print_result(GNet* gnet, u32 turn) {
-  // Create a view net
-  Net net = vnet_new(gnet, NULL, turn);
-
-  // Print the result  
-  if (threadIdx.x == 0 && blockIdx.x == 0) {
-    printf("Result: ");
-    pretty_print_port(&net, enter(&net, NULL, ROOT));
-    printf("\n");
-  }
-}
 
 void hvm_cu(u32* book_buffer) {
   // Start the timer
@@ -1931,7 +1924,7 @@ void hvm_cu(u32* book_buffer) {
   cudaFuncSetAttribute(evaluator, cudaFuncAttributeMaxDynamicSharedMemorySize, sizeof(LNet));
 
   // Inits the GNet
-  gnet_init<<<G_PAGE_MAX/TPB, TPB>>>(d_gnet);
+  gnet_init<<<div(G_PAGE_MAX,TPB), TPB>>>(d_gnet);
 
   // Invokes the Evaluator Kernel repeatedly
   u32 turn;
@@ -1942,12 +1935,11 @@ void hvm_cu(u32* book_buffer) {
       printf("Completed after %d kernel launches!\n", turn);
       break;
     }
-
     // Print HeatMap (for debugging)
     //cudaDeviceSynchronize();
-    //print_rbag_heatmap<<<1,1>>>(d_gnet, turn);
+    //print_rbag_heatmap<<<1,1>>>(d_gnet, turn+1);
     //cudaDeviceSynchronize();
-    //printf("-------------------------------------------- %04x\n", i);
+    //printf("-------------------------------------------- %04x\n", turn);
   }
 
   // Invokes the Result Printer Kernel
