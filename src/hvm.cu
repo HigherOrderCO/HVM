@@ -310,6 +310,8 @@ const u32 RLEN = 256; // max 32 redexes
 // - HI: a high-priotity stack, for shrinking reductions
 // - LO: a low-priority stack, for growing reductions
 struct RBag {
+  u32  lk_end;
+  Pair lk_buf[RLEN];
   u32  hi_end;
   Pair hi_buf[RLEN];
   u32  lo_ini;
@@ -755,6 +757,7 @@ __device__ inline Numb operate(Numb a, Numb b) {
 
 __device__ RBag rbag_new() {
   RBag rbag;
+  rbag.lk_end = 0;
   rbag.hi_end = 0;
   rbag.lo_ini = 0;
   rbag.lo_end = 0;
@@ -1030,8 +1033,13 @@ __device__ inline Port enter(Net* net, TM* tm, Port var) {
     // Takes the current `var` substitution as `val`
     Port val = vars_exchange(net, get_val(var), NONE);
     // If there was no `val`, stop, as there is no extension
-    if (val == NONE || val == 0) {
+    if (val == NONE) {
       break;
+    }
+    // Sanity check
+    if (val == 0) {
+      //printf("UNREACHABLE\n");
+      __builtin_unreachable();
     }
     // Otherwise, delete `B` (we own both) and continue
     vars_take(net, get_val(var));
@@ -1062,16 +1070,23 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
 
     // Since `A` is VAR: point `A ~> B`.
     if (true) {
+      // If a local node/var would leak to global, delay it
+      if ( (is_nod(B) || is_var(B))
+        && get_page(get_val(A)) != net->g_page_idx
+        && get_page(get_val(B)) == net->g_page_idx) {
+        tm->rbag.lk_buf[tm->rbag.lk_end++] = new_pair(A, B);
+        break;
+      }
       // Stores `A -> B`, taking the current `A` subst as `A'`
       Port A_ = vars_exchange(net, get_val(A), B);
       // If there was no `A'`, stop, as we lost B's ownership
       if (A_ == NONE) {
         break;
       }
-      // If we linked into another block's unfilled VAR slot, stop
-      // This will be handled by that block when it stores the var
+      // Sanity check
       if (A_ == 0) {
-        break;
+        //printf("UNREACHABLE\n");
+        __builtin_unreachable();
       }
       // Otherwise, delete `A` (we own both) and link `A' ~ B`
       vars_take(net, get_val(A));
@@ -1182,10 +1197,10 @@ __device__ bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   }
 
   // Checks availability
-  if (node_load(net,get_val(b)) == 0) {
-    //printf("[%04x] unavailable0: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
-    return false;
-  }
+  //if (node_load(net,get_val(b)) == 0) {
+    //printf("[%04x] unavailable5: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
+    //return false;
+  //}
 
   // Loads ports.
   Pair B  = node_take(net, get_val(b));
@@ -1205,12 +1220,6 @@ __device__ bool interact_eras(Net* net, TM* tm, Port a, Port b) {
 __device__ bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
-    return false;
-  }
-
-  // Checks availability
-  if (node_load(net,get_val(a)) == 0 || node_load(net,get_val(b)) == 0) {
-    //printf("[%04x] unavailable1: %s | %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(a).x, show_port(b).x);
     return false;
   }
 
@@ -1236,12 +1245,6 @@ __device__ bool interact_anni(Net* net, TM* tm, Port a, Port b) {
 __device__ bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 4, 4, 4)) {
-    return false;
-  }
-
-  // Checks availability
-  if (node_load(net,get_val(a)) == 0 || node_load(net,get_val(b)) == 0) {
-    //printf("[%04x] unavailable2: %s | %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(a).x, show_port(b).x);
     return false;
   }
 
@@ -1284,11 +1287,6 @@ __device__ bool interact_oper(Net* net, TM* tm, Port a, Port b) {
     return false;
   }
 
-  // Checks availability  
-  if (node_load(net, get_val(b)) == 0) {
-    return false;
-  }
-
   // Loads ports.
   Val  av = get_val(a);
   Pair B  = node_take(net, get_val(b));
@@ -1313,11 +1311,6 @@ __device__ bool interact_oper(Net* net, TM* tm, Port a, Port b) {
 __device__ bool interact_swit(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.  
   if (!get_resources(net, tm, 1, 2, 0)) {
-    return false;
-  }
-
-  // Checks availability
-  if (node_load(net, get_val(b)) == 0) {
     return false;
   }
 
@@ -1451,39 +1444,41 @@ __device__ u32 save_page(Net* net, TM* tm) {
   u32 vars_count = 0;
   // Move nodes to global
   for (u32 i = TID(); i < L_NODE_LEN; i += TPB) {
-    // Move a node from local to global buffer
+    // Gets node from local buffer
     Pair node = atomicExch(&net->l_node_buf[i], 0);
     if (node != 0) {
-      net->g_node_buf[L_NODE_LEN*net->g_page_idx+i] = node;
+      // Moves to global buffer
+      Pair old = atomicExch(&net->g_node_buf[L_NODE_LEN*net->g_page_idx+i], node);
       // Increase the page's size count
       node_count += 1;
+      // Sanity check
+      if (old != 0) {
+        //printf("UNREACHABLE\n");
+        __builtin_unreachable();
+      }
     }
   }
   // Move vars to global
   for (u32 i = TID(); i < L_VARS_LEN; i += TPB) {
     // Take a var from local buffer 
     Port var = atomicExch(&net->l_vars_buf[i], 0);
-    // If we don't have a subst for it, this means both vars escaped. That means
-    // a thread will futurely link and take this var. We just increment the
-    // vars_count by 1, so that the page isn't freed until that happens.
-    if (var == NONE) {
+    if (var != 0) {
+      // Moves to global buffer
+      Pair old = atomicExch(&net->g_vars_buf[L_VARS_LEN*net->g_page_idx+i], var);
+      // Increase the page's size count
       vars_count += 1;
-    // If we have a local subst for it, this means one var escaped.
-    } else if (var != 0) {
-      // Move it to global with an atomic exchange
-      Port sub = atomicExch(&net->g_vars_buf[L_VARS_LEN*net->g_page_idx+i], var);
-      // If it was 0, we moved it successfully. Just increment vars_count.
-      // If it was NONE, we also moved it successfully. That means another block
-      // used enter() on this slot, swapping it by NONE. We can just ignore it.
-      if (sub == 0 || sub == NONE) {
-        vars_count += 1;
-      // Else, that means another block substituted the other var before we had
-      // a chance to save it, so we make a redex and keep the same vars_count.
-      } else {
-        push_redex(tm, new_pair(var, sub));
-        net->g_vars_buf[L_VARS_LEN*net->g_page_idx+i] = 0;
+      // Sanity check
+      if (old != 0) {
+        //printf("UNREACHABLE\n");
+        __builtin_unreachable();
       }
     }
+  }
+  // Pushes leaked links
+  while (tm->rbag.lk_end > 0) {
+    Pair redex = tm->rbag.lk_buf[--tm->rbag.lk_end];
+    push_redex(tm, redex);
+    //link(net, tm, get_fst(redex), get_snd(redex), true);
   }
   // Resets local page counters
   net->l_node_dif = 0;
@@ -1574,7 +1569,9 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
       if (actv == 0) {
         break;
       } else if (ndif > thrs || vdif > thrs) {
-        break; // TODO: don't quit; save page and continue!
+        save_page(&net, &tm);
+        load_page(&net, &tm);
+        //break; // TODO: don't quit; save page and continue!
       } else {
         sv_a *= 2;
       }
@@ -1893,6 +1890,9 @@ __global__ void print_result(GNet* gnet, u32 turn) {
 // Stress 2^18 x 65536
 static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
+// Stress 2^14 x 65536
+//static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 7, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+
 // Stress 2^18 x 16
 //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 8, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
@@ -1956,6 +1956,26 @@ void hvm_cu(u32* book_buffer) {
   // Stops the timer
   clock_t end = clock();
   double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
+
+  //{
+    //// Allocate host memory for the net
+    //GNet *h_gnet = (GNet*)malloc(sizeof(GNet));
+
+    //// Copy the net from device to host 
+    //cudaMemcpy(h_gnet, d_gnet, sizeof(GNet), cudaMemcpyDeviceToHost);
+
+    //// Create a Net view of the host GNet
+    //Net net;
+    //net.g_node_buf = h_gnet->node_buf; 
+    //net.g_vars_buf = h_gnet->vars_buf;
+    //net.g_page_idx = 0xFFFFFFFF;
+
+    //// Print the net
+    //print_net(&net);
+
+    //// Free host memory  
+    //free(h_gnet);
+  //}
 
   // Gets interaction count
   u64 itrs;
