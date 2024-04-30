@@ -1095,10 +1095,19 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
         Port X = A; A = B; B = X;
       }
 
-      // If a local node would leak, store to postpone it
+      // If a local node would leak, re-store to avoid it
       // FIXME: can we avoid leaking entirely?
+      // FIXME: the whole link fn can probably be greatly improved
       if (is_nod(B) && B_is_local && !A_is_local) {
-        tm->rbag.lk_buf[tm->rbag.lk_end++] = new_pair(A, B);
+        Port A_ = vars_load(net, get_val(A));
+        // If A immediately resolves as a node, create a redex
+        // FIXME: should we bother digging further? Should we fully enter A?
+        if (get_tag(A_) != VAR && A_ != NONE) {
+          push_redex(tm, new_pair(vars_take(net, get_val(A)), B));
+        // Otherwise, we're hopeless. Just take the loss and postpone the link
+        } else {
+          tm->rbag.lk_buf[tm->rbag.lk_end++] = new_pair(A, B);
+        }
         break;
       }
 
