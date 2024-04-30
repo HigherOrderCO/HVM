@@ -2,6 +2,8 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::alloc::{alloc, dealloc, Layout};
 use std::mem;
 
+//ok
+
 // Runtime
 // =======
 
@@ -138,7 +140,7 @@ impl Port {
       [LINK,VOID,VOID,VOID,CALL,CALL,CALL,CALL], // REF
       [LINK,VOID,VOID,VOID,ERAS,ERAS,ERAS,ERAS], // ERA
       [LINK,VOID,VOID,VOID,ERAS,ERAS,OPER,SWIT], // NUM
-      [LINK,CALL,ERAS,ERAS,ANNI,COMM,COMM,COMM], // CON 
+      [LINK,CALL,ERAS,ERAS,ANNI,COMM,COMM,COMM], // CON
       [LINK,CALL,ERAS,ERAS,COMM,ANNI,COMM,COMM], // DUP
       [LINK,CALL,ERAS,OPER,COMM,COMM,ANNI,COMM], // OPR
       [LINK,CALL,ERAS,SWIT,COMM,COMM,COMM,ANNI], // SWI
@@ -157,7 +159,7 @@ impl Port {
   pub fn adjust_port(&self, tm: &TMem) -> Port {
     let tag = self.get_tag();
     let val = self.get_val();
-    if self.is_nod() { 
+    if self.is_nod() {
       Port::new(tag, tm.nloc[val as usize] as u32)
     } else if self.is_var() {
       Port::new(tag, tm.vloc[val as usize] as u32)
@@ -346,7 +348,7 @@ impl Numb {
           LT  => Numb::new_u24((av <  bv) as u32),
           GT  => Numb::new_u24((av >  bv) as u32),
           AND => Numb::new_f24(av.atan2(bv)),
-          OR  => Numb::new_f24(bv.log(av)), 
+          OR  => Numb::new_f24(bv.log(av)),
           XOR => Numb::new_f24(av.powf(bv)),
           _   => unreachable!(),
         }
@@ -490,7 +492,7 @@ impl TMem {
       nput: 0,
       vput: 0,
       nloc: vec![0; 32],
-      vloc: vec![0; 32],  
+      vloc: vec![0; 32],
       rbag: RBag::new(),
     }
   }
@@ -539,10 +541,10 @@ impl TMem {
     let mut a = a;
     let mut b = b;
 
-    // Attempts to directionally point `A ~> B` 
+    // Attempts to directionally point `A ~> B`
     loop {
       // If `A` is NODE: swap `A` and `B`, and continue
-      if a.get_tag() != VAR {
+      if a.get_tag() != VAR && a.get_tag() == VAR {
         let x = a; a = b; b = x;
       }
 
@@ -555,7 +557,7 @@ impl TMem {
       // While `B` is VAR: extend it (as an optimization)
       b = net.enter(b);
 
-      // Since `A` is VAR: point `A ~> B`.  
+      // Since `A` is VAR: point `A ~> B`.
       if true {
         // Stores `A -> B`, taking the current `A` subst as `A'`
         let a_ = net.vars_exchange(a.get_val() as usize, b);
@@ -576,8 +578,6 @@ impl TMem {
     //println!("link_pair {:016X}", ab.0);
   }
 
-  // TODO: implement all the INTERACTION functions below.
-
   // The Link Interaction.
   pub fn interact_link(&mut self, net: &GNet, a: Port, b: Port) -> bool {
     // Allocates needed nodes and vars.
@@ -585,7 +585,7 @@ impl TMem {
       return false;
     }
 
-    // Links.  
+    // Links.
     self.link_pair(net, Pair::new(a, b));
     
     true
@@ -619,10 +619,10 @@ impl TMem {
     }
 
     // Links.
-    self.link_pair(net, Pair::new(b, def.root.adjust_port(self)));
     for pair in &def.rbag {
       self.link_pair(net, pair.adjust_pair(self));
     }
+    self.link_pair(net, Pair::new(def.root.adjust_port(self), b));
   
     true
   }
@@ -634,7 +634,7 @@ impl TMem {
 
   // The Eras Interaction.
   pub fn interact_eras(&mut self, net: &GNet, a: Port, b: Port) -> bool {
-    // Allocates needed nodes and vars.  
+    // Allocates needed nodes and vars.
     if !self.get_resources(net, 2, 0, 0) {
       return false;
     }
@@ -644,7 +644,7 @@ impl TMem {
       return false;
     }
 
-    // Loads ports.  
+    // Loads ports.
     let b_ = net.node_exchange(b.get_val() as usize, Pair(0));
     let b1 = b_.get_fst();
     let b2 = b_.get_snd();
@@ -672,7 +672,7 @@ impl TMem {
     let a_ = net.node_take(a.get_val() as usize);
     let a1 = a_.get_fst();
     let a2 = a_.get_snd();
-    let b_ = net.node_take(b.get_val() as usize);  
+    let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
     let b2 = b_.get_snd();
 
@@ -685,7 +685,7 @@ impl TMem {
 
   // The Comm Interaction.
   pub fn interact_comm(&mut self, net: &GNet, a: Port, b: Port) -> bool {
-    // Allocates needed nodes and vars.  
+    // Allocates needed nodes and vars.
     if !self.get_resources(net, 4, 4, 4) {
       return false;
     }
@@ -695,7 +695,7 @@ impl TMem {
       return false;
     }
 
-    // Loads ports.  
+    // Loads ports.
     let a_ = net.node_take(a.get_val() as usize);
     let a1 = a_.get_fst();
     let a2 = a_.get_snd();
@@ -709,29 +709,29 @@ impl TMem {
     net.vars_create(self.vloc[2], NONE);
     net.vars_create(self.vloc[3], NONE);
 
-    // Stores new nodes.  
+    // Stores new nodes.
     net.node_create(self.nloc[0], Pair::new(Port::new(VAR, self.vloc[0] as u32), Port::new(VAR, self.vloc[1] as u32)));
     net.node_create(self.nloc[1], Pair::new(Port::new(VAR, self.vloc[2] as u32), Port::new(VAR, self.vloc[3] as u32)));
     net.node_create(self.nloc[2], Pair::new(Port::new(VAR, self.vloc[0] as u32), Port::new(VAR, self.vloc[2] as u32)));
     net.node_create(self.nloc[3], Pair::new(Port::new(VAR, self.vloc[1] as u32), Port::new(VAR, self.vloc[3] as u32)));
 
     // Links.
-    self.link_pair(net, Pair::new(a1, Port::new(b.get_tag(), self.nloc[0] as u32)));
-    self.link_pair(net, Pair::new(a2, Port::new(b.get_tag(), self.nloc[1] as u32)));  
-    self.link_pair(net, Pair::new(b1, Port::new(a.get_tag(), self.nloc[2] as u32)));
-    self.link_pair(net, Pair::new(b2, Port::new(a.get_tag(), self.nloc[3] as u32)));
+    self.link_pair(net, Pair::new(Port::new(b.get_tag(), self.nloc[0] as u32), a1));
+    self.link_pair(net, Pair::new(Port::new(b.get_tag(), self.nloc[1] as u32), a2));
+    self.link_pair(net, Pair::new(Port::new(a.get_tag(), self.nloc[2] as u32), b1));
+    self.link_pair(net, Pair::new(Port::new(a.get_tag(), self.nloc[3] as u32), b2));
     
     true
   }
 
-  // The Oper Interaction.  
+  // The Oper Interaction.
   pub fn interact_oper(&mut self, net: &GNet, a: Port, b: Port) -> bool {
     // Allocates needed nodes and vars.
     if !self.get_resources(net, 1, 1, 0) {
       return false;
     }
 
-    // Checks availability  
+    // Checks availability
     if net.node_load(b.get_val() as usize).0 == 0 {
       return false;
     }
@@ -740,13 +740,13 @@ impl TMem {
     let av = a.get_val();
     let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
-    let b2 = b_.get_snd();
+    let b2 = net.enter(b_.get_snd());
      
     // Performs operation.
     if b1.get_tag() == NUM {
       let bv = b1.get_val();
       let cv = Numb::operate(Numb(av), Numb(bv));
-      self.link_pair(net, Pair::new(b2, Port::new(NUM, cv.0))); 
+      self.link_pair(net, Pair::new(Port::new(NUM, cv.0), b2));
     } else {
       net.node_create(self.nloc[0], Pair::new(Port::new(a.get_tag(), Numb(a.get_val()).flp_flp().0), b2));
       self.link_pair(net, Pair::new(b1, Port::new(OPR, self.nloc[0] as u32)));
@@ -757,7 +757,7 @@ impl TMem {
 
   // The Swit Interaction.
   pub fn interact_swit(&mut self, net: &GNet, a: Port, b: Port) -> bool {
-    // Allocates needed nodes and vars.  
+    // Allocates needed nodes and vars.
     if !self.get_resources(net, 1, 2, 0) {
       return false;
     }
@@ -773,7 +773,7 @@ impl TMem {
     let b1 = b_.get_fst();
     let b2 = b_.get_snd();
  
-    // Stores new nodes.  
+    // Stores new nodes.
     if av == 0 {
       net.node_create(self.nloc[0], Pair::new(b2, Port::new(ERA,0)));
       self.link_pair(net, Pair::new(Port::new(CON, self.nloc[0] as u32), b1));
@@ -798,7 +798,7 @@ impl TMem {
     let mut a = redex.get_fst();
     let mut b = redex.get_snd();
 
-    // Gets the rule type.  
+    // Gets the rule type.
     let mut rule = Port::get_rule(a, b);
 
     // Used for root redex.
@@ -814,7 +814,7 @@ impl TMem {
     let success = match rule {
       LINK => self.interact_link(net, a, b),
       CALL => self.interact_call(net, a, b, book),
-      VOID => self.interact_void(net, a, b),  
+      VOID => self.interact_void(net, a, b),
       ERAS => self.interact_eras(net, a, b),
       ANNI => self.interact_anni(net, a, b),
       COMM => self.interact_comm(net, a, b),
@@ -827,7 +827,7 @@ impl TMem {
     if !success {
       self.rbag.push_redex(redex);
       false
-    // Else, increments the interaction count. 
+    // Else, increments the interaction count.
     } else if rule != LINK {
       self.itrs += 1;
       true
@@ -840,10 +840,41 @@ impl TMem {
     // Increments the tick
     self.tick += 1;
 
-    // Performs some interactions  
+    // DEBUG:
+    //let mut max_rlen = 0;
+    //let mut max_nlen = 0;
+    //let mut max_vlen = 0;
+
+    // Performs some interactions
     while self.rbag.len() > 0 {
       self.interact(net, book);
+
+      // DEBUG:
+      //println!("{}{}", self.rbag.show(), net.show());
+      //println!("");
+      //let rlen = self.rbag.lo.len() + self.rbag.hi.len();
+      //let mut nlen = 0;
+      //for i in 0 .. 256 {
+        //if net.node_load(i).0 != 0 {
+          //nlen += 1;
+        //}
+      //}
+      //let mut vlen = 0;
+      //for i in 0..256 {
+        //if net.vars_load(i).0 != 0 {
+          //vlen += 1;
+        //}
+      //}
+      //max_rlen = max_rlen.max(rlen);
+      //max_nlen = max_nlen.max(nlen);
+      //max_vlen = max_vlen.max(vlen);
+
     }
+
+    // DEBUG:
+    //println!("MAX_RLEN: {}", max_rlen);
+    //println!("MAX_NLEN: {}", max_nlen);
+    //println!("MAX_VLEN: {}", max_vlen);
 
     net.itrs.fetch_add(self.itrs as u64, Ordering::Relaxed);
     self.itrs = 0;
@@ -874,7 +905,7 @@ impl Book {
       // Writes the rbag length
       buf.extend_from_slice(&(def.rbag.len() as u32).to_ne_bytes());
       
-      // Writes the node length  
+      // Writes the node length
       buf.extend_from_slice(&(def.node.len() as u32).to_ne_bytes());
 
       // Writes the vars length
@@ -942,22 +973,26 @@ impl<'a> GNet<'a> {
   pub fn show(&self) -> String {
     let mut s = String::new();
     s.push_str("NODE | FST-PORT     | SND-PORT     \n");
-    s.push_str("---- | ------------ | ------------\n");  
-    for i in 0..self.nlen {
+    s.push_str("---- | ------------ | ------------\n");
+    //for i in 0..256 {
+    for i in 0..self.nlen-1 {
       let node = self.node_load(i);
       if node.0 != 0 {
         s.push_str(&format!("{:04X} | {} | {}\n", i, node.get_fst().show(), node.get_snd().show()));
       }
     }
-    s.push_str("==== | ============ | ============\n");  
+    s.push_str("==== | ============ | ============\n");
     s.push_str("VARS | VALUE        |\n");
-    s.push_str("---- | ------------ |\n");  
-    for i in 0..self.vlen {
+    s.push_str("---- | ------------ |\n");
+    //for i in 0..256 {
+    for i in 0..self.vlen-1 {
       let var = self.vars_load(i);
       if var.0 != 0 {
         s.push_str(&format!("{:04X} | {} |\n", i, var.show()));
       }
     }
+    let root = self.vars_load(0x1FFFFFFF);
+    s.push_str(&format!("ROOT | {} |\n", root.show()));
     s.push_str("==== | ============ |\n");
     return s;
   }
@@ -969,11 +1004,11 @@ impl Book {
     for def in &self.defs {
       s.push_str(&format!("==== | ============ | ============ {} (vars={},safe={})\n", def.name, def.vars, def.safe));
       s.push_str("NODE | FST-PORT     | SND-PORT     \n");
-      s.push_str("---- | ------------ | ------------\n");  
+      s.push_str("---- | ------------ | ------------\n");
       for (i, node) in def.node.iter().enumerate() {
         s.push_str(&format!("{:04X} | {} | {}\n", i, node.get_fst().show(), node.get_snd().show()));
       }
-      s.push_str("==== | ============ | ============\n");  
+      s.push_str("==== | ============ | ============\n");
       s.push_str("RBAG | FST-TREE     | SND-TREE    \n");
       s.push_str("---- | ------------ | ------------\n");
       for (i, node) in def.rbag.iter().enumerate() {
@@ -1025,7 +1060,7 @@ impl Book {
       //safe: true,
       //rbag: vec![],
       //node: vec![Pair::new(Port(0x0C),Port(0x00)), Pair::new(Port(0x1F),Port(0x00)), Pair::new(Port(0x03),Port(0x21)), Pair::new(Port(0x14),Port(0x00))],
-      //vars: 1,  
+      //vars: 1,
     //};
     //let lop0 = Def {
       //name: "lop0".to_string(),

@@ -50,10 +50,10 @@
 // 
 // ## 3. ERAS
 // 
-//     (A1 A2) ~ *
+//     * ~ (B1 B2)
 //     -----------
-//     A1 ~ *
-//     A2 ~ *
+//     * ~ B1
+//     * ~ B2
 //     
 // ## 4. ANNI (https://i.imgur.com/ASdOzbg.png)
 //
@@ -66,17 +66,17 @@
 // 
 //     (A1 A2) ~ {B1 B2}
 //     -----------------
-//     A1 ~ {x y}
-//     A2 ~ {z w}
-//     B1 ~ (x z)
-//     B2 ~ (y w)
+//     {x y} ~ A1
+//     {z w} ~ A2
+//     (x z) ~ B1
+//     (y w) ~ B2
 // 
 // ## 6. OPER
 // 
 //     #A ~ <+ B1 B2>
 //     --------------
 //     if B1 is #B:
-//       B2 ~ #A+B
+//       #A+B ~ B2
 //     else:
 //       B1 ~ <+ #A B2>
 //
@@ -306,7 +306,7 @@ const Tag XOR = 0xF;
 const u32 RLEN = 256; // max 32 redexes
 
 // Thread Redex Bag
-// It uses the same space to store two stacks: 
+// It uses the same space to store two stacks:
 // - HI: a high-priotity stack, for shrinking reductions
 // - LO: a low-priority stack, for growing reductions
 struct RBag {
@@ -329,9 +329,9 @@ struct LNet {
 
 // Global Net
 const u32 G_PAGE_MAX = 0x10000 - 1; // max 65536 pages
-const u32 G_NODE_LEN = G_PAGE_MAX * L_NODE_LEN; // max 536m nodes 
-const u32 G_VARS_LEN = G_PAGE_MAX * L_VARS_LEN; // max 536m vars 
-const u32 G_RBAG_LEN = TPB * BPG * RLEN; // max 2m redexes
+const u32 G_NODE_LEN = G_PAGE_MAX * L_NODE_LEN; // max 536m nodes
+const u32 G_VARS_LEN = G_PAGE_MAX * L_VARS_LEN; // max 536m vars
+const u32 G_RBAG_LEN = TPB * BPG * RLEN * 3; // max 6m redexes
 struct GNet {
   u32  rbag_use_A; // total rbag redex count (buffer A)
   u32  rbag_use_B; // total rbag redex count (buffer B)
@@ -924,7 +924,7 @@ __device__ inline void vars_store(Net* net, u32 var, Port val) {
 }
 
 // Exchanges a node on global by a value. Returns old.
-__device__ inline Pair node_exchange(Net* net, u32 loc, Pair val) {  
+__device__ inline Pair node_exchange(Net* net, u32 loc, Pair val) {
   if (get_page(loc) == net->g_page_idx) {
     return atomicExch(&net->l_node_buf[loc - L_NODE_LEN*net->g_page_idx], val);
   } else {
@@ -1070,12 +1070,12 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
   
   // Attempts to directionally point `A ~> B`
   while (true) {
-    // If `A` is PRI: swap `A` and `B`, and continue
-    if (get_tag(A) != VAR) {
+    // If `A` is NODE: swap `A` and `B`, and continue
+    if (get_tag(A) != VAR && get_tag(B) == VAR) {
       Port X = A; A = B; B = X;
     }
 
-    // If `A` is PRI: create the `A ~ B` redex
+    // If `A` is NODE: create the `A ~ B` redex
     if (get_tag(A) != VAR) {
       push_redex(tm, new_pair(A, B)); // TODO: move global ports to local
       break;
@@ -1206,16 +1206,16 @@ __device__ bool interact_call(Net* net, TM* tm, Port a, Port b) {
     vars_create(net, tm->vloc[i], NONE);
   }
 
-  // Stores new nodes.  
+  // Stores new nodes.
   for (u32 i = 0; i < def->node_len; ++i) {
     node_create(net, tm->nloc[i], adjust_pair(net, tm, def->node_buf[i]));
   }
 
   // Links.
-  link_pair(net, tm, new_pair(b, adjust_port(net, tm, def->root)));
   for (u32 i = 0; i < def->rbag_len; ++i) {
     link_pair(net, tm, adjust_pair(net, tm, def->rbag_buf[i]));
   }
+  link_pair(net, tm, new_pair(adjust_port(net, tm, def->root), b));
 
   return true;
 }
@@ -1309,15 +1309,15 @@ __device__ bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   node_create(net, tm->nloc[3], new_pair(new_port(VAR, tm->vloc[1]), new_port(VAR, tm->vloc[3])));
 
   // Links.
-  link_pair(net, tm, new_pair(A1, new_port(get_tag(b), tm->nloc[0])));
-  link_pair(net, tm, new_pair(A2, new_port(get_tag(b), tm->nloc[1])));
-  link_pair(net, tm, new_pair(B1, new_port(get_tag(a), tm->nloc[2])));
-  link_pair(net, tm, new_pair(B2, new_port(get_tag(a), tm->nloc[3])));
+  link_pair(net, tm, new_pair(new_port(get_tag(b), tm->nloc[0]), A1));
+  link_pair(net, tm, new_pair(new_port(get_tag(b), tm->nloc[1]), A2));
+  link_pair(net, tm, new_pair(new_port(get_tag(a), tm->nloc[2]), B1));
+  link_pair(net, tm, new_pair(new_port(get_tag(a), tm->nloc[3]), B2));
 
   return true;
 }
 
-// The Oper Interaction.  
+// The Oper Interaction.
 __device__ bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 1, 0)) {
@@ -1328,25 +1328,25 @@ __device__ bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   Val  av = get_val(a);
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
-  Port B2 = get_snd(B);
-     
+  Port B2 = enter(net, tm, get_snd(B));
+    
   // Performs operation.
   if (get_tag(B1) == NUM) {
     Val  bv = get_val(B1);
     Numb cv = operate(av, bv);
-    link_pair(net, tm, new_pair(B2, new_port(NUM, cv))); 
+    link_pair(net, tm, new_pair(new_port(NUM, cv), B2));
   } else {
     node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(av)), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
 
-  return true;  
+  return true;
 }
 
 // The Swit Interaction.
 __device__ bool interact_swit(Net* net, TM* tm, Port a, Port b) {
-  // Allocates needed nodes and vars.  
+  // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 2, 0)) {
     return false;
   }
@@ -1356,7 +1356,7 @@ __device__ bool interact_swit(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
- 
+
   // Stores new nodes.
   if (av == 0) {
     node_create(net, tm->nloc[0], new_pair(B2, new_port(ERA,0)));
@@ -1429,10 +1429,6 @@ __device__ bool interact(Net* net, TM* tm) {
 __device__ u32 save_redexes(Net* net, TM *tm, u32 turn) {
   u32 bag = transpose(GID(), TPB, BPG);
   u32 idx = 0;
-  // FIXME: prevent this by making lo/hi half as big
-  if (rbag_len(&tm->rbag) >= RLEN) {
-    printf("ERROR: CAN'T SAVE RBAG LEN > %d\n", RLEN);
-  }
   // Moves low-priority redexes
   for (u32 i = tm->rbag.lo_ini; i < tm->rbag.lo_end; ++i) {
     net->g_rbag_buf_B[bag * RLEN + (idx++)] = tm->rbag.lo_buf[i % RLEN];
@@ -1446,6 +1442,7 @@ __device__ u32 save_redexes(Net* net, TM *tm, u32 turn) {
 }
 
 // Loads redexes from global bag to shared memory
+// FIXME: check if we have enuogh space for all loads
 __device__ u32 load_redexes(Net* net, TM *tm, u32 turn) {
   u32 bag = GID();
   for (u32 i = 0; i < RLEN; ++i) {
@@ -1499,7 +1496,7 @@ __device__ u32 save_page(Net* net, TM* tm) {
   // Move vars to global
   while (net->l_vars_set != 0) {
     u32 idx = TID() + pop_index(&net->l_vars_set) * TPB;
-    // Take a var from local buffer 
+    // Take a var from local buffer
     Port var = atomicExch(&net->l_vars_buf[idx], 0);
     if (var != 0) {
       // Moves to global buffer
@@ -1614,7 +1611,7 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
       } else {
         sv_a *= 2;
       }
-      sv_t += sv_a; 
+      sv_t += sv_a;
     }
 
     // If grow-mode and all threads are full, halt
@@ -1690,7 +1687,7 @@ void book_load(u32* buf, Book* book) {
     def->root = *buf++;
 
     // Reads rbag_buf
-    memcpy(def->rbag_buf, buf, 8*def->rbag_len);  
+    memcpy(def->rbag_buf, buf, 8*def->rbag_len);
     buf += def->rbag_len * 2;
     
     // Reads node_buf
@@ -1859,7 +1856,7 @@ __device__ void pretty_print_port(Net* net, Port port) {
         Pair node = node_load(net,get_val(cur));
         Port p2   = get_snd(node);
         Port p1   = get_fst(node);
-        printf("?<"); 
+        printf("?<");
         stack[len++] = (0xFFFFFF00) | (u32)('>');
         stack[len++] = p2;
         stack[len++] = (0xFFFFFF00) | (u32)(' ');
@@ -1878,7 +1875,7 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
   for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
     Pair redex = rbag->lo_buf[i%RLEN];
     if (redex != 0) {
-      pretty_print_port(net, get_fst(redex)); 
+      pretty_print_port(net, get_fst(redex));
       printf(" ~ ");
       pretty_print_port(net, get_snd(redex));
       printf("\n");
@@ -1927,7 +1924,7 @@ __global__ void print_result(GNet* gnet, u32 turn) {
 // ----
 
 // Stress 2^18 x 65536
-static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+//static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
 // Stress 2^14 x 65536
 //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 7, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
@@ -1936,7 +1933,7 @@ static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 
 //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 8, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
 // Bug2
-//static const u8 DEMO_BOOK[] = {8, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 11, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 41, 0, 0, 0, 4, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 76, 0, 0, 0, 25, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 6, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 20, 0, 0, 0, 49, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0};
+static const u8 DEMO_BOOK[] = {8, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 11, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 41, 0, 0, 0, 4, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 76, 0, 0, 0, 25, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 6, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 20, 0, 0, 0, 49, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0};
 
 void hvm_cu(u32* book_buffer) {
   // Start the timer
@@ -1968,6 +1965,8 @@ void hvm_cu(u32* book_buffer) {
   // Invokes the Evaluator Kernel repeatedly
   u32 turn;
   for (turn = 0; turn < 0xFFFF; ++turn) {
+    //printf("-------------------------------------------- %04x\n", turn);
+    //cudaDeviceSynchronize();
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, turn);
     swap_rbuf<<<1, 1>>>(d_gnet, turn);
     if (get_rbag_len(d_gnet, turn) == 0) {
@@ -1975,10 +1974,9 @@ void hvm_cu(u32* book_buffer) {
       break;
     }
     // Print HeatMap (for debugging)
+    //printf("-------------------------------------------- heatmap:\n");
     //cudaDeviceSynchronize();
     //print_rbag_heatmap<<<1,1>>>(d_gnet, turn+1);
-    //cudaDeviceSynchronize();
-    //printf("-------------------------------------------- %04x\n", turn);
   }
 
   // Invokes the Result Printer Kernel
@@ -2000,19 +1998,19 @@ void hvm_cu(u32* book_buffer) {
     //// Allocate host memory for the net
     //GNet *h_gnet = (GNet*)malloc(sizeof(GNet));
 
-    //// Copy the net from device to host 
+    //// Copy the net from device to host
     //cudaMemcpy(h_gnet, d_gnet, sizeof(GNet), cudaMemcpyDeviceToHost);
 
     //// Create a Net view of the host GNet
     //Net net;
-    //net.g_node_buf = h_gnet->node_buf; 
+    //net.g_node_buf = h_gnet->node_buf;
     //net.g_vars_buf = h_gnet->vars_buf;
     //net.g_page_idx = 0xFFFFFFFF;
 
     //// Print the net
     //print_net(&net);
 
-    //// Free host memory  
+    //// Free host memory
     //free(h_gnet);
   //}
 
@@ -2022,7 +2020,7 @@ void hvm_cu(u32* book_buffer) {
 
   // Prints interactions, time and MIPS
   printf("- ITRS: %llu\n", itrs);
-  printf("- TIME: %.2fs\n", duration);  
+  printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 }
 

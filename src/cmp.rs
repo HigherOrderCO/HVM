@@ -86,15 +86,15 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
     //code.push_str(&format!("{}vars_create(net, v{:x}, NONE);\n", indent(tab+1), i));
   //}
 
+  // Compiles root
+  compile_link_fast(trg, code, book, neo, tab+1, def, def.root, "b");
+
   // Compiles rbag
   for redex in &def.rbag {
     let fun = compile_atom(trg, redex.get_fst());
     let arg = compile_node(trg, code, book, neo, tab+1, def, redex.get_snd());
     code.push_str(&format!("{}link(net, tm, {}, {});\n", indent(tab+1), &fun, &arg));
   }
-
-  // Compiles root
-  compile_link_fast(trg, code, book, neo, tab+1, def, def.root, "b");
 
   // Return
   code.push_str(&format!("{}return true;\n", indent(tab+1)));
@@ -291,7 +291,7 @@ pub fn compile_link_slow(trg: Target, code: &mut String, book: &hvm::Book, neo: 
 // TODO: comment
 pub fn link_or_store(trg: Target, code: &mut String, book: &hvm::Book, neo: &mut usize, tab: usize, def: &hvm::Def, a: &str, b: &str) {
   code.push_str(&format!("{}if ({} != NONE) {{\n", indent(tab), b));
-  code.push_str(&format!("{}link(net, tm, {}, {});\n", indent(tab+1), b, a));  
+  code.push_str(&format!("{}link(net, tm, {}, {});\n", indent(tab+1), a, b));
   code.push_str(&format!("{}}} else {{\n", indent(tab)));
   code.push_str(&format!("{}{} = {};\n", indent(tab+1), b, a));
   code.push_str(&format!("{}}}\n", indent(tab)));

@@ -14,14 +14,14 @@
 typedef uint8_t bool;
 
 typedef  uint8_t  u8;
-typedef uint16_t u16; 
+typedef uint16_t u16;
 typedef  int32_t i32;
 typedef uint32_t u32;
 typedef uint64_t u64;
 
 typedef _Atomic(u8) a8;
 typedef _Atomic(u16) a16;
-typedef _Atomic(u32) a32; 
+typedef _Atomic(u32) a32;
 typedef _Atomic(u64) a64;
 
 // Configuration
@@ -96,11 +96,11 @@ const Port FREE = 0x00000000;
 const Port ROOT = 0xFFFFFFF8;
 const Port NONE = 0xFFFFFFFF;
 
-// Thread Redex Bag Length  
+// Thread Redex Bag Length
 const u32 RLEN = 1 << 22; // max 4m redexes
 
 // Thread Redex Bag
-// It uses the same space to store two stacks: 
+// It uses the same space to store two stacks:
 // - HI: a high-priotity stack, for shrinking reductions
 // - LO: a low-priority stack, for growing reductions
 typedef struct RBag {
@@ -109,9 +109,9 @@ typedef struct RBag {
   Pair buf[RLEN]; // a buffer for both stacks
 } RBag;
 
-// Global Net  
-const u32 G_NODE_LEN = 1 << 29; // max 536m nodes 
-const u32 G_VARS_LEN = 1 << 29; // max 536m vars 
+// Global Net
+const u32 G_NODE_LEN = 1 << 29; // max 536m nodes
+const u32 G_VARS_LEN = 1 << 29; // max 536m vars
 const u32 G_RBAG_LEN = TPC * RLEN;
 
 typedef struct Net {
@@ -131,14 +131,14 @@ typedef struct TM {
   u32  nloc[32]; // node allocation indices
   u32  vloc[32]; // vars allocation indices
   RBag rbag; // local bag
-} TM;  
+} TM;
 
 // Top-Level Definition
 typedef struct Def {
   char name[32];
   bool safe;
   u32  rbag_len;
-  u32  node_len; 
+  u32  node_len;
   u32  vars_len;
   Port root;
   Pair rbag_buf[32];
@@ -244,7 +244,7 @@ static inline Rule get_rule(Port a, Port b) {
     {LINK,VOID,VOID,VOID,CALL,CALL,CALL,CALL}, // REF
     {LINK,VOID,VOID,VOID,ERAS,ERAS,ERAS,ERAS}, // ERA
     {LINK,VOID,VOID,VOID,ERAS,ERAS,OPER,SWIT}, // NUM
-    {LINK,CALL,ERAS,ERAS,ANNI,COMM,COMM,COMM}, // CON 
+    {LINK,CALL,ERAS,ERAS,ANNI,COMM,COMM,COMM}, // CON
     {LINK,CALL,ERAS,ERAS,COMM,ANNI,COMM,COMM}, // DUP
     {LINK,CALL,ERAS,OPER,COMM,COMM,ANNI,COMM}, // OPR
     {LINK,CALL,ERAS,SWIT,COMM,COMM,COMM,ANNI}, // SWI
@@ -510,7 +510,7 @@ static inline Pair node_load(Net* net, u32 loc) {
 
 // Reads a var from global.
 static inline Port vars_load(Net* net, u32 var) {
-  return atomic_load_explicit(&net->vars_buf[var], memory_order_relaxed);  
+  return atomic_load_explicit(&net->vars_buf[var], memory_order_relaxed);
 }
 
 // Stores a node on global.
@@ -524,7 +524,7 @@ static inline void vars_store(Net* net, u32 var, Port val) {
 }
 
 // Exchanges a node on global by a value. Returns old.
-static inline Pair node_exchange(Net* net, u32 loc, Pair val) {  
+static inline Pair node_exchange(Net* net, u32 loc, Pair val) {
   return atomic_exchange_explicit(&net->node_buf[loc], val, memory_order_relaxed);
 }
 
@@ -621,7 +621,7 @@ static inline u32 vars_alloc_1(Net* net, TM* tm, u32* lap) {
 // Gets the necessary resources for an interaction. Returns success.
 static inline bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
   u32 got_rbag = RLEN - rbag_len(&tm->rbag);
-  u32 got_node = node_alloc(net, tm, need_node); 
+  u32 got_node = node_alloc(net, tm, need_node);
   u32 got_vars = vars_alloc(net, tm, need_vars);
   return got_rbag >= need_rbag
       && got_node >= need_node
@@ -630,7 +630,7 @@ static inline bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u
 
 // Linking
 // -------
- 
+
 // Finds a variable's value.
 static inline Port enter(Net* net, TM* tm, Port var) {
   // While `B` is VAR: extend it (as an optimization)
@@ -652,14 +652,14 @@ static inline Port enter(Net* net, TM* tm, Port var) {
 static inline void link(Net* net, TM* tm, Port A, Port B) {
   //printf("LINK %s ~> %s\n", show_port(A).x, show_port(B).x);
 
-  // Attempts to directionally point `A ~> B` 
+  // Attempts to directionally point `A ~> B`
   while (true) {
-    // If `A` is PRI: swap `A` and `B`, and continue
-    if (get_tag(A) != VAR) {
+    // If `A` is NODE: swap `A` and `B`, and continue
+    if (get_tag(A) != VAR && get_tag(B) == VAR) {
       Port X = A; A = B; B = X;
     }
     
-    // If `A` is PRI: create the `A ~ B` redex
+    // If `A` is NODE: create the `A ~ B` redex
     if (get_tag(A) != VAR) {
       push_redex(tm, new_pair(A, B)); // TODO: move global ports to local
       break;
@@ -668,7 +668,7 @@ static inline void link(Net* net, TM* tm, Port A, Port B) {
     // Extends B (as an optimization)
     B = enter(net, tm, B);
 
-    // Since `A` is VAR: point `A ~> B`.  
+    // Since `A` is VAR: point `A ~> B`.
     if (true) {
       // Stores `A -> B`, taking the current `A` subst as `A'`
       Port A_ = vars_exchange(net, get_val(A), B);
@@ -679,7 +679,7 @@ static inline void link(Net* net, TM* tm, Port A, Port B) {
       //if (A_ == 0) { ? } // FIXME: must handle on the move-to-global algo
       // Otherwise, delete `A` (we own both) and link `A' ~ B`
       vars_take(net, get_val(A));
-      A = A_;  
+      A = A_;
     }
   }
 }
@@ -767,30 +767,30 @@ static inline bool interact_call(Net* net, TM* tm, Port a, Port b, Book* book) {
     //printf("vars_create vloc[%04x] %04x\n", i, tm->vloc[i]);
   }
 
-  // Stores new nodes.  
+  // Stores new nodes.
   for (u32 i = 0; i < def->node_len; ++i) {
     node_create(net, tm->nloc[i], adjust_pair(net, tm, def->node_buf[i]));
     //printf("node_create nloc[%04x] %08llx\n", i-1, def->node_buf[i]);
   }
 
   // Links.
-  link_pair(net, tm, new_pair(b, adjust_port(net, tm, def->root)));
   for (u32 i = 0; i < def->rbag_len; ++i) {
     link_pair(net, tm, adjust_pair(net, tm, def->rbag_buf[i]));
   }
+  link_pair(net, tm, new_pair(adjust_port(net, tm, def->root), b));
 
   return true;
 }
 #endif
 
-// The Void Interaction.  
+// The Void Interaction.
 static inline bool interact_void(Net* net, TM* tm, Port a, Port b) {
   return true;
 }
 
 // The Eras Interaction.
 static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
-  // Allocates needed nodes and vars.  
+  // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
     return false;
   }
@@ -815,7 +815,7 @@ static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   return true;
 }
 
-// The Anni Interaction.  
+// The Anni Interaction.
 static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
@@ -841,7 +841,7 @@ static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   //if (A == 0) printf("[%04x] ERROR3: %s\n", tid, show_port(a).x);
   //if (B == 0) printf("[%04x] ERROR4: %s\n", tid, show_port(b).x);
 
-  // Links.  
+  // Links.
   link_pair(net, tm, new_pair(A1, B1));
   link_pair(net, tm, new_pair(A2, B2));
 
@@ -850,7 +850,7 @@ static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
 
 // The Comm Interaction.
 static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
-  // Allocates needed nodes and vars.  
+  // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 4, 4, 4)) {
     return false;
   }
@@ -861,14 +861,14 @@ static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
     return false;
   }
 
-  // Loads ports.  
+  // Loads ports.
   Pair A  = node_take(net, get_val(a));
   Port A1 = get_fst(A);
   Port A2 = get_snd(A);
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-      
+
   //if (A == 0) printf("[%04x] ERROR5: %s\n", tid, show_port(a).x);
   //if (B == 0) printf("[%04x] ERROR6: %s\n", tid, show_port(b).x);
 
@@ -877,7 +877,7 @@ static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   vars_create(net, tm->vloc[1], NONE);
   vars_create(net, tm->vloc[2], NONE);
   vars_create(net, tm->vloc[3], NONE);
-  
+
   // Stores new nodes.
   node_create(net, tm->nloc[0], new_pair(new_port(VAR, tm->vloc[0]), new_port(VAR, tm->vloc[1])));
   node_create(net, tm->nloc[1], new_pair(new_port(VAR, tm->vloc[2]), new_port(VAR, tm->vloc[3])));
@@ -885,15 +885,15 @@ static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   node_create(net, tm->nloc[3], new_pair(new_port(VAR, tm->vloc[1]), new_port(VAR, tm->vloc[3])));
 
   // Links.
-  link_pair(net, tm, new_pair(A1, new_port(get_tag(b), tm->nloc[0])));
-  link_pair(net, tm, new_pair(A2, new_port(get_tag(b), tm->nloc[1])));  
-  link_pair(net, tm, new_pair(B1, new_port(get_tag(a), tm->nloc[2])));
-  link_pair(net, tm, new_pair(B2, new_port(get_tag(a), tm->nloc[3])));
+  link_pair(net, tm, new_pair(new_port(get_tag(b), tm->nloc[0]), A1));
+  link_pair(net, tm, new_pair(new_port(get_tag(b), tm->nloc[1]), A2));
+  link_pair(net, tm, new_pair(new_port(get_tag(a), tm->nloc[2]), B1));
+  link_pair(net, tm, new_pair(new_port(get_tag(a), tm->nloc[3]), B2));
 
-  return true;  
+  return true;
 }
 
-// The Oper Interaction.  
+// The Oper Interaction.
 static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   //printf("OPER %08x %08x\n", a, b);
 
@@ -902,7 +902,7 @@ static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
     return false;
   }
 
-  // Checks availability  
+  // Checks availability
   if (node_load(net, get_val(b)) == 0) {
     return false;
   }
@@ -911,24 +911,24 @@ static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   Val  av = get_val(a);
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
-  Port B2 = get_snd(B);
+  Port B2 = enter(net, tm, get_snd(B));
      
   // Performs operation.
   if (get_tag(B1) == NUM) {
     Val  bv = get_val(B1);
     Numb cv = operate(av, bv);
-    link_pair(net, tm, new_pair(B2, new_port(NUM, cv))); 
+    link_pair(net, tm, new_pair(new_port(NUM, cv), B2));
   } else {
     node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(av)), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
-  return true;  
+  return true;
 }
 
 // The Swit Interaction.
 static inline bool interact_swit(Net* net, TM* tm, Port a, Port b) {
-  // Allocates needed nodes and vars.  
+  // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 2, 0)) {
     return false;
   }
@@ -944,7 +944,7 @@ static inline bool interact_swit(Net* net, TM* tm, Port a, Port b) {
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
  
-  // Stores new nodes.  
+  // Stores new nodes.
   if (av == 0) {
     node_create(net, tm->nloc[0], new_pair(B2, new_port(ERA,0)));
     link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
@@ -974,7 +974,7 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
     // Used for root redex.
     if (get_tag(a) == REF && b == ROOT) {
       rule = CALL;
-    // Swaps ports if necessary.  
+    // Swaps ports if necessary.
     } else if (should_swap(a,b)) {
       swap(&a, &b);
     }
@@ -993,7 +993,7 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
       case VOID: success = interact_void(net, tm, a, b); break;
       case ERAS: success = interact_eras(net, tm, a, b); break;
       case ANNI: success = interact_anni(net, tm, a, b); break;
-      case COMM: success = interact_comm(net, tm, a, b); break; 
+      case COMM: success = interact_comm(net, tm, a, b); break;
       case OPER: success = interact_oper(net, tm, a, b); break;
       case SWIT: success = interact_swit(net, tm, a, b); break;
     }
@@ -1064,7 +1064,7 @@ void book_load(u32* buf, Book* book) {
     def->root = *buf++;
 
     // Reads rbag_buf
-    memcpy(def->rbag_buf, buf, 8*def->rbag_len);  
+    memcpy(def->rbag_buf, buf, 8*def->rbag_len);
     buf += def->rbag_len * 2;
     
     // Reads node_buf
@@ -1089,10 +1089,10 @@ Show show_port(Port port) {
     case VAR: memcpy(s.x, "VAR:", 4); put_u32(s.x+4, get_val(port)); break;
     case REF: memcpy(s.x, "REF:", 4); put_u32(s.x+4, get_val(port)); break;
     case ERA: memcpy(s.x, "ERA:________", 12); break;
-    case NUM: memcpy(s.x, "NUM:", 4); put_u32(s.x+4, get_val(port)); break; 
-    case CON: memcpy(s.x, "CON:", 4); put_u32(s.x+4, get_val(port)); break; 
-    case DUP: memcpy(s.x, "DUP:", 4); put_u32(s.x+4, get_val(port)); break; 
-    case OPR: memcpy(s.x, "OPR:", 4); put_u32(s.x+4, get_val(port)); break; 
+    case NUM: memcpy(s.x, "NUM:", 4); put_u32(s.x+4, get_val(port)); break;
+    case CON: memcpy(s.x, "CON:", 4); put_u32(s.x+4, get_val(port)); break;
+    case DUP: memcpy(s.x, "DUP:", 4); put_u32(s.x+4, get_val(port)); break;
+    case OPR: memcpy(s.x, "OPR:", 4); put_u32(s.x+4, get_val(port)); break;
     case SWI: memcpy(s.x, "SWI:", 4); put_u32(s.x+4, get_val(port)); break;
   }
   s.x[12] = '\0';
@@ -1110,9 +1110,9 @@ Show show_rule(Rule rule) {
     case OPER: memcpy(s.x, "OPER", 4); break;
     case SWIT: memcpy(s.x, "SWIT", 4); break;
     case CALL: memcpy(s.x, "CALL", 4); break;
-    default  : memcpy(s.x, "????", 4); break;  
+    default  : memcpy(s.x, "????", 4); break;
   }
-  s.x[4] = '\0'; 
+  s.x[4] = '\0';
   return s;
 }
 
@@ -1126,28 +1126,28 @@ void print_rbag(RBag* rbag) {
   for (u32 i = 15; i > rbag->hi_idx; --i) {
     Pair redex = rbag->buf[i];
     printf("%04X | %s | %s\n", i, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
-  }  
+  }
   printf("==== | ============ | ============\n");
 }
 
 void print_net(Net* net) {
   printf("NODE | PORT-1       | PORT-2      \n");
-  printf("---- | ------------ | ------------\n");  
+  printf("---- | ------------ | ------------\n");
   for (u32 i = 0; i < G_NODE_LEN; ++i) {
     Pair node = node_load(net, i);
     if (node != 0) {
       printf("%04X | %s | %s\n", i, show_port(get_fst(node)).x, show_port(get_snd(node)).x);
     }
   }
-  printf("==== | ============ |\n");  
+  printf("==== | ============ |\n");
   printf("VARS | VALUE        |\n");
-  printf("---- | ------------ |\n");  
+  printf("---- | ------------ |\n");
   for (u32 i = 0; i < G_VARS_LEN; ++i) {
     Port var = vars_load(net,i);
     if (var != 0) {
       printf("%04X | %s |\n", i, show_port(vars_load(net,i)).x);
     }
-  }  
+  }
   printf("==== | ============ |\n");
 }
 
@@ -1232,7 +1232,7 @@ void pretty_print_port(Net* net, Port port) {
         Pair node = node_load(net,get_val(cur));
         Port p2   = get_snd(node);
         Port p1   = get_fst(node);
-        printf("?<"); 
+        printf("?<");
         stack[len++] = (0xFFFFFF00) | (u32)('>');
         stack[len++] = p2;
         stack[len++] = (0xFFFFFF00) | (u32)(' ');
@@ -1251,7 +1251,7 @@ void pretty_print_rbag(Net* net, RBag* rbag) {
   for (u32 i = 0; i < rbag->lo_idx; ++i) {
     Pair redex = rbag->buf[i];
     if (redex != 0) {
-      pretty_print_port(net, get_fst(redex)); 
+      pretty_print_port(net, get_fst(redex));
       printf(" ~ ");
       pretty_print_port(net, get_snd(redex));
       printf("\n");
@@ -1300,7 +1300,7 @@ void hvm_c(u32* book_buffer) {
   // Evaluates
   evaluator(gnet, tm[0], book);
 
-  // Stops the timer  
+  // Stops the timer
   clock_t end = clock();
   double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
 
@@ -1312,7 +1312,7 @@ void hvm_c(u32* book_buffer) {
   // Prints interactions and time
   u64 itrs = atomic_load(&gnet->itrs);
   printf("- ITRS: %llu\n", itrs);
-  printf("- TIME: %.2fs\n", duration);  
+  printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 
   //print_net(gnet);
