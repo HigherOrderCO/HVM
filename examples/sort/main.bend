@@ -50,4 +50,6 @@ sum = λa
   let a_node = λa0 λa1 (+ (sum a0) (sum a1))
   (a a_leaf a_node)
 
-main = (sum (sort (gen 20 0) 0))
+main =
+  let d = 18
+  (sum (sort (gen d 0) 0))

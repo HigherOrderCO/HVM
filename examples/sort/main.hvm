@@ -26,7 +26,7 @@
 @gen$C0 = (a b)
   & @Leaf ~ (a b)
 
-@gen$C1 = ({a d} ({$([*0000002] $([+0000001] b)) $([*0000002] e)} g))
+@gen$C1 = ({a d} ({$([*2] $([+1] b)) $([*2] e)} g))
   & @Node ~ (c (f g))
   & @gen ~ (a (b c))
   & @gen ~ (d (e f))
@@ -43,7 +43,7 @@
 @main = c
   & @sum ~ (b c)
   & @sort ~ (a (0 b))
-  & @gen ~ (18 (0 a))
+  & @gen ~ (17 (0 a))
 
 @sort = ((@sort$C1 (@sort$C0 a)) a)
 
