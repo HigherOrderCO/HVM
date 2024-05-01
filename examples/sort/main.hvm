@@ -1,0 +1,87 @@
+@Leaf = (a ((a b) (* b)))
+
+@Node = (a (b (* ((a (b c)) c))))
+
+@down = ((@down$C1 (@down$C0 a)) a)
+
+@down$C0 = (a (d ({b e} g)))
+  & @Node ~ (c (f g))
+  & @flow ~ (a (b c))
+  & @flow ~ (d (e f))
+
+@down$C1 = (a (* b))
+  & @Leaf ~ (a b)
+
+@flow = ((@flow$C1 (@flow$C0 a)) a)
+
+@flow$C0 = (a (b ({c e} f)))
+  & @down ~ (d (e f))
+  & @warp ~ (a (b (c d)))
+
+@flow$C1 = (a (* b))
+  & @Leaf ~ (a b)
+
+@gen = (?((@gen$C0 @gen$C1) a) a)
+
+@gen$C0 = (a b)
+  & @Leaf ~ (a b)
+
+@gen$C1 = ({a d} ({$([*0000002] $([+0000001] b)) $([*0000002] e)} g))
+  & @Node ~ (c (f g))
+  & @gen ~ (a (b c))
+  & @gen ~ (d (e f))
+
+@join = (((* (* 0)) (@join$C1 a)) a)
+
+@join$C0 = (b (e (a (d g))))
+  & @Node ~ (c (f g))
+  & @Node ~ (a (b c))
+  & @Node ~ (d (e f))
+
+@join$C1 = (a (b (((* (* (* 0))) (@join$C0 (a (b c)))) c)))
+
+@main = c
+  & @sum ~ (b c)
+  & @sort ~ (a (0 b))
+  & @gen ~ (18 (0 a))
+
+@sort = ((@sort$C1 (@sort$C0 a)) a)
+
+@sort$C0 = (a (c (f g)))
+  & @flow ~ (e (f g))
+  & @Node ~ (b (d e))
+  & @sort ~ (a (0 b))
+  & @sort ~ (c (1 d))
+
+@sort$C1 = (a (* b))
+  & @Leaf ~ (a b)
+
+@sum = (((a a) (@sum$C0 b)) b)
+
+@sum$C0 = (a (b d))
+  & @sum ~ (a $(:[+] $(c d)))
+  & @sum ~ (b c)
+
+@swap = (?((@swap$C0 @swap$C1) a) a)
+
+@swap$C0 = (a (b c))
+  & @Node ~ (a (b c))
+
+@swap$C1 = (* (b (a c)))
+  & @Node ~ (a (b c))
+
+@warp = ((@warp$C3 (@warp$C1 a)) a)
+
+@warp$C0 = (b (f (a (e ({c g} i)))))
+  & @join ~ (d (h i))
+  & @warp ~ (a (b (c d)))
+  & @warp ~ (e (f (g h)))
+
+@warp$C1 = (a (b (((* (* (* (* 0)))) (@warp$C0 (a (b c)))) c)))
+
+@warp$C2 = ({a f} ({$(:[>] $(a $(:[^] $(b c)))) d} (b h)))
+  & @swap ~ (c (e (g h)))
+  & @Leaf ~ (d e)
+  & @Leaf ~ (f g)
+
+@warp$C3 = (a ((@warp$C2 ((* (* (* (* 0)))) (a b))) b))
