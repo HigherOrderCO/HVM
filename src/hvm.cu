@@ -213,11 +213,10 @@
 // - ---- | -------- | --------
 
 #define INTERPRETED
+//#define DEBUG
 
 #include <stdint.h>
 #include <stdio.h>
-
-// FIXME: pages can leak when the kernel reserves it but never writes anything
 
 // Integers
 // --------
@@ -243,6 +242,9 @@ const u32 TPB    = 1 << TPB_L2;
 // Blocks per GPU
 const u32 BPG_L2 = 7;
 const u32 BPG    = 1 << BPG_L2;
+
+// Threads per GPU
+const u32 TPG = TPB * BPG;
 
 // Types
 // -----
@@ -303,15 +305,13 @@ const Tag OR  = 0xE;
 const Tag XOR = 0xF;
 
 // Thread Redex Bag Length
-const u32 RLEN = 256; // max 32 redexes
+const u32 RLEN = 256;
 
 // Thread Redex Bag
 // It uses the same space to store two stacks:
 // - HI: a high-priotity stack, for shrinking reductions
 // - LO: a low-priority stack, for growing reductions
 struct RBag {
-  u32  lk_end;
-  Pair lk_buf[RLEN];
   u32  hi_end;
   Pair hi_buf[RLEN];
   u32  lo_ini;
@@ -320,18 +320,17 @@ struct RBag {
 };
 
 // Local Net
-const u32 L_NODE_LEN = 0x2000; // max 8196 nodes
-const u32 L_VARS_LEN = 0x2000; // max 8196 vars
+const u32 L_NODE_LEN = 0x2000;
+const u32 L_VARS_LEN = 0x2000;
 struct LNet {
   Pair node_buf[L_NODE_LEN];
   Port vars_buf[L_VARS_LEN];
 };
 
 // Global Net
-const u32 G_PAGE_MAX = 0x10000 - 1; // max 65536 pages
-const u32 G_NODE_LEN = G_PAGE_MAX * L_NODE_LEN; // max 536m nodes
-const u32 G_VARS_LEN = G_PAGE_MAX * L_VARS_LEN; // max 536m vars
-const u32 G_RBAG_LEN = TPB * BPG * RLEN * 3; // max 6m redexes
+const u32 G_NODE_LEN = 1 << 29; // max 536m nodes
+const u32 G_VARS_LEN = 1 << 29; // max 536m vars
+const u32 G_RBAG_LEN = TPB * BPG * RLEN * 2; // max 4m redexes
 struct GNet {
   u32  rbag_use_A; // total rbag redex count (buffer A)
   u32  rbag_use_B; // total rbag redex count (buffer B)
@@ -339,19 +338,18 @@ struct GNet {
   Pair rbag_buf_B[G_RBAG_LEN]; // global redex bag (buffer B)
   Pair node_buf[G_NODE_LEN]; // global node buffer
   Port vars_buf[G_VARS_LEN]; // global vars buffer
-  u32  page_use[G_PAGE_MAX]; // node count of each page
-  u32  free_buf[G_PAGE_MAX]; // set of free pages
-  u32  free_pop; // index to reserve a page
-  u32  free_put; // index to release a page
+  u32  node_put[TPB*BPG];
+  u32  vars_put[TPB*BPG];
+  u32  fail; // failed last tick
+  u32  glob; // global alloc mode
   u64  itrs; // interaction count
+  u64  leak; // leak count
 };
 
 // View Net: includes both GNet and LNet
 struct Net {
   i32   l_node_dif; // delta node space
   i32   l_vars_dif; // delta vars space
-  u32   l_node_set; // tracks indices allocated by thread
-  u32   l_vars_set; // tracks indices allocated by thread
   Pair *l_node_buf; // local node buffer values
   Port *l_vars_buf; // local vars buffer values
   u32  *g_rbag_use_A; // global rbag count (active buffer)
@@ -360,11 +358,8 @@ struct Net {
   Pair *g_rbag_buf_B; // global rbag values (inactive buffer)
   Pair *g_node_buf; // global node buffer values
   Port *g_vars_buf; // global vars buffer values
-  u32  *g_page_use; // usage counter of pages
-  u32  *g_free_buf; // free pages indexes
-  u32  *g_free_pop; // index to reserve a page
-  u32  *g_free_put; // index to release a page
-  u32   g_page_idx; // selected page index
+  u32  *g_node_put; // next global node allocation index
+  u32  *g_vars_put; // next global vars allocation index
 };
 
 // Thread Memory
@@ -373,6 +368,8 @@ struct TM {
   u32  nput; // node alloc index
   u32  vput; // vars alloc index
   u32  itrs; // interactions
+  u32  leak; // leaks
+  bool glob; // global alloc mode
   u32  nloc[32]; // node allocs
   u32  vloc[32]; // vars allocs
   RBag rbag; // tmem redex bag
@@ -410,7 +407,7 @@ __device__ __host__ void put_u16(char* B, u16 val);
 __device__ __host__ Show show_port(Port port);
 __device__ Show show_rule(Rule rule);
 __device__ void print_rbag(RBag* rbag);
-__device__ __host__ void print_net(Net* net);
+__device__ __host__ void print_net(Net* net, u32, u32);
 __device__ void pretty_print_port(Net* net, Port port);
 __device__ void pretty_print_rbag(Net* net, RBag* rbag);
 
@@ -456,10 +453,6 @@ __device__ __host__ inline Tag get_tag(Port port) {
 
 __device__ __host__ inline Val get_val(Port port) {
   return port >> 3;
-}
-
-__device__ __host__ inline Val get_page(Val val) {
-  return val / L_NODE_LEN;
 }
 
 // Pair: Constructor and Getters
@@ -564,6 +557,16 @@ __device__ __host__ inline bool is_var(Port a) {
   return get_tag(a) == VAR;
 }
 
+// True if this port is a local node/var (that can leak).
+__device__ __host__ inline bool is_local(Port a) {
+  return (is_nod(a) || is_var(a)) && get_val(a) < L_NODE_LEN;
+}
+
+// True if this port is a global node/var (that can be leaked into).
+__device__ __host__ inline bool is_global(Port a) {
+  return (is_nod(a) || is_var(a)) && get_val(a) >= L_NODE_LEN;
+}
+
 // Given two tags, gets their interaction rule. Uses a u64mask lookup table.
 __device__ __host__ inline Rule get_rule(Port A, Port B) {
   const u64 x = 0b0111111010110110110111101110111010110000111100001111000100000010;
@@ -582,7 +585,6 @@ __device__ __host__ inline Rule get_pair_rule(Pair AB) {
 __device__ __host__ inline bool should_swap(Port A, Port B) {
   return get_tag(B) < get_tag(A);
 }
-
 // Gets a rule's priority
 __device__ __host__ inline bool is_high_priority(Rule rule) {
   return (bool)((0b00011101 >> rule) & 1);
@@ -769,7 +771,6 @@ __device__ inline Numb operate(Numb a, Numb b) {
 
 __device__ RBag rbag_new() {
   RBag rbag;
-  rbag.lk_end = 0;
   rbag.hi_end = 0;
   rbag.lo_ini = 0;
   rbag.lo_end = 0;
@@ -779,16 +780,28 @@ __device__ RBag rbag_new() {
 __device__ void push_redex(TM* tm, Pair redex) {
   Rule rule = get_pair_rule(redex);
   if (is_high_priority(rule)) {
+    #ifdef DEBUG
+    if (tm->rbag.lo_end - tm->rbag.lo_ini >= RLEN) printf("[%04x] ERR PUSH_REDEX A %d\n", GID());
+    #endif
     tm->rbag.hi_buf[tm->rbag.hi_end++ % RLEN] = redex;
   } else {
+    #ifdef DEBUG
+    if (tm->rbag.lo_end - tm->rbag.lo_ini >= RLEN) printf("[%04x] ERR PUSH_REDEX A\n", GID());
+    #endif
     tm->rbag.lo_buf[tm->rbag.lo_end++ % RLEN] = redex;
   }
 }
 
 __device__ Pair pop_redex(TM* tm) {
   if (tm->rbag.hi_end > 0) {
+    #ifdef DEBUG
+    if (tm->rbag.hi_end == 0) printf("[%04x] ERR POP_REDEX A\n", GID());
+    #endif
     return tm->rbag.hi_buf[(--tm->rbag.hi_end) % RLEN];
   } else if (tm->rbag.lo_end - tm->rbag.lo_ini > 0) {
+    #ifdef DEBUG
+    if (tm->rbag.lo_end == tm->rbag.lo_ini) printf("[%04x] ERR POP_REDEX B\n", GID());
+    #endif
     return tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
   } else {
     return 0; // FIXME: is this ok?
@@ -809,9 +822,10 @@ __device__ u32 rbag_has_highs(RBag* rbag) {
 __device__ TM tmem_new() {
   TM tm;
   tm.rbag = rbag_new();
-  tm.nput = threadIdx.x;
-  tm.vput = threadIdx.x;
+  tm.nput = 1;
+  tm.vput = 1;
   tm.itrs = 0;
+  tm.leak = 0;
   return tm;
 }
 
@@ -822,8 +836,6 @@ __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   Net net;
   net.l_node_dif   = 0;
   net.l_vars_dif   = 0;
-  net.l_node_set   = 0;
-  net.l_vars_set   = 0;
   net.l_node_buf   = ((LNet*)smem)->node_buf;
   net.l_vars_buf   = ((LNet*)smem)->vars_buf;
   net.g_rbag_use_A = turn % 2 == 0 ? &gnet->rbag_use_A : &gnet->rbag_use_B;
@@ -832,139 +844,117 @@ __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   net.g_rbag_buf_B = turn % 2 == 0 ? gnet->rbag_buf_B : gnet->rbag_buf_A;
   net.g_node_buf   = gnet->node_buf;
   net.g_vars_buf   = gnet->vars_buf;
-  net.g_page_use   = gnet->page_use;
-  net.g_free_buf   = gnet->free_buf;
-  net.g_free_pop   = &gnet->free_pop;
-  net.g_free_put   = &gnet->free_put;
-  net.g_page_idx   = 0xFFFFFFFF;
+  net.g_node_put   = &gnet->node_put[GID()];
+  net.g_vars_put   = &gnet->vars_put[GID()];
   return net;
-}
-
-// Reserves a page.
-__device__ u32 reserve_page(Net* net) {
-  u32 free_idx = atomicAdd(net->g_free_pop, 1);
-  u32 page_idx = atomicExch(&net->g_free_buf[free_idx % G_PAGE_MAX], NONE);
-  //printf("reserve %04x\n", page_idx);
-  return page_idx;
-}
-
-// Releases a page.
-__device__ void release_page(Net* net, u32 page) {
-  u32 free_idx = atomicAdd(net->g_free_put, 1);
-  net->g_free_buf[free_idx % G_PAGE_MAX] = page;
-  //printf("release %04x\n", page);
-}
-
-// If page is on global, decreases its length.
-__device__ void decrease_page(Net* net, u32 page) {
-  if (page != net->g_page_idx) {
-    u32 prev_len = atomicSub(&net->g_page_use[page], 1);
-    if (prev_len == 1) {
-      release_page(net, page);
-    }
-  }
 }
 
 // Stores a new node on global.
 __device__ inline void node_create(Net* net, u32 loc, Pair val) {
-  if (get_page(loc) == net->g_page_idx) {
-    u32 idx = loc - L_NODE_LEN*net->g_page_idx;
+  Pair old;
+  if (loc < L_NODE_LEN) {
     net->l_node_dif += 1;
-    net->l_node_set = push_index(net->l_node_set, idx/TPB);
-    atomicExch(&net->l_node_buf[idx], val);
+    old = atomicExch(&net->l_node_buf[loc], val);
   } else {
-    __builtin_unreachable(); // can't create outside of local page
+    old = atomicExch(&net->g_node_buf[loc], val);
   }
+  #ifdef DEBUG
+  if (old != 0) printf("[%04x] ERR NODE_CREATE | %04x\n", GID(), loc);
+  #endif
 }
 
 // Stores a var on global.
 __device__ inline void vars_create(Net* net, u32 var, Port val) {
-  if (get_page(var) == net->g_page_idx) {
-    u32 idx = var - L_VARS_LEN*net->g_page_idx;
+  Port old;
+  if (var < L_VARS_LEN) {
     net->l_vars_dif += 1;
-    net->l_vars_set = push_index(net->l_vars_set, idx/TPB);
-    atomicExch(&net->l_vars_buf[idx], val);
+    old = atomicExch(&net->l_vars_buf[var], val);
   } else {
-    __builtin_unreachable(); // can't create outside of local page
+    old = atomicExch(&net->g_vars_buf[var], val);
   }
+  #ifdef DEBUG
+  if (old != 0) printf("[%04x] ERR VARS_CREATE | %04x\n", GID(), var);
+  #endif
 }
 
 // Reads a node from global.
 __device__ __host__ inline Pair node_load(Net* net, u32 loc) {
-  if (get_page(loc) == net->g_page_idx) {
-    return net->l_node_buf[loc - L_NODE_LEN*net->g_page_idx];
+  Pair got;
+  if (loc < L_NODE_LEN) {
+    got = net->l_node_buf[loc];
   } else {
-    return net->g_node_buf[loc];
+    got = net->g_node_buf[loc];
   }
+  return got;
 }
 
 // Reads a var from global.
 __device__ __host__ inline Port vars_load(Net* net, u32 var) {
-  if (get_page(var) == net->g_page_idx) {
-    return net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx];
+  Port got;
+  if (var < L_VARS_LEN) {
+    got = net->l_vars_buf[var];
   } else {
-    return net->g_vars_buf[var];
+    got = net->g_vars_buf[var];
   }
-}
-
-// Stores a node on global.
-__device__ inline void node_store(Net* net, u32 loc, Pair val) {
-  if (get_page(loc) == net->g_page_idx) {
-    net->l_node_buf[loc - L_NODE_LEN*net->g_page_idx] = val;
-  } else {
-    net->g_node_buf[loc] = val;
-  }
-}
-
-// Stores a var on global.
-__device__ inline void vars_store(Net* net, u32 var, Port val) {
-  if (get_page(var) == net->g_page_idx) {
-    net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx] = val;
-  } else {
-    net->g_vars_buf[var] = val;
-  }
+  return got;
 }
 
 // Exchanges a node on global by a value. Returns old.
 __device__ inline Pair node_exchange(Net* net, u32 loc, Pair val) {
-  if (get_page(loc) == net->g_page_idx) {
-    return atomicExch(&net->l_node_buf[loc - L_NODE_LEN*net->g_page_idx], val);
+  Pair got = 0;
+  if (loc < L_NODE_LEN) {
+    got = atomicExch(&net->l_node_buf[loc], val);
   } else {
-    return atomicExch(&net->g_node_buf[loc], val);
+    got = atomicExch(&net->g_node_buf[loc], val);
   }
+  #ifdef DEBUG
+  if (got == 0) printf("[%04x] ERR NODE_EXCHANGE | %04x\n", GID(), loc);
+  #endif
+  return got;
 }
 
 // Exchanges a var on global by a value. Returns old.
 __device__ inline Port vars_exchange(Net* net, u32 var, Port val) {
-  if (get_page(var) == net->g_page_idx) {
-    return atomicExch(&net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx], val);
+  Port got = 0;
+  if (var < L_VARS_LEN) {
+    got = atomicExch(&net->l_vars_buf[var], val);
   } else {
-    return atomicExch(&net->g_vars_buf[var], val);
+    got = atomicExch(&net->g_vars_buf[var], val);
   }
+  #ifdef DEBUG
+  if (got == 0) printf("[%04x] ERR VARS_EXCHANGE | %04x\n", GID(), var);
+  #endif
+  return got;
 }
 
 // Takes a node.
 __device__ inline Pair node_take(Net* net, u32 loc) {
-  if (get_page(loc) == net->g_page_idx) {
+  Pair got = 0;
+  if (loc < L_NODE_LEN) {
     net->l_node_dif -= 1;
-    //if (GID() == 0) printf("dec-node %d\n", *net->l_node_dif);
-    return atomicExch(&net->l_node_buf[loc - L_NODE_LEN*net->g_page_idx], 0);
+    got = atomicExch(&net->l_node_buf[loc], 0);
   } else {
-    decrease_page(net, get_page(loc));
-    return atomicExch(&net->g_node_buf[loc], 0);
+    got = atomicExch(&net->g_node_buf[loc], 0);
   }
+  #ifdef DEBUG
+  if (got == 0) printf("[%04x] ERR NODE_TAKE | %04x\n", GID(), loc);
+  #endif
+  return got;
 }
 
 // Takes a var.
 __device__ inline Port vars_take(Net* net, u32 var) {
-  if (get_page(var) == net->g_page_idx) {
+  Port got = 0;
+  if (var < L_VARS_LEN) {
     net->l_vars_dif -= 1;
-    //if (GID() == 0) printf("dec-vars %d\n", *net->l_vars_dif);
-    return atomicExch(&net->l_vars_buf[var - L_VARS_LEN*net->g_page_idx], 0);
+    got = atomicExch(&net->l_vars_buf[var], 0);
   } else {
-    decrease_page(net, get_page(var));
-    return atomicExch(&net->g_vars_buf[var], 0);
+    got = atomicExch(&net->g_vars_buf[var], 0);
   }
+  #ifdef DEBUG
+  if (got == 0) printf("[%04x] ERR VARS_TAKE | %04x\n", GID(), var); asm("trap;"); }
+  #endif
+  return got;
 }
 
 // GNet
@@ -972,10 +962,6 @@ __device__ inline Port vars_take(Net* net, u32 var) {
 
 // Initializes a Global Net.
 __global__ void gnet_init(GNet* gnet) {
-  // Adds all pages to the free buffer.
-  if (GID() < G_PAGE_MAX) {
-    gnet->free_buf[GID()] = GID();
-  }
   // Creates root variable.
   gnet->vars_buf[get_val(ROOT)] = NONE;
 }
@@ -983,62 +969,116 @@ __global__ void gnet_init(GNet* gnet) {
 // Allocator
 // ---------
 
-// Allocates empty slots in an array.
 template <typename A>
-__device__ u32 alloc(u32* idx, u32* res, u32 num, A* arr, u32 len, u32 add) {
+__device__ u32 g_alloc_1(Net* net, TM* tm, u32* g_put, A* g_buf) {
+  while (true) {
+    //u32 lc = BID()*(G_NODE_LEN/BPG) + (*g_put*TPB+TID()) % (G_NODE_LEN/BPG);
+    //u32 lc = (GID() + (*g_put * TPG)) % G_NODE_LEN;
+    u32 lc = GID()*(G_NODE_LEN/TPG) + (*g_put%(G_NODE_LEN/TPG)); // 9 GIPS | 2.8 GIPS
+    A elem = g_buf[lc];
+    *g_put += 1;
+    if (lc >= L_NODE_LEN && elem == 0) {
+      return lc;
+    }
+    // FIXME: check OOM (without dropping performance)
+  }
+}
+
+template <typename A>
+__device__ u32 g_alloc(Net* net, TM* tm, u32* ret, u32* g_put, A* g_buf, u32 num) {
+  u32 got = 0;
+  while (got < num) {
+    u32 lc = GID()*(G_NODE_LEN/TPG) + (*g_put%(G_NODE_LEN/TPG)); // 9 GIPS | 2.8 GIPS
+    A elem = g_buf[lc];
+    *g_put += 1;
+    if (lc >= L_NODE_LEN && elem == 0) {
+      ret[got++] = lc;
+    }
+    // FIXME: check OOM (without dropping performance)
+  }
+  return got;
+
+}
+
+template <typename A>
+__device__ u32 l_alloc(Net* net, TM* tm, u32* ret, u32* l_put, A* l_buf, u32 num) {
   u32 got = 0;
   u32 lps = 0;
   while (got < num) {
-    A elem = arr[*idx];
-    if (elem == 0 && *idx > 0) {
-      res[got++] = *idx + add;
+    u32 lc = ((*l_put)++ * TPB) % L_NODE_LEN + TID();
+    A elem = l_buf[lc];
+    if (++lps >= L_NODE_LEN/TPB) {
+      break;
     }
-    *idx = (*idx + TPB) % len;
-    if (++lps >= len / TPB) {
-      return 0;
+    if (lc > 0 && elem == 0) {
+      ret[got++] = lc;
     }
   }
   return got;
 }
 
-// Allocates just 1 slot from node buffer.
+template <typename A>
+__device__ u32 l_alloc_1(Net* net, TM* tm, u32* ret, u32* l_put, A* l_buf, u32* lps) {
+  u32 got = 0;
+  while (true) {
+    u32 lc = ((*l_put)++ * TPB) % L_NODE_LEN + TID();
+    A elem = l_buf[lc];
+    if (++(*lps) >= L_NODE_LEN/TPB) {
+      break;
+    }
+    if (lc > 0 && elem == 0) {
+      return lc;
+    }
+  }
+  return got;
+}
+
+__device__ u32 g_node_alloc_1(Net* net, TM* tm) {
+  return g_alloc_1(net, tm, net->g_node_put, net->g_node_buf);
+}
+
+__device__ u32 g_vars_alloc_1(Net* net, TM* tm) {
+  return g_alloc_1(net, tm, net->g_vars_put, net->g_vars_buf);
+}
+
+__device__ u32 g_node_alloc(Net* net, TM* tm, u32 num) {
+  return g_alloc(net, tm, tm->nloc, net->g_node_put, net->g_node_buf, num);
+}
+
+__device__ u32 g_vars_alloc(Net* net, TM* tm, u32 num) {
+  return g_alloc(net, tm, tm->vloc, net->g_vars_put, net->g_vars_buf, num);
+}
+
+__device__ u32 l_node_alloc(Net* net, TM* tm, u32 num) {
+  return l_alloc(net, tm, tm->nloc, &tm->nput, net->l_node_buf, num);
+}
+
+__device__ u32 l_vars_alloc(Net* net, TM* tm, u32 num) {
+  return l_alloc(net, tm, tm->vloc, &tm->vput, net->l_vars_buf, num);
+}
+
+__device__ u32 l_node_alloc_1(Net* net, TM* tm, u32* lps) {
+  return l_alloc_1(net, tm, tm->nloc, &tm->nput, net->l_node_buf, lps);
+}
+
+__device__ u32 l_vars_alloc_1(Net* net, TM* tm, u32* lps) {
+  return l_alloc_1(net, tm, tm->vloc, &tm->vput, net->l_vars_buf, lps);
+}
+
 __device__ u32 node_alloc_1(Net* net, TM* tm, u32* lps) {
-  u32* idx = &tm->nput;
-  while (true) {
-    Pair elem = net->l_node_buf[*idx];
-    u32 index = *idx + L_NODE_LEN*net->g_page_idx;
-    *idx = (*idx + TPB) % L_NODE_LEN;
-    if ((*lps)++ >= L_VARS_LEN / TPB) {
-      return 0;
-    }
-    if (elem == 0 && index > 0) {
-      return index;
-    }
+  if (tm->glob) {
+    return l_node_alloc_1(net, tm, lps);
+  } else {
+    return g_node_alloc_1(net, tm);
   }
 }
 
-// Allocates just 1 slot from vars buffer.
 __device__ u32 vars_alloc_1(Net* net, TM* tm, u32* lps) {
-  u32* idx = &tm->vput;
-  while (true) {
-    Port elem = net->l_vars_buf[*idx];
-    u32 index = *idx + L_VARS_LEN*net->g_page_idx;
-    *idx = (*idx + TPB) % L_VARS_LEN;
-    if ((*lps)++ >= L_VARS_LEN / TPB) {
-      return 0;
-    }
-    if (elem == 0 && index > 0) {
-      return index;
-    }
+  if (tm->glob) {
+    return l_vars_alloc_1(net, tm, lps);
+  } else {
+    return g_vars_alloc_1(net, tm);
   }
-}
-
-// Gets the necessary resources for an interaction.
-__device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
-  u32 got_rbag = min(RLEN - (tm->rbag.lo_end - tm->rbag.lo_ini), RLEN - tm->rbag.hi_end);
-  u32 got_node = alloc(&tm->nput, tm->nloc, need_node, net->l_node_buf, L_NODE_LEN, L_NODE_LEN*net->g_page_idx);
-  u32 got_vars = alloc(&tm->vput, tm->vloc, need_vars, net->l_vars_buf, L_VARS_LEN, L_VARS_LEN*net->g_page_idx);
-  return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
 }
 
 // Linking
@@ -1054,11 +1094,6 @@ __device__ inline Port enter(Net* net, TM* tm, Port var) {
     if (val == NONE) {
       break;
     }
-    // Sanity check
-    if (val == 0) {
-      //printf("UNREACHABLE\n");
-      __builtin_unreachable();
-    }
     // Otherwise, delete `B` (we own both) and continue
     vars_take(net, get_val(var));
     var = val;
@@ -1068,10 +1103,12 @@ __device__ inline Port enter(Net* net, TM* tm, Port var) {
 
 // Atomically Links `A ~ B`.
 __device__ void link(Net* net, TM* tm, Port A, Port B) {
-  //printf("LINK %s ~> %s\n", show_port(A).x, show_port(B).x);
-  
+  Port INI_A = A;
+  Port INI_B = B;
+
   // Attempts to directionally point `A ~> B`
   while (true) {
+
     // If `A` is NODE: swap `A` and `B`, and continue
     if (get_tag(A) != VAR && get_tag(B) == VAR) {
       Port X = A; A = B; B = X;
@@ -1079,6 +1116,7 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
 
     // If `A` is NODE: create the `A ~ B` redex
     if (get_tag(A) != VAR) {
+      //printf("[%04x] new redex A %s ~ %s\n", GID(), show_port(A).x, show_port(B).x);
       push_redex(tm, new_pair(A, B)); // TODO: move global ports to local
       break;
     }
@@ -1088,29 +1126,19 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
 
     // Since `A` is VAR: point `A ~> B`.
     if (true) {
-      // Checks if A/B are local or global
-      bool A_is_local = get_page(get_val(A)) == net->g_page_idx;
-      bool B_is_local = get_page(get_val(B)) == net->g_page_idx;
-
-      // If a local var would leak, swap to avoid it
-      if (is_var(B) && B_is_local && !A_is_local) {
-        Port X = A; A = B; B = X;
-      }
-
-      // If a local node would leak, re-store to avoid it
-      // FIXME: can we avoid leaking entirely?
-      // FIXME: the whole link fn can probably be greatly improved
-      if (is_nod(B) && B_is_local && !A_is_local) {
-        Port A_ = vars_load(net, get_val(A));
-        // If A immediately resolves as a node, create a redex
-        // FIXME: should we bother digging further? Should we fully enter A?
-        if (get_tag(A_) != VAR && A_ != NONE) {
-          push_redex(tm, new_pair(vars_take(net, get_val(A)), B));
-        // Otherwise, we're hopeless. Just take the loss and postpone the link
-        } else {
-          tm->rbag.lk_buf[tm->rbag.lk_end++] = new_pair(A, B);
+      // If B would leak...
+      if (is_global(A) && is_local(B)) {
+        // If B is a var, just swap it
+        if (is_var(B)) {
+          Port X = A; A = B; B = X;
+          continue;
         }
-        break;
+        // If B is a nod, create a leak interaction
+        if (is_nod(B)) {
+          //if (!TID()) printf("[%04x] NODE LEAK %s ~ %s\n", GID(), show_port(A).x, show_port(B).x);
+          push_redex(tm, new_pair(A, B));
+          break;
+        }
       }
 
       // Stores `A -> B`, taking the current `A` subst as `A'`
@@ -1121,11 +1149,9 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
         break;
       }
 
-      // Sanity check
-      if (A_ == 0) {
-        //printf("UNREACHABLE\n");
-        __builtin_unreachable();
-      }
+      #ifdef DEBUG
+      if (A_ == 0) printf("[%04x] ERR LINK %s ~ %s | %s ~ %s\n", GID() show_port(INI_A).x, show_port(INI_B).x, show_port(A).x, show_port(B).x);
+      #endif
 
       // Otherwise, delete `A` (we own both) and link `A' ~ B`
       vars_take(net, get_val(A));
@@ -1143,6 +1169,7 @@ __device__ void link_pair(Net* net, TM* tm, Pair AB) {
 // -------
 
 // Sends redex to a friend local thread, when it is starving.
+// FIXME: the way this is done will drop redexes if TPB<5
 __device__ void share_redexes(TM* tm) {
   __shared__ Pair pool[TPB];
   Pair send, recv;
@@ -1167,18 +1194,84 @@ __device__ void share_redexes(TM* tm) {
   }
 }
 
+// Resources
+// ---------
+
+// Gets the necessary resources for an interaction.
+__device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
+  u32 got_rbag = min(RLEN - (tm->rbag.lo_end - tm->rbag.lo_ini), RLEN - tm->rbag.hi_end);
+  u32 got_node;
+  u32 got_vars;
+  if (tm->glob) {
+    got_node = g_node_alloc(net, tm, need_node);
+    got_vars = g_vars_alloc(net, tm, need_vars);
+  } else {
+    got_node = l_node_alloc(net, tm, need_node);
+    got_vars = l_vars_alloc(net, tm, need_vars);
+  }
+  return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
+}
+
 // Interactions
 // ------------
 
 // The Link Interaction.
 __device__ bool interact_link(Net* net, TM* tm, Port a, Port b) {
-  // Allocates needed nodes and vars.
-  if (!get_resources(net, tm, 1, 0, 0)) {
-    return false;
-  }
+  // If A is a global var and B is a local node, leak it:
+  // ^A ~ (b1 b2)
+  // ------------- LEAK-NODE
+  // ^X ~ b1
+  // ^Y ~ b2
+  // ^A ~ ^(^X ^Y)
+  if (is_global(a) && is_nod(b) && is_local(b)) {
+    // Allocates needed nodes and vars.
+    if (!get_resources(net, tm, 3, 0, 0)) {
+      return false;
+    }
 
-  // Links.
-  link_pair(net, tm, new_pair(a, b));
+    tm->leak += 1;
+
+    // Loads ports.
+    Pair l_b  = node_take(net, get_val(b));
+    Port l_b1 = enter(net, tm, get_fst(l_b));
+    Port l_b2 = enter(net, tm, get_snd(l_b));
+
+    // Leaks port 1.
+    Port g_b1;
+    if (is_local(l_b1)) {
+      g_b1 = new_port(VAR, g_vars_alloc_1(net, tm));
+      vars_create(net, get_val(g_b1), NONE);
+      link_pair(net, tm, new_pair(g_b1, l_b1));
+    } else {
+      g_b1 = l_b1;
+    }
+
+    // Leaks port 2.
+    Port g_b2;
+    if (is_local(l_b2)) {
+      g_b2 = new_port(VAR, g_vars_alloc_1(net, tm));
+      vars_create(net, get_val(g_b2), NONE);
+      link_pair(net, tm, new_pair(g_b2, l_b2));
+    } else {
+      g_b2 = l_b2;
+    }
+
+    // Leaks node.
+    Port g_b = new_port(get_tag(b), g_node_alloc_1(net, tm));
+    node_create(net, get_val(g_b), new_pair(g_b1, g_b2));
+    link_pair(net, tm, new_pair(a, g_b));
+
+    return true;
+
+  // Otherwise, just perform a normal link.
+  } else {
+    // Allocates needed nodes and vars.
+    if (!get_resources(net, tm, 1, 0, 0)) {
+      return false;
+    }
+
+    link_pair(net, tm, new_pair(a, b));
+  }
 
   return true;
 }
@@ -1235,18 +1328,10 @@ __device__ bool interact_eras(Net* net, TM* tm, Port a, Port b) {
     return false;
   }
 
-  // Checks availability
-  //if (node_load(net,get_val(b)) == 0) {
-    //printf("[%04x] unavailable5: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
-    //return false;
-  //}
-
   // Loads ports.
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-
-  //if (B == 0) printf("[%04x] ERROR2: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
 
   // Links.
   link_pair(net, tm, new_pair(a, B1));
@@ -1270,9 +1355,6 @@ __device__ bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
 
-  //if (A == 0) printf("[%04x] ERROR3: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(a).x);
-  //if (B == 0) printf("[%04x] ERROR4: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
-
   // Links.
   link_pair(net, tm, new_pair(A1, B1));
   link_pair(net, tm, new_pair(A2, B2));
@@ -1294,9 +1376,6 @@ __device__ bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-
-  //if (A == 0) printf("[%04x] ERROR5: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(a).x);
-  //if (B == 0) printf("[%04x] ERROR6: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
 
   // Stores new vars.
   vars_create(net, tm->vloc[0], NONE);
@@ -1373,22 +1452,20 @@ __device__ bool interact_swit(Net* net, TM* tm, Port a, Port b) {
 }
 
 // Pops a local redex and performs a single interaction.
-__device__ bool interact(Net* net, TM* tm) {
+__device__ bool interact(Net* net, TM* tm, u32 turn) {
   // Pops a redex.
   Pair redex = pop_redex(tm);
 
+  // Gets redex ports A and B.
+  Port a = get_fst(redex);
+  Port b = get_snd(redex);
+
+  // Gets the rule type.
+  Rule rule = get_rule(a, b);
+
   // If there is no redex, stop.
   if (redex != 0) {
-    // Gets redex ports A and B.
-    Port a = get_fst(redex);
-    Port b = get_snd(redex);
-
-    // Gets the rule type.
-    Rule rule = get_rule(a, b);
-
-    //if (tid == 0) {
-      //printf("[%04x] REDUCE %s ~ %s | %s\n", tid, show_port(a).x, show_port(b).x, show_rule(rule).x);
-    //}
+    //printf("[%04x] REDUCE %s ~ %s | %s\n", GID(), show_port(a).x, show_port(b).x, show_rule(rule).x);
 
     // Used for root redex.
     if (get_tag(a) == REF && b == ROOT) {
@@ -1428,131 +1505,121 @@ __device__ bool interact(Net* net, TM* tm) {
 // --------------
 
 // Moves redexes from shared memory to global bag
-__device__ u32 save_redexes(Net* net, TM *tm, u32 turn) {
+__device__ void save_redexes(Net* net, TM *tm, u32 turn) {
+  // Target bag index
   u32 bag = transpose(GID(), TPB, BPG);
+
+  // Next redex index
   u32 idx = 0;
-  // Moves low-priority redexes
-  for (u32 i = tm->rbag.lo_ini; i < tm->rbag.lo_end; ++i) {
-    net->g_rbag_buf_B[bag * RLEN + (idx++)] = tm->rbag.lo_buf[i % RLEN];
+
+  //printf("[%04x] saving: lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end - tm->rbag.lo_ini, tm->rbag.hi_end, rbag_len(&tm->rbag));
+
+  // Leaks low-priority redexes
+  while (tm->rbag.lo_end > tm->rbag.lo_ini) {
+    Pair R = tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
+    Port x = get_fst(R);
+    Port y = get_snd(R);
+    Port X = new_port(VAR, g_vars_alloc_1(net, tm));
+    Port Y = new_port(VAR, g_vars_alloc_1(net, tm));
+    vars_create(net, get_val(X), NONE);
+    vars_create(net, get_val(Y), NONE);
+    link_pair(net, tm, new_pair(X, x));
+    link_pair(net, tm, new_pair(Y, y));
+    net->g_rbag_buf_B[bag * RLEN + (idx++)] = new_pair(X, Y);
   }
-  // Moves high-priority redexes
-  for (u32 i = 0; i < tm->rbag.hi_end; ++i) {
-    net->g_rbag_buf_B[bag * RLEN + (idx++)] = tm->rbag.hi_buf[i];
+  __syncthreads();
+
+  // Executes all high-priority redexes
+  while (rbag_has_highs(&tm->rbag)) {
+    if (!interact(net, tm, turn)) {
+      printf("ERROR: failed to clear high-priority redexes");
+    }
   }
+  __syncthreads();
+
+  #ifdef DEBUG
+  if (rbag_len(&tm->rbag) > 0) printf("[%04x] ERR SAVE_REDEXES lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end - tm->rbag.lo_ini, tm->rbag.hi_end, rbag_len(&tm->rbag));
+  #endif
+
   // Updates global redex counter
-  atomicAdd(net->g_rbag_use_B, rbag_len(&tm->rbag));
+  atomicAdd(net->g_rbag_use_B, idx);
 }
 
 // Loads redexes from global bag to shared memory
 // FIXME: check if we have enuogh space for all loads
-__device__ u32 load_redexes(Net* net, TM *tm, u32 turn) {
+__device__ void load_redexes(Net* net, TM *tm, u32 turn) {
   u32 bag = GID();
   for (u32 i = 0; i < RLEN; ++i) {
     Pair redex = atomicExch(&net->g_rbag_buf_A[bag * RLEN + i], 0);
     if (redex != 0) {
-      push_redex(tm, redex);
+      Port a = enter(net, tm, get_fst(redex));
+      Port b = enter(net, tm, get_snd(redex));
+      #ifdef DEBUG
+      if (is_local(a) || is_local(b)) printf("[%04x] ERR LOAD_REDEXES\n", turn);
+      #endif
+      push_redex(tm, new_pair(a, b));
     } else {
       break;
     }
   }
 }
 
-// Page Save/Load
-// --------------
-
-// Reserves a new page to be used by this block
-__device__ bool load_page(Net* net, TM* tm) {
-  __shared__ u32 got_page;
-  if (TID() == 0) {
-    got_page = reserve_page(net);
+// TODO: improve variable names
+__device__ bool is_block_full(Net* net, TM* tm, u32* chkt, u32* chka) {
+  u32 actv = block_count(rbag_len(&tm->rbag) > 0);
+  i32 ndif = block_sum(net->l_node_dif);
+  i32 vdif = block_sum(net->l_vars_dif);
+  u32 flim = L_NODE_LEN / TPB / 2 * actv;
+  if (ndif > flim || vdif > flim) {
+    return true;
   }
-  __syncthreads();
-  net->g_page_idx = got_page;
-  if (net->g_page_idx >= G_PAGE_MAX) {
-    return false;
-  }
-  return true;
-}
-
-// Moves local page to global net
-__device__ u32 save_page(Net* net, TM* tm) {
-  u32 node_count = 0;
-  u32 vars_count = 0;
-  // Move nodes to global
-  while (net->l_node_set != 0) {
-    u32 idx = TID() + pop_index(&net->l_node_set) * TPB;
-    // Gets node from local buffer
-    Pair node = atomicExch(&net->l_node_buf[idx], 0);
-    if (node != 0) {
-      // Moves to global buffer
-      Pair old = atomicExch(&net->g_node_buf[L_NODE_LEN*net->g_page_idx+idx], node);
-      // Increase the page's size count
-      node_count += 1;
-      // Sanity check
-      if (old != 0) {
-        //printf("UNREACHABLE\n");
-        __builtin_unreachable();
-      }
-    }
-  }
-  // Move vars to global
-  while (net->l_vars_set != 0) {
-    u32 idx = TID() + pop_index(&net->l_vars_set) * TPB;
-    // Take a var from local buffer
-    Port var = atomicExch(&net->l_vars_buf[idx], 0);
-    if (var != 0) {
-      // Moves to global buffer
-      Pair old = atomicExch(&net->g_vars_buf[L_VARS_LEN*net->g_page_idx+idx], var);
-      // Increase the page's size count
-      vars_count += 1;
-      // Sanity check
-      if (old != 0) {
-        //printf("UNREACHABLE\n");
-        __builtin_unreachable();
-      }
-    }
-  }
-  // Pushes leaked links
-  while (tm->rbag.lk_end > 0) {
-    Pair redex = tm->rbag.lk_buf[--tm->rbag.lk_end];
-    push_redex(tm, redex);
-    //link(net, tm, get_fst(redex), get_snd(redex), true);
-  }
-  // Resets local page counters
-  net->l_node_dif = 0;
-  net->l_vars_dif = 0;
-  // Updates global page length
-  atomicAdd(&net->g_page_use[net->g_page_idx], node_count + vars_count);
-  return node_count + vars_count;
-}
+  *chka *= 2;
+  *chkt += *chka;
+  return false;
+};
 
 // Evaluator
 // ---------
 
-__global__ void swap_rbuf(GNet* gnet, u32 turn) {
+__global__ void inbetween(GNet* gnet, u32 turn) {
+  // Clears rbag use counter
   if (turn % 2 == 0) {
     gnet->rbag_use_A = 0;
   } else {
     gnet->rbag_use_B = 0;
   }
-  // no need to swap buf (already zeroed)
+  // Sets global mode if failed last turn
+  gnet->glob = gnet->fail;
+  // Clears the fail flag
+  gnet->fail = 0;
 }
 
 __global__ void evaluator(GNet* gnet, u32 turn) {
   extern __shared__ char shared_mem[]; // 96 KB
   __shared__ bool halt; // halting flag
 
+  //if (GID() == 0) printf("EVALUATOR %d\n", turn);
+  //__syncthreads();
+
   // Local State
-  u32  tick = 0; // current tick
-  u32  sv_t = 0; // next tick to save page
-  u32  sv_a = 1; // how much to add to sv_t
-  bool fail = false; // have we failed
+  u32 tick = 0; // current tick
+  u32 fail = 0; // have we failed
+  u32 chkt = 0; // next tick to check fullness
+  u32 chka = 1; // how much to add to chkt
 
   // Thread Memory
   TM tm = tmem_new();
+  tm.glob = true;
 
   // Net (Local-Global View)
   Net net = vnet_new(gnet, shared_mem, turn);
+
+  // Clears shared memory
+  for (u32 i = 0; i < L_NODE_LEN / TPB; ++i) {
+    net.l_node_buf[i * TPB + TID()] = 0;
+    net.l_vars_buf[i * TPB + TID()] = 0;
+  }
+  __syncthreads();
 
   // Loads Redexes
   load_redexes(&net, &tm, turn);
@@ -1566,22 +1633,14 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   const u64  INIT = clock64(); // initial time
   const u64  REPS = 13; // log2 of number of loops
   const bool GROW = *net.g_rbag_use_A < TPB*BPG; // expanding rbag?
-
-  // Allocates Page
-  if (!load_page(&net, &tm)) {
-    // FIXME: treat this
-    if (TID() == 0) {
-      printf("[%04x] OOM\n", GID());
-    }
-    return;
-  }
+  const bool GLOB = GROW || tm.glob; // alloc on global buffer?
 
   // Interaction Loop
   for (tick = 0; tick < 1 << REPS; ++tick) {
     // Performs some interactions
-    fail = !interact(&net, &tm);
+    fail = !interact(&net, &tm, turn);
     while (!fail && rbag_has_highs(&tm.rbag)) {
-      fail = fail || !interact(&net, &tm);
+      fail = fail || !interact(&net, &tm, turn);
     }
 
     //if (!TID()) printf("TICK %d\n", i);
@@ -1594,26 +1653,10 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
       share_redexes(&tm);
     }
 
-    //block_print(rbag_len(&tm.rbag));
-    //if (!TID()) printf("\n");
-    //__syncthreads();
-
     // If the local page is more than half full, quit
-    if (tick == sv_t) {
-      u32 actv = block_count(rbag_len(&tm.rbag) > 0);
-      i32 ndif = block_sum(net.l_node_dif);
-      i32 vdif = block_sum(net.l_vars_dif);
-      u32 thrs = L_NODE_LEN / TPB / 2 * actv;
-      if (actv == 0) {
-        break;
-      } else if (ndif > thrs || vdif > thrs) {
-        //save_page(&net, &tm);
-        //load_page(&net, &tm);
-        break; // TODO: don't quit; save page and continue!
-      } else {
-        sv_a *= 2;
-      }
-      sv_t += sv_a;
+    if (tick == chkt && is_block_full(&net, &tm, &chkt, &chka)) {
+      atomicOr(&gnet->fail, 1);
+      break;
     }
 
     // If grow-mode and all threads are full, halt
@@ -1622,18 +1665,9 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
     }
   }
 
-  // Moves vars+node to global
-  u32 saved = save_page(&net, &tm);
-
-  // Moves rbag to global
-  save_redexes(&net, &tm, turn);
-
-  // Stores rewrites
-  atomicAdd(&gnet->itrs, tm.itrs);
-
   //u32 ITRS = block_sum(tm.itrs);
   //u32 RLEN = block_sum(rbag_len(&tm.rbag));
-  //u32 SAVE = block_sum(saved);
+  ////u32 SAVE = block_sum(saved);
   //u32 FAIL = block_sum((u32)fail);
   //u32 LOOP = block_sum((u32)tick);
   //i32 NDIF = block_sum(net.l_node_dif);
@@ -1641,12 +1675,20 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   //f64 TIME = (f64)(clock64() - INIT) / (f64)S;
   //f64 MIPS = (f64)ITRS / TIME / (f64)1000000.0;
   //if (TID() == 0) {
-    //printf("%04x:[%02x]: ITRS=%d LOOP=%d RLEN=%d SAVE=%d NDIF=%d VDIF=%d FAIL=%d TIME=%f MIPS=%.0f\n", turn, BID(), ITRS, LOOP, RLEN, SAVE, NDIF, VDIF, FAIL, TIME, MIPS);
+    //printf("%04x:[%02x]: ITRS=%d LOOP=%d RLEN=%d NDIF=%d VDIF=%d FAIL=%d TIME=%f MIPS=%.0f\n", turn, BID(), ITRS, LOOP, RLEN, NDIF, VDIF, FAIL, TIME, MIPS);
   //}
 
+  __syncthreads();
+
+  // Moves rbag to global
+  save_redexes(&net, &tm, turn);
+
+  // Stores rewrites
+  atomicAdd(&gnet->itrs, tm.itrs);
+  atomicAdd(&gnet->leak, tm.leak);
 }
 
-u32 get_rbag_len(GNet* gnet, u32 turn) {
+u32 get_rlen(GNet* gnet, u32 turn) {
   u32 rbag_use;
   if (turn % 2 == 0) {
     cudaMemcpy(&rbag_use, &gnet->rbag_use_B, sizeof(u32), cudaMemcpyDeviceToHost);
@@ -1654,6 +1696,18 @@ u32 get_rbag_len(GNet* gnet, u32 turn) {
     cudaMemcpy(&rbag_use, &gnet->rbag_use_A, sizeof(u32), cudaMemcpyDeviceToHost);
   }
   return rbag_use;
+}
+
+u64 get_itrs(GNet* gnet, u32 turn) {
+  u64 itrs;
+  cudaMemcpy(&itrs, &gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
+  return itrs;
+}
+
+u64 get_leak(GNet* gnet, u32 turn) {
+  u64 leak;
+  cudaMemcpy(&leak, &gnet->leak, sizeof(u64), cudaMemcpyDeviceToHost);
+  return leak;
 }
 
 // Book Loader
@@ -1756,10 +1810,10 @@ __device__ void print_rbag(RBag* rbag) {
   printf("==== | ============ | ============\n");
 }
 
-__device__ __host__ void print_net(Net* net) {
+__device__ __host__ void print_net(Net* net, u32 ini, u32 end) {
   printf("NODE | PORT-1       | PORT-2      \n");
   printf("---- | ------------ | ------------\n");
-  for (u32 i = 0; i < G_NODE_LEN; ++i) {
+  for (u32 i = ini; i < end; ++i) {
     Pair node = node_load(net, i);
     if (node != 0) {
       printf("%04X | %s | %s\n", i, show_port(get_fst(node)).x, show_port(get_snd(node)).x);
@@ -1768,7 +1822,7 @@ __device__ __host__ void print_net(Net* net) {
   printf("==== | ============ |\n");
   printf("VARS | VALUE        |\n");
   printf("---- | ------------ |\n");
-  for (u32 i = 0; i < G_VARS_LEN; ++i) {
+  for (u32 i = ini; i < end; ++i) {
     Port var = vars_load(net,i);
     if (var != 0) {
       printf("%04X | %s |\n", i, show_port(vars_load(net,i)).x);
@@ -1894,8 +1948,35 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
   }
 }
 
-__global__ void print_rbag_heatmap(GNet* gnet, u32 turn) {
+__device__ u32 NODE_COUNT;
+__device__ u32 VARS_COUNT;
+
+__global__ void count_memory(GNet* gnet) {
+  u32 node_count = 0;
+  u32 vars_count = 0;
+  for (u32 i = GID(); i < G_NODE_LEN; i += TPG) {
+    if (gnet->node_buf[i] != 0) ++node_count;
+    if (gnet->vars_buf[i] != 0) ++vars_count;
+  }
+
+  __shared__ u32 block_node_count;
+  __shared__ u32 block_vars_count;
+
+  if (TID() == 0) block_node_count = 0;
+  if (TID() == 0) block_vars_count = 0;
+  __syncthreads();
+
+  atomicAdd(&block_node_count, node_count);
+  atomicAdd(&block_vars_count, vars_count);
+  __syncthreads();
+
+  if (TID() == 0) atomicAdd(&NODE_COUNT, block_node_count);
+  if (TID() == 0) atomicAdd(&VARS_COUNT, block_vars_count);
+}
+
+__global__ void print_heatmap(GNet* gnet, u32 turn) {
   if (GID() > 0) return;
+
   for (u32 bid = 0; bid < BPG; bid++) {
     for (u32 tid = 0; tid < TPB; tid++) {
       u32 gid = bid * TPB + tid;
@@ -1911,6 +1992,14 @@ __global__ void print_rbag_heatmap(GNet* gnet, u32 turn) {
     }
     printf("\n");
   }
+
+  //printf("NODE_COUNT: %d\n", NODE_COUNT);
+  //printf("VARS_COUNT: %d\n", VARS_COUNT);
+  //NODE_COUNT = 0;
+  //VARS_COUNT = 0;
+}
+
+__global__ void print_full_net(GNet* gnet, u32 turn) {
 }
 
 __global__ void print_result(GNet* gnet, u32 turn) {
@@ -1925,50 +2014,38 @@ __global__ void print_result(GNet* gnet, u32 turn) {
 // Main
 // ----
 
-// Stress 2^18 x 65536
-//static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+// stress 2^18 x 131072
+static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
-// Stress 2^14 x 65536
+// stress 2^14 x 131072
 //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 7, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
-// Stress 2^18 x 16
-//static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 8, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+// stress 2^10 x 131072
+//static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
-// Bug2
-//static const u8 DEMO_BOOK[] = {8, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 49, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 11, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 41, 0, 0, 0, 4, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 76, 0, 0, 0, 25, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 6, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 57, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 20, 0, 0, 0, 49, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0};
-
-// Sort 12
-//static const u8 DEMO_BOOK[] = {28, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 145, 0, 0, 0, 4, 0, 0, 0, 121, 0, 0, 0, 12, 0, 0, 0, 73, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 11, 6, 0, 0, 36, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 49, 0, 0, 0, 52, 0, 0, 0, 49, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 5, 0, 0, 0, 100, 111, 119, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 6, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 185, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 102, 108, 111, 119, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 89, 0, 0, 0, 10, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 73, 0, 0, 0, 76, 0, 0, 0, 73, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 106, 111, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 113, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 106, 111, 105, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 14, 0, 0, 0, 106, 111, 105, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 105, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 137, 0, 0, 0, 20, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 11, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 44, 0, 0, 0, 121, 0, 0, 0, 60, 0, 0, 0, 121, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 139, 0, 0, 0, 48, 0, 0, 0, 17, 0, 0, 0, 115, 111, 114, 116, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 153, 0, 0, 0, 8, 0, 0, 0, 19, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 145, 0, 0, 0, 20, 0, 0, 0, 145, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 177, 0, 0, 0, 21, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 23, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 217, 0, 0, 0, 20, 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 97, 0, 0, 0, 52, 0, 0, 0, 185, 0, 0, 0, 68, 0, 0, 0, 185, 0, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 36, 0, 0, 0, 45, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 60, 0, 0, 0, 64, 0, 0, 0, 48, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 25, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 193, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 26, 0, 0, 0, 119, 97, 114, 112, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 76, 0, 0, 0, 9, 0, 0, 0, 100, 0, 0, 0, 9, 0, 0, 0, 108, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 68, 0, 0, 0, 38, 0, 0, 0, 32, 0, 0, 0, 3, 6, 0, 128, 46, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 131, 7, 0, 128, 62, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 92, 0, 0, 0, 56, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 56, 0, 0, 0, 27, 0, 0, 0, 119, 97, 114, 112, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 209, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
-
-// Sort 16
+// sort/bitonic_lam 16
 //static const u8 DEMO_BOOK[] = {28, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 145, 0, 0, 0, 4, 0, 0, 0, 121, 0, 0, 0, 12, 0, 0, 0, 73, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 11, 8, 0, 0, 36, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 49, 0, 0, 0, 52, 0, 0, 0, 49, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 5, 0, 0, 0, 100, 111, 119, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 6, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 185, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 102, 108, 111, 119, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 89, 0, 0, 0, 10, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 73, 0, 0, 0, 76, 0, 0, 0, 73, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 106, 111, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 113, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 106, 111, 105, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 14, 0, 0, 0, 106, 111, 105, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 105, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 137, 0, 0, 0, 20, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 11, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 44, 0, 0, 0, 121, 0, 0, 0, 60, 0, 0, 0, 121, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 139, 0, 0, 0, 48, 0, 0, 0, 17, 0, 0, 0, 115, 111, 114, 116, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 153, 0, 0, 0, 8, 0, 0, 0, 19, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 145, 0, 0, 0, 20, 0, 0, 0, 145, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 177, 0, 0, 0, 21, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 23, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 217, 0, 0, 0, 20, 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 97, 0, 0, 0, 52, 0, 0, 0, 185, 0, 0, 0, 68, 0, 0, 0, 185, 0, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 36, 0, 0, 0, 45, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 60, 0, 0, 0, 64, 0, 0, 0, 48, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 25, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 193, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 26, 0, 0, 0, 119, 97, 114, 112, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 76, 0, 0, 0, 9, 0, 0, 0, 100, 0, 0, 0, 9, 0, 0, 0, 108, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 68, 0, 0, 0, 38, 0, 0, 0, 32, 0, 0, 0, 3, 6, 0, 128, 46, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 131, 7, 0, 128, 62, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 92, 0, 0, 0, 56, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 56, 0, 0, 0, 27, 0, 0, 0, 119, 97, 114, 112, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 209, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
-// Sort 17
-//static const u8 DEMO_BOOK[] = {28, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 145, 0, 0, 0, 4, 0, 0, 0, 121, 0, 0, 0, 12, 0, 0, 0, 73, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 139, 8, 0, 0, 36, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 49, 0, 0, 0, 52, 0, 0, 0, 49, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 5, 0, 0, 0, 100, 111, 119, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 6, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 185, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 102, 108, 111, 119, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 89, 0, 0, 0, 10, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 73, 0, 0, 0, 76, 0, 0, 0, 73, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 106, 111, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 113, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 106, 111, 105, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 14, 0, 0, 0, 106, 111, 105, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 105, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 137, 0, 0, 0, 20, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 11, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 44, 0, 0, 0, 121, 0, 0, 0, 60, 0, 0, 0, 121, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 139, 0, 0, 0, 48, 0, 0, 0, 17, 0, 0, 0, 115, 111, 114, 116, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 153, 0, 0, 0, 8, 0, 0, 0, 19, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 145, 0, 0, 0, 20, 0, 0, 0, 145, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 177, 0, 0, 0, 21, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 23, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 217, 0, 0, 0, 20, 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 97, 0, 0, 0, 52, 0, 0, 0, 185, 0, 0, 0, 68, 0, 0, 0, 185, 0, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 36, 0, 0, 0, 45, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 60, 0, 0, 0, 64, 0, 0, 0, 48, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 25, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 193, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 26, 0, 0, 0, 119, 97, 114, 112, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 76, 0, 0, 0, 9, 0, 0, 0, 100, 0, 0, 0, 9, 0, 0, 0, 108, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 68, 0, 0, 0, 38, 0, 0, 0, 32, 0, 0, 0, 3, 6, 0, 128, 46, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 131, 7, 0, 128, 62, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 92, 0, 0, 0, 56, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 56, 0, 0, 0, 27, 0, 0, 0, 119, 97, 114, 112, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 209, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
-
-// Sort 18
+// sort/bitonic_lam 18
 //static const u8 DEMO_BOOK[] = {28, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 145, 0, 0, 0, 4, 0, 0, 0, 121, 0, 0, 0, 12, 0, 0, 0, 73, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 11, 9, 0, 0, 36, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 49, 0, 0, 0, 52, 0, 0, 0, 49, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 5, 0, 0, 0, 100, 111, 119, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 6, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 185, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 102, 108, 111, 119, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 89, 0, 0, 0, 10, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 73, 0, 0, 0, 76, 0, 0, 0, 73, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 106, 111, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 113, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 106, 111, 105, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 14, 0, 0, 0, 106, 111, 105, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 105, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 137, 0, 0, 0, 20, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 11, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 44, 0, 0, 0, 121, 0, 0, 0, 60, 0, 0, 0, 121, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 139, 0, 0, 0, 48, 0, 0, 0, 17, 0, 0, 0, 115, 111, 114, 116, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 153, 0, 0, 0, 8, 0, 0, 0, 19, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 145, 0, 0, 0, 20, 0, 0, 0, 145, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 177, 0, 0, 0, 21, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 23, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 217, 0, 0, 0, 20, 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 97, 0, 0, 0, 52, 0, 0, 0, 185, 0, 0, 0, 68, 0, 0, 0, 185, 0, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 36, 0, 0, 0, 45, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 60, 0, 0, 0, 64, 0, 0, 0, 48, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 25, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 193, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 26, 0, 0, 0, 119, 97, 114, 112, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 76, 0, 0, 0, 9, 0, 0, 0, 100, 0, 0, 0, 9, 0, 0, 0, 108, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 68, 0, 0, 0, 38, 0, 0, 0, 32, 0, 0, 0, 3, 6, 0, 128, 46, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 131, 7, 0, 128, 62, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 92, 0, 0, 0, 56, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 56, 0, 0, 0, 27, 0, 0, 0, 119, 97, 114, 112, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 209, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
-// Sort 20
-//static const u8 DEMO_BOOK[] = {28, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 145, 0, 0, 0, 4, 0, 0, 0, 121, 0, 0, 0, 12, 0, 0, 0, 73, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 11, 10, 0, 0, 36, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 49, 0, 0, 0, 52, 0, 0, 0, 49, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 5, 0, 0, 0, 100, 111, 119, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 6, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 185, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 102, 108, 111, 119, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 89, 0, 0, 0, 10, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 73, 0, 0, 0, 76, 0, 0, 0, 73, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 106, 111, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 113, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 106, 111, 105, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 14, 0, 0, 0, 106, 111, 105, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 105, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 137, 0, 0, 0, 20, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 11, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 44, 0, 0, 0, 121, 0, 0, 0, 60, 0, 0, 0, 121, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 139, 0, 0, 0, 48, 0, 0, 0, 17, 0, 0, 0, 115, 111, 114, 116, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 153, 0, 0, 0, 8, 0, 0, 0, 19, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 145, 0, 0, 0, 20, 0, 0, 0, 145, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 177, 0, 0, 0, 21, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 23, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 217, 0, 0, 0, 20, 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 97, 0, 0, 0, 52, 0, 0, 0, 185, 0, 0, 0, 68, 0, 0, 0, 185, 0, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 36, 0, 0, 0, 45, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 60, 0, 0, 0, 64, 0, 0, 0, 48, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 25, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 193, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 26, 0, 0, 0, 119, 97, 114, 112, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 76, 0, 0, 0, 9, 0, 0, 0, 100, 0, 0, 0, 9, 0, 0, 0, 108, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 68, 0, 0, 0, 38, 0, 0, 0, 32, 0, 0, 0, 3, 6, 0, 128, 46, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 131, 7, 0, 128, 62, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 92, 0, 0, 0, 56, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 56, 0, 0, 0, 27, 0, 0, 0, 119, 97, 114, 112, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 209, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
-
-// Sort 16 (fast)
+// sort/bitonic_tup 16
 //static const u8 DEMO_BOOK[] = {17, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 11, 8, 0, 0, 5, 0, 0, 0, 73, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 36, 0, 0, 0, 41, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 44, 0, 0, 0, 11, 0, 0, 0, 52, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 1, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 2, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 13, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 3, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 60, 0, 0, 0, 113, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 28, 0, 0, 0, 22, 0, 0, 0, 8, 0, 0, 0, 163, 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 32, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 68, 0, 0, 0, 41, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 7, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 65, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 17, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 60, 0, 0, 0, 57, 0, 0, 0, 92, 0, 0, 0, 57, 0, 0, 0, 116, 0, 0, 0, 13, 0, 0, 0, 36, 0, 0, 0, 22, 0, 0, 0, 29, 0, 0, 0, 163, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 64, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 11, 0, 0, 0, 108, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 16, 0, 0, 0, 124, 0, 0, 0, 139, 0, 0, 0, 132, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 9, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 10, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 73, 0, 0, 0, 36, 0, 0, 0, 73, 0, 0, 0, 68, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 11, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 97, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 12, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 14, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 52, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 8, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 15, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 89, 0, 0, 0, 76, 0, 0, 0, 14, 0, 0, 0, 28, 0, 0, 0, 131, 7, 0, 128, 22, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 37, 0, 0, 0, 60, 0, 0, 0, 46, 0, 0, 0, 24, 0, 0, 0, 3, 6, 0, 128, 54, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 69, 0, 0, 0, 40, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 24, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 16, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 21, 0, 0, 0, 12, 0, 0, 0, 4, 0, 0, 0, 113, 0, 0, 0, 92, 0, 0, 0, 113, 0, 0, 0, 132, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 76, 0, 0, 0, 84, 0, 0, 0, 64, 0, 0, 0, 72, 0, 0, 0, 80, 0, 0, 0, 88, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 16, 0, 0, 0, 108, 0, 0, 0, 32, 0, 0, 0, 116, 0, 0, 0, 48, 0, 0, 0, 124, 0, 0, 0, 64, 0, 0, 0, 80, 0, 0, 0, 8, 0, 0, 0, 140, 0, 0, 0, 24, 0, 0, 0, 148, 0, 0, 0, 40, 0, 0, 0, 156, 0, 0, 0, 56, 0, 0, 0, 164, 0, 0, 0, 72, 0, 0, 0, 88, 0, 0, 0};
 
-// Sort 17 (fast)
-//static const u8 DEMO_BOOK[] = {17, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 139, 8, 0, 0, 5, 0, 0, 0, 73, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 36, 0, 0, 0, 41, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 44, 0, 0, 0, 11, 0, 0, 0, 52, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 1, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 2, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 13, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 3, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 60, 0, 0, 0, 113, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 28, 0, 0, 0, 22, 0, 0, 0, 8, 0, 0, 0, 163, 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 32, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 68, 0, 0, 0, 41, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 7, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 65, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 17, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 60, 0, 0, 0, 57, 0, 0, 0, 92, 0, 0, 0, 57, 0, 0, 0, 116, 0, 0, 0, 13, 0, 0, 0, 36, 0, 0, 0, 22, 0, 0, 0, 29, 0, 0, 0, 163, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 64, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 11, 0, 0, 0, 108, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 16, 0, 0, 0, 124, 0, 0, 0, 139, 0, 0, 0, 132, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 9, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 10, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 73, 0, 0, 0, 36, 0, 0, 0, 73, 0, 0, 0, 68, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 11, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 97, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 12, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 14, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 52, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 8, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 15, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 89, 0, 0, 0, 76, 0, 0, 0, 14, 0, 0, 0, 28, 0, 0, 0, 131, 7, 0, 128, 22, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 37, 0, 0, 0, 60, 0, 0, 0, 46, 0, 0, 0, 24, 0, 0, 0, 3, 6, 0, 128, 54, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 69, 0, 0, 0, 40, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 24, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 16, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 21, 0, 0, 0, 12, 0, 0, 0, 4, 0, 0, 0, 113, 0, 0, 0, 92, 0, 0, 0, 113, 0, 0, 0, 132, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 76, 0, 0, 0, 84, 0, 0, 0, 64, 0, 0, 0, 72, 0, 0, 0, 80, 0, 0, 0, 88, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 16, 0, 0, 0, 108, 0, 0, 0, 32, 0, 0, 0, 116, 0, 0, 0, 48, 0, 0, 0, 124, 0, 0, 0, 64, 0, 0, 0, 80, 0, 0, 0, 8, 0, 0, 0, 140, 0, 0, 0, 24, 0, 0, 0, 148, 0, 0, 0, 40, 0, 0, 0, 156, 0, 0, 0, 56, 0, 0, 0, 164, 0, 0, 0, 72, 0, 0, 0, 88, 0, 0, 0};
-
-// Sort 18 (fast)
+// sort/bitonic_tup 18
 //static const u8 DEMO_BOOK[] = {17, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 11, 9, 0, 0, 5, 0, 0, 0, 73, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 36, 0, 0, 0, 41, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 44, 0, 0, 0, 11, 0, 0, 0, 52, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 1, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 2, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 13, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 60, 0, 0, 0, 25, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 3, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 60, 0, 0, 0, 113, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 28, 0, 0, 0, 22, 0, 0, 0, 8, 0, 0, 0, 163, 0, 0, 0, 0, 0, 0, 0, 37, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 32, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 5, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 68, 0, 0, 0, 41, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 7, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 60, 0, 0, 0, 20, 0, 0, 0, 44, 0, 0, 0, 28, 0, 0, 0, 65, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 52, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 17, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 60, 0, 0, 0, 57, 0, 0, 0, 92, 0, 0, 0, 57, 0, 0, 0, 116, 0, 0, 0, 13, 0, 0, 0, 36, 0, 0, 0, 22, 0, 0, 0, 29, 0, 0, 0, 163, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 64, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 11, 0, 0, 0, 108, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 16, 0, 0, 0, 124, 0, 0, 0, 139, 0, 0, 0, 132, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 9, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 81, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 10, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 73, 0, 0, 0, 36, 0, 0, 0, 73, 0, 0, 0, 68, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 11, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 97, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 12, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 13, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 14, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 52, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 8, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 15, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 89, 0, 0, 0, 76, 0, 0, 0, 14, 0, 0, 0, 28, 0, 0, 0, 131, 7, 0, 128, 22, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 37, 0, 0, 0, 60, 0, 0, 0, 46, 0, 0, 0, 24, 0, 0, 0, 3, 6, 0, 128, 54, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 69, 0, 0, 0, 40, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 24, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 16, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 21, 0, 0, 0, 12, 0, 0, 0, 4, 0, 0, 0, 113, 0, 0, 0, 92, 0, 0, 0, 113, 0, 0, 0, 132, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 44, 0, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 56, 0, 0, 0, 76, 0, 0, 0, 84, 0, 0, 0, 64, 0, 0, 0, 72, 0, 0, 0, 80, 0, 0, 0, 88, 0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 16, 0, 0, 0, 108, 0, 0, 0, 32, 0, 0, 0, 116, 0, 0, 0, 48, 0, 0, 0, 124, 0, 0, 0, 64, 0, 0, 0, 80, 0, 0, 0, 8, 0, 0, 0, 140, 0, 0, 0, 24, 0, 0, 0, 148, 0, 0, 0, 40, 0, 0, 0, 156, 0, 0, 0, 56, 0, 0, 0, 164, 0, 0, 0, 72, 0, 0, 0, 88, 0, 0, 0};
 
-// Sort 16 (radix)
+// sort/radix 16
 //static const u8 DEMO_BOOK[] = {31, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 153, 0, 0, 0, 12, 0, 0, 0, 57, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 8, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 66, 117, 115, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 99, 97, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 69, 109, 112, 116, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 70, 114, 101, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 6, 0, 0, 0, 83, 105, 110, 103, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 73, 0, 0, 0, 8, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 12, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 57, 0, 0, 0, 68, 0, 0, 0, 57, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 32, 0, 0, 0, 51, 1, 0, 0, 37, 0, 0, 0, 16, 0, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 10, 0, 0, 0, 109, 101, 114, 103, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 20, 0, 0, 0, 113, 0, 0, 0, 28, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 36, 0, 0, 0, 81, 0, 0, 0, 52, 0, 0, 0, 81, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 13, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 97, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 89, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 15, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 114, 97, 100, 105, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 76, 0, 0, 0, 20, 0, 0, 0, 52, 0, 0, 0, 28, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 18, 0, 0, 0, 114, 97, 100, 105, 120, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 76, 0, 0, 0, 177, 0, 0, 0, 108, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 21, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 131, 6, 0, 128, 38, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 53, 0, 0, 0, 68, 0, 0, 0, 62, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 100, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 24, 0, 0, 0, 116, 0, 0, 0, 40, 0, 0, 0, 124, 0, 0, 0, 33, 0, 0, 0, 56, 0, 0, 0, 19, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 12, 0, 0, 0, 225, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 8, 0, 0, 0, 21, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 20, 0, 0, 0, 161, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 185, 0, 0, 0, 193, 0, 0, 0, 23, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 25, 0, 0, 0, 116, 111, 95, 97, 114, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 217, 0, 0, 0, 36, 0, 0, 0, 209, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 201, 0, 0, 0, 84, 0, 0, 0, 201, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 76, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 27, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 116, 111, 95, 109, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 241, 0, 0, 0, 28, 0, 0, 0, 233, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 225, 0, 0, 0, 36, 0, 0, 0, 225, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 30, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 12, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 139, 0, 0, 0, 36, 0, 0, 0, 9, 0, 0, 0, 8, 0, 0, 0};
 
-// Sort 18 (radix)
-static const u8 DEMO_BOOK[] = {31, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 153, 0, 0, 0, 12, 0, 0, 0, 57, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 9, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 66, 117, 115, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 99, 97, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 69, 109, 112, 116, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 70, 114, 101, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 6, 0, 0, 0, 83, 105, 110, 103, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 73, 0, 0, 0, 8, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 12, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 57, 0, 0, 0, 68, 0, 0, 0, 57, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 32, 0, 0, 0, 51, 1, 0, 0, 37, 0, 0, 0, 16, 0, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 10, 0, 0, 0, 109, 101, 114, 103, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 20, 0, 0, 0, 113, 0, 0, 0, 28, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 36, 0, 0, 0, 81, 0, 0, 0, 52, 0, 0, 0, 81, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 13, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 97, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 89, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 15, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 114, 97, 100, 105, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 76, 0, 0, 0, 20, 0, 0, 0, 52, 0, 0, 0, 28, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 18, 0, 0, 0, 114, 97, 100, 105, 120, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 76, 0, 0, 0, 177, 0, 0, 0, 108, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 21, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 131, 6, 0, 128, 38, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 53, 0, 0, 0, 68, 0, 0, 0, 62, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 100, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 24, 0, 0, 0, 116, 0, 0, 0, 40, 0, 0, 0, 124, 0, 0, 0, 33, 0, 0, 0, 56, 0, 0, 0, 19, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 12, 0, 0, 0, 225, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 8, 0, 0, 0, 21, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 20, 0, 0, 0, 161, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 185, 0, 0, 0, 193, 0, 0, 0, 23, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 25, 0, 0, 0, 116, 111, 95, 97, 114, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 217, 0, 0, 0, 36, 0, 0, 0, 209, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 201, 0, 0, 0, 84, 0, 0, 0, 201, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 76, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 27, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 116, 111, 95, 109, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 241, 0, 0, 0, 28, 0, 0, 0, 233, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 225, 0, 0, 0, 36, 0, 0, 0, 225, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 30, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 12, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 139, 0, 0, 0, 36, 0, 0, 0, 9, 0, 0, 0, 8, 0, 0, 0};
+// sort/radix 18
+//static const u8 DEMO_BOOK[] = {31, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 153, 0, 0, 0, 12, 0, 0, 0, 57, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 9, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 66, 117, 115, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 99, 97, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 69, 109, 112, 116, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 70, 114, 101, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 6, 0, 0, 0, 83, 105, 110, 103, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 73, 0, 0, 0, 8, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 12, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 57, 0, 0, 0, 68, 0, 0, 0, 57, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 32, 0, 0, 0, 51, 1, 0, 0, 37, 0, 0, 0, 16, 0, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 10, 0, 0, 0, 109, 101, 114, 103, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 20, 0, 0, 0, 113, 0, 0, 0, 28, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 36, 0, 0, 0, 81, 0, 0, 0, 52, 0, 0, 0, 81, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 13, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 97, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 89, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 15, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 114, 97, 100, 105, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 76, 0, 0, 0, 20, 0, 0, 0, 52, 0, 0, 0, 28, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 18, 0, 0, 0, 114, 97, 100, 105, 120, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 76, 0, 0, 0, 177, 0, 0, 0, 108, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 21, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 131, 6, 0, 128, 38, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 53, 0, 0, 0, 68, 0, 0, 0, 62, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 100, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 24, 0, 0, 0, 116, 0, 0, 0, 40, 0, 0, 0, 124, 0, 0, 0, 33, 0, 0, 0, 56, 0, 0, 0, 19, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 12, 0, 0, 0, 225, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 8, 0, 0, 0, 21, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 20, 0, 0, 0, 161, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 185, 0, 0, 0, 193, 0, 0, 0, 23, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 25, 0, 0, 0, 116, 111, 95, 97, 114, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 217, 0, 0, 0, 36, 0, 0, 0, 209, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 201, 0, 0, 0, 84, 0, 0, 0, 201, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 76, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 27, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 116, 111, 95, 109, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 241, 0, 0, 0, 28, 0, 0, 0, 233, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 225, 0, 0, 0, 36, 0, 0, 0, 225, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 30, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 12, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 139, 0, 0, 0, 36, 0, 0, 0, 9, 0, 0, 0, 8, 0, 0, 0};
 
-// Sort 20 (radix)
+// sort/radix 20
 //static const u8 DEMO_BOOK[] = {31, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 153, 0, 0, 0, 12, 0, 0, 0, 57, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 10, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 66, 117, 115, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 99, 97, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 69, 109, 112, 116, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 70, 114, 101, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 6, 0, 0, 0, 83, 105, 110, 103, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 73, 0, 0, 0, 8, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 12, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 57, 0, 0, 0, 68, 0, 0, 0, 57, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 32, 0, 0, 0, 51, 1, 0, 0, 37, 0, 0, 0, 16, 0, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 10, 0, 0, 0, 109, 101, 114, 103, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 20, 0, 0, 0, 113, 0, 0, 0, 28, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 36, 0, 0, 0, 81, 0, 0, 0, 52, 0, 0, 0, 81, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 13, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 97, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 89, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 15, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 114, 97, 100, 105, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 76, 0, 0, 0, 20, 0, 0, 0, 52, 0, 0, 0, 28, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 18, 0, 0, 0, 114, 97, 100, 105, 120, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 76, 0, 0, 0, 177, 0, 0, 0, 108, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 21, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 131, 6, 0, 128, 38, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 53, 0, 0, 0, 68, 0, 0, 0, 62, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 100, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 24, 0, 0, 0, 116, 0, 0, 0, 40, 0, 0, 0, 124, 0, 0, 0, 33, 0, 0, 0, 56, 0, 0, 0, 19, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 12, 0, 0, 0, 225, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 8, 0, 0, 0, 21, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 20, 0, 0, 0, 161, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 185, 0, 0, 0, 193, 0, 0, 0, 23, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 25, 0, 0, 0, 116, 111, 95, 97, 114, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 217, 0, 0, 0, 36, 0, 0, 0, 209, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 201, 0, 0, 0, 84, 0, 0, 0, 201, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 76, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 27, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 116, 111, 95, 109, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 241, 0, 0, 0, 28, 0, 0, 0, 233, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 225, 0, 0, 0, 36, 0, 0, 0, 225, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 30, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 12, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 139, 0, 0, 0, 36, 0, 0, 0, 9, 0, 0, 0, 8, 0, 0, 0};
+
+// sort/radix 22
+//static const u8 DEMO_BOOK[] = {31, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 153, 0, 0, 0, 12, 0, 0, 0, 57, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 139, 11, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 66, 117, 115, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 99, 97, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 69, 109, 112, 116, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 70, 114, 101, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 6, 0, 0, 0, 83, 105, 110, 103, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 73, 0, 0, 0, 8, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 12, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 57, 0, 0, 0, 68, 0, 0, 0, 57, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 32, 0, 0, 0, 51, 1, 0, 0, 37, 0, 0, 0, 16, 0, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 10, 0, 0, 0, 109, 101, 114, 103, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 20, 0, 0, 0, 113, 0, 0, 0, 28, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 36, 0, 0, 0, 81, 0, 0, 0, 52, 0, 0, 0, 81, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 13, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 97, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 89, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 15, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 114, 97, 100, 105, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 76, 0, 0, 0, 20, 0, 0, 0, 52, 0, 0, 0, 28, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 18, 0, 0, 0, 114, 97, 100, 105, 120, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 76, 0, 0, 0, 177, 0, 0, 0, 108, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 21, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 131, 6, 0, 128, 38, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 53, 0, 0, 0, 68, 0, 0, 0, 62, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 100, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 24, 0, 0, 0, 116, 0, 0, 0, 40, 0, 0, 0, 124, 0, 0, 0, 33, 0, 0, 0, 56, 0, 0, 0, 19, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 12, 0, 0, 0, 225, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 8, 0, 0, 0, 21, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 20, 0, 0, 0, 161, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 185, 0, 0, 0, 193, 0, 0, 0, 23, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 25, 0, 0, 0, 116, 111, 95, 97, 114, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 217, 0, 0, 0, 36, 0, 0, 0, 209, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 201, 0, 0, 0, 84, 0, 0, 0, 201, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 76, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 27, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 116, 111, 95, 109, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 241, 0, 0, 0, 28, 0, 0, 0, 233, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 225, 0, 0, 0, 36, 0, 0, 0, 225, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 30, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 12, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 139, 0, 0, 0, 36, 0, 0, 0, 9, 0, 0, 0, 8, 0, 0, 0};
 
 void hvm_cu(u32* book_buffer) {
   // Start the timer
@@ -1995,22 +2072,33 @@ void hvm_cu(u32* book_buffer) {
   cudaFuncSetAttribute(evaluator, cudaFuncAttributeMaxDynamicSharedMemorySize, sizeof(LNet));
 
   // Inits the GNet
-  gnet_init<<<div(G_PAGE_MAX,TPB), TPB>>>(d_gnet);
+  gnet_init<<<BPG, TPB>>>(d_gnet);
 
   // Invokes the Evaluator Kernel repeatedly
   u32 turn;
-  for (turn = 0; turn < 0xFFFF; ++turn) {
-    //printf("-------------------------------------------- %04x\n", turn);
+  u64 itrs = 0;
+  u64 leak = 0;
+  u32 rlen = 0;
+  for (turn = 0; turn < 0xFFFFFFFF; ++turn) {
     //cudaDeviceSynchronize();
+    //printf("-------------------------------------------- TURN: %04x | RLEN: %04x | ITRS: %012llu\n", turn, rlen, itrs);
+    
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, turn);
-    swap_rbuf<<<1, 1>>>(d_gnet, turn);
-    if (get_rbag_len(d_gnet, turn) == 0) {
+    inbetween<<<1, 1>>>(d_gnet, turn);
+
+    //cudaDeviceSynchronize();
+    //count_memory<<<BPG, TPB>>>(d_gnet);
+
+    //cudaDeviceSynchronize();
+    //print_heatmap<<<1,1>>>(d_gnet, turn+1);
+
+    itrs = get_itrs(d_gnet, turn);
+    leak = get_leak(d_gnet, turn);
+    rlen = get_rlen(d_gnet, turn);
+    if (rlen == 0) {
       printf("Completed after %d kernel launches!\n", turn);
       break;
     }
-    // Print HeatMap (for debugging)
-    //cudaDeviceSynchronize();
-    //print_rbag_heatmap<<<1,1>>>(d_gnet, turn+1);
   }
 
   // Invokes the Result Printer Kernel
@@ -2028,6 +2116,7 @@ void hvm_cu(u32* book_buffer) {
   clock_t end = clock();
   double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
 
+  // Prints entire memdump
   //{
     //// Allocate host memory for the net
     //GNet *h_gnet = (GNet*)malloc(sizeof(GNet));
@@ -2039,21 +2128,20 @@ void hvm_cu(u32* book_buffer) {
     //Net net;
     //net.g_node_buf = h_gnet->node_buf;
     //net.g_vars_buf = h_gnet->vars_buf;
-    //net.g_page_idx = 0xFFFFFFFF;
 
     //// Print the net
-    //print_net(&net);
+    //print_net(&net, L_NODE_LEN, G_NODE_LEN);
 
     //// Free host memory
     //free(h_gnet);
   //}
 
   // Gets interaction count
-  u64 itrs;
-  cudaMemcpy(&itrs, &d_gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
+  //cudaMemcpy(&itrs, &d_gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
 
   // Prints interactions, time and MIPS
   printf("- ITRS: %llu\n", itrs);
+  printf("- LEAK: %llu\n", leak);
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 }
