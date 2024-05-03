@@ -51,5 +51,5 @@ sum = λa
   (a a_leaf a_node)
 
 main =
-  let d = 16
+  let d = 18
   (sum (sort (gen d 0) 0))
