@@ -213,6 +213,7 @@
 // - ---- | -------- | --------
 
 #define INTERPRETED
+//#define DEBUG
 
 #include <stdint.h>
 #include <stdio.h>
@@ -304,15 +305,15 @@ const Tag OR  = 0xE;
 const Tag XOR = 0xF;
 
 // Thread Redex Bag Length
-const u32 RLEN = 256; // max 32 redexes
+const u32 RLEN = 256;
 
 // Thread Redex Bag
 // It uses the same space to store two stacks:
 // - HI: a high-priotity stack, for shrinking reductions
 // - LO: a low-priority stack, for growing reductions
 struct RBag {
-  u32  lk_end;
-  Pair lk_buf[RLEN];
+  //u32  lk_end;
+  //Pair lk_buf[RLEN];
   u32  hi_end;
   Pair hi_buf[RLEN];
   u32  lo_ini;
@@ -331,7 +332,7 @@ struct LNet {
 // Global Net
 const u32 G_NODE_LEN = 1 << 29; // max 536m nodes
 const u32 G_VARS_LEN = 1 << 29; // max 536m vars
-const u32 G_RBAG_LEN = TPB * BPG * RLEN * 3; // max 6m redexes
+const u32 G_RBAG_LEN = TPB * BPG * RLEN * 2; // max 4m redexes
 struct GNet {
   u32  rbag_use_A; // total rbag redex count (buffer A)
   u32  rbag_use_B; // total rbag redex count (buffer B)
@@ -341,11 +342,16 @@ struct GNet {
   Port vars_buf[G_VARS_LEN]; // global vars buffer
   u32  node_put[TPB*BPG];
   u32  vars_put[TPB*BPG];
+  u32  fail; // failed last tick
+  u32  glob; // global alloc mode
   u64  itrs; // interaction count
+  u64  leak; // leak count
 };
 
 // View Net: includes both GNet and LNet
 struct Net {
+  i32   l_node_dif; // delta node space
+  i32   l_vars_dif; // delta vars space
   Pair *l_node_buf; // local node buffer values
   Port *l_vars_buf; // local vars buffer values
   u32  *g_rbag_use_A; // global rbag count (active buffer)
@@ -354,8 +360,8 @@ struct Net {
   Pair *g_rbag_buf_B; // global rbag values (inactive buffer)
   Pair *g_node_buf; // global node buffer values
   Port *g_vars_buf; // global vars buffer values
-  u32  *g_node_put;
-  u32  *g_vars_put;
+  u32  *g_node_put; // next global node allocation index
+  u32  *g_vars_put; // next global vars allocation index
 };
 
 // Thread Memory
@@ -364,6 +370,7 @@ struct TM {
   u32  nput; // node alloc index
   u32  vput; // vars alloc index
   u32  itrs; // interactions
+  u32  leak; // leaks
   u32  nloc[32]; // node allocs
   u32  vloc[32]; // vars allocs
   RBag rbag; // tmem redex bag
@@ -401,7 +408,7 @@ __device__ __host__ void put_u16(char* B, u16 val);
 __device__ __host__ Show show_port(Port port);
 __device__ Show show_rule(Rule rule);
 __device__ void print_rbag(RBag* rbag);
-__device__ __host__ void print_net(Net* net);
+__device__ __host__ void print_net(Net* net, u32, u32);
 __device__ void pretty_print_port(Net* net, Port port);
 __device__ void pretty_print_rbag(Net* net, RBag* rbag);
 
@@ -551,6 +558,16 @@ __device__ __host__ inline bool is_var(Port a) {
   return get_tag(a) == VAR;
 }
 
+// True if this port is a local node/var (that can leak).
+__device__ __host__ inline bool is_local(Port a) {
+  return (is_nod(a) || is_var(a)) && get_val(a) < L_NODE_LEN;
+}
+
+// True if this port is a global node/var (that can be leaked into).
+__device__ __host__ inline bool is_global(Port a) {
+  return (is_nod(a) || is_var(a)) && get_val(a) >= L_NODE_LEN;
+}
+
 // Given two tags, gets their interaction rule. Uses a u64mask lookup table.
 __device__ __host__ inline Rule get_rule(Port A, Port B) {
   const u64 x = 0b0111111010110110110111101110111010110000111100001111000100000010;
@@ -558,21 +575,6 @@ __device__ __host__ inline Rule get_rule(Port A, Port B) {
   const u64 z = 0b1111100011111000111100001111000011000000000000000000000000000000;
   const u64 i = ((u64)get_tag(A) << 3) | (u64)get_tag(B);
   return (Rule)((x>>i&1) | (y>>i&1)<<1 | (z>>i&1)<<2);
-}
-
-// Gets the max number of redexes this rule may link.
-__device__ __host__ inline u8 get_needed_rbag(Rule rule) {
-  return (0x114220F1 >> (rule << 2)) & 0xF;
-}
-
-// Gets the number of nodes this rule needs to allocate.
-__device__ __host__ inline u8 get_needed_node(Rule rule) {
-  return (0x214000F0 >> (rule << 2)) & 0xF;
-}
-
-// Gets the number of vars this rule needs to allocate.
-__device__ __host__ inline u8 get_needed_vars(Rule rule) {
-  return (0x004000F0 >> (rule << 2)) & 0xF;
 }
 
 // Same as above, but receiving a pair.
@@ -583,6 +585,22 @@ __device__ __host__ inline Rule get_pair_rule(Pair AB) {
 // Should we swap ports A and B before reducing this rule?
 __device__ __host__ inline bool should_swap(Port A, Port B) {
   return get_tag(B) < get_tag(A);
+}
+
+// Gets the max number of redexes this rule may link.
+__device__ __host__ inline u8 get_needed_rbag(Rule rule) {
+  return (0x114220F1 >> (rule << 2)) & 0xF;
+}
+
+// Gets the number of nodes this rule needs to allocate.
+__device__ __host__ inline u8 get_needed_node(Rule rule) {
+  return (0x214000F0 >> (rule << 2)) & 0xF;
+            
+}
+
+// Gets the number of vars this rule needs to allocate.
+__device__ __host__ inline u8 get_needed_vars(Rule rule) {
+  return (0x004000F0 >> (rule << 2)) & 0xF;
 }
 
 // Gets a rule's priority
@@ -771,7 +789,7 @@ __device__ inline Numb operate(Numb a, Numb b) {
 
 __device__ RBag rbag_new() {
   RBag rbag;
-  rbag.lk_end = 0;
+  //rbag.lk_end = 0;
   rbag.hi_end = 0;
   rbag.lo_ini = 0;
   rbag.lo_end = 0;
@@ -781,16 +799,28 @@ __device__ RBag rbag_new() {
 __device__ void push_redex(TM* tm, Pair redex) {
   Rule rule = get_pair_rule(redex);
   if (is_high_priority(rule)) {
+    #ifdef DEBUG
+    if (tm->rbag.lo_end - tm->rbag.lo_ini >= RLEN) printf("ERR PUSH_REDEX A %d\n");
+    #endif
     tm->rbag.hi_buf[tm->rbag.hi_end++ % RLEN] = redex;
   } else {
+    #ifdef DEBUG
+    if (tm->rbag.lo_end - tm->rbag.lo_ini >= RLEN) printf("ERR PUSH_REDEX A\n");
+    #endif
     tm->rbag.lo_buf[tm->rbag.lo_end++ % RLEN] = redex;
   }
 }
 
 __device__ Pair pop_redex(TM* tm) {
   if (tm->rbag.hi_end > 0) {
+    #ifdef DEBUG
+    if (tm->rbag.hi_end == 0) printf("ERR POP_REDEX A\n");
+    #endif
     return tm->rbag.hi_buf[(--tm->rbag.hi_end) % RLEN];
   } else if (tm->rbag.lo_end - tm->rbag.lo_ini > 0) {
+    #ifdef DEBUG
+    if (tm->rbag.lo_end == tm->rbag.lo_ini) printf("ERR POP_REDEX B\n");
+    #endif
     return tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
   } else {
     return 0; // FIXME: is this ok?
@@ -811,9 +841,10 @@ __device__ u32 rbag_has_highs(RBag* rbag) {
 __device__ TM tmem_new() {
   TM tm;
   tm.rbag = rbag_new();
-  tm.nput = 0;
-  tm.vput = 0;
+  tm.nput = 1;
+  tm.vput = 1;
   tm.itrs = 0;
+  tm.leak = 0;
   return tm;
 }
 
@@ -822,6 +853,8 @@ __device__ TM tmem_new() {
 
 __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   Net net;
+  net.l_node_dif   = 0;
+  net.l_vars_dif   = 0;
   net.l_node_buf   = ((LNet*)smem)->node_buf;
   net.l_vars_buf   = ((LNet*)smem)->vars_buf;
   net.g_rbag_use_A = turn % 2 == 0 ? &gnet->rbag_use_A : &gnet->rbag_use_B;
@@ -837,74 +870,135 @@ __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
 
 // Stores a new node on global.
 __device__ inline void node_create(Net* net, u32 loc, Pair val) {
+  Pair old;
   if (loc < L_NODE_LEN) {
-    atomicExch(&net->l_node_buf[loc], val);
+    net->l_node_dif += 1;
+    old = atomicExch(&net->l_node_buf[loc], val);
   } else {
-    atomicExch(&net->g_node_buf[loc], val);
+    old = atomicExch(&net->g_node_buf[loc], val);
   }
+  #ifdef DEBUG
+  if (old != 0) { printf("[%04x] ERR 0 | %04x\n", GID(), loc); asm("trap;"); }
+  if (loc >= L_NODE_LEN) {
+    Port a = get_fst(val);
+    Port b = get_snd(val);
+    if ((is_nod(a) || is_var(a)) && get_val(a) < L_NODE_LEN) { printf("[%04x] ERR NODE MOVE A %04x | %s %s\n", GID(), loc, show_port(a).x, show_port(b).x); asm("trap;"); }
+    if ((is_nod(b) || is_var(b)) && get_val(b) < L_NODE_LEN) { printf("[%04x] ERR NODE MOVE B %04x | %s %s\n", GID(), loc, show_port(a).x, show_port(b).x); asm("trap;"); }
+  }
+  #endif
 }
 
 // Stores a var on global.
 __device__ inline void vars_create(Net* net, u32 var, Port val) {
+  Port old;
   if (var < L_VARS_LEN) {
-    atomicExch(&net->l_vars_buf[var], val);
+    net->l_vars_dif += 1;
+    old = atomicExch(&net->l_vars_buf[var], val);
   } else {
-    atomicExch(&net->g_vars_buf[var], val);
+    old = atomicExch(&net->g_vars_buf[var], val);
   }
+  #ifdef DEBUG
+  if (old != 0) { printf("[%04x] ERR 1 | %04x\n", GID(), var); asm("trap;"); }
+  #endif
 }
 
 // Reads a node from global.
 __device__ __host__ inline Pair node_load(Net* net, u32 loc) {
+  Pair got;
   if (loc < L_NODE_LEN) {
-    return net->l_node_buf[loc];
+    got = net->l_node_buf[loc];
   } else {
-    return net->g_node_buf[loc];
+    got = net->g_node_buf[loc];
   }
+  return got;
 }
 
 // Reads a var from global.
 __device__ __host__ inline Port vars_load(Net* net, u32 var) {
+  Port got;
   if (var < L_VARS_LEN) {
-    return net->l_vars_buf[var];
+    got = net->l_vars_buf[var];
   } else {
-    return net->g_vars_buf[var];
+    got = net->g_vars_buf[var];
   }
+  return got;
 }
 
 // Exchanges a node on global by a value. Returns old.
 __device__ inline Pair node_exchange(Net* net, u32 loc, Pair val) {
+  Pair got = 0;
   if (loc < L_NODE_LEN) {
-    return atomicExch(&net->l_node_buf[loc], val);
+    got = atomicExch(&net->l_node_buf[loc], val);
   } else {
-    return atomicExch(&net->g_node_buf[loc], val);
+    got = atomicExch(&net->g_node_buf[loc], val);
   }
+  #ifdef DEBUG
+  if (got == 0) { printf("[%04x] ERR 4 | %04x\n", GID(), loc); asm("trap;"); }
+  if (loc >= L_NODE_LEN) {
+    Port a = get_fst(val);
+    Port b = get_snd(val);
+    if ((is_nod(a) || is_var(a)) && get_val(a) < L_NODE_LEN) { printf("[%04x] ERR NODE MOVE A %04x | %s %s\n", GID(), loc, show_port(a).x, show_port(b).x); asm("trap;"); }
+    if ((is_nod(b) || is_var(b)) && get_val(b) < L_NODE_LEN) { printf("[%04x] ERR NODE MOVE B %04x | %s %s\n", GID(), loc, show_port(a).x, show_port(b).x); asm("trap;"); }
+  }
+  #endif
+  return got;
 }
 
 // Exchanges a var on global by a value. Returns old.
 __device__ inline Port vars_exchange(Net* net, u32 var, Port val) {
+  Port got = 0;
   if (var < L_VARS_LEN) {
-    return atomicExch(&net->l_vars_buf[var], val);
+    got = atomicExch(&net->l_vars_buf[var], val);
   } else {
-    return atomicExch(&net->g_vars_buf[var], val);
+    got = atomicExch(&net->g_vars_buf[var], val);
   }
+  #ifdef DEBUG
+  if (got == 0) {
+    printf("[%04x] ERR 5 | %04x\n", GID(), var);
+    asm("trap;");
+    return 0;
+  }
+  #endif
+  return got;
 }
 
 // Takes a node.
 __device__ inline Pair node_take(Net* net, u32 loc) {
+  Pair got = 0;
   if (loc < L_NODE_LEN) {
-    return atomicExch(&net->l_node_buf[loc], 0);
+    net->l_node_dif -= 1;
+    got = atomicExch(&net->l_node_buf[loc], 0);
   } else {
-    return atomicExch(&net->g_node_buf[loc], 0);
+    got = atomicExch(&net->g_node_buf[loc], 0);
   }
+  #ifdef DEBUG
+  if (got == 0) { printf("[%04x] ERR 6 | %04x\n", GID(), loc); asm("trap;"); }
+  if (loc >= L_NODE_LEN) {
+    Port a = get_fst(got);
+    Port b = get_snd(got);
+    if ((is_nod(a) || is_var(a)) && get_val(a) < L_NODE_LEN) { printf("[%04x] ERR NODE LEAK A %04x | %s %s\n", GID(), loc, show_port(a).x, show_port(b).x); asm("trap;"); }
+    if ((is_nod(b) || is_var(b)) && get_val(b) < L_NODE_LEN) { printf("[%04x] ERR NODE LEAK B %04x | %s %s\n", GID(), loc, show_port(a).x, show_port(b).x); asm("trap;"); }
+  }
+  #endif
+  return got;
 }
 
 // Takes a var.
 __device__ inline Port vars_take(Net* net, u32 var) {
+  Port got = 0;
   if (var < L_VARS_LEN) {
-    return atomicExch(&net->l_vars_buf[var], 0);
+    net->l_vars_dif -= 1;
+    got = atomicExch(&net->l_vars_buf[var], 0);
   } else {
-    return atomicExch(&net->g_vars_buf[var], 0);
+    got = atomicExch(&net->g_vars_buf[var], 0);
   }
+  #ifdef DEBUG
+  if (got == 0) { printf("[%04x] ERR 7 | %04x\n", GID(), var); asm("trap;"); }
+  if (var >= L_NODE_LEN) {
+    if ((is_nod(got) || is_var(got)) && get_val(got) < L_NODE_LEN) { printf("ERR VARS LEAK\n"); }
+  }
+  #endif
+  return got;
 }
 
 // GNet
@@ -927,61 +1021,58 @@ __global__ void gnet_init(GNet* gnet) {
 // ---------
 
 template <typename A>
-__device__ __noinline__ u32 g_alloc(u32* g_put, u32* res, u32 num, A* g_buf) {
-  u32 got = 0;
-  while (got < num) {
-    u32 lc = (GID() + (*g_put * TPG)) % G_NODE_LEN;
+__device__ u32 g_alloc_1(Net* net, TM* tm, u32* g_put, A* g_buf) {
+  u32 lps = 0;
+  while (true) {
+    //u32 lc = BID()*(G_NODE_LEN/BPG) + (*g_put*TPB+TID()) % (G_NODE_LEN/BPG);
+    //u32 lc = (GID() + (*g_put * TPG)) % G_NODE_LEN;
+    u32 lc = GID()*(G_NODE_LEN/TPG) + (*g_put%(G_NODE_LEN/TPG)); // 9 GIPS | 2.8 GIPS
     A elem = g_buf[lc];
-    if (lc >= L_NODE_LEN && elem == 0) {
-      res[got++] = lc;
-    }
     *g_put += 1;
-    // FIXME: global leap checker (to avoid double allocations)
+    if (lc >= L_NODE_LEN && elem == 0) {
+      //if (GID() == 0) printf("[%04x] ALLOC %d\n", GID(), lc);
+      return lc;
+    }
+    lps += 1;
+    // FIXME: enable
+    //if (lps >= G_NODE_LEN/TPG) {
+      //printf("[%04x] OOM %d %d=%s\n", GID(), lps, lc, show_port(elem).x);
+      //asm("trap;");
+    //}
   }
-  return got;
+  return 0;
 }
 
 template <typename A>
-__device__ u32 alloc(u32* g_put, u32* l_put, u32* res, u32 num, A* g_buf, A* l_buf) {
-  u32 lim = L_NODE_LEN/TPB;
+__device__ u32 g_alloc(Net* net, TM* tm, u32* ret, u32* g_put, A* g_buf, u32 num) {
+  for (u32 i = 0; i < num; ++i) {
+    u32 loc = g_alloc_1(net, tm, g_put, g_buf);
+    if (loc != 0) {
+      ret[i] = loc;
+    } else {
+      return 0;
+    }
+  }
+  return num;
+}
+
+template <typename A>
+__device__ u32 l_alloc(Net* net, TM* tm, u32* ret, u32* l_put, A* l_buf, u32 num) {
   u32 got = 0;
   u32 lps = 0;
-  // Local Allocation
   while (got < num) {
     u32 lc = (*l_put * TPB) % L_NODE_LEN + TID();
     A elem = l_buf[lc];
-    if (lc >= TPB && elem == 0 && ++lps < L_NODE_LEN/TPB) {
-      res[got++] = lc;
+    if (lc > TPB && elem == 0) {
+      ret[got++] = lc;
     }
     *l_put += 1;
-    if (lc >= TPB && ++lps >= lim) {
+    lps += 1;
+    if (lps >= L_NODE_LEN/TPB) {
       break;
     }
-    if (got >= num) {
-      break;
-    }
-  }
-  // Global Allocation
-  // FIXME: this makes the program slower even when unused - why?
-  if (got < num) {
-    return g_alloc(g_put, res, num, g_buf);
   }
   return got;
-}
-
-template <typename A>
-__device__ u32 g_alloc_1(Net* net, TM* tm, u32* g_put, A* g_buf) {
-  while (true) {
-    //u32 lc = BID()*(G_NODE_LEN/BPG) + (*g_put*TPB+TID()) % (G_NODE_LEN/BPG);
-    u32 lc = (GID() + (*g_put * TPG)) % G_NODE_LEN;
-    A elem = g_buf[lc];
-    if (lc >= L_NODE_LEN && elem == 0) {
-      return lc;
-    }
-    *g_put += 1;
-    // FIXME: global leap checker (to avoid double allocations)
-  }
-  return 0;
 }
 
 __device__ u32 g_node_alloc_1(Net* net, TM* tm) {
@@ -990,6 +1081,22 @@ __device__ u32 g_node_alloc_1(Net* net, TM* tm) {
 
 __device__ u32 g_vars_alloc_1(Net* net, TM* tm) {
   return g_alloc_1(net, tm, net->g_vars_put, net->g_vars_buf);
+}
+
+__device__ u32 g_node_alloc(Net* net, TM* tm, u32 num) {
+  return g_alloc(net, tm, tm->nloc, net->g_node_put, net->g_node_buf, num);
+}
+
+__device__ u32 g_vars_alloc(Net* net, TM* tm, u32 num) {
+  return g_alloc(net, tm, tm->vloc, net->g_vars_put, net->g_vars_buf, num);
+}
+
+__device__ u32 l_node_alloc(Net* net, TM* tm, u32 num) {
+  return l_alloc(net, tm, tm->nloc, &tm->nput, net->l_node_buf, num);
+}
+
+__device__ u32 l_vars_alloc(Net* net, TM* tm, u32 num) {
+  return l_alloc(net, tm, tm->vloc, &tm->vput, net->l_vars_buf, num);
 }
 
 //// Allocates just 1 slot from node buffer.
@@ -1025,99 +1132,21 @@ __device__ u32 g_vars_alloc_1(Net* net, TM* tm) {
 //}
 
 // Gets the necessary resources for an interaction.
-__device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
+__device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars, bool glob) {
   u32 got_rbag = min(RLEN - (tm->rbag.lo_end - tm->rbag.lo_ini), RLEN - tm->rbag.hi_end);
-  u32 got_node = alloc(net->g_node_put, &tm->nput, tm->nloc, need_node, net->g_node_buf, net->l_node_buf);
-  u32 got_vars = alloc(net->g_vars_put, &tm->vput, tm->vloc, need_vars, net->g_vars_buf, net->l_vars_buf);
+  u32 got_node;
+  u32 got_vars;
+  if (glob) {
+    got_node = g_node_alloc(net, tm, need_node);
+    got_vars = g_vars_alloc(net, tm, need_vars);
+  } else {
+    got_node = l_node_alloc(net, tm, need_node);
+    got_vars = l_vars_alloc(net, tm, need_vars);
+  }
   //if (!(got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars) && TID() == 0) {
     //printf("[%04x] fail rbag %d/%d | node %d/%d | vars %d/%d | %d\n", GID(), got_rbag, need_rbag, got_node, need_node, got_vars, need_vars, 42);
   //}
   return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
-}
-
-// Leaking
-// -------
-// These functions safely move a local port to the global memory.
-
-//__device__ Port leak_port(Net* net, TM* tm, Port* port) {
-  ///[>port = enter(net, tm, port);
-  //if (is_var(*port) && get_val(*port) < L_VARS_LEN) {
-    //u32  loc = vars_alloc_leak(net, tm);
-    //Port val = vars_exchange(net, get_val(*port), new_port(VAR, loc));
-    //if (val == NONE) {
-      //vars_create(net, loc, NONE);
-      //*port = new_port(VAR, loc);
-    //} else {
-      //vars_take(net, get_val(*port));
-      //*port = val;
-      //leak_port(net, tm, port);
-    //}
-  //} else if (is_nod(*port) && get_val(*port) < L_NODE_LEN) {
-    //leak_port(net, tm, (((u32*)&net->l_node_buf[get_val(*port)]) + 0));
-    //leak_port(net, tm, (((u32*)&net->l_node_buf[get_val(*port)]) + 1));
-    //u32 loc = node_alloc_leak(net, tm);
-    //node_create(net, loc, node_take(net, get_val(*port)));
-    //*port = new_port(get_tag(*port), loc);
-  //}
-//}
-
-__device__ void leak_port_rec(Net* net, TM* tm, Port* port) {
-  Port* stk[256];
-  stk[0] = port;
-  u32 sp = 1;
-  u32 tk = 0;
-  while (sp > 0) {
-    //if (++tk > 128) break;
-    port = (Port*)((u64)stk[--sp] & ~1ULL);
-    //*port = enter(net, tm, *port);
-    //printf("%04x:[%04x] leaking: %s | %llu | sp=%d\n", tk, GID(), show_port(*port).x, (u64)stk[sp] & 1, sp);
-    switch ((u64)stk[sp] & 1) {
-      case 0: {
-        if (is_var(*port) && get_val(*port) < L_VARS_LEN) {
-          u32  loc = g_vars_alloc_1(net, tm);
-          Port sub = vars_exchange(net, get_val(*port), new_port(VAR, loc));
-          if (sub == NONE) {
-            vars_create(net, loc, NONE);
-            *port = new_port(VAR, loc);
-          } else {
-            vars_take(net, get_val(*port));
-            *port = sub;
-            stk[sp++] = (Port*)((u64)port | 0);
-          }
-        } else if (is_nod(*port) && get_val(*port) < L_NODE_LEN) {
-          Pair* nod = &net->l_node_buf[get_val(*port)];
-          Port* p1  = ((Port*)nod + 0);
-          Port* p2  = ((Port*)nod + 1);
-          stk[sp++] = (Port*)((u64)port | 1);
-          stk[sp++] = (Port*)((u64)p1 | 0);
-          stk[sp++] = (Port*)((u64)p2 | 0);
-          //printf("%04x:[%04x] l_node %08x is (%s %s) == (%s %s) | sp=%d\n", tk, GID(), get_val(*port), show_port(get_fst(*nod)).x, show_port(get_snd(*nod)).x, show_port(*p1).x, show_port(*p2).x, sp);
-        }
-        break;
-      }
-      case 1: {
-        u32  loc = g_node_alloc_1(net, tm);
-        Pair nod = node_take(net, get_val(*port));
-        node_create(net, loc, nod);
-        *port = new_port(get_tag(*port), loc);
-        //printf("%04x:[%04x] g_node %08x is (%s %s) | sp=%d\n", tk, GID(), loc, show_port(get_fst(nod)).x, show_port(get_snd(nod)).x, sp);
-        break;
-      }
-    }
-  }
-}
-
-__device__ Port leak_port(Net* net, TM* tm, Port port) {
-  leak_port_rec(net, tm, &port);
-  return port;
-}
-
-__device__ Pair leak_pair(Net* net, TM* tm, Pair pair) {
-  Port p1 = get_fst(pair);
-  Port p2 = get_snd(pair);
-  leak_port_rec(net, tm, &p1);
-  leak_port_rec(net, tm, &p2);
-  return new_pair(p1, p2);
 }
 
 // Linking
@@ -1133,11 +1162,6 @@ __device__ inline Port enter(Net* net, TM* tm, Port var) {
     if (val == NONE) {
       break;
     }
-    // Sanity check
-    if (val == 0) {
-      //printf("UNREACHABLE\n");
-      __builtin_unreachable();
-    }
     // Otherwise, delete `B` (we own both) and continue
     vars_take(net, get_val(var));
     var = val;
@@ -1147,11 +1171,9 @@ __device__ inline Port enter(Net* net, TM* tm, Port var) {
 
 // Atomically Links `A ~ B`.
 __device__ void link(Net* net, TM* tm, Port A, Port B) {
-  //if (A == 0 || B == 0) {
-    //printf("BAD LINK %s ~> %s !!\n", show_port(A).x, show_port(B).x);
-    //asm("trap;");
-  //}
-  
+  Port INI_A = A;
+  Port INI_B = B;
+
   // Attempts to directionally point `A ~> B`
   while (true) {
 
@@ -1162,6 +1184,7 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
 
     // If `A` is NODE: create the `A ~ B` redex
     if (get_tag(A) != VAR) {
+      //printf("[%04x] new redex A %s ~ %s\n", GID(), show_port(A).x, show_port(B).x);
       push_redex(tm, new_pair(A, B)); // TODO: move global ports to local
       break;
     }
@@ -1169,19 +1192,27 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
     // While `B` is VAR: extend it (as an optimization)
     B = enter(net, tm, B);
 
+    #ifdef DEBUG
+    if (get_tag(A) != VAR) {
+      printf("ERR LINK\n");
+    }
+    #endif
+
     // Since `A` is VAR: point `A ~> B`.
     if (true) {
-      // If a local var would leak, swap to avoid it
-      if (is_var(B) && get_val(B) < L_VARS_LEN && get_val(A) >= L_VARS_LEN) {
-        //Port X = A; A = B; B = X;
-        B = leak_port(net, tm, B);
-        continue;
-      }
-
-      // If a local node would leak...
-      if (is_nod(B) && get_val(B) < L_NODE_LEN && get_val(A) >= L_NODE_LEN) {
-        B = leak_port(net, tm, B);
-        continue;
+      // If B would leak...
+      if (is_global(A) && is_local(B)) {
+        // If B is a var, just swap it
+        if (is_var(B)) {
+          Port X = A; A = B; B = X;
+          continue;
+        }
+        // If B is a nod, create a leak interaction
+        if (is_nod(B)) {
+          //if (!TID()) printf("[%04x] NODE LEAK %s ~ %s\n", GID(), show_port(A).x, show_port(B).x);
+          push_redex(tm, new_pair(A, B));
+          break;
+        }
       }
 
       // Stores `A -> B`, taking the current `A` subst as `A'`
@@ -1192,11 +1223,13 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
         break;
       }
 
-      // Sanity check
+      #ifdef DEBUG
       if (A_ == 0) {
-        //printf("UNREACHABLE\n");
-        __builtin_unreachable();
+        printf("BAD LINK %s ~ %s | %s ~ %s\n", show_port(INI_A).x, show_port(INI_B).x, show_port(A).x, show_port(B).x);
+        push_redex(tm, new_pair(A, B));
+        break;
       }
+      #endif
 
       // Otherwise, delete `A` (we own both) and link `A' ~ B`
       vars_take(net, get_val(A));
@@ -1243,8 +1276,57 @@ __device__ void share_redexes(TM* tm) {
 
 // The Link Interaction.
 __device__ bool interact_link(Net* net, TM* tm, Port a, Port b) {
-  // Links.
-  link_pair(net, tm, new_pair(a, b));
+  #ifdef DEBUG
+  if (get_tag(a) != VAR) {
+    printf("ERR INTERACT_LINK\n");
+  }
+  #endif
+
+  // If A is a global var and B is a local node, leak it:
+  // ^A ~ (b1 b2)
+  // ------------- LEAK-NODE
+  // ^X ~ b1
+  // ^Y ~ b2
+  // ^A ~ ^(^X ^Y)
+  if (is_global(a) && is_nod(b) && is_local(b)) {
+    tm->leak += 1;
+
+    // Loads ports.
+    Pair l_b  = node_take(net, get_val(b));
+    Port l_b1 = enter(net, tm, get_fst(l_b));
+    Port l_b2 = enter(net, tm, get_snd(l_b));
+
+    // Leaks port 1.
+    Port g_b1;
+    if (is_local(l_b1)) {
+      g_b1 = new_port(VAR, g_vars_alloc_1(net, tm));
+      vars_create(net, get_val(g_b1), NONE);
+      link_pair(net, tm, new_pair(g_b1, l_b1));
+    } else {
+      g_b1 = l_b1;
+    }
+
+    // Leaks port 2.
+    Port g_b2;
+    if (is_local(l_b2)) {
+      g_b2 = new_port(VAR, g_vars_alloc_1(net, tm));
+      vars_create(net, get_val(g_b2), NONE);
+      link_pair(net, tm, new_pair(g_b2, l_b2));
+    } else {
+      g_b2 = l_b2;
+    }
+
+    // Leaks node.
+    Port g_b = new_port(get_tag(b), g_node_alloc_1(net, tm));
+    node_create(net, get_val(g_b), new_pair(g_b1, g_b2));
+    link_pair(net, tm, new_pair(a, g_b));
+
+    return true;
+
+  // Otherwise, just perform a normal link.
+  } else {
+    link_pair(net, tm, new_pair(a, b));
+  }
 
   return true;
 }
@@ -1291,18 +1373,10 @@ __device__ bool interact_void(Net* net, TM* tm, Port a, Port b) {
 
 // The Eras Interaction.
 __device__ bool interact_eras(Net* net, TM* tm, Port a, Port b) {
-  // Checks availability
-  //if (node_load(net,get_val(b)) == 0) {
-    //printf("[%04x] unavailable5: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
-    //return false;
-  //}
-
   // Loads ports.
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-
-  //if (B == 0) printf("[%04x] ERROR2: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
 
   // Links.
   link_pair(net, tm, new_pair(a, B1));
@@ -1321,9 +1395,6 @@ __device__ bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
 
-  //if (A == 0) printf("[%04x] ERROR3: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(a).x);
-  //if (B == 0) printf("[%04x] ERROR4: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
-
   // Links.
   link_pair(net, tm, new_pair(A1, B1));
   link_pair(net, tm, new_pair(A2, B2));
@@ -1340,9 +1411,6 @@ __device__ bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-
-  //if (A == 0) printf("[%04x] ERROR5: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(a).x);
-  //if (B == 0) printf("[%04x] ERROR6: %s\n", threadIdx.x+blockIdx.x*blockDim.x, show_port(b).x);
 
   // Stores new vars.
   vars_create(net, tm->vloc[0], NONE);
@@ -1367,6 +1435,7 @@ __device__ bool interact_comm(Net* net, TM* tm, Port a, Port b) {
 
 // The Oper Interaction.
 __device__ bool interact_oper(Net* net, TM* tm, Port a, Port b) {
+
   // Loads ports.
   Val  av = get_val(a);
   Pair B  = node_take(net, get_val(b));
@@ -1409,11 +1478,11 @@ __device__ bool interact_swit(Net* net, TM* tm, Port a, Port b) {
 }
 
 // Pops a local redex and performs a single interaction.
-__device__ bool interact(Net* net, TM* tm, bool light) {
+__device__ bool interact(Net* net, TM* tm, u32 turn, bool glob) {
   // Needed resources
-  u32 need_rbag = 0;
-  u32 need_node = 0;
-  u32 need_vars = 0;
+  u32  need_rbag  = 0;
+  u32  need_node  = 0;
+  u32  need_vars  = 0;
 
   // Pops a redex.
   Pair redex = pop_redex(tm);
@@ -1427,9 +1496,8 @@ __device__ bool interact(Net* net, TM* tm, bool light) {
 
   // If there is no redex, stop.
   if (redex != 0) {
-    //if (GID() == 0) {
-      //printf("[%04x] REDUCE %s ~ %s | %s\n", GID(), show_port(a).x, show_port(b).x, show_rule(rule).x);
-    //}
+    
+    //printf("[%04x] REDUCE %s ~ %s | %s\n", GID(), show_port(a).x, show_port(b).x, show_rule(rule).x);
 
     // Used for root redex.
     if (get_tag(a) == REF && b == ROOT) {
@@ -1452,12 +1520,11 @@ __device__ bool interact(Net* net, TM* tm, bool light) {
     }
   }
 
-  bool success = get_resources(net, tm, need_rbag, need_node, need_vars);
+  bool success = get_resources(net, tm, need_rbag, need_node, need_vars, glob);
 
   // Dispatches interaction rule.
   if (redex != 0) {
     if (success) {
-      tm->itrs += 1;
       switch (rule) {
         case LINK: interact_link(net, tm, a, b); break;
         case CALL: interact_call(net, tm, a, b); break;
@@ -1467,6 +1534,9 @@ __device__ bool interact(Net* net, TM* tm, bool light) {
         case COMM: interact_comm(net, tm, a, b); break;
         case OPER: interact_oper(net, tm, a, b); break;
         case SWIT: interact_swit(net, tm, a, b); break;
+      }
+      if (rule != LINK) {
+        tm->itrs += 1;
       }
       return true;
     } else {
@@ -1484,17 +1554,53 @@ __device__ bool interact(Net* net, TM* tm, bool light) {
 // Moves redexes from shared memory to global bag
 __device__ void save_redexes(Net* net, TM *tm, u32 turn) {
   u32 bag = transpose(GID(), TPB, BPG);
+
+  // Index to move
   u32 idx = 0;
+
+  //printf("[%04x] saving: lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end - tm->rbag.lo_ini, tm->rbag.hi_end, rbag_len(&tm->rbag));
+  __syncthreads();
+
   // Moves low-priority redexes
-  for (u32 i = tm->rbag.lo_ini; i < tm->rbag.lo_end; ++i) {
-    net->g_rbag_buf_B[bag * RLEN + (idx++)] = leak_pair(net, tm, tm->rbag.lo_buf[i % RLEN]);
+  while (tm->rbag.lo_end > tm->rbag.lo_ini) {
+    Pair R = tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
+    Port x = get_fst(R);
+    Port y = get_snd(R);
+    Port X = new_port(VAR, g_vars_alloc_1(net, tm));
+    Port Y = new_port(VAR, g_vars_alloc_1(net, tm));
+    vars_create(net, get_val(X), NONE);
+    vars_create(net, get_val(Y), NONE);
+    link_pair(net, tm, new_pair(X, x));
+    link_pair(net, tm, new_pair(Y, y));
+    net->g_rbag_buf_B[bag * RLEN + (idx++)] = new_pair(X, Y);
   }
-  // Moves high-priority redexes
-  for (u32 i = 0; i < tm->rbag.hi_end; ++i) {
-    net->g_rbag_buf_B[bag * RLEN + (idx++)] = leak_pair(net, tm, tm->rbag.hi_buf[i]);
+
+  //printf("[%04x] now have: lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end - tm->rbag.lo_ini, tm->rbag.hi_end, rbag_len(&tm->rbag));
+  __syncthreads();
+
+  // Executes all high-priority redexes
+  while (rbag_has_highs(&tm->rbag)) {
+    if (!interact(net, tm, turn, true)) {
+      printf("ERROR: failed to clear high-priority redexes");
+    }
   }
+
+  //#ifdef DEBUG
+  if (rbag_len(&tm->rbag) > 0) {
+    printf("[%04x] ERROR: didn't save all redexes lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end - tm->rbag.lo_ini, tm->rbag.hi_end, rbag_len(&tm->rbag));
+  }
+  //#endif
+
+  //printf("[%04x] finally have: lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end - tm->rbag.lo_ini, tm->rbag.hi_end, rbag_len(&tm->rbag));
+  __syncthreads();
+
+  //if (GID() == 0) {
+    //print_net(net, 0, L_NODE_LEN);
+  //}
+  //__syncthreads();
+
   // Updates global redex counter
-  atomicAdd(net->g_rbag_use_B, rbag_len(&tm->rbag));
+  atomicAdd(net->g_rbag_use_B, idx);
 }
 
 // Loads redexes from global bag to shared memory
@@ -1504,23 +1610,50 @@ __device__ void load_redexes(Net* net, TM *tm, u32 turn) {
   for (u32 i = 0; i < RLEN; ++i) {
     Pair redex = atomicExch(&net->g_rbag_buf_A[bag * RLEN + i], 0);
     if (redex != 0) {
-      push_redex(tm, redex);
+      Port a = enter(net, tm, get_fst(redex));
+      Port b = enter(net, tm, get_snd(redex));
+      #ifdef DEBUG
+      if (is_local(a)) {
+        printf("ERR: IMPORTED LOCAL REDEX\n");
+      }
+      if (is_local(a)) {
+        printf("ERR: IMPORTED LOCAL REDEX\n");
+      }
+      #endif
+      push_redex(tm, new_pair(a, b));
     } else {
       break;
     }
   }
 }
 
+__device__ bool is_block_full(Net* net, TM* tm, u32* chkt, u32* chka) {
+  u32 actv = block_count(rbag_len(&tm->rbag) > 0);
+  i32 ndif = block_sum(net->l_node_dif);
+  i32 vdif = block_sum(net->l_vars_dif);
+  u32 flim = L_NODE_LEN / TPB / 2 * actv;
+  if (ndif > flim || vdif > flim) {
+    return true;
+  }
+  *chka *= 2;
+  *chkt += *chka;
+  return false;
+};
+
 // Evaluator
 // ---------
 
-__global__ void swap_rbuf(GNet* gnet, u32 turn) {
+__global__ void inbetween(GNet* gnet, u32 turn) {
+  // Clears rbag use counter
   if (turn % 2 == 0) {
     gnet->rbag_use_A = 0;
   } else {
     gnet->rbag_use_B = 0;
   }
-  // no need to swap buf (already zeroed)
+  // Sets global mode if failed last turn
+  gnet->glob = gnet->fail;
+  // Clears the fail flag
+  gnet->fail = 0;
 }
 
 __global__ void evaluator(GNet* gnet, u32 turn) {
@@ -1531,10 +1664,10 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   //__syncthreads();
 
   // Local State
-  u32  tick = 0; // current tick
-  //u32  sv_t = 0; // next tick to save page
-  //u32  sv_a = 1; // how much to add to sv_t
-  bool fail = false; // have we failed
+  u32 tick = 0; // current tick
+  u32 fail = 0; // have we failed
+  u32 chkt = 0; // next tick to check fullness
+  u32 chka = 1; // how much to add to chkt
 
   // Thread Memory
   TM tm = tmem_new();
@@ -1542,34 +1675,34 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   // Net (Local-Global View)
   Net net = vnet_new(gnet, shared_mem, turn);
 
+  // Clears shared memory
+  for (u32 i = 0; i < L_NODE_LEN / TPB; ++i) {
+    net.l_node_buf[i * TPB + TID()] = 0;
+    net.l_vars_buf[i * TPB + TID()] = 0;
+  }
+  __syncthreads();
+
   // Loads Redexes
   load_redexes(&net, &tm, turn);
 
   // Aborts if empty
   if (block_all(rbag_len(&tm.rbag) == 0)) {
+    //if (TID() == 0) { printf("[%04x] ABORT\n", GID()); };
     return;
   }
 
   // Constants
   const u64  INIT = clock64(); // initial time
-  const u64  REPS = 11; // log2 of number of loops
+  const u64  REPS = 13; // log2 of number of loops
   const bool GROW = *net.g_rbag_use_A < TPB*BPG; // expanding rbag?
-
-  // Allocates Page
-  //if (!load_page(&net, &tm)) {
-    //// FIXME: treat this
-    //if (TID() == 0) {
-      //printf("[%04x] OOM\n", GID());
-    //}
-    //return;
-  //}
+  const bool GLOB = GROW || gnet->glob; // alloc on global buffer?
 
   // Interaction Loop
   for (tick = 0; tick < 1 << REPS; ++tick) {
     // Performs some interactions
-    fail = !interact(&net, &tm, false);
+    fail = !interact(&net, &tm, turn, GLOB);
     while (!fail && rbag_has_highs(&tm.rbag)) {
-      fail = fail || !interact(&net, &tm, true);
+      fail = fail || !interact(&net, &tm, turn, GLOB);
     }
 
     //if (!TID()) printf("TICK %d\n", i);
@@ -1582,27 +1715,11 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
       share_redexes(&tm);
     }
 
-    //block_print(rbag_len(&tm.rbag));
-    //if (!TID()) printf("\n");
-    //__syncthreads();
-
     // If the local page is more than half full, quit
-    //if (tick == sv_t) {
-      //u32 actv = block_count(rbag_len(&tm.rbag) > 0);
-      //i32 ndif = block_sum(net.l_node_dif);
-      //i32 vdif = block_sum(net.l_vars_dif);
-      //u32 thrs = L_NODE_LEN / TPB / 2 * actv;
-      //if (actv == 0) {
-        //break;
-      //} else if (ndif > thrs || vdif > thrs) {
-        ////save_page(&net, &tm);
-        ////load_page(&net, &tm);
-        //break; // TODO: don't quit; save page and continue!
-      //} else {
-        //sv_a *= 2;
-      //}
-      //sv_t += sv_a;
-    //}
+    if (tick == chkt && is_block_full(&net, &tm, &chkt, &chka)) {
+      atomicOr(&gnet->fail, 1);
+      break;
+    }
 
     // If grow-mode and all threads are full, halt
     if (GROW && block_all(rbag_len(&tm.rbag) > 0)) {
@@ -1615,34 +1732,25 @@ __global__ void evaluator(GNet* gnet, u32 turn) {
   ////u32 SAVE = block_sum(saved);
   //u32 FAIL = block_sum((u32)fail);
   //u32 LOOP = block_sum((u32)tick);
-  ////i32 NDIF = block_sum(net.l_node_dif);
-  ////i32 VDIF = block_sum(net.l_vars_dif);
+  //i32 NDIF = block_sum(net.l_node_dif);
+  //i32 VDIF = block_sum(net.l_vars_dif);
   //f64 TIME = (f64)(clock64() - INIT) / (f64)S;
   //f64 MIPS = (f64)ITRS / TIME / (f64)1000000.0;
   //if (TID() == 0) {
-    //printf("%04x:[%02x]: ITRS=%d LOOP=%d RLEN=%d FAIL=%d TIME=%f MIPS=%.0f\n", turn, BID(), ITRS, LOOP, RLEN, FAIL, TIME, MIPS);
+    //printf("%04x:[%02x]: ITRS=%d LOOP=%d RLEN=%d NDIF=%d VDIF=%d FAIL=%d TIME=%f MIPS=%.0f\n", turn, BID(), ITRS, LOOP, RLEN, NDIF, VDIF, FAIL, TIME, MIPS);
   //}
 
   __syncthreads();
-
-  //if (TID() == 0) {
-    //print_net(&net);
-  //}
-  //__syncthreads();
-
-  // Moves vars+node to global
-  //u32 saved = save_page(&net, &tm);
 
   // Moves rbag to global
   save_redexes(&net, &tm, turn);
 
   // Stores rewrites
   atomicAdd(&gnet->itrs, tm.itrs);
-
-
+  atomicAdd(&gnet->leak, tm.leak);
 }
 
-u32 get_rbag_len(GNet* gnet, u32 turn) {
+u32 get_rlen(GNet* gnet, u32 turn) {
   u32 rbag_use;
   if (turn % 2 == 0) {
     cudaMemcpy(&rbag_use, &gnet->rbag_use_B, sizeof(u32), cudaMemcpyDeviceToHost);
@@ -1650,6 +1758,18 @@ u32 get_rbag_len(GNet* gnet, u32 turn) {
     cudaMemcpy(&rbag_use, &gnet->rbag_use_A, sizeof(u32), cudaMemcpyDeviceToHost);
   }
   return rbag_use;
+}
+
+u64 get_itrs(GNet* gnet, u32 turn) {
+  u64 itrs;
+  cudaMemcpy(&itrs, &gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
+  return itrs;
+}
+
+u64 get_leak(GNet* gnet, u32 turn) {
+  u64 leak;
+  cudaMemcpy(&leak, &gnet->leak, sizeof(u64), cudaMemcpyDeviceToHost);
+  return leak;
 }
 
 // Book Loader
@@ -1752,10 +1872,10 @@ __device__ void print_rbag(RBag* rbag) {
   printf("==== | ============ | ============\n");
 }
 
-__device__ __host__ void print_net(Net* net) {
+__device__ __host__ void print_net(Net* net, u32 ini, u32 end) {
   printf("NODE | PORT-1       | PORT-2      \n");
   printf("---- | ------------ | ------------\n");
-  for (u32 i = 0; i < L_NODE_LEN; ++i) {
+  for (u32 i = ini; i < end; ++i) {
     Pair node = node_load(net, i);
     if (node != 0) {
       printf("%04X | %s | %s\n", i, show_port(get_fst(node)).x, show_port(get_snd(node)).x);
@@ -1764,7 +1884,7 @@ __device__ __host__ void print_net(Net* net) {
   printf("==== | ============ |\n");
   printf("VARS | VALUE        |\n");
   printf("---- | ------------ |\n");
-  for (u32 i = 0; i < L_VARS_LEN; ++i) {
+  for (u32 i = ini; i < end; ++i) {
     Port var = vars_load(net,i);
     if (var != 0) {
       printf("%04X | %s |\n", i, show_port(vars_load(net,i)).x);
@@ -1890,8 +2010,35 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
   }
 }
 
-__global__ void print_rbag_heatmap(GNet* gnet, u32 turn) {
+__device__ u32 NODE_COUNT;
+__device__ u32 VARS_COUNT;
+
+__global__ void count_memory(GNet* gnet) {
+  u32 node_count = 0;
+  u32 vars_count = 0;
+  for (u32 i = GID(); i < G_NODE_LEN; i += TPG) {
+    if (gnet->node_buf[i] != 0) ++node_count;
+    if (gnet->vars_buf[i] != 0) ++vars_count;
+  }
+
+  __shared__ u32 block_node_count;
+  __shared__ u32 block_vars_count;
+
+  if (TID() == 0) block_node_count = 0;
+  if (TID() == 0) block_vars_count = 0;
+  __syncthreads();
+
+  atomicAdd(&block_node_count, node_count);
+  atomicAdd(&block_vars_count, vars_count);
+  __syncthreads();
+
+  if (TID() == 0) atomicAdd(&NODE_COUNT, block_node_count);
+  if (TID() == 0) atomicAdd(&VARS_COUNT, block_vars_count);
+}
+
+__global__ void print_heatmap(GNet* gnet, u32 turn) {
   if (GID() > 0) return;
+
   for (u32 bid = 0; bid < BPG; bid++) {
     for (u32 tid = 0; tid < TPB; tid++) {
       u32 gid = bid * TPB + tid;
@@ -1907,6 +2054,14 @@ __global__ void print_rbag_heatmap(GNet* gnet, u32 turn) {
     }
     printf("\n");
   }
+
+  //printf("NODE_COUNT: %d\n", NODE_COUNT);
+  //printf("VARS_COUNT: %d\n", VARS_COUNT);
+  //NODE_COUNT = 0;
+  //VARS_COUNT = 0;
+}
+
+__global__ void print_full_net(GNet* gnet, u32 turn) {
 }
 
 __global__ void print_result(GNet* gnet, u32 turn) {
@@ -1995,25 +2150,35 @@ void hvm_cu(u32* book_buffer) {
 
   // Invokes the Evaluator Kernel repeatedly
   u32 turn;
-  for (turn = 0; turn < 0x1000; ++turn) {
+  u64 itrs = 0;
+  u64 leak = 0;
+  u32 rlen = 0;
+  for (turn = 0; turn < 0x100; ++turn) {
     //cudaDeviceSynchronize();
-    //printf("-------------------------------------------- TURN: %04x\n", turn);
+    //printf("-------------------------------------------- TURN: %04x | RLEN: %04x | ITRS: %012llu\n", turn, rlen, itrs);
     
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(d_gnet, turn);
-    swap_rbuf<<<1, 1>>>(d_gnet, turn);
-    if (get_rbag_len(d_gnet, turn) == 0) {
+    inbetween<<<1, 1>>>(d_gnet, turn);
+
+    //cudaDeviceSynchronize();
+    //count_memory<<<BPG, TPB>>>(d_gnet);
+
+    //cudaDeviceSynchronize();
+    //print_heatmap<<<1,1>>>(d_gnet, turn+1);
+
+    itrs = get_itrs(d_gnet, turn);
+    leak = get_leak(d_gnet, turn);
+    rlen = get_rlen(d_gnet, turn);
+    if (rlen == 0) {
       printf("Completed after %d kernel launches!\n", turn);
       break;
     }
-
-    //cudaDeviceSynchronize();
-    //printf("HEATMAP\n");
-    //print_rbag_heatmap<<<1,1>>>(d_gnet, turn+1);
   }
 
   // Invokes the Result Printer Kernel
   cudaDeviceSynchronize();
   print_result<<<1,1>>>(d_gnet, turn);
+  cudaDeviceSynchronize();
 
   // Reports errors
   cudaError_t err = cudaGetLastError();
@@ -2037,21 +2202,20 @@ void hvm_cu(u32* book_buffer) {
     //Net net;
     //net.g_node_buf = h_gnet->node_buf;
     //net.g_vars_buf = h_gnet->vars_buf;
-    //net.g_page_idx = 0xFFFFFFFF;
 
     //// Print the net
-    //print_net(&net);
+    //print_net(&net, L_NODE_LEN, G_NODE_LEN);
 
     //// Free host memory
     //free(h_gnet);
   //}
 
   // Gets interaction count
-  u64 itrs;
-  cudaMemcpy(&itrs, &d_gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
+  //cudaMemcpy(&itrs, &d_gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
 
   // Prints interactions, time and MIPS
   printf("- ITRS: %llu\n", itrs);
+  printf("- LEAK: %llu\n", leak);
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 }
@@ -2061,4 +2225,5 @@ int main() {
   //hvm_cu(NULL);
   return 0;
 }
+
 
