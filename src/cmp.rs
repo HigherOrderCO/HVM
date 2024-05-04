@@ -52,10 +52,10 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
 
   // Allocs resources (using fast allocator)
   for i in 0 .. def.vars {
-    code.push_str(&format!("{}Val v{:x} = l_vars_alloc_1(net, tm, &vl);\n", indent(tab+1), i));
+    code.push_str(&format!("{}Val v{:x} = vars_alloc_1(net, tm, &vl);\n", indent(tab+1), i));
   }
   for i in 0 .. def.node.len() {
-    code.push_str(&format!("{}Val n{:x} = l_node_alloc_1(net, tm, &nl);\n", indent(tab+1), i));
+    code.push_str(&format!("{}Val n{:x} = node_alloc_1(net, tm, &nl);\n", indent(tab+1), i));
   }
   code.push_str(&format!("{}if (0", indent(tab+1)));
   for i in 0 .. def.vars {

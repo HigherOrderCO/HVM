@@ -23,7 +23,7 @@
 @main = c
   & @sum ~ (b c)
   & @sort ~ (a b)
-  & @gen ~ (16 (0 a))
+  & @gen ~ (18 (0 a))
 
 @merge = ((@merge$C5 (@merge$C3 (@merge$C2 a))) a)
 
@@ -86,4 +86,4 @@
   & @to_map ~ (c d)
 
 @to_map$C1 = (a b)
-  & @radix ~ (24 (a (1 (@Busy b))))
+  & @radix ~ (30 (a (1 (@Busy b))))

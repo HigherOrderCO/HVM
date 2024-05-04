@@ -43,7 +43,7 @@
 @main = c
   & @sum ~ (b c)
   & @sort ~ (a (0 b))
-  & @gen ~ (18 (0 a))
+  & @gen ~ (22 (0 a))
 
 @sort = ((@sort$C1 (@sort$C0 a)) a)
 

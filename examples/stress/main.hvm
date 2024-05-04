@@ -3,4 +3,4 @@
 @fun1 = ({a b} c) & @fun ~ (a (d c)) & @fun ~ (b d)
 @lop  = (?((0 @lop0) a) a)
 @lop0 = (a b) & @lop ~ (a b)
-@main = a & @fun ~ (18 a)
+@main = a & @fun ~ (10 a)
