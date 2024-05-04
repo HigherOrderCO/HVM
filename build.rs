@@ -1,11 +1,17 @@
 fn main() {
   // Builds hvm.c
-  cc::Build::new()
-    .file("src/hvm.c")
-    .opt_level(3)
-    .warnings(false)
-    .compile("hvm-c");
-  println!("cargo:rerun-if-changed=src/hvm.c");
+  match cc::Build::new()
+      .file("src/hvm.c")
+      .opt_level(3)
+      .warnings(false)
+      .try_compile("hvm-c") {
+    Ok(_) => println!("cargo:rerun-if-changed=src/hvm.c"),
+    Err(e) => {
+      println!("WARNING: Failed to compile hvm.c: {}", e);
+      println!("Ignoring hvm.c and proceeding with build.");
+    }
+  }
+
 
   // Builds hvm.cu
   if std::process::Command::new("nvcc").arg("--version").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok() {
