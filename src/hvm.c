@@ -28,8 +28,8 @@ typedef _Atomic(u64) a64;
 // -------------
 
 // Threads per CPU
-const u32 TPC_L2 = 3;
-const u32 TPC    = 1 << TPC_L2;
+#define TPC_L2  3
+#define TPC    (1 << TPC_L2)
 
 // Program
 const u32 DEPTH = 10;
@@ -97,7 +97,7 @@ const Port ROOT = 0xFFFFFFF8;
 const Port NONE = 0xFFFFFFFF;
 
 // Thread Redex Bag Length
-const u32 RLEN = 1 << 22; // max 4m redexes
+#define RLEN  (1 << 22) // max 4m redexes
 
 // Thread Redex Bag
 // It uses the same space to store two stacks:
@@ -110,9 +110,9 @@ typedef struct RBag {
 } RBag;
 
 // Global Net
-const u32 G_NODE_LEN = 1 << 29; // max 536m nodes
-const u32 G_VARS_LEN = 1 << 29; // max 536m vars
-const u32 G_RBAG_LEN = TPC * RLEN;
+#define G_NODE_LEN  (1 << 29) // max 536m nodes
+#define G_VARS_LEN  (1 << 29) // max 536m vars
+#define G_RBAG_LEN  (TPC * RLEN)
 
 typedef struct Net {
   APair node_buf[G_NODE_LEN]; // global node buffer
@@ -1325,7 +1325,7 @@ void hvm_c(u32* book_buffer) {
   free(book);
 }
 
-int main(int argc, char* argv[]) {
-  hvm_c(NULL);
-  return 0;
-}
+// int main(int argc, char* argv[]) {
+//   hvm_c(NULL);
+//   return 0;
+// }
