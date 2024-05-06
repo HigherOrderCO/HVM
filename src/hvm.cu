@@ -1831,16 +1831,8 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
   return ret;
 }
 
-// IO Type
-const u32 DONE = 0;
-const u32 PRINT = 1;
-const u32 INPUT = 2;
-const u32 SAVE_FILE = 3;
-const u32 LOAD_FILE = 4;
-
-// Str Type
-const u32 NIL = 0;
-const u32 CONS = 1;
+// Monadic IO
+// ----------
 
 // Readback: λ-Encoded Ctr
 struct Ctr {
@@ -1856,6 +1848,17 @@ struct Str {
   u32  text_len;
   char text_buf[256];
 };
+
+// IO Type
+const u32 DONE = 0;
+const u32 PRINT = 1;
+const u32 INPUT = 2;
+const u32 SAVE_FILE = 3;
+const u32 LOAD_FILE = 4;
+
+// Str Type
+const u32 NIL = 0;
+const u32 CONS = 1;
 
 // Reads back a λ-Encoded constructor from device to host.
 // Encoding: λt ((((t TAG) arg0) arg1) ...)
