@@ -28,7 +28,7 @@ typedef _Atomic(u64) a64;
 // -------------
 
 // Threads per CPU
-#define TPC_L2  3
+#define TPC_L2  4
 #define TPC    (1 << TPC_L2)
 
 // Program
@@ -96,42 +96,36 @@ const Port FREE = 0x00000000;
 const Port ROOT = 0xFFFFFFF8;
 const Port NONE = 0xFFFFFFFF;
 
+// Cache Padding
+const u32 CACHE_PAD = 64;
+
 // Thread Redex Bag Length
-#define RLEN  (1 << 22) // max 4m redexes
+#define RLEN (1 << 22) // max 4m redexes
 
 // Thread Redex Bag
 // It uses the same space to store two stacks:
 // - HI: a high-priotity stack, for shrinking reductions
 // - LO: a low-priority stack, for growing reductions
 typedef struct RBag {
-  u32  lo_idx; // high-priority stack push-index
-  u32  hi_idx; // low-priority stack push-index
-  Pair buf[RLEN]; // a buffer for both stacks
+  u32  hi_end;
+  Pair hi_buf[RLEN];
+  u32  lo_ini;
+  u32  lo_end;
+  Pair lo_buf[RLEN];
 } RBag;
 
 // Global Net
-#define G_NODE_LEN  (1 << 29) // max 536m nodes
-#define G_VARS_LEN  (1 << 29) // max 536m vars
-#define G_RBAG_LEN  (TPC * RLEN)
+#define G_NODE_LEN (1 << 29) // max 536m nodes
+#define G_VARS_LEN (1 << 29) // max 536m vars
+#define G_RBAG_LEN (TPC * RLEN)
 
 typedef struct Net {
   APair node_buf[G_NODE_LEN]; // global node buffer
   APort vars_buf[G_VARS_LEN]; // global vars buffer
-  APair steal[TPC/2]; // steal buffer
+  APair share[TPC*CACHE_PAD]; // share buffer
+  a64 rlen; // global redex count
   a64 itrs; // interaction count
 } Net;
-
-typedef struct TM {
-  u32  tid; // thread id
-  u32  tick; // tick counter
-  u32  page; // page index
-  u32  itrs; // interaction count
-  u32  nput; // next node allocation attempt index
-  u32  vput; // next vars allocation attempt index
-  u32  nloc[32]; // node allocation indices
-  u32  vloc[32]; // vars allocation indices
-  RBag rbag; // local bag
-} TM;
 
 // Top-Level Definition
 typedef struct Def {
@@ -150,6 +144,17 @@ typedef struct Book {
   u32 defs_len;
   Def defs_buf[256];
 } Book;
+
+// Local Thread Memory
+typedef struct TM {
+  u32   tid; // thread id
+  u32   itrs; // interaction count
+  u32   nput; // next node allocation attempt index
+  u32   vput; // next vars allocation attempt index
+  u32   nloc[32]; // node allocation indices
+  u32   vloc[32]; // vars allocation indices
+  RBag  rbag; // local redex bag
+} TM;
 
 // Booleans
 const bool true  = 1;
@@ -208,19 +213,44 @@ static inline void swap(Port *a, Port *b) {
   Port x = *a; *a = *b; *b = x;
 }
 
-// ID of peer to share redex with.
-static inline u32 peer_id(u32 id, u32 log2_len, u32 tick) {
-  u32 side = (id >> (log2_len - 1 - (tick % log2_len))) & 1;
-  u32 diff = (1 << (log2_len - 1)) >> (tick % log2_len);
-  return side ? id - diff : id + diff;
+u32 min(u32 a, u32 b) {
+  return (a < b) ? a : b;
 }
 
-// Index on the steal redex buffer for this peer pair.
-static inline u32 buck_id(u32 id, u32 log2_len, u32 tick) {
-  u32 fid = peer_id(id, log2_len, tick);
-  u32 itv = log2_len - (tick % log2_len);
-  u32 val = (id >> itv) << (itv - 1);
-  return (id < fid ? id : fid) - val;
+// A simple spin-wait barrier using atomic operations
+a64 a_reached = 0; // number of threads that reached the current barrier
+a64 a_barrier = 0; // number of barriers passed during this program
+
+void sync_threads() {
+  u64 barrier_old = atomic_load_explicit(&a_barrier, memory_order_relaxed);
+  if (atomic_fetch_add_explicit(&a_reached, 1, memory_order_relaxed) == (TPC - 1)) {
+    // Last thread to reach the barrier resets the counter and advances the barrier
+    atomic_store_explicit(&a_reached, 0, memory_order_relaxed);
+    atomic_store_explicit(&a_barrier, barrier_old + 1, memory_order_release);
+  } else {
+    u32 tries = 0;
+    while (atomic_load_explicit(&a_barrier, memory_order_acquire) == barrier_old) {
+      sched_yield();
+    }
+  }
+}
+
+// Global sum function
+static a32 GLOBAL_SUM = 0;
+u32 global_sum(u32 x) {
+  atomic_fetch_add_explicit(&GLOBAL_SUM, x, memory_order_relaxed);
+  sync_threads();
+  u32 sum = atomic_load_explicit(&GLOBAL_SUM, memory_order_relaxed);
+  sync_threads();
+  atomic_store_explicit(&GLOBAL_SUM, 0, memory_order_relaxed);
+  return sum;
+}
+
+// TODO: write a time64() function that returns the time as fast as possible as a u64
+static inline u64 time64() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (u64)ts.tv_sec * 1000000000ULL + (u64)ts.tv_nsec;
 }
 
 // Ports / Pairs / Rules
@@ -447,47 +477,47 @@ static inline Numb operate(Numb a, Numb b) {
 // ----
 
 void rbag_init(RBag* rbag) {
-  rbag->lo_idx = 0;
-  rbag->hi_idx = RLEN - 1;
+  rbag->hi_end = 0;
+  rbag->lo_ini = 0;
+  rbag->lo_end = 0;
 }
 
 static inline void push_redex(TM* tm, Pair redex) {
   Rule rule = get_pair_rule(redex);
   if (is_high_priority(rule)) {
-    tm->rbag.buf[tm->rbag.hi_idx--] = redex;
+    tm->rbag.hi_buf[tm->rbag.hi_end++ % RLEN] = redex;
   } else {
-    tm->rbag.buf[tm->rbag.lo_idx++] = redex;
+    tm->rbag.lo_buf[tm->rbag.lo_end++ % RLEN] = redex;
   }
 }
 
 static inline Pair pop_redex(TM* tm) {
-  if (tm->rbag.hi_idx < RLEN - 1) {
-    return tm->rbag.buf[++tm->rbag.hi_idx];
-  } else if (tm->rbag.lo_idx > 0) {
-    return tm->rbag.buf[--tm->rbag.lo_idx];
+  if (tm->rbag.hi_end > 0) {
+    return tm->rbag.hi_buf[(--tm->rbag.hi_end) % RLEN];
+  } else if (tm->rbag.lo_end - tm->rbag.lo_ini > 0) {
+    return tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
   } else {
     return 0;
   }
 }
 
 static inline u32 rbag_len(RBag* rbag) {
-  return rbag->lo_idx + (RLEN - 1 - rbag->hi_idx);
+  return rbag->hi_end + rbag->lo_end - rbag->lo_ini;
 }
 
 static inline u32 rbag_has_highs(RBag* rbag) {
-  return rbag->hi_idx < RLEN-1;
+  return rbag->hi_end > 0;
 }
 
 // TM
 // --
 
 void tmem_init(TM* tm, u32 tid) {
-  rbag_init(&tm->rbag);
   tm->tid  = tid;
-  tm->tick = 0;
-  tm->nput = tid;
-  tm->vput = tid;
   tm->itrs = 0;
+  tm->nput = 1;
+  tm->vput = 1;
+  rbag_init(&tm->rbag);
 }
 
 // Net
@@ -551,81 +581,82 @@ static inline Port vars_take(Net* net, u32 var) {
 static inline void net_init(Net* net) {
   // Initializes the root var.
   vars_create(net, get_val(ROOT), NONE);
+  // Initializes the share buffer
+  for (u32 i = 0; i < TPC; ++i) {
+    net->share[i*CACHE_PAD] = new_pair(NONE,NONE);
+  }
+  // Initializes variables
+  atomic_store(&net->rlen, 0);
+  atomic_store(&net->itrs, 0);
 }
 
 // Allocator
 // ---------
 
-// Allocs on node buffer. Returns the number of successful allocs.
-static inline u32 node_alloc(Net* net, TM* tm, u32 num) {
-  u32* idx = &tm->nput;
-  u32* loc = tm->nloc;
-  u32  len = G_NODE_LEN - 1;
-  u32  got = 0;
-  for (u32 i = 0; i < len && got < num; ++i) {
-    *idx += 1; // index 0 reserved
-    if (*idx < len || node_load(net, *idx % len) == 0) {
-      tm->nloc[got++] = *idx % len;
-      //printf("ALLOC NODE %d %d\n", got, *idx);
+u32 node_alloc_1(Net* net, TM* tm, u32* lps) {
+  while (true) {
+    u32 lc = tm->tid*(G_NODE_LEN/TPC) + (tm->nput%(G_NODE_LEN/TPC));
+    Pair elem = net->node_buf[lc];
+    tm->nput += 1;
+    if (lc > 0 && elem == 0) {
+      return lc;
     }
+    // FIXME: check this decently
+    if (++(*lps) >= G_NODE_LEN/TPC) printf("OOM\n");
+  }
+}
+
+u32 vars_alloc_1(Net* net, TM* tm, u32* lps) {
+  while (true) {
+    u32 lc = tm->tid*(G_NODE_LEN/TPC) + (tm->vput%(G_NODE_LEN/TPC));
+    Port elem = net->vars_buf[lc];
+    tm->vput += 1;
+    if (lc > 0 && elem == 0) {
+      return lc;
+    }
+    // FIXME: check this decently
+    if (++(*lps) >= G_NODE_LEN/TPC) printf("OOM\n");
+  }
+}
+
+u32 node_alloc(Net* net, TM* tm, u32 num) {
+  u32 got = 0;
+  u32 lps = 0;
+  while (got < num) {
+    u32 lc = tm->tid*(G_NODE_LEN/TPC) + (tm->nput%(G_NODE_LEN/TPC));
+    Pair elem = net->node_buf[lc];
+    tm->nput += 1;
+    if (lc > 0 && elem == 0) {
+      tm->nloc[got++] = lc;
+    }
+    // FIXME: check this decently
+    if (++lps >= G_NODE_LEN/TPC) printf("OOM\n");
   }
   return got;
 }
 
-// Allocs on vars buffer. Returns the number of successful allocs.
-static inline u32 vars_alloc(Net* net, TM* tm, u32 num) {
-  u32* idx = &tm->vput;
-  u32* loc = tm->vloc;
-  u32  len = G_VARS_LEN - 1;
-  u32  got = 0;
-  for (u32 i = 0; i < len && got < num; ++i) {
-    *idx += 1; // index 0 reserved for VOID
-    if (*idx < len || vars_load(net, *idx % len) == 0) {
-      loc[got++] = *idx % len;
-      //printf("VARS ALLOC %d\n", *idx % len);
+u32 vars_alloc(Net* net, TM* tm, u32 num) {
+  u32 got = 0;
+  u32 lps = 0;
+  while (got < num) {
+    u32 lc = tm->tid*(G_NODE_LEN/TPC) + (tm->vput%(G_NODE_LEN/TPC));
+    Port elem = net->vars_buf[lc];
+    tm->vput += 1;
+    if (lc > 0 && elem == 0) {
+      tm->vloc[got++] = lc;
     }
+    // FIXME: check this decently
+    if (++lps >= G_NODE_LEN/TPC) printf("OOM\n");
   }
   return got;
-}
-
-// Allocs on node buffer. Optimized for 1 alloc.
-static inline u32 node_alloc_1(Net* net, TM* tm, u32* lap) {
-  u32* idx = &tm->nput;
-  u32* loc = tm->nloc;
-  u32  len = G_NODE_LEN - 1;
-  for (u32 i = 0; i < len; ++i) {
-    *idx += 1; // index 0 reserved
-    if (*idx < len || node_load(net, *idx % len) == 0) {
-      return *idx % len;
-    }
-  }
-  return 0;
-}
-
-// Allocs on vars buffer. Optimized for 1 alloc.
-static inline u32 vars_alloc_1(Net* net, TM* tm, u32* lap) {
-  u32* idx = &tm->vput;
-  u32* loc = tm->vloc;
-  u32  len = G_VARS_LEN - 1;
-  u32  got = 0;
-  for (u32 i = 0; i < len; ++i) {
-    *idx += 1; // index 0 reserved for FREE
-    if (*idx < len || vars_load(net, *idx % len) == 0) {
-      //printf("VARS ALLOC %d\n", *idx % len);
-      return *idx % len;
-    }
-  }
-  return 0;
 }
 
 // Gets the necessary resources for an interaction. Returns success.
 static inline bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
-  u32 got_rbag = RLEN - rbag_len(&tm->rbag);
+  u32 got_rbag = min(RLEN - (tm->rbag.lo_end - tm->rbag.lo_ini), RLEN - tm->rbag.hi_end);
   u32 got_node = node_alloc(net, tm, need_node);
   u32 got_vars = vars_alloc(net, tm, need_vars);
-  return got_rbag >= need_rbag
-      && got_node >= need_node
-      && got_vars >= need_vars;
+  return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
 }
 
 // Linking
@@ -694,34 +725,24 @@ static inline void link_pair(Net* net, TM* tm, Pair AB) {
 // -------
 
 // Sends redex to a friend local thread, when it is starving.
-// TODO: implement this function. Since we do not have a barrier, we must do it
-// by using atomics instead. Use atomics to send data. Use busy waiting to
-// receive data. Implement now the share_redex function:
-void share_redexes(TM* tm, APair* steal, u32 tid) {
-  const u64 NEED_REDEX = 0xFFFFFFFFFFFFFFFF;
-
-  // Gets the peer ID
-  u32 pid = peer_id(tid, TPC_L2, tm->tick);
-  u32 idx = buck_id(tid, TPC_L2, tm->tick);
-
-  // Gets a redex from parent peer
-  if (tid > pid && tm->rbag.lo_idx == 0) {
-    Pair peek_redex = atomic_load(&steal[idx]);
-    if (peek_redex == 0) {
-      atomic_exchange(&steal[idx], NEED_REDEX);
+void share_redexes(TM* tm, APair* share, u32 tid) {
+  Pair send = new_pair(NONE, NONE);
+  Pair recv = new_pair(NONE, NONE);
+  u32*  ini = &tm->rbag.lo_ini;
+  u32*  end = &tm->rbag.lo_end;
+  Pair* bag = tm->rbag.lo_buf;
+  for (u32 i = 0; i < TPC_L2; ++i) {
+    u32 a = tm->tid;
+    u32 b = a ^ (1 << i);
+    recv = new_pair(NONE, NONE);
+    send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
+    atomic_exchange_explicit(&share[a*CACHE_PAD], send, memory_order_relaxed);
+    while (recv == new_pair(NONE, NONE)) {
+      recv = atomic_exchange_explicit(&share[b*CACHE_PAD], new_pair(NONE, NONE), memory_order_relaxed);
     }
-    if (peek_redex > 0 && peek_redex != NEED_REDEX) {
-      push_redex(tm, peek_redex);
-      atomic_store(&steal[idx], 0);
-    }
-  }
-
-  // Sends a redex to child peer
-  if (tid < pid && tm->rbag.lo_idx > 1) {
-    Pair peek_redex = atomic_load(&steal[idx]);
-    if (peek_redex == NEED_REDEX) {
-      atomic_store(&steal[idx], pop_redex(tm));
-    }
+    if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
+    if ( send && !recv) ++(*ini);
+    sync_threads();
   }
 }
 
@@ -1014,23 +1035,61 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
 // Evaluator
 // ---------
 
+//void evaluator(Net* net, TM* tm, Book* book) {
+  //u32 turn = 0;
+  //while (rbag_len(&tm->rbag) > 0 && ++turn < 0x10000000) {
+    //interact(net, tm, book);
+    //while (rbag_has_highs(&tm->rbag)) {
+      //if (!interact(net, tm, book)) break;
+    //}
+  //}
+  //atomic_fetch_add(&net->itrs, tm->itrs);
+  //tm->itrs = 0;
+//}
+
 void evaluator(Net* net, TM* tm, Book* book) {
-  // Increments the tick
-  tm->tick += 1;
+  //printf("[%04x] evaluator\n", tm->tid);
+  //sync_threads();
 
   // Performs some interactions
-  while (rbag_len(&tm->rbag) > 0) {
-  //for (u32 i = 0; i < 16; ++i) {
-    interact(net, tm, book);
+  for (u32 turn = 0; turn < 0xFFFF; ++turn) {
+    u32  full = global_sum(rbag_len(&tm->rbag) > 0); // number of non-empty threads
+    bool grow = full < TPC; // if some threads are empty, grow mode
+    u32  reps = grow ? 1 : 1 << 22; // number of local repetitions
+
+    //if (tm->tid == 0) printf("---------------------------- %d OXI | grow %d | reps %d\n", turn, grow, reps);
+    //sync_threads();
+
+    // If all threads are empty, stop
+    if (full == 0) {
+      break;
+    }
+ 
+    // Perform local interaction
+    for (u32 tick = 0; tick < reps; ++tick) {
+      interact(net, tm, book);
+      while (rbag_has_highs(&tm->rbag)) {
+        if (!interact(net, tm, book)) break;
+      }
+    }
+
+    // Shares redexes
+    //u64 share_ini = time64();
+    share_redexes(tm, net->share, tm->tid);
+    //u64 share_end = time64();
+    //printf("[%04x] share redexes time: %llu ns\n", tm->tid, share_end - share_ini);
+    sync_threads();
+
+    //printf("[%04x] itrs: %d\n", tm->tid, tm->itrs);
   }
 
-  // Shares a redex with neighbor thread
-  //if (TPC > 1) {
-    //share_redexes(tm, net->steal, tm->tid);
-  //}
+  sync_threads();
 
   atomic_fetch_add(&net->itrs, tm->itrs);
   tm->itrs = 0;
+}
+
+void normalize(Net* net, TM* tm, Book* book) {
 }
 
 // Book Loader
@@ -1119,12 +1178,12 @@ Show show_rule(Rule rule) {
 void print_rbag(RBag* rbag) {
   printf("RBAG | FST-TREE     | SND-TREE    \n");
   printf("---- | ------------ | ------------\n");
-  for (u32 i = 0; i < rbag->lo_idx; ++i) {
-    Pair redex = rbag->buf[i];
+  for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
+    Pair redex = rbag->lo_buf[i%RLEN];
     printf("%04X | %s | %s\n", i, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
   }
-  for (u32 i = 15; i > rbag->hi_idx; --i) {
-    Pair redex = rbag->buf[i];
+  for (u32 i = 0; i > rbag->hi_end; ++i) {
+    Pair redex = rbag->hi_buf[i];
     printf("%04X | %s | %s\n", i, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
   }
   printf("==== | ============ | ============\n");
@@ -1248,8 +1307,8 @@ void pretty_print_port(Net* net, Port port) {
 }
 
 void pretty_print_rbag(Net* net, RBag* rbag) {
-  for (u32 i = 0; i < rbag->lo_idx; ++i) {
-    Pair redex = rbag->buf[i];
+  for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
+    Pair redex = rbag->lo_buf[i];
     if (redex != 0) {
       pretty_print_port(net, get_fst(redex));
       printf(" ~ ");
@@ -1257,8 +1316,8 @@ void pretty_print_rbag(Net* net, RBag* rbag) {
       printf("\n");
     }
   }
-  for (u32 i = RLEN-1; i > rbag->hi_idx; --i) {
-    Pair redex = rbag->buf[i];
+  for (u32 i = 0; i > rbag->hi_end; ++i) {
+    Pair redex = rbag->hi_buf[i];
     if (redex != 0) {
       pretty_print_port(net, get_fst(redex));
       printf(" ~ ");
@@ -1271,10 +1330,31 @@ void pretty_print_rbag(Net* net, RBag* rbag) {
 // Main
 // ----
 
-void hvm_c(u32* book_buffer) {
-  Book* book = NULL;
+// stress 2^10 x 131072
+static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
 
+// loop 10m
+//static const u8 DEMO_BOOK[] = {3, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 64, 75, 76, 0, 0, 0, 0, 1, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 17, 0, 0, 0, 2, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 8, 0, 0, 0, 22, 0, 0, 0, 16, 0, 0, 0, 3, 2, 0, 128, 30, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0};
+
+// radix 16
+//static const u8 DEMO_BOOK[] = {31, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 153, 0, 0, 0, 12, 0, 0, 0, 57, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 9, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 66, 117, 115, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 99, 97, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 69, 109, 112, 116, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 70, 114, 101, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 6, 0, 0, 0, 83, 105, 110, 103, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 73, 0, 0, 0, 8, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 12, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 57, 0, 0, 0, 68, 0, 0, 0, 57, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 32, 0, 0, 0, 51, 1, 0, 0, 37, 0, 0, 0, 16, 0, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 10, 0, 0, 0, 109, 101, 114, 103, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 20, 0, 0, 0, 113, 0, 0, 0, 28, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 36, 0, 0, 0, 81, 0, 0, 0, 52, 0, 0, 0, 81, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 13, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 97, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 89, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 15, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 114, 97, 100, 105, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 76, 0, 0, 0, 20, 0, 0, 0, 52, 0, 0, 0, 28, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 18, 0, 0, 0, 114, 97, 100, 105, 120, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 76, 0, 0, 0, 177, 0, 0, 0, 108, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 21, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 131, 6, 0, 128, 38, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 53, 0, 0, 0, 68, 0, 0, 0, 62, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 100, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 24, 0, 0, 0, 116, 0, 0, 0, 40, 0, 0, 0, 124, 0, 0, 0, 33, 0, 0, 0, 56, 0, 0, 0, 19, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 12, 0, 0, 0, 225, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 8, 0, 0, 0, 21, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 20, 0, 0, 0, 161, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 185, 0, 0, 0, 193, 0, 0, 0, 23, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 25, 0, 0, 0, 116, 111, 95, 97, 114, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 217, 0, 0, 0, 36, 0, 0, 0, 209, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 201, 0, 0, 0, 84, 0, 0, 0, 201, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 76, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 27, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 116, 111, 95, 109, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 241, 0, 0, 0, 28, 0, 0, 0, 233, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 225, 0, 0, 0, 36, 0, 0, 0, 225, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 30, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 15, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 139, 0, 0, 0, 36, 0, 0, 0, 9, 0, 0, 0, 8, 0, 0, 0};
+
+// Thread data
+typedef struct {
+  Net*  net;
+  TM*   tm;
+  Book* book;
+} ThreadArgs;
+
+void* thread_func(void* arg) {
+  ThreadArgs* data = (ThreadArgs*)arg;
+  evaluator(data->net, data->tm, data->book);
+  return NULL;
+}
+
+void hvm_c(u32* book_buffer) {
   // Loads the Book
+  Book* book = NULL;
   if (book_buffer) {
     book = (Book*)malloc(sizeof(Book));
     book_load(book_buffer, book);
@@ -1286,23 +1366,34 @@ void hvm_c(u32* book_buffer) {
 
   // Alloc and init TPC TM's
   TM* tm[TPC];
+  ThreadArgs thread_args[TPC];
+  pthread_t threads[TPC];
   for (u32 t = 0; t < TPC; ++t) {
     tm[t] = malloc(sizeof(TM));
     tmem_init(tm[t], t);
+    thread_args[t].net  = gnet;
+    thread_args[t].tm   = tm[t];
+    thread_args[t].book = book;
   }
 
   // Creates an initial redex that calls main
   push_redex(tm[0], new_pair(new_port(REF, 0), ROOT));
 
-  // Starts the timer
-  clock_t start = clock();
+  // Replace the clock() based timing with time64() based timing
+  u64 start = time64();
 
-  // Evaluates
-  evaluator(gnet, tm[0], book);
+  // Start the threads
+  for (u32 t = 0; t < TPC; ++t) {
+    pthread_create(&threads[t], NULL, thread_func, &thread_args[t]);
+  }
 
-  // Stops the timer
-  clock_t end = clock();
-  double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
+  // Wait for the threads to finish 
+  for (u32 t = 0; t < TPC; ++t) {
+    pthread_join(threads[t], NULL);
+  }
+
+  u64 end = time64();
+  double duration = (end - start) / 1000000000.0; // convert to seconds
 
   // Prints the result
   printf("Result: ");
@@ -1315,8 +1406,6 @@ void hvm_c(u32* book_buffer) {
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 
-  //print_net(gnet);
-
   // Frees values
   for (u32 t = 0; t < TPC; ++t) {
     free(tm[t]);
@@ -1325,7 +1414,8 @@ void hvm_c(u32* book_buffer) {
   free(book);
 }
 
-// int main(int argc, char* argv[]) {
-//   hvm_c(NULL);
-//   return 0;
-// }
+int main() {
+  hvm_c((u32*)DEMO_BOOK);
+  //hvm_c(NULL);
+  return 0;
+}

@@ -1,6 +1,16 @@
-@fun  = (?((@fun0 @fun1) a) a)
-@fun0 = a & @lop ~ (0x20000 a)
-@fun1 = ({a b} c) & @fun ~ (a (d c)) & @fun ~ (b d)
-@lop  = (?((0 @lop0) a) a)
-@lop0 = (a b) & @lop ~ (a b)
-@main = a & @fun ~ (10 a)
+@fun = (?((@fun__C0 @fun__C1) a) a)
+
+@fun__C0 = a
+  & @loop ~ (0x20000 a)
+
+@fun__C1 = ({a b} d)
+  & @fun ~ (a $(:[+] $(c d)))
+  & @fun ~ (b c)
+
+@loop = (?((0 @loop__C0) a) a)
+
+@loop__C0 = a
+  & @loop ~ a
+
+@main = a
+  & @fun ~ (14 a)

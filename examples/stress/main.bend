@@ -11,4 +11,4 @@ fun = λn
   }
 
 main = 
-  (fun 18)
+  (fun 16)
