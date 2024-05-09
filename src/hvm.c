@@ -769,7 +769,7 @@ static inline bool interact_link(Net* net, TM* tm, Port a, Port b) {
 static inline bool interact_eras(Net* net, TM* tm, Port a, Port b);
 static inline bool interact_call(Net* net, TM* tm, Port a, Port b, Book* book) {
   // Loads Definition.
-  u32  fid = get_val(a);
+  u32  fid = get_val(a) & 0xFFFFFFF;
   Def* def = &book->defs_buf[fid];
 
   // Copy Optimization.

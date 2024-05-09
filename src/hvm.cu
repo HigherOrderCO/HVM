@@ -1,4 +1,4 @@
-// HVM-CUDA: an Interaction Combinator evaluator in CUDA.
+// HVM-CUDA: Interaction Combinators in CUDA.
 // 
 // # Format
 // 
@@ -236,21 +236,17 @@ typedef unsigned long long int u64;
 const u64 S = 2520000000;
 
 // Threads per Block
-const u32 TPB_L2 = 8;
+const u32 TPB_L2 = 5;
 const u32 TPB    = 1 << TPB_L2;
 
 // Blocks per GPU
-const u32 BPG_L2 = 7;
+const u32 BPG_L2 = 5;
 const u32 BPG    = 1 << BPG_L2;
 
 // Threads per GPU
 const u32 TPG = TPB * BPG;
 
-// Allocation Mode
-const u32 SHARED = 0;
-const u32 GLOBAL = 1;
-
-#define ALLOC_MODE SHARED
+//#define ALLOC_MODE SHARED
 //#define ALLOC_MODE GLOBAL
 
 // Types
@@ -311,7 +307,6 @@ const Tag AND = 0xD;
 const Tag OR  = 0xE;
 const Tag XOR = 0xF;
 
-
 // Thread Redex Bag Length
 const u32 RLEN = 256;
 
@@ -322,9 +317,11 @@ const u32 RLEN = 256;
 struct RBag {
   u32  hi_end;
   Pair hi_buf[RLEN];
-  u32  lo_ini;
   u32  lo_end;
   Pair lo_buf[RLEN];
+  //u32  sh_ini;
+  //u32  sh_end;
+  //Pair sh_buf[RLEN];
 };
 
 // Local Net
@@ -338,7 +335,7 @@ struct LNet {
 // Global Net
 const u32 G_NODE_LEN = 1 << 29; // max 536m nodes
 const u32 G_VARS_LEN = 1 << 29; // max 536m vars
-const u32 G_RBAG_LEN = TPB * BPG * RLEN * 2; // max 4m redexes
+const u32 G_RBAG_LEN = TPB * BPG * RLEN * 3; // max 4m redexes
 struct GNet {
   u32  rbag_use_A; // total rbag redex count (buffer A)
   u32  rbag_use_B; // total rbag redex count (buffer B)
@@ -350,7 +347,7 @@ struct GNet {
   u32  vars_put[TPB*BPG];
   u64  itrs; // interaction count
   u64  leak; // leak count
-  u64  turn; // turn count
+  u32  turn; // turn count
 };
 
 // View Net: includes both GNet and LNet
@@ -374,6 +371,7 @@ struct TM {
   u32  page; // page index
   u32  nput; // node alloc index
   u32  vput; // vars alloc index
+  bool glob; // allocation mode
   u32  itrs; // interactions
   u32  leak; // leaks
   u32  nloc[32]; // node allocs
@@ -442,6 +440,7 @@ __device__ void print_rbag(RBag* rbag);
 __device__ __host__ void print_net(Net* net, u32, u32);
 __device__ void pretty_print_port(Net* net, Port port);
 __device__ void pretty_print_rbag(Net* net, RBag* rbag);
+__global__ void print_heatmap(GNet* gnet, u32 turn);
 
 // Utils
 // -----
@@ -502,6 +501,35 @@ __device__ __host__ inline Port get_snd(Pair pair) {
   return pair >> 32;
 }
 
+__device__ __host__ Pair set_par_flag(Pair pair) {
+  Port p1 = get_fst(pair);
+  Port p2 = get_snd(pair);
+  if (get_tag(p1) == REF) {
+    return new_pair(new_port(get_tag(p1), get_val(p1) | 0x10000000), p2);  
+  } else {
+    return pair;
+  }
+}
+
+__device__ __host__ Pair clr_par_flag(Pair pair) {
+  Port p1 = get_fst(pair);
+  Port p2 = get_snd(pair);
+  if (get_tag(p1) == REF) {
+    return new_pair(new_port(get_tag(p1), get_val(p1) & 0xFFFFFFF), p2);  
+  } else {
+    return pair;
+  }
+}
+
+__device__ __host__ bool get_par_flag(Pair pair) {
+  Port p1 = get_fst(pair);
+  if (get_tag(p1) == REF) {
+    return (get_val(p1) >> 28) == 1;
+  } else {
+    return false;
+  }
+}
+
 // Utils
 // -----
 
@@ -558,6 +586,52 @@ __device__ __noinline__ u32 block_count(bool x) {
   atomicAdd(&res, x);
   __syncthreads();
   return res;
+}
+
+// Block scansum...
+__device__ u32 block_scansum(u32* arr) {
+  __shared__ u32 wsum[TPB/32];
+
+  u32 tid = threadIdx.x; // thread id
+  u32 wid = tid / 32; // warp id
+  u32 lid = tid % 32; // local id
+  u32 ini = wid * 32; // array index
+
+  // Performs warp scansum
+  u32 sum, num;
+  sum = arr[ini+lid];
+  for (u32 k = 1; k < 32; k *= 2) {
+    num = __shfl_up_sync(__activemask(), sum, k);
+    sum = lid >= k ? sum + num : sum;
+  }
+  arr[ini+lid] = sum;
+
+  // Saves total warp sum
+  if (lid == 31) {
+    //printf("[%04x] %d <- %d\n", tid, TPB+wid, sum);
+    wsum[wid] = sum;
+  }
+  __syncthreads();
+
+  // First warp perform a "scansum of warp sums"
+  u32 ssum, snum;
+  if (wid == 0 && lid < TPB / 32) {
+    ssum = wsum[lid];
+    for (u32 k = 1; k < TPB / 32; k *= 2) {
+      snum = __shfl_up_sync(__activemask(), ssum, k);
+      ssum = lid >= k ? ssum + snum : ssum;
+    }
+    wsum[lid] = ssum;
+  }
+  __syncthreads();
+
+  // Adds sum of warps before this one
+  if (wid > 0) {
+    arr[ini+lid] += wsum[wid-1];
+  }
+  __syncthreads();
+
+  return arr[TPB - 1];
 }
 
 // Prints a 4-bit value for each thread in a block
@@ -804,48 +878,40 @@ __device__ __host__ inline Numb operate(Numb a, Numb b) {
 __device__ RBag rbag_new() {
   RBag rbag;
   rbag.hi_end = 0;
-  rbag.lo_ini = 0;
   rbag.lo_end = 0;
+  //rbag.sh_end = 0;
+  //rbag.sh_ini = 0;
   return rbag;
+}
+
+__device__ u32 rbag_len(RBag* rbag) {
+  return rbag->hi_end + rbag->lo_end;
+}
+
+__device__ u32 rbag_has_highs(RBag* rbag) {
+  return rbag->hi_end > 0;
 }
 
 __device__ void push_redex(TM* tm, Pair redex) {
   Rule rule = get_pair_rule(redex);
+  //if (get_tag(get_fst(redex)) == REF) {
+    //printf("[%04x] oxi %s ~ %s\n", TID(), show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
+  //}
   if (is_high_priority(rule)) {
-    #ifdef DEBUG
-    if (tm->rbag.lo_end - tm->rbag.lo_ini >= RLEN) printf("[%04x] ERR PUSH_REDEX A %d\n", GID());
-    #endif
     tm->rbag.hi_buf[tm->rbag.hi_end++ % RLEN] = redex;
   } else {
-    #ifdef DEBUG
-    if (tm->rbag.lo_end - tm->rbag.lo_ini >= RLEN) printf("[%04x] ERR PUSH_REDEX A\n", GID());
-    #endif
     tm->rbag.lo_buf[tm->rbag.lo_end++ % RLEN] = redex;
   }
 }
 
 __device__ Pair pop_redex(TM* tm) {
   if (tm->rbag.hi_end > 0) {
-    #ifdef DEBUG
-    if (tm->rbag.hi_end == 0) printf("[%04x] ERR POP_REDEX A\n", GID());
-    #endif
     return tm->rbag.hi_buf[(--tm->rbag.hi_end) % RLEN];
-  } else if (tm->rbag.lo_end - tm->rbag.lo_ini > 0) {
-    #ifdef DEBUG
-    if (tm->rbag.lo_end == tm->rbag.lo_ini) printf("[%04x] ERR POP_REDEX B\n", GID());
-    #endif
+  } else if (tm->rbag.lo_end > 0) {
     return tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
   } else {
-    return 0; // FIXME: is this ok?
+    return 0;
   }
-}
-
-__device__ u32 rbag_len(RBag* rbag) {
-  return rbag->hi_end + rbag->lo_end - rbag->lo_ini;
-}
-
-__device__ u32 rbag_has_highs(RBag* rbag) {
-  return rbag->hi_end > 0;
 }
 
 // TM
@@ -856,6 +922,7 @@ __device__ TM tmem_new() {
   tm.rbag = rbag_new();
   tm.nput = 1;
   tm.vput = 1;
+  tm.glob = true;
   tm.itrs = 0;
   tm.leak = 0;
   return tm;
@@ -1091,21 +1158,34 @@ __device__ u32 l_vars_alloc_1(Net* net, TM* tm, u32* lps) {
 }
 
 __device__ u32 node_alloc_1(Net* net, TM* tm, u32* lps) {
-  switch (ALLOC_MODE) {
-    case SHARED: return l_node_alloc_1(net, tm, lps);
-    case GLOBAL: return g_node_alloc_1(net, tm);
+  if (tm->glob) {
+    return g_node_alloc_1(net, tm);
+  } else {
+    return l_node_alloc_1(net, tm, lps);
   }
 }
 
 __device__ u32 vars_alloc_1(Net* net, TM* tm, u32* lps) {
-  switch (ALLOC_MODE) {
-    case SHARED: return l_vars_alloc_1(net, tm, lps);
-    case GLOBAL: return g_vars_alloc_1(net, tm);
+  if (tm->glob) {
+    return l_vars_alloc_1(net, tm, lps);
+  } else {
+    return g_vars_alloc_1(net, tm);
   }
 }
 
 // Linking
 // -------
+
+// Finds a variable's value.
+__device__ inline Port peek(Net* net, TM* tm, Port var) {
+  while (get_tag(var) == VAR) {
+    Port val = vars_load(net, get_val(var));
+    if (val == NONE) break;
+    if (val == 0) break;
+    var = val;
+  }
+  return var;
+}
 
 // Finds a variable's value.
 __device__ inline Port enter(Net* net, TM* tm, Port var) {
@@ -1216,49 +1296,51 @@ __device__ void link_pair(Net* net, TM* tm, Pair AB) {
 
 // Sends redex to a friend local thread, when it is starving.
 // FIXME: the way this is done will drop redexes if TPB<5
-__device__ inline void share_redexes(TM* tm) {
-  __shared__ Pair pool[TPB];
-  Pair send, recv;
-  u32*  ini = &tm->rbag.lo_ini;
-  u32*  end = &tm->rbag.lo_end;
-  Pair* bag = tm->rbag.lo_buf;
-  for (u32 i = 0; i < TPB_L2; ++i) {
-    u32  off = 1 << i;
-    if (off < 32) {
-      send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
-      recv = __shfl_xor_sync(__activemask(), send, off);
-      if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
-      if ( send && !recv) ++(*ini);
-    } else {
-      u32 a = TID();
-      u32 b = a ^ off;
-      send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
-      pool[a] = send;
-      __syncthreads();
-      recv = pool[b];
-      if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
-      if ( send && !recv) ++(*ini);
-    }
-  }
-}
+//__device__ inline void share_redexes(TM* tm) {
+  //__shared__ Pair pool[TPB];
+  //Pair send, recv;
+  //Pair  cancel = new_pair(NONE,NONE);
+  //u32*  sh_ini = &tm->rbag.sh_ini;
+  //u32*  sh_end = &tm->rbag.sh_end;
+  //Pair* sh_bag = tm->rbag.sh_buf;
+  //u32*  lo_end = &tm->rbag.lo_end;
+  //Pair* lo_bag = tm->rbag.lo_buf;
+  //for (u32 i = 0; i < TPB_L2; ++i) {
+    //u32  off = 1 << i;
+    //if (off < 32) {
+      //send = (*sh_end - *sh_ini) > 0 ? sh_bag[*sh_ini%RLEN] : *lo_end > 0 ? cancel : 0;
+      //recv = __shfl_xor_sync(__activemask(), send, off);
+      //if (!send &&  recv && recv != cancel) lo_bag[((*lo_end)++)%RLEN] = clr_par_flag(recv);
+      //if ( send && !recv && send != cancel) ++(*sh_ini);
+      ////if ((!send && recv) || (send && !recv)) printf("[%04x] RECV=%016llx SEND=%016llx\n", TID(), recv, send);
+    //} else {
+      //u32 a = TID();
+      //u32 b = a ^ off;
+      //send = (*sh_end - *sh_ini) > 0 ? sh_bag[*sh_ini%RLEN] : *lo_end > 0 ? cancel : 0;
+      //pool[a] = send;
+      //__syncthreads();
+      //recv = pool[b];
+      //if (!send &&  recv && recv != cancel) lo_bag[((*lo_end)++)%RLEN] = clr_par_flag(recv);
+      //if ( send && !recv && send != cancel) ++(*sh_ini);
+      ////if ((!send && recv) || (send && !recv)) printf("[%04x] RECV=%016llx SEND=%016llx\n", TID(), recv, send);
+    //}
+  //}
+//}
 
 // Resources
 // ---------
 
 // Gets the necessary resources for an interaction.
 __device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
-  u32 got_rbag = min(RLEN - (tm->rbag.lo_end - tm->rbag.lo_ini), RLEN - tm->rbag.hi_end);
+  u32 got_rbag = min(RLEN - tm->rbag.lo_end, RLEN - tm->rbag.hi_end);
   u32 got_node;
   u32 got_vars;
-  switch (ALLOC_MODE) {
-    case GLOBAL:
-      got_node = g_node_alloc(net, tm, need_node);
-      got_vars = g_vars_alloc(net, tm, need_vars);
-      break;
-    case SHARED:
-      got_node = l_node_alloc(net, tm, need_node);
-      got_vars = l_vars_alloc(net, tm, need_vars);
-      break;
+  if (tm->glob) {
+    got_node = g_node_alloc(net, tm, need_node);
+    got_vars = g_vars_alloc(net, tm, need_vars);
+  } else {
+    got_node = l_node_alloc(net, tm, need_node);
+    got_vars = l_vars_alloc(net, tm, need_vars);
   }
   return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
 }
@@ -1334,7 +1416,7 @@ __device__ bool interact_link(Net* net, TM* tm, Port a, Port b) {
 __device__ bool interact_eras(Net* net, TM* tm, Port a, Port b);
 __device__ bool interact_call(Net* net, TM* tm, Port a, Port b) {
   // Loads Definition.
-  u32 fid  = get_val(a);
+  u32 fid  = get_val(a) & 0xFFFFFFF;
   Def* def = &BOOK.defs_buf[fid];
 
   // Copy Optimization.
@@ -1360,6 +1442,7 @@ __device__ bool interact_call(Net* net, TM* tm, Port a, Port b) {
   // Links.
   for (u32 i = 0; i < def->rbag_len; ++i) {
     link_pair(net, tm, adjust_pair(net, tm, def->rbag_buf[i]));
+    //push_redex(tm, adjust_pair(net, tm, def->rbag_buf[i]));
   }
   link_pair(net, tm, new_pair(adjust_port(net, tm, def->root), b));
 
@@ -1503,10 +1586,7 @@ __device__ bool interact_swit(Net* net, TM* tm, Port a, Port b) {
 }
 
 // Pops a local redex and performs a single interaction.
-__device__ bool interact(Net* net, TM* tm, u32 turn) {
-  // Pops a redex.
-  Pair redex = pop_redex(tm);
-
+__device__ bool interact(Net* net, TM* tm, Pair redex, u32 turn) {
   // Gets redex ports A and B.
   Port a = get_fst(redex);
   Port b = get_snd(redex);
@@ -1516,7 +1596,16 @@ __device__ bool interact(Net* net, TM* tm, u32 turn) {
 
   // If there is no redex, stop.
   if (redex != 0) {
-    //printf("[%04x] REDUCE %s ~ %s | %s\n", GID(), show_port(a).x, show_port(b).x, show_rule(rule).x);
+    //if (GID() == 0 && (get_tag(get_fst(redex)) == REF || get_tag(get_snd(redex)) == REF)) {
+      //Pair kn = get_tag(b) == CON ? node_load(net, get_val(b)) : 0;
+      //printf("[%04x] REDUCE %s ~ %s | par? %d | (%s %s)\n",
+        //GID(),
+        //show_port(get_fst(redex)).x,
+        //show_port(get_snd(redex)).x,
+        //get_par_flag(redex),
+        //show_port(get_fst(kn)).x,
+        //show_port(get_snd(kn)).x);
+    //}
 
     // Used for root redex.
     if (get_tag(a) == REF && b == ROOT) {
@@ -1556,18 +1645,25 @@ __device__ bool interact(Net* net, TM* tm, u32 turn) {
 // --------------
 
 // Moves redexes from shared memory to global bag
-__device__ void save_redexes(Net* net, TM *tm, u32 turn) {
-  // Target bag index
-  u32 bag = transpose(GID(), TPB, BPG);
+__device__ void save_redexes(Net* net, TM *tm, u32 turn, u32* sbuf) {
 
-  // Next redex index
+  //// Finds my rbag pos, among non-empty rbags
+  //sbuf[TID()] = rbag_len(&tm->rbag) > 0;
+  //block_scansum(sbuf);
+
+  //// Computes bag index
+  //u32 pos = rbag_len(&tm->rbag) > 0 ? sbuf[TID()] - 1 : 0;
+  //u32 bag = transpose(BID() * TPB + pos, TPB, BPG);
+  //u32 idx = 0;
+
   u32 idx = 0;
+  u32 bag = transpose(BID() * TPB + TID(), TPB, BPG);
 
   //printf("[%04x] saving: lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end - tm->rbag.lo_ini, tm->rbag.hi_end, rbag_len(&tm->rbag));
 
   // Leaks low-priority redexes
-  while (tm->rbag.lo_end > tm->rbag.lo_ini) {
-    Pair R = tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
+  for (u32 i = 0; i < tm->rbag.lo_end; ++i) {
+    Pair R = tm->rbag.lo_buf[i % RLEN];
     Port x = get_fst(R);
     Port y = get_snd(R);
     Port X = new_port(VAR, g_vars_alloc_1(net, tm));
@@ -1579,17 +1675,19 @@ __device__ void save_redexes(Net* net, TM *tm, u32 turn) {
     net->g_rbag_buf_B[bag * RLEN + (idx++)] = new_pair(X, Y);
   }
   __syncthreads();
+  tm->rbag.lo_end = 0;
 
   // Executes all high-priority redexes
   while (rbag_has_highs(&tm->rbag)) {
-    if (!interact(net, tm, turn)) {
+    Pair redex = pop_redex(tm);
+    if (!interact(net, tm, redex, turn)) {
       printf("ERROR: failed to clear high-priority redexes");
     }
   }
   __syncthreads();
 
   #ifdef DEBUG
-  if (rbag_len(&tm->rbag) > 0) printf("[%04x] ERR SAVE_REDEXES lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end - tm->rbag.lo_ini, tm->rbag.hi_end, rbag_len(&tm->rbag));
+  if (rbag_len(&tm->rbag) > 0) printf("[%04x] ERR SAVE_REDEXES lo=%d hi=%d tot=%d\n", GID(), tm->rbag.lo_end, tm->rbag.hi_end, rbag_len(&tm->rbag));
   #endif
 
   // Updates global redex counter
@@ -1598,21 +1696,70 @@ __device__ void save_redexes(Net* net, TM *tm, u32 turn) {
 
 // Loads redexes from global bag to shared memory
 // FIXME: check if we have enuogh space for all loads
-__device__ void load_redexes(Net* net, TM *tm, u32 turn) {
-  u32 bag = GID();
+__device__ void load_redexes(Net* net, TM *tm, u32 turn, u32* sbuf) {
+
+  bool has = false;
+  u32  bag = BID() * TPB + TID();
   for (u32 i = 0; i < RLEN; ++i) {
-    Pair redex = atomicExch(&net->g_rbag_buf_A[bag * RLEN + i], 0);
-    if (redex != 0) {
-      Port a = enter(net, tm, get_fst(redex));
-      Port b = enter(net, tm, get_snd(redex));
-      #ifdef DEBUG
-      if (is_local(a) || is_local(b)) printf("[%04x] ERR LOAD_REDEXES\n", turn);
-      #endif
-      push_redex(tm, new_pair(a, b));
-    } else {
+    if (net->g_rbag_buf_A[bag * RLEN + i] != 0) {
+      has = true;
       break;
     }
   }
+
+  // TODO: comment
+  sbuf[TID()] = (u32)has;
+  u32 total   = block_scansum(sbuf);
+
+  // TODO: comment
+  u32 pos;
+  if (has) pos = sbuf[TID()] - 1;
+  __syncthreads();
+  if (has) sbuf[pos] = TID();
+  __syncthreads();
+
+  //if (BID() == 2 && TID() == 0 && total < TPB) {
+    //printf("::: REMIX :::\n");
+    //printf("%04x:[%04x] TOTAL=%d\n", turn, GID(), total);
+    //for (u32 i = 0; i < TPB; ++i) {
+      //printf("%02x ", i);
+    //}
+    //printf("\n");
+    //for (u32 i = 0; i < TPB; ++i) {
+      //if (net->g_rbag_buf_A[(BID() * TPB + i) * RLEN] != 0) {
+        //printf("XX ");
+      //} else {
+        //printf("__ ");
+      //}
+    //}
+    //printf("\n");
+    //for (u32 i = 0; i < TPB; ++i) {
+      //printf("%02x ", sbuf[i]);
+    //}
+    //printf("\n");
+    //printf("---------------\n");
+  //}
+  //__syncthreads();
+
+  // TODO: comment
+  if (TID() < total) {
+    u32 bag = BID() * TPB + sbuf[TID()];
+    //u32 bag = BID() * TPB + TID();
+    for (u32 i = 0; i < RLEN; ++i) {
+      Pair redex = atomicExch(&net->g_rbag_buf_A[bag * RLEN + i], 0);
+      if (redex != 0) {
+        Port a = enter(net, tm, get_fst(redex));
+        Port b = enter(net, tm, get_snd(redex));
+        #ifdef DEBUG
+        if (is_local(a) || is_local(b)) printf("[%04x] ERR LOAD_REDEXES\n", turn);
+        #endif
+        push_redex(tm, new_pair(a, b));
+      } else {
+        break;
+      }
+    }
+  }
+  __syncthreads();
 }
 
 // Kernels
@@ -1655,27 +1802,13 @@ __global__ void inbetween(GNet* gnet) {
 
 __global__ void evaluator(GNet* gnet) {
   extern __shared__ char shared_mem[]; // 96 KB
-  __shared__ bool halt; // halting flag
-
-  u32 turn = gnet->turn;
-
-  //if (GID() == 0) printf("EVALUATOR %d\n", turn);
-  //__syncthreads();
-
-  // Local State
-  u32 tick = 0; // current tick
-  u32 fail = 0; // have we failed
-  u32 chkt = 0; // next tick to check fullness
-  u32 chka = 1; // how much to add to chkt
-  u32 shrt = 0;
-  u32 shra = 1;
-  u32 shri = 0;
+  __shared__ Pair sbuf[TPB]; // redex stealing buffer
 
   // Thread Memory
   TM tm = tmem_new();
 
   // Net (Local-Global View)
-  Net net = vnet_new(gnet, shared_mem, turn);
+  Net net = vnet_new(gnet, shared_mem, gnet->turn);
 
   // Clears shared memory
   for (u32 i = 0; i < L_NODE_LEN / TPB; ++i) {
@@ -1685,94 +1818,208 @@ __global__ void evaluator(GNet* gnet) {
   __syncthreads();
 
   // Loads Redexes
-  load_redexes(&net, &tm, turn);
+  load_redexes(&net, &tm, gnet->turn, (u32*)sbuf);
+
+  // Clears sbuf buffer
+  sbuf[TID()] = 0;
+
+  // Counts number of threads with redexes
+  const u64  INIT = clock64(); // initial time
+  const u32  HASR = block_count(rbag_len(&tm.rbag) > 0);
+  const bool GROW = HASR < TPB && ((HASR&(HASR-1))==0) && !block_any(TID() >= HASR && rbag_len(&tm.rbag) > 0); // grow mode
+  u32        tick = 0;
+
+  //if (BID() == 0) {
+    //printf("%04x:[%02x] INIT GROW=%d\n", gnet->turn, BID(), GROW);
+  //}
 
   // Aborts if empty
-  if (block_all(rbag_len(&tm.rbag) == 0)) {
+  if (HASR == 0) {
     return;
   }
 
+  //if (BID() == 0 && rbag_len(&tm.rbag) > 0) {
+    //Pair redex = pop_redex(&tm);
+    //Pair kn = get_tag(get_snd(redex)) == CON ? node_load(&net, get_val(get_snd(redex))) : 0;
+    //printf("[%04x] HAS REDEX %s ~ %s | par? %d | (%s %s)\n",
+      //GID(),
+      //show_port(get_fst(redex)).x,
+      //show_port(get_snd(redex)).x,
+      //get_par_flag(redex),
+      //show_port(get_fst(kn)).x,
+      //show_port(get_snd(kn)).x);
+    //push_redex(&tm, redex);
+  //}
+
   // Constants
-  const u64  INIT = clock64(); // initial time
-  const u64  REPS = 10; // log2 of number of loops
-  const bool GROW = *net.g_rbag_use_A < TPB*BPG; // expanding rbag?
 
-  // Interaction Loop
-  for (tick = 0; tick < 1 << REPS; ++tick) {
-    // Performs some interactions
-    fail = !interact(&net, &tm, turn);
-    while (!fail && rbag_has_highs(&tm.rbag)) {
-      fail = fail || !interact(&net, &tm, turn);
-    }
+  // GROW MODE
+  // ---------
 
-    //if (BID() == 0 && turn == 0x6) {
-      //if (!TID()) printf("TICK %d shr a=%d t=%d i=%d itrs=%d\n", tick, shra, shrt, shri, tm.itrs);
-      //block_print(rbag_len(&tm.rbag));
-      //if (!TID()) printf("\n");
-      //__syncthreads();
-    //}
+  if (GROW) {
+    // Span of sharing tree
+    u32 span = TID() < HASR ? HASR : 0;
 
-    if (TPB > 1 && tick == shrt) {
-      if (block_count(rbag_len(&tm.rbag) == 0) > 0) {
-        share_redexes(&tm);
-        shra = 1;
-      } else {
-        shra *= 2;
+    // Halting flag
+    __shared__ bool halt;
+    if (TID() == 0) halt = false;
+    __syncthreads();
+
+    for (tick = 0; tick < 0xFFFF; ++tick) {
+      //if (BID() == 0) {
+        //if (!TID()) printf("----------------------------------------------------\n");
+        //if (!TID()) printf("TIC %04x | span=%d | rlen=%d | ", tick, span, rbag_len(&tm.rbag));
+        //block_print(rbag_len(&tm.rbag));
+        //if (!TID()) printf("\n");
+        //__syncthreads();
+      //}
+
+      // Pops a redex from the local bag
+      Pair redex = pop_redex(&tm);
+
+      // Performs interactions until sharing is needed
+      while (redex != 0 && !get_par_flag(redex)) {
+        interact(&net, &tm, redex, gnet->turn);
+        while (rbag_has_highs(&tm.rbag)) {
+          if (!interact(&net, &tm, pop_redex(&tm), gnet->turn)) break;
+        }
+        redex = pop_redex(&tm);
       }
-      shrt += shra;
-    }
+      __syncthreads();
 
-    //if (BID() == 0 && turn == 0x6) {
-      //block_print(rbag_len(&tm.rbag));
-      //if (!TID()) printf("\n");
+      //if (redex != 0) {
+        //printf("%04x:[%04x] SHARING %s ~ %s\n", tick, TID(), show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
+      //}
+
+      // If we got a stealable redex, give it away...
+      if (redex != 0 && get_par_flag(redex)) {
+        //if (GID() == 0) printf("[%04x] GIVE %s ~ %s | \n", GID(), redex);
+
+        if (GID() == 0 && (get_tag(get_fst(redex)) == REF || get_tag(get_snd(redex)) == REF)) {
+          Pair kn = get_tag(get_snd(redex)) == CON ? node_load(&net, get_val(get_snd(redex))) : 0;
+          printf("[%04x] GIVE %s ~ %s | par? %d | (%s %s)\n",
+            GID(),
+            show_port(get_fst(redex)).x,
+            show_port(get_snd(redex)).x,
+            get_par_flag(redex),
+            show_port(peek(&net, &tm, get_fst(kn))).x,
+            show_port(peek(&net, &tm, get_snd(kn))).x);
+        }
+
+        sbuf[TID() ^ span] = clr_par_flag(redex);
+        span *= 2;
+      }
+      __syncthreads();
+
+      // If we got no redex, attempt to steal...
+      if (redex == 0 && sbuf[TID()] != 0) {
+        push_redex(&tm, atomicExch(&sbuf[TID()], 0));
+        span = 1 << (32 - __clz(TID()));
+        //if (BID() == 0) printf("[%04x] TAKE %016llx\n", GID(), redex);
+      }
+
       //__syncthreads();
-    //}
+      //if (BID() == 0) {
+        //if (!TID()) printf("TAC %04x | span=%d | rlen=%d | ", tick, span, rbag_len(&tm.rbag));
+        //block_print(rbag_len(&tm.rbag));
+        //if (!TID()) printf("\n");
+        //__syncthreads();
+      //}
 
-    // If shared memory is full, abort
-    if (ALLOC_MODE == SHARED && tick == chkt) {
-      u32 actv = block_count(rbag_len(&tm.rbag) > 0);
-      i32 ndif = block_sum(net.l_node_dif);
-      i32 vdif = block_sum(net.l_vars_dif);
-      u32 flim = L_NODE_LEN / TPB / 2 * actv;
-      if (ndif > flim || vdif > flim) {
+      //__syncthreads();
+      //printf("[%04x] span is %d\n", TID(), span);
+      //__syncthreads();
+
+      // If reached target depth, abort ASAP
+      if (span >= TPB) {
+        //printf("[%04x] halt because span >= TPB\n", TID());
+        halt = true;
+      }
+      __syncthreads();
+
+      // If all threads are empty, abort
+      if (block_all(rbag_len(&tm.rbag) == 0)) {
+        //printf("[%04x] halt because all are empty\n", TID());
+        halt = true;
+      }
+      __syncthreads();
+
+      // If other thread hanted, abort
+      if (halt) {
+        //printf("[%04x] bye\n", TID());
         break;
-      } else {
-        chka *= 2;
       }
-      chkt += chka;
-    }
-
-    // If all threads are full on grow mode, abort
-    if (GROW && block_all(tm.rbag.lo_end > tm.rbag.lo_ini)) {
-      break;
-    }
-
-    // If all threads are empty, abort
-    if (tick % 16 == 0 && block_all(tm.rbag.lo_end == tm.rbag.lo_ini)) {
-      break;
     }
   }
 
-  //u32 ITRS = block_sum(tm.itrs);
-  //u32 LOOP = block_sum((u32)tick);
-  //u32 RLEN = block_sum(rbag_len(&tm.rbag));
-  //u32 FAIL = block_sum((u32)fail);
-  //i32 NDIF = block_sum(net.l_node_dif);
-  //i32 VDIF = block_sum(net.l_vars_dif);
-  //f64 TIME = (f64)(clock64() - INIT) / (f64)S;
-  //f64 MIPS = (f64)ITRS / TIME / (f64)1000000.0;
-  //if (TID() == 0) {
-    //printf("%04x:[%02x]: GROW=%d ITRS=%d LOOP=%d RLEN=%d NDIF=%d VDIF=%d FAIL=%d TIME=%f MIPS=%.0f\n", turn, BID(), GROW, ITRS, LOOP, RLEN, NDIF, VDIF, FAIL, TIME, MIPS);
+  // WORK MODE
+  // ---------
+  
+  if (!GROW) {
+    tm.glob  = false;
+    u32 chkt = 0;
+    u32 chka = 1;
+
+    for (tick = 0; tick < 1 << 12; ++tick) {
+      // Performs some interactions
+      if (interact(&net, &tm, pop_redex(&tm), gnet->turn)) {
+        while (rbag_has_highs(&tm.rbag)) {
+          if (!interact(&net, &tm, pop_redex(&tm), gnet->turn)) break;
+        }
+      }
+      __syncthreads();
+
+      // If shared memory is full, abort
+      if (tick == chkt) {
+        u32 actv = block_count(rbag_len(&tm.rbag) > 0);
+        i32 ndif = block_sum(net.l_node_dif);
+        i32 vdif = block_sum(net.l_vars_dif);
+        u32 flim = L_NODE_LEN / TPB / 2 * actv;
+        if (ndif > flim || vdif > flim) {
+          break;
+        } else {
+          chka *= 2;
+        }
+        chkt += chka;
+      }
+
+      // If all threads are empty, abort
+      if (block_all(rbag_len(&tm.rbag) == 0)) {
+        break;
+      }
+    }
+
+  }
+
+  //if (BID() == 0) {
+    u32 ITRS = block_sum(tm.itrs);
+    u32 LOOP = block_sum((u32)tick);
+    u32 RLEN = block_sum(rbag_len(&tm.rbag));
+    u32 FAIL = 0; // block_sum((u32)fail);
+    i32 NDIF = block_sum(net.l_node_dif);
+    i32 VDIF = block_sum(net.l_vars_dif);
+    f64 TIME = (f64)(clock64() - INIT) / (f64)S;
+    f64 MIPS = (f64)ITRS / TIME / (f64)1000000.0;
+    if (TID() == 0) {
+      printf("%04x:[%02x]: GROW=%d ITRS=%d LOOP=%d RLEN=%d NDIF=%d VDIF=%d FAIL=%d TIME=%f MIPS=%.0f | %d\n", gnet->turn, BID(), GROW, ITRS, LOOP, RLEN, NDIF, VDIF, FAIL, TIME, MIPS, 42);
+    }
+    __syncthreads();
   //}
 
-  __syncthreads();
+  // Display debug info
+  //for (u32 i = 0; i < TPB; ++i) {
+    //if (TID() == i) print_rbag(&tm.rbag);
+    //__syncthreads();
+  //}
+  //__syncthreads();
 
   // Moves rbag to global
-  save_redexes(&net, &tm, turn);
+  save_redexes(&net, &tm, gnet->turn, (u32*)sbuf);
 
   // Stores rewrites
   atomicAdd(&gnet->itrs, tm.itrs);
   atomicAdd(&gnet->leak, tm.leak);
+
 }
 
 // GNet Host Functions
@@ -1816,18 +2063,20 @@ void gnet_normalize(GNet* gnet) {
   u32 turn;
   u64 itrs = 0;
   u32 rlen = 0;
-  for (turn = 0; turn <= 0xFFFF; ++turn) {
+  for (turn = 0; turn < 0xFFFFFF; ++turn) {
+    printf("==================================================== ");
+    printf("TURN: %04x | RLEN: %04x | ITRS: %012llu\n", turn, rlen, itrs);
     //cudaDeviceSynchronize();
-    //printf("-------------------------------------------- TURN: %04x | RLEN: %04x | ITRS: %012llu\n", turn, rlen, itrs);
     
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(gnet);
     inbetween<<<1, 1>>>(gnet);
-
     //cudaDeviceSynchronize();
+
     //count_memory<<<BPG, TPB>>>(gnet);
-
     //cudaDeviceSynchronize();
-    //print_heatmap<<<1,1>>>(gnet, turn+1);
+
+    print_heatmap<<<1,1>>>(gnet, turn+1);
+    cudaDeviceSynchronize();
 
     itrs = gnet_get_itrs(gnet);
     rlen = gnet_get_rlen(gnet, turn);
@@ -1981,9 +2230,7 @@ bool gnet_run_io(GNet* gnet, Port port) {
     switch (ctr.tag) {
       case PRINT: {
         if (ctr.args_len != 2) break;
-
         Str str = gnet_read_str(gnet, ctr.args_buf[0]);
-
         printf("PRINT: %s | %s\n", show_port(ctr.args_buf[0]).x, str.text_buf);
         Port res = new_port(ERA, 0); // IO result
         Port app = gnet_make_node(gnet, CON, res, ROOT);
@@ -2090,14 +2337,13 @@ __device__ Show show_rule(Rule rule) {
 __device__ void print_rbag(RBag* rbag) {
   printf("RBAG | FST-TREE     | SND-TREE    \n");
   printf("---- | ------------ | ------------\n");
-  for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
-    Pair redex = rbag->lo_buf[i%RLEN];
-    printf("%04X | %s | %s\n", i, show_port((Port)get_fst(redex)).x, show_port((Port)get_snd(redex)).x);
-  }
-
-  for (u32 i = 0; i > rbag->hi_end; ++i) {
+  for (u32 i = 0; i < rbag->hi_end; ++i) {
     Pair redex = rbag->hi_buf[i];
-    printf("%04X | %s | %s\n", i, show_port((Port)get_fst(redex)).x, show_port((Port)get_snd(redex)).x);
+    printf("%04X | %s | %s | hi\n", i, show_port((Port)get_fst(redex)).x, show_port((Port)get_snd(redex)).x);
+  }
+  for (u32 i = 0; i < rbag->lo_end; ++i) {
+    Pair redex = rbag->lo_buf[i%RLEN];
+    printf("%04X | %s | %s | lo\n", i, show_port((Port)get_fst(redex)).x, show_port((Port)get_snd(redex)).x);
   }
   printf("==== | ============ | ============\n");
 }
@@ -2220,7 +2466,7 @@ __device__ void pretty_print_port(Net* net, Port port) {
 }
 
 __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
-  for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
+  for (u32 i = 0; i < rbag->lo_end; ++i) {
     Pair redex = rbag->lo_buf[i%RLEN];
     if (redex != 0) {
       pretty_print_port(net, get_fst(redex));
@@ -2229,7 +2475,7 @@ __device__ void pretty_print_rbag(Net* net, RBag* rbag) {
       printf("\n");
     }
   }
-  for (u32 i = 0; i > rbag->hi_end; ++i) {
+  for (u32 i = 0; i < rbag->hi_end; ++i) {
     Pair redex = rbag->hi_buf[i];
     if (redex != 0) {
       pretty_print_port(net, get_fst(redex));
@@ -2303,17 +2549,11 @@ __global__ void print_result(GNet* gnet) {
 // Demos
 // -----
 
-  // sum 32
-  //static const u8 DEMO_BOOK[] = {3, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 16, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 17, 0, 0, 0, 2, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 44, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0};
-
   // stress 2^18 x 131072
-  //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
-
-  // stress 2^14 x 131072
-  //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 7, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+  //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 9, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 95, 95, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 128, 44, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 111, 112, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0};
 
   // stress 2^10 x 131072
-  //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 128, 0, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 112, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
+  //static const u8 DEMO_BOOK[] = {6, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 5, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 102, 117, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 25, 0, 0, 0, 2, 0, 0, 0, 102, 117, 110, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 4, 0, 0, 0, 11, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 102, 117, 110, 95, 95, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 128, 44, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 4, 0, 0, 0, 108, 111, 111, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 41, 0, 0, 0, 5, 0, 0, 0, 108, 111, 111, 112, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0};
 
   // sort/bitonic_lam 16
   //static const u8 DEMO_BOOK[] = {28, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 145, 0, 0, 0, 4, 0, 0, 0, 121, 0, 0, 0, 12, 0, 0, 0, 73, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 11, 8, 0, 0, 36, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 76, 101, 97, 102, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 100, 111, 119, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 100, 111, 119, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 49, 0, 0, 0, 52, 0, 0, 0, 49, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 5, 0, 0, 0, 100, 111, 119, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 6, 0, 0, 0, 102, 108, 111, 119, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 20, 0, 0, 0, 57, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 102, 108, 111, 119, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 9, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 185, 0, 0, 0, 52, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 68, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 102, 108, 111, 119, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 89, 0, 0, 0, 10, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 13, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 60, 0, 0, 0, 73, 0, 0, 0, 76, 0, 0, 0, 73, 0, 0, 0, 92, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 68, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 100, 0, 0, 0, 24, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 106, 111, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 113, 0, 0, 0, 0, 0, 0, 0, 13, 0, 0, 0, 106, 111, 105, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 36, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 14, 0, 0, 0, 106, 111, 105, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 105, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 15, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 137, 0, 0, 0, 20, 0, 0, 0, 129, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 115, 111, 114, 116, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 11, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 44, 0, 0, 0, 121, 0, 0, 0, 60, 0, 0, 0, 121, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 36, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 52, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 68, 0, 0, 0, 11, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 139, 0, 0, 0, 48, 0, 0, 0, 17, 0, 0, 0, 115, 111, 114, 116, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 18, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 153, 0, 0, 0, 8, 0, 0, 0, 19, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 145, 0, 0, 0, 20, 0, 0, 0, 145, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 20, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 177, 0, 0, 0, 21, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 23, 0, 0, 0, 119, 97, 114, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 217, 0, 0, 0, 20, 0, 0, 0, 201, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 119, 97, 114, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 97, 0, 0, 0, 52, 0, 0, 0, 185, 0, 0, 0, 68, 0, 0, 0, 185, 0, 0, 0, 92, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 36, 0, 0, 0, 45, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 56, 0, 0, 0, 60, 0, 0, 0, 64, 0, 0, 0, 48, 0, 0, 0, 16, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 32, 0, 0, 0, 56, 0, 0, 0, 24, 0, 0, 0, 100, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 40, 0, 0, 0, 64, 0, 0, 0, 25, 0, 0, 0, 119, 97, 114, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 193, 0, 0, 0, 76, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 26, 0, 0, 0, 119, 97, 114, 112, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 76, 0, 0, 0, 9, 0, 0, 0, 100, 0, 0, 0, 9, 0, 0, 0, 108, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 68, 0, 0, 0, 38, 0, 0, 0, 32, 0, 0, 0, 3, 6, 0, 128, 46, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, 131, 7, 0, 128, 62, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 84, 0, 0, 0, 48, 0, 0, 0, 92, 0, 0, 0, 56, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 48, 0, 0, 0, 8, 0, 0, 0, 56, 0, 0, 0, 27, 0, 0, 0, 119, 97, 114, 112, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 209, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 68, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0};
@@ -2349,10 +2589,25 @@ __global__ void print_result(GNet* gnet) {
   //static const u8 DEMO_BOOK[] = {31, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 153, 0, 0, 0, 12, 0, 0, 0, 57, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 12, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 16, 0, 0, 0, 1, 0, 0, 0, 66, 117, 115, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 99, 97, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 69, 109, 112, 116, 121, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 70, 114, 101, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 78, 111, 100, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 2, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 6, 0, 0, 0, 83, 105, 110, 103, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 65, 0, 0, 0, 73, 0, 0, 0, 8, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 9, 0, 0, 0, 103, 101, 110, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 12, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 52, 0, 0, 0, 57, 0, 0, 0, 68, 0, 0, 0, 57, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 32, 0, 0, 0, 51, 1, 0, 0, 37, 0, 0, 0, 16, 0, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 60, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 10, 0, 0, 0, 109, 101, 114, 103, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 129, 0, 0, 0, 20, 0, 0, 0, 113, 0, 0, 0, 28, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 10, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 36, 0, 0, 0, 81, 0, 0, 0, 52, 0, 0, 0, 81, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 44, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 60, 0, 0, 0, 0, 0, 0, 0, 40, 0, 0, 0, 24, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 48, 0, 0, 0, 12, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 13, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 97, 0, 0, 0, 36, 0, 0, 0, 44, 0, 0, 0, 60, 0, 0, 0, 2, 0, 0, 0, 52, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 89, 0, 0, 0, 68, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 14, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 2, 0, 0, 0, 11, 0, 0, 0, 15, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 16, 0, 0, 0, 109, 101, 114, 103, 101, 36, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 28, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 114, 97, 100, 105, 120, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 76, 0, 0, 0, 20, 0, 0, 0, 52, 0, 0, 0, 28, 0, 0, 0, 145, 0, 0, 0, 2, 0, 0, 0, 36, 0, 0, 0, 2, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 68, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 84, 0, 0, 0, 16, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 18, 0, 0, 0, 114, 97, 100, 105, 120, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 76, 0, 0, 0, 177, 0, 0, 0, 108, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 21, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 30, 0, 0, 0, 131, 6, 0, 128, 38, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 53, 0, 0, 0, 68, 0, 0, 0, 62, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 48, 0, 0, 0, 0, 0, 0, 0, 84, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 32, 0, 0, 0, 100, 0, 0, 0, 56, 0, 0, 0, 48, 0, 0, 0, 24, 0, 0, 0, 116, 0, 0, 0, 40, 0, 0, 0, 124, 0, 0, 0, 33, 0, 0, 0, 56, 0, 0, 0, 19, 0, 0, 0, 115, 111, 114, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 12, 0, 0, 0, 225, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 20, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 11, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 169, 0, 0, 0, 8, 0, 0, 0, 21, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 20, 0, 0, 0, 161, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 22, 0, 0, 0, 115, 119, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 185, 0, 0, 0, 193, 0, 0, 0, 23, 0, 0, 0, 115, 119, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 115, 119, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 25, 0, 0, 0, 116, 111, 95, 97, 114, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 2, 0, 0, 0, 25, 0, 0, 0, 217, 0, 0, 0, 36, 0, 0, 0, 209, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 14, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 68, 0, 0, 0, 201, 0, 0, 0, 84, 0, 0, 0, 201, 0, 0, 0, 100, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 76, 0, 0, 0, 48, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 8, 0, 0, 0, 108, 0, 0, 0, 16, 0, 0, 0, 48, 0, 0, 0, 27, 0, 0, 0, 116, 111, 95, 97, 114, 114, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 49, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 116, 111, 95, 109, 97, 112, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 33, 0, 0, 0, 20, 0, 0, 0, 241, 0, 0, 0, 28, 0, 0, 0, 233, 0, 0, 0, 0, 0, 0, 0, 29, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 225, 0, 0, 0, 36, 0, 0, 0, 225, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 32, 0, 0, 0, 30, 0, 0, 0, 116, 111, 95, 109, 97, 112, 36, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 137, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 11, 15, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 28, 0, 0, 0, 139, 0, 0, 0, 36, 0, 0, 0, 9, 0, 0, 0, 8, 0, 0, 0};
 
   // demo io
-  static const u8 DEMO_BOOK[] = {29, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 129, 0, 0, 0, 12, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 67, 79, 78, 83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 139, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 115, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 68, 79, 78, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 4, 0, 0, 0, 68, 111, 110, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 25, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 5, 0, 0, 0, 73, 78, 80, 85, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 1, 0, 0, 6, 0, 0, 0, 73, 110, 112, 117, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 76, 79, 65, 68, 95, 70, 73, 76, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 2, 0, 0, 8, 0, 0, 0, 76, 111, 97, 100, 70, 105, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 57, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 9, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 4, 0, 0, 0, 217, 0, 0, 0, 12, 0, 0, 0, 217, 0, 0, 0, 28, 0, 0, 0, 217, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 139, 35, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 40, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 139, 42, 0, 0, 52, 0, 0, 0, 225, 0, 0, 0, 24, 0, 0, 0, 11, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 73, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 9, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 4, 0, 0, 0, 217, 0, 0, 0, 12, 0, 0, 0, 217, 0, 0, 0, 28, 0, 0, 0, 217, 0, 0, 0, 44, 0, 0, 0, 217, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 51, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 57, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 139, 55, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 139, 54, 0, 0, 68, 0, 0, 0, 225, 0, 0, 0, 32, 0, 0, 0, 13, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 97, 0, 0, 0, 20, 0, 0, 0, 89, 0, 0, 0, 0, 0, 0, 0, 14, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 6, 0, 0, 0, 11, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 4, 0, 0, 0, 217, 0, 0, 0, 12, 0, 0, 0, 217, 0, 0, 0, 28, 0, 0, 0, 217, 0, 0, 0, 44, 0, 0, 0, 217, 0, 0, 0, 60, 0, 0, 0, 217, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 139, 59, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 139, 55, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 11, 57, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 11, 54, 0, 0, 68, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 11, 50, 0, 0, 84, 0, 0, 0, 225, 0, 0, 0, 40, 0, 0, 0, 15, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 54, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 113, 0, 0, 0, 20, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 6, 0, 0, 0, 11, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 4, 0, 0, 0, 217, 0, 0, 0, 12, 0, 0, 0, 217, 0, 0, 0, 28, 0, 0, 0, 217, 0, 0, 0, 44, 0, 0, 0, 217, 0, 0, 0, 60, 0, 0, 0, 217, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 52, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 139, 50, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 11, 54, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 11, 54, 0, 0, 68, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 139, 55, 0, 0, 84, 0, 0, 0, 225, 0, 0, 0, 40, 0, 0, 0, 17, 0, 0, 0, 78, 73, 76, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 18, 0, 0, 0, 78, 105, 108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 137, 0, 0, 0, 0, 0, 0, 0, 19, 0, 0, 0, 80, 82, 73, 78, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 139, 0, 0, 0, 20, 0, 0, 0, 80, 114, 105, 110, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 153, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 21, 0, 0, 0, 82, 69, 78, 68, 69, 82, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 139, 2, 0, 0, 22, 0, 0, 0, 82, 101, 110, 100, 101, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 169, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 23, 0, 0, 0, 83, 65, 86, 69, 95, 70, 73, 76, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 139, 1, 0, 0, 24, 0, 0, 0, 83, 97, 118, 101, 70, 105, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 185, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 25, 0, 0, 0, 83, 116, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 209, 0, 0, 0, 20, 0, 0, 0, 145, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 83, 116, 114, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 20, 0, 0, 0, 17, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 27, 0, 0, 0, 83, 116, 114, 105, 110, 103, 46, 99, 111, 110, 115, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 83, 116, 114, 105, 110, 103, 46, 110, 105, 108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  //static const u8 DEMO_BOOK[] = {29, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 161, 0, 0, 0, 4, 0, 0, 0, 129, 0, 0, 0, 12, 0, 0, 0, 121, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 67, 79, 78, 83, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 139, 0, 0, 0, 2, 0, 0, 0, 67, 111, 110, 115, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 3, 0, 0, 0, 68, 79, 78, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 4, 0, 0, 0, 68, 111, 110, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 25, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 5, 0, 0, 0, 73, 78, 80, 85, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 1, 0, 0, 6, 0, 0, 0, 73, 110, 112, 117, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 41, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 76, 79, 65, 68, 95, 70, 73, 76, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 2, 0, 0, 8, 0, 0, 0, 76, 111, 97, 100, 70, 105, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 57, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 9, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 33, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 10, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 7, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 4, 0, 0, 0, 217, 0, 0, 0, 12, 0, 0, 0, 217, 0, 0, 0, 28, 0, 0, 0, 217, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 139, 35, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 40, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 139, 42, 0, 0, 52, 0, 0, 0, 225, 0, 0, 0, 24, 0, 0, 0, 11, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 81, 0, 0, 0, 20, 0, 0, 0, 73, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 51, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 9, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 4, 0, 0, 0, 217, 0, 0, 0, 12, 0, 0, 0, 217, 0, 0, 0, 28, 0, 0, 0, 217, 0, 0, 0, 44, 0, 0, 0, 217, 0, 0, 0, 60, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 51, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 11, 57, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 139, 55, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 139, 54, 0, 0, 68, 0, 0, 0, 225, 0, 0, 0, 32, 0, 0, 0, 13, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 52, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 97, 0, 0, 0, 20, 0, 0, 0, 89, 0, 0, 0, 0, 0, 0, 0, 14, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 53, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 6, 0, 0, 0, 11, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 4, 0, 0, 0, 217, 0, 0, 0, 12, 0, 0, 0, 217, 0, 0, 0, 28, 0, 0, 0, 217, 0, 0, 0, 44, 0, 0, 0, 217, 0, 0, 0, 60, 0, 0, 0, 217, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 139, 59, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 139, 55, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 11, 57, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 11, 54, 0, 0, 68, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 11, 50, 0, 0, 84, 0, 0, 0, 225, 0, 0, 0, 40, 0, 0, 0, 15, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 54, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 161, 0, 0, 0, 12, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 113, 0, 0, 0, 20, 0, 0, 0, 105, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 77, 97, 105, 110, 95, 95, 67, 55, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 6, 0, 0, 0, 11, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 0, 201, 0, 0, 0, 4, 0, 0, 0, 217, 0, 0, 0, 12, 0, 0, 0, 217, 0, 0, 0, 28, 0, 0, 0, 217, 0, 0, 0, 44, 0, 0, 0, 217, 0, 0, 0, 60, 0, 0, 0, 217, 0, 0, 0, 76, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 52, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 139, 50, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 11, 54, 0, 0, 52, 0, 0, 0, 32, 0, 0, 0, 24, 0, 0, 0, 11, 54, 0, 0, 68, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 139, 55, 0, 0, 84, 0, 0, 0, 225, 0, 0, 0, 40, 0, 0, 0, 17, 0, 0, 0, 78, 73, 76, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 18, 0, 0, 0, 78, 105, 108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 137, 0, 0, 0, 0, 0, 0, 0, 19, 0, 0, 0, 80, 82, 73, 78, 84, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 139, 0, 0, 0, 20, 0, 0, 0, 80, 114, 105, 110, 116, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 153, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 21, 0, 0, 0, 82, 69, 78, 68, 69, 82, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 139, 2, 0, 0, 22, 0, 0, 0, 82, 101, 110, 100, 101, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 16, 0, 0, 0, 169, 0, 0, 0, 36, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 23, 0, 0, 0, 83, 65, 86, 69, 95, 70, 73, 76, 69, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 139, 1, 0, 0, 24, 0, 0, 0, 83, 97, 118, 101, 70, 105, 108, 101, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 185, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 52, 0, 0, 0, 8, 0, 0, 0, 60, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 25, 0, 0, 0, 83, 116, 114, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 209, 0, 0, 0, 20, 0, 0, 0, 145, 0, 0, 0, 0, 0, 0, 0, 26, 0, 0, 0, 83, 116, 114, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 5, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 201, 0, 0, 0, 20, 0, 0, 0, 17, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 27, 0, 0, 0, 83, 116, 114, 105, 110, 103, 46, 99, 111, 110, 115, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 44, 0, 0, 0, 0, 0, 0, 0, 36, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 2, 0, 0, 0, 16, 0, 0, 0, 28, 0, 0, 0, 83, 116, 114, 105, 110, 103, 46, 110, 105, 108, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
   // bug3
   //static const u8 DEMO_BOOK[] = {4, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 17, 0, 0, 0, 4, 0, 0, 0, 11, 14, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 115, 117, 99, 99, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 13, 0, 0, 0, 36, 0, 0, 0, 20, 0, 0, 0, 28, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 2, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 25, 0, 0, 0, 3, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 4, 0, 0, 0, 17, 0, 0, 0, 20, 0, 0, 0, 17, 0, 0, 0, 44, 0, 0, 0, 13, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 30, 0, 0, 0, 3, 2, 0, 128, 38, 0, 0, 0, 24, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 24, 0, 0, 0};
+
+  // oxi
+  //static const u8 DEMO_BOOK[] = {5, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 4, 0, 0, 0, 20, 0, 0, 0, 9, 0, 0, 0, 11, 13, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 13, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 68, 0, 0, 0, 9, 0, 0, 0, 84, 0, 0, 0, 9, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 3, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 4, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 36, 0, 0, 0, 25, 0, 0, 0, 68, 0, 0, 0, 25, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0};
+  //static const u8 DEMO_BOOK[] = {5, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 11, 13, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 13, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 68, 0, 0, 0, 9, 0, 0, 0, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 3, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 4, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 25, 0, 0, 0, 68, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0};
+
+  //static const u8 DEMO_BOOK[] = {5, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 11, 13, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 13, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 68, 0, 0, 0, 9, 0, 0, 128, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 3, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 4, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 25, 0, 0, 128, 68, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0};
+
+  // tree_sum 24
+  static const u8 DEMO_BOOK[] = {5, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 11, 12, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 12, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 68, 0, 0, 0, 9, 0, 0, 128, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 3, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 4, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 25, 0, 0, 128, 68, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0};
+
+  // tree_sum 26
+  //static const u8 DEMO_BOOK[] = {5, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 11, 13, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 13, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 68, 0, 0, 0, 9, 0, 0, 128, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 3, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 4, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 25, 0, 0, 128, 68, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0};
+
+  // tree_sum 28
+  //static const u8 DEMO_BOOK[] = {5, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 25, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 20, 0, 0, 0, 11, 14, 0, 0, 12, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 11, 14, 0, 0, 28, 0, 0, 0, 11, 0, 0, 0, 8, 0, 0, 0, 1, 0, 0, 0, 103, 101, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 103, 101, 110, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 12, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 68, 0, 0, 0, 9, 0, 0, 128, 84, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 60, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 24, 0, 0, 0, 32, 0, 0, 0, 40, 0, 0, 0, 0, 0, 0, 0, 76, 0, 0, 0, 16, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 92, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0, 3, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 44, 0, 0, 0, 20, 0, 0, 0, 36, 0, 0, 0, 28, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 4, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 10, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 25, 0, 0, 0, 36, 0, 0, 0, 25, 0, 0, 128, 68, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 32, 0, 0, 0, 16, 0, 0, 0, 24, 0, 0, 0, 0, 0, 0, 0, 44, 0, 0, 0, 16, 0, 0, 0, 54, 0, 0, 0, 3, 2, 0, 128, 62, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 40, 0, 0, 0};
 
 // Main
 // ----

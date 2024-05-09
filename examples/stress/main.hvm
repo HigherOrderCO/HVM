@@ -5,7 +5,7 @@
 
 @fun__C1 = ({a b} d)
   & @fun ~ (a $(:[+] $(c d)))
-  & @fun ~ (b c)
+  &!@fun ~ (b c)
 
 @loop = (?((0 @loop__C0) a) a)
 
@@ -13,4 +13,4 @@
   & @loop ~ a
 
 @main = a
-  & @fun ~ (14 a)
+  & @fun ~ (10 a)

@@ -22,12 +22,12 @@ pub enum Tree {
   Swi { fst: Box<Tree>, snd: Box<Tree> },
 }
 
-pub type Pair = (Tree, Tree);
+pub type Redex = (bool, Tree, Tree);
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Net {
   pub root: Tree,
-  pub rbag: Vec<Pair>,
+  pub rbag: Vec<Redex>,
 }
 
 pub struct Book {
@@ -201,10 +201,11 @@ impl<'i> CoreParser<'i> {
     self.skip_trivia();
     while self.peek_one() == Some('&') {
       self.consume("&")?;
+      let par = if let Some('!') = self.peek_one() { self.consume("!")?; true } else { false };
       let fst = self.parse_tree()?;
       self.consume("~")?;
       let snd = self.parse_tree()?;
-      rbag.push((fst, snd));
+      rbag.push((par,fst,snd));
       self.skip_trivia();
     }
     Ok(Net { root, rbag })
@@ -310,8 +311,9 @@ impl Tree {
 impl Net {
   pub fn show(&self) -> String {
     let mut s = self.root.show();
-    for (fst, snd) in &self.rbag {
+    for (par, fst, snd) in &self.rbag {
       s.push_str(" & ");
+      s.push_str(if *par { "!" } else { "" });
       s.push_str(&fst.show());
       s.push_str(" ~ ");
       s.push_str(&snd.show());
@@ -469,12 +471,14 @@ impl Net {
   pub fn build(&self, def: &mut hvm::Def, fids: &BTreeMap<String, hvm::Val>, vars: &mut BTreeMap<String, hvm::Val>) {
     let index = def.node.len();
     def.root = self.root.build(def, fids, vars);
-    for (fst, snd) in &self.rbag {
+    for (par, fst, snd) in &self.rbag {
       let index = def.rbag.len();
       def.rbag.push(hvm::Pair(0));
       let p1 = fst.build(def, fids, vars);
       let p2 = snd.build(def, fids, vars);
-      def.rbag[index] = hvm::Pair::new(p1, p2);
+      let rx = hvm::Pair::new(p1, p2);
+      let rx = if *par { rx.set_par_flag() } else { rx };
+      def.rbag[index] = rx;
     }
   }
 }

@@ -188,6 +188,25 @@ impl Pair {
     let p2 = self.get_snd().adjust_port(tm);
     Pair::new(p1, p2)
   }
+
+  pub fn set_par_flag(&self) -> Self {
+    let p1 : Port = self.get_fst();
+    let p2 : Port = self.get_snd();
+    if p1.get_tag() == REF {
+      return Pair::new(Port::new(p1.get_tag(), p1.get_val() | 0x10000000), p2);
+    } else {
+      return Pair::new(p1, p2);
+    }
+  }
+
+  pub fn get_par_flag(&self) -> bool {
+    let p1 : Port = self.get_fst();
+    if p1.get_tag() == REF {
+      return p1.get_val() >> 28 == 1;
+    } else {
+      return false;
+    }
+  }
 }
 
 impl Numb {
@@ -593,7 +612,7 @@ impl TMem {
 
   // The Call Interaction.
   pub fn interact_call(&mut self, net: &GNet, a: Port, b: Port, book: &Book) -> bool {
-    let fid = a.get_val() as usize;
+    let fid = (a.get_val() as usize) & 0xFFFFFFF;
     let def = &book.defs[fid];
 
     // Copy Optimization.
