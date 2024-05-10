@@ -21,7 +21,7 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
     code.push_str(&format!("__device__ "));
   }
   code.push_str(&format!("bool interact_call(Net *net, TM *tm, Port a, Port b) {{\n"));
-  code.push_str(&format!("  u32 fid = get_val(a);\n"));
+  code.push_str(&format!("  u32 fid = get_val(a) & 0xFFFFFFF;\n"));
   code.push_str(&format!("  switch (fid) {{\n"));
   for (fid, def) in book.defs.iter().enumerate() {
     code.push_str(&format!("    case {}: return interact_call_{}(net, tm, a, b);\n", fid, &def.name));

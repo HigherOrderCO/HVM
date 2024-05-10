@@ -1,3 +1,6 @@
+@main = a
+  & @fun ~ (18 a)
+
 @fun = (?((@fun__C0 @fun__C1) a) a)
 
 @fun__C0 = a
@@ -11,6 +14,3 @@
 
 @loop__C0 = a
   & @loop ~ a
-
-@main = a
-  & @fun ~ (10 a)
