@@ -28,7 +28,7 @@ typedef _Atomic(u64) a64;
 // -------------
 
 // Threads per CPU
-#define TPC_L2  0
+#define TPC_L2  4
 #define TPC    (1 << TPC_L2)
 
 // Program
@@ -99,22 +99,8 @@ const Port NONE = 0xFFFFFFFF;
 // Cache Padding
 const u32 CACHE_PAD = 64;
 
-// Thread Redex Bag Length
-#define RLEN (1 << 22) // max 4m redexes
-
-// Thread Redex Bag
-// It uses the same space to store two stacks:
-// - HI: a high-priotity stack, for shrinking reductions
-// - LO: a low-priority stack, for growing reductions
-//typedef struct RBag {
-  //u32  hi_end;
-  //Pair hi_buf[RLEN];
-  //u32  lo_ini;
-  //u32  lo_end;
-  //Pair lo_buf[RLEN];
-//} RBag;
-
 // Global Net
+#define RLEN (1 << 24) // max 16m redexes
 #define G_NODE_LEN (1 << 29) // max 536m nodes
 #define G_VARS_LEN (1 << 29) // max 536m vars
 #define G_RBAG_LEN (TPC * RLEN)
@@ -123,8 +109,8 @@ typedef struct Net {
   APair node_buf[G_NODE_LEN]; // global node buffer
   APort vars_buf[G_VARS_LEN]; // global vars buffer
   APair rbag_buf[G_RBAG_LEN]; // global rbag buffer
-  //a64 rlen; // global redex count
   a64 itrs; // interaction count
+  a32 idle; // idle thread counter
 } Net;
 
 // Top-Level Definition
@@ -151,7 +137,8 @@ typedef struct TM {
   u32  itrs; // interaction count
   u32  nput; // next node allocation attempt index
   u32  vput; // next vars allocation attempt index
-  u32  rput; // ...
+  u32  rput; // next rbag push index
+  u32  sidx; // steal index
   u32  nloc[32]; // node allocation indices
   u32  vloc[32]; // vars allocation indices
 } TM;
@@ -477,17 +464,13 @@ static inline Numb operate(Numb a, Numb b) {
 // ----
 
 static inline void push_redex(Net* net, TM* tm, Pair redex) {
-  //printf("[%04x] pushed to %d | %s ~ %s\n", tm->tid, tm->tid*(G_RBAG_LEN/TPC) + tm->rput, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
   atomic_store_explicit(&net->rbag_buf[tm->tid*(G_RBAG_LEN/TPC) + (tm->rput++)], redex, memory_order_relaxed);
 }
 
 static inline Pair pop_redex(Net* net, TM* tm) {
   if (tm->rput > 0) {
-    Pair redex = atomic_load_explicit(&net->rbag_buf[tm->tid*(G_RBAG_LEN/TPC) + (--tm->rput)], memory_order_relaxed);
-    //printf("[%04x] popped at %d | %s ~ %s\n", tm->tid, tm->tid*(G_RBAG_LEN/TPC) + tm->rput, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
-    return redex;
+    return atomic_exchange_explicit(&net->rbag_buf[tm->tid*(G_RBAG_LEN/TPC) + (--tm->rput)], 0, memory_order_relaxed);
   } else {
-    //printf("[%04x] popped none\n", tm->tid);
     return 0;
   }
 }
@@ -505,7 +488,7 @@ void tmem_init(TM* tm, u32 tid) {
   tm->nput = 1;
   tm->vput = 1;
   tm->rput = 0;
-  //rbag_init(&tm->rbag);
+  tm->sidx = 0;
 }
 
 // Net
@@ -570,8 +553,8 @@ static inline void net_init(Net* net) {
   // Initializes the root var.
   vars_create(net, get_val(ROOT), NONE);
   // Initializes variables
-  //atomic_store(&net->rlen, 0);
   atomic_store(&net->itrs, 0);
+  atomic_store(&net->idle, 0);
 }
 
 // Allocator
@@ -984,7 +967,7 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
       swap(&a, &b);
     }
 
-    //printf("REDUCE %s ~ %s | %s\n", show_port(a).x, show_port(b).x, show_rule(rule).x);
+    //printf("[%04x] REDUCE %s ~ %s | %s\n", tm->tid, show_port(a).x, show_port(b).x, show_rule(rule).x);
 
     // Dispatches interaction rule.
     bool success;
@@ -1032,37 +1015,47 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
 //}
 
 void evaluator(Net* net, TM* tm, Book* book) {
-  //printf("[%04x] evaluator\n", tm->tid);
-  //sync_threads();
+  // Initializes the global idle counter
+  atomic_store_explicit(&net->idle, TPC - 1, memory_order_relaxed);
+  sync_threads();
 
   // Performs some interactions
-  u32 tick = 0;
-  while (tm->rput > 0) {
-    if (++tick % 65536 == 0) printf("[%04x] tick=%u itrs=%u rput=%u\n", tm->tid, tick, tm->itrs, tm->rput);
-
-    //u32  full = global_sum(rbag_len(net, tm) > 0); // number of non-empty threads
-    //bool grow = full < TPC; // if some threads are empty, grow mode
-    //u32  reps = grow ? 1 : 1 << 22; // number of local repetitions
-
-    //if (tm->tid == 0) printf("---------------------------- %d OXI | grow %d | reps %d\n", turn, grow, reps);
-    //sync_threads();
-
-    // If all threads are empty, stop
-    //if (full == 0) {
-      //break;
-    //}
- 
-    // Perform local interaction
-    interact(net, tm, book);
-
-    // Shares redexes
-    //u64 share_ini = time64();
-    //share_redexes(tm, net->share, tm->tid);
-    //u64 share_end = time64();
-    //printf("[%04x] share redexes time: %llu ns\n", tm->tid, share_end - share_ini);
-    //sync_threads();
-
-    //printf("[%04x] itrs: %d\n", tm->tid, tm->itrs);
+  u32  tick = 0;
+  bool busy = tm->tid == 0;
+  while (true) {
+    tick += 1;
+    // If we have redexes...
+    if (rbag_len(net, tm) > 0) {
+      // Update global idle counter
+      if (!busy) atomic_fetch_sub_explicit(&net->idle, 1, memory_order_relaxed);
+      busy = true;
+      // Perform an interaction
+      interact(net, tm, book);
+    // If we have no redexes...
+    } else {
+      // Update global idle counter
+      if (busy) atomic_fetch_add_explicit(&net->idle, 1, memory_order_relaxed);
+      busy = false;
+      // Attempt to steal a redex
+      u32  sid = (tm->tid - 1) % TPC;
+      u32  idx = sid*(G_RBAG_LEN/TPC) + (tm->sidx++);
+      Pair got = atomic_exchange_explicit(&net->rbag_buf[idx], 0, memory_order_relaxed);
+      if (got != 0) {
+        push_redex(net, tm, got);
+        //printf("[%04x] stolen one task from %04x | itrs=%d idle=%d | %s ~ %s\n", tm->tid, sid, tm->itrs, atomic_load_explicit(&net->idle, memory_order_relaxed),show_port(get_fst(got)).x, show_port(get_snd(got)).x);
+      } else {
+        //printf("[%04x] failed to steal from %04x | itrs=%d idle=%d |\n", tm->tid, sid, tm->itrs, atomic_load_explicit(&net->idle, memory_order_relaxed));
+        tm->sidx = 0;
+      }
+      // Chill...
+      sched_yield();
+      // Halt if all threads are idle
+      if (tick % 256 == 0) {
+        if (atomic_load_explicit(&net->idle, memory_order_relaxed) == TPC) {
+          break;
+        }
+      }
+    }
   }
 
   sync_threads();
