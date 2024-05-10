@@ -42,6 +42,4 @@ sort = λd λs λt switch d {
      (flow d s ((sort d-1 0 t.a),(sort d-1 1 t.b)))
 }
 
-main =
-  let d = 16
-  (sum d (sort d 0 (gen d 0)))
+main = (sum 16 (sort 16 0 (gen 16 0)))
