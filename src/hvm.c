@@ -28,7 +28,7 @@ typedef _Atomic(u64) a64;
 // -------------
 
 // Threads per CPU
-#define TPC_L2  4
+#define TPC_L2  0
 #define TPC    (1 << TPC_L2)
 
 // Program
@@ -106,13 +106,13 @@ const u32 CACHE_PAD = 64;
 // It uses the same space to store two stacks:
 // - HI: a high-priotity stack, for shrinking reductions
 // - LO: a low-priority stack, for growing reductions
-typedef struct RBag {
-  u32  hi_end;
-  Pair hi_buf[RLEN];
-  u32  lo_ini;
-  u32  lo_end;
-  Pair lo_buf[RLEN];
-} RBag;
+//typedef struct RBag {
+  //u32  hi_end;
+  //Pair hi_buf[RLEN];
+  //u32  lo_ini;
+  //u32  lo_end;
+  //Pair lo_buf[RLEN];
+//} RBag;
 
 // Global Net
 #define G_NODE_LEN (1 << 29) // max 536m nodes
@@ -122,8 +122,8 @@ typedef struct RBag {
 typedef struct Net {
   APair node_buf[G_NODE_LEN]; // global node buffer
   APort vars_buf[G_VARS_LEN]; // global vars buffer
-  APair share[TPC*CACHE_PAD]; // share buffer
-  a64 rlen; // global redex count
+  APair rbag_buf[G_RBAG_LEN]; // global rbag buffer
+  //a64 rlen; // global redex count
   a64 itrs; // interaction count
 } Net;
 
@@ -147,13 +147,13 @@ typedef struct Book {
 
 // Local Thread Memory
 typedef struct TM {
-  u32   tid; // thread id
-  u32   itrs; // interaction count
-  u32   nput; // next node allocation attempt index
-  u32   vput; // next vars allocation attempt index
-  u32   nloc[32]; // node allocation indices
-  u32   vloc[32]; // vars allocation indices
-  RBag  rbag; // local redex bag
+  u32  tid; // thread id
+  u32  itrs; // interaction count
+  u32  nput; // next node allocation attempt index
+  u32  vput; // next vars allocation attempt index
+  u32  rput; // ...
+  u32  nloc[32]; // node allocation indices
+  u32  vloc[32]; // vars allocation indices
 } TM;
 
 // Booleans
@@ -170,10 +170,10 @@ typedef struct {
 void put_u16(char* B, u16 val);
 Show show_port(Port port);
 Show show_rule(Rule rule);
-void print_rbag(RBag* rbag);
+//void print_rbag(RBag* rbag);
 void print_net(Net* net);
 void pretty_print_port(Net* net, Port port);
-void pretty_print_rbag(Net* net, RBag* rbag);
+//void pretty_print_rbag(Net* net, RBag* rbag);
 
 // Port: Constructor and Getters
 // -----------------------------
@@ -476,37 +476,24 @@ static inline Numb operate(Numb a, Numb b) {
 // RBag
 // ----
 
-void rbag_init(RBag* rbag) {
-  rbag->hi_end = 0;
-  rbag->lo_ini = 0;
-  rbag->lo_end = 0;
+static inline void push_redex(Net* net, TM* tm, Pair redex) {
+  //printf("[%04x] pushed to %d | %s ~ %s\n", tm->tid, tm->tid*(G_RBAG_LEN/TPC) + tm->rput, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
+  atomic_store_explicit(&net->rbag_buf[tm->tid*(G_RBAG_LEN/TPC) + (tm->rput++)], redex, memory_order_relaxed);
 }
 
-static inline void push_redex(TM* tm, Pair redex) {
-  Rule rule = get_pair_rule(redex);
-  if (is_high_priority(rule)) {
-    tm->rbag.hi_buf[tm->rbag.hi_end++ % RLEN] = redex;
+static inline Pair pop_redex(Net* net, TM* tm) {
+  if (tm->rput > 0) {
+    Pair redex = atomic_load_explicit(&net->rbag_buf[tm->tid*(G_RBAG_LEN/TPC) + (--tm->rput)], memory_order_relaxed);
+    //printf("[%04x] popped at %d | %s ~ %s\n", tm->tid, tm->tid*(G_RBAG_LEN/TPC) + tm->rput, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
+    return redex;
   } else {
-    tm->rbag.lo_buf[tm->rbag.lo_end++ % RLEN] = redex;
-  }
-}
-
-static inline Pair pop_redex(TM* tm) {
-  if (tm->rbag.hi_end > 0) {
-    return tm->rbag.hi_buf[(--tm->rbag.hi_end) % RLEN];
-  } else if (tm->rbag.lo_end - tm->rbag.lo_ini > 0) {
-    return tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
-  } else {
+    //printf("[%04x] popped none\n", tm->tid);
     return 0;
   }
 }
 
-static inline u32 rbag_len(RBag* rbag) {
-  return rbag->hi_end + rbag->lo_end - rbag->lo_ini;
-}
-
-static inline u32 rbag_has_highs(RBag* rbag) {
-  return rbag->hi_end > 0;
+static inline u32 rbag_len(Net* net, TM* tm) {
+  return tm->rput;
 }
 
 // TM
@@ -517,7 +504,8 @@ void tmem_init(TM* tm, u32 tid) {
   tm->itrs = 0;
   tm->nput = 1;
   tm->vput = 1;
-  rbag_init(&tm->rbag);
+  tm->rput = 0;
+  //rbag_init(&tm->rbag);
 }
 
 // Net
@@ -581,12 +569,8 @@ static inline Port vars_take(Net* net, u32 var) {
 static inline void net_init(Net* net) {
   // Initializes the root var.
   vars_create(net, get_val(ROOT), NONE);
-  // Initializes the share buffer
-  for (u32 i = 0; i < TPC; ++i) {
-    net->share[i*CACHE_PAD] = new_pair(NONE,NONE);
-  }
   // Initializes variables
-  atomic_store(&net->rlen, 0);
+  //atomic_store(&net->rlen, 0);
   atomic_store(&net->itrs, 0);
 }
 
@@ -653,7 +637,7 @@ u32 vars_alloc(Net* net, TM* tm, u32 num) {
 
 // Gets the necessary resources for an interaction. Returns success.
 static inline bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
-  u32 got_rbag = min(RLEN - (tm->rbag.lo_end - tm->rbag.lo_ini), RLEN - tm->rbag.hi_end);
+  u32 got_rbag = 0xFF; // FIXME: implement
   u32 got_node = node_alloc(net, tm, need_node);
   u32 got_vars = vars_alloc(net, tm, need_vars);
   return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
@@ -692,7 +676,7 @@ static inline void link(Net* net, TM* tm, Port A, Port B) {
     
     // If `A` is NODE: create the `A ~ B` redex
     if (get_tag(A) != VAR) {
-      push_redex(tm, new_pair(A, B)); // TODO: move global ports to local
+      push_redex(net, tm, new_pair(A, B)); // TODO: move global ports to local
       break;
     }
 
@@ -725,26 +709,26 @@ static inline void link_pair(Net* net, TM* tm, Pair AB) {
 // -------
 
 // Sends redex to a friend local thread, when it is starving.
-void share_redexes(TM* tm, APair* share, u32 tid) {
-  Pair send = new_pair(NONE, NONE);
-  Pair recv = new_pair(NONE, NONE);
-  u32*  ini = &tm->rbag.lo_ini;
-  u32*  end = &tm->rbag.lo_end;
-  Pair* bag = tm->rbag.lo_buf;
-  for (u32 i = 0; i < TPC_L2; ++i) {
-    u32 a = tm->tid;
-    u32 b = a ^ (1 << i);
-    recv = new_pair(NONE, NONE);
-    send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
-    atomic_exchange_explicit(&share[a*CACHE_PAD], send, memory_order_relaxed);
-    while (recv == new_pair(NONE, NONE)) {
-      recv = atomic_exchange_explicit(&share[b*CACHE_PAD], new_pair(NONE, NONE), memory_order_relaxed);
-    }
-    if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
-    if ( send && !recv) ++(*ini);
-    sync_threads();
-  }
-}
+//void share_redexes(TM* tm, APair* share, u32 tid) {
+  //Pair send = new_pair(NONE, NONE);
+  //Pair recv = new_pair(NONE, NONE);
+  //u32*  ini = &tm->rbag.lo_ini;
+  //u32*  end = &tm->rbag.lo_end;
+  //Pair* bag = tm->rbag.lo_buf;
+  //for (u32 i = 0; i < TPC_L2; ++i) {
+    //u32 a = tm->tid;
+    //u32 b = a ^ (1 << i);
+    //recv = new_pair(NONE, NONE);
+    //send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
+    //atomic_exchange_explicit(&share[a*CACHE_PAD], send, memory_order_relaxed);
+    //while (recv == new_pair(NONE, NONE)) {
+      //recv = atomic_exchange_explicit(&share[b*CACHE_PAD], new_pair(NONE, NONE), memory_order_relaxed);
+    //}
+    //if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
+    //if ( send && !recv) ++(*ini);
+    //sync_threads();
+  //}
+//}
 
 // Interactions
 // ------------
@@ -981,7 +965,7 @@ static inline bool interact_swit(Net* net, TM* tm, Port a, Port b) {
 // Pops a local redex and performs a single interaction.
 static inline bool interact(Net* net, TM* tm, Book* book) {
   // Pops a redex.
-  Pair redex = pop_redex(tm);
+  Pair redex = pop_redex(net, tm);
 
   // If there is no redex, stop.
   if (redex != 0) {
@@ -1000,7 +984,7 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
       swap(&a, &b);
     }
 
-    //printf("REDUCE %s ~ %s | %s | rlen=%d\n", show_port(a).x, show_port(b).x, show_rule(rule).x, rbag_len(&tm->rbag));
+    //printf("REDUCE %s ~ %s | %s\n", show_port(a).x, show_port(b).x, show_rule(rule).x);
 
     // Dispatches interaction rule.
     bool success;
@@ -1021,7 +1005,7 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
 
     // If error, pushes redex back.
     if (!success) {
-      push_redex(tm, redex);
+      push_redex(net, tm, redex);
       return false;
     // Else, increments the interaction count.
     } else if (rule != LINK) {
@@ -1052,33 +1036,31 @@ void evaluator(Net* net, TM* tm, Book* book) {
   //sync_threads();
 
   // Performs some interactions
-  for (u32 turn = 0; turn < 0xFFFF; ++turn) {
-    u32  full = global_sum(rbag_len(&tm->rbag) > 0); // number of non-empty threads
-    bool grow = full < TPC; // if some threads are empty, grow mode
-    u32  reps = grow ? 1 : 1 << 22; // number of local repetitions
+  u32 tick = 0;
+  while (tm->rput > 0) {
+    if (++tick % 65536 == 0) printf("[%04x] tick=%u itrs=%u rput=%u\n", tm->tid, tick, tm->itrs, tm->rput);
+
+    //u32  full = global_sum(rbag_len(net, tm) > 0); // number of non-empty threads
+    //bool grow = full < TPC; // if some threads are empty, grow mode
+    //u32  reps = grow ? 1 : 1 << 22; // number of local repetitions
 
     //if (tm->tid == 0) printf("---------------------------- %d OXI | grow %d | reps %d\n", turn, grow, reps);
     //sync_threads();
 
     // If all threads are empty, stop
-    if (full == 0) {
-      break;
-    }
+    //if (full == 0) {
+      //break;
+    //}
  
     // Perform local interaction
-    for (u32 tick = 0; tick < reps; ++tick) {
-      interact(net, tm, book);
-      while (rbag_has_highs(&tm->rbag)) {
-        if (!interact(net, tm, book)) break;
-      }
-    }
+    interact(net, tm, book);
 
     // Shares redexes
     //u64 share_ini = time64();
-    share_redexes(tm, net->share, tm->tid);
+    //share_redexes(tm, net->share, tm->tid);
     //u64 share_end = time64();
     //printf("[%04x] share redexes time: %llu ns\n", tm->tid, share_end - share_ini);
-    sync_threads();
+    //sync_threads();
 
     //printf("[%04x] itrs: %d\n", tm->tid, tm->itrs);
   }
@@ -1175,19 +1157,19 @@ Show show_rule(Rule rule) {
   return s;
 }
 
-void print_rbag(RBag* rbag) {
-  printf("RBAG | FST-TREE     | SND-TREE    \n");
-  printf("---- | ------------ | ------------\n");
-  for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
-    Pair redex = rbag->lo_buf[i%RLEN];
-    printf("%04X | %s | %s\n", i, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
-  }
-  for (u32 i = 0; i > rbag->hi_end; ++i) {
-    Pair redex = rbag->hi_buf[i];
-    printf("%04X | %s | %s\n", i, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
-  }
-  printf("==== | ============ | ============\n");
-}
+//void print_rbag(RBag* rbag) {
+  //printf("RBAG | FST-TREE     | SND-TREE    \n");
+  //printf("---- | ------------ | ------------\n");
+  //for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
+    //Pair redex = rbag->lo_buf[i%RLEN];
+    //printf("%04X | %s | %s\n", i, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
+  //}
+  //for (u32 i = 0; i > rbag->hi_end; ++i) {
+    //Pair redex = rbag->hi_buf[i];
+    //printf("%04X | %s | %s\n", i, show_port(get_fst(redex)).x, show_port(get_snd(redex)).x);
+  //}
+  //printf("==== | ============ | ============\n");
+//}
 
 void print_net(Net* net) {
   printf("NODE | PORT-1       | PORT-2      \n");
@@ -1306,26 +1288,26 @@ void pretty_print_port(Net* net, Port port) {
   }
 }
 
-void pretty_print_rbag(Net* net, RBag* rbag) {
-  for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
-    Pair redex = rbag->lo_buf[i];
-    if (redex != 0) {
-      pretty_print_port(net, get_fst(redex));
-      printf(" ~ ");
-      pretty_print_port(net, get_snd(redex));
-      printf("\n");
-    }
-  }
-  for (u32 i = 0; i > rbag->hi_end; ++i) {
-    Pair redex = rbag->hi_buf[i];
-    if (redex != 0) {
-      pretty_print_port(net, get_fst(redex));
-      printf(" ~ ");
-      pretty_print_port(net, get_snd(redex));
-      printf("\n");
-    }
-  }
-}
+//void pretty_print_rbag(Net* net, RBag* rbag) {
+  //for (u32 i = rbag->lo_ini; i < rbag->lo_end; ++i) {
+    //Pair redex = rbag->lo_buf[i];
+    //if (redex != 0) {
+      //pretty_print_port(net, get_fst(redex));
+      //printf(" ~ ");
+      //pretty_print_port(net, get_snd(redex));
+      //printf("\n");
+    //}
+  //}
+  //for (u32 i = 0; i > rbag->hi_end; ++i) {
+    //Pair redex = rbag->hi_buf[i];
+    //if (redex != 0) {
+      //pretty_print_port(net, get_fst(redex));
+      //printf(" ~ ");
+      //pretty_print_port(net, get_snd(redex));
+      //printf("\n");
+    //}
+  //}
+//}
 
 // Main
 // ----
@@ -1361,8 +1343,8 @@ void hvm_c(u32* book_buffer) {
   }
 
   // GMem
-  Net *gnet = malloc(sizeof(Net));
-  net_init(gnet);
+  Net *net = malloc(sizeof(Net));
+  net_init(net);
 
   // Alloc and init TPC TM's
   TM* tm[TPC];
@@ -1371,13 +1353,13 @@ void hvm_c(u32* book_buffer) {
   for (u32 t = 0; t < TPC; ++t) {
     tm[t] = malloc(sizeof(TM));
     tmem_init(tm[t], t);
-    thread_args[t].net  = gnet;
+    thread_args[t].net  = net;
     thread_args[t].tm   = tm[t];
     thread_args[t].book = book;
   }
 
   // Creates an initial redex that calls main
-  push_redex(tm[0], new_pair(new_port(REF, 0), ROOT));
+  push_redex(net, tm[0], new_pair(new_port(REF, 0), ROOT));
 
   // Replace the clock() based timing with time64() based timing
   u64 start = time64();
@@ -1397,11 +1379,11 @@ void hvm_c(u32* book_buffer) {
 
   // Prints the result
   printf("Result: ");
-  pretty_print_port(gnet, enter(gnet, tm[0], ROOT));
+  pretty_print_port(net, enter(net, tm[0], ROOT));
   printf("\n");
 
   // Prints interactions and time
-  u64 itrs = atomic_load(&gnet->itrs);
+  u64 itrs = atomic_load(&net->itrs);
   printf("- ITRS: %llu\n", itrs);
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
@@ -1410,7 +1392,7 @@ void hvm_c(u32* book_buffer) {
   for (u32 t = 0; t < TPC; ++t) {
     free(tm[t]);
   }
-  free(gnet);
+  free(net);
   free(book);
 }
 
