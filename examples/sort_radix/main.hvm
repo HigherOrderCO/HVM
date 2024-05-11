@@ -17,19 +17,19 @@
 
 @gen$C1 = ({a d} ($([*2] {e $([+1] b)}) g))
   & @Concat ~ (c (f g))
-  & @gen ~ (a (b c))
+  &!@gen ~ (a (b c))
   &!@gen ~ (d (e f))
 
 @main = c
   & @sum ~ (b c)
   & @sort ~ (a b)
-  & @gen ~ (17 (0 a))
+  & @gen ~ (20 (0 a))
 
 @merge = ((@merge$C5 (@merge$C3 (@merge$C2 a))) a)
 
 @merge$C0 = (b (e (a (d g))))
   & @Node ~ (c (f g))
-  & @merge ~ (a (b c))
+  &!@merge ~ (a (b c))
   &!@merge ~ (d (e f))
 
 @merge$C1 = (a (b c))
@@ -57,7 +57,7 @@
 @sum = ((0 ((a a) (@sum$C0 b))) b)
 
 @sum$C0 = (a (b d))
-  & @sum ~ (a $(:[+] $(c d)))
+  &!@sum ~ (a $(:[+] $(c d)))
   &!@sum ~ (b c)
 
 @swap = (?((@swap$C0 @swap$C1) a) a)
@@ -72,7 +72,7 @@
 
 @to_arr$C0 = (a (d ({$([*2] $([+1] e)) $([*2] $([+0] b))} g)))
   & @Concat ~ (c (f g))
-  & @to_arr ~ (a (b c))
+  &!@to_arr ~ (a (b c))
   &!@to_arr ~ (d (e f))
 
 @to_arr$C1 = (a b)
@@ -82,7 +82,7 @@
 
 @to_map$C0 = (a (c e))
   & @merge ~ (b (d e))
-  & @to_map ~ (a b)
+  &!@to_map ~ (a b)
   &!@to_map ~ (c d)
 
 @to_map$C1 = (a b)

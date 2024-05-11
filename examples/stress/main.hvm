@@ -1,5 +1,5 @@
 @main = a
-  & @fun ~ (18 a)
+  & @fun ~ (10 a)
 
 @fun = (?((@fun__C0 @fun__C1) a) a)
 
@@ -7,7 +7,7 @@
   & @loop ~ (0x20000 a)
 
 @fun__C1 = ({a b} d)
-  & @fun ~ (a $(:[+] $(c d)))
+  &!@fun ~ (a $(:[+] $(c d)))
   &!@fun ~ (b c)
 
 @loop = (?((0 @loop__C0) a) a)

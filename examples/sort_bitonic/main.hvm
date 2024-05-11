@@ -9,7 +9,7 @@
 
 // 2
 @down$C0 = ({a e} ({b f} ((c g) (d h))))
-  & @flow ~ (a (b (c d)))
+  &!@flow ~ (a (b (c d)))
   &!@flow ~ (e (f (g h)))
 
 // 3
@@ -25,7 +25,7 @@
 
 // 6
 @gen$C0 = ({a d} ({$([*2] $([+1] b)) $([*2] e)} (c f)))
-  & @gen ~ (a (b c))
+  &!@gen ~ (a (b c))
   &!@gen ~ (d (e f))
 
 // 7
@@ -34,7 +34,7 @@
 // 8
 @sort$C0 = ({$([+1] a) {c f}} (b ((d g) i)))
   & @flow ~ (a (b ((e h) i)))
-  & @sort ~ (c (0 (d e)))
+  &!@sort ~ (c (0 (d e)))
   &!@sort ~ (f (1 (g h)))
 
 // 9
@@ -42,7 +42,7 @@
 
 // A
 @sum$C0 = ({a c} ((b d) f))
-  & @sum ~ (a (b $(:[+] $(e f))))
+  &!@sum ~ (a (b $(:[+] $(e f))))
   &!@sum ~ (c (d e))
 
 // B
@@ -63,5 +63,5 @@
 
 // G
 @warp$C1 = ({a e} ({b f} ((c g) ((d h) ((i j) (k l))))))
-  & @warp ~ (a (b (c (d (i k)))))
+  &!@warp ~ (a (b (c (d (i k)))))
   &!@warp ~ (e (f (g (h (j l)))))
