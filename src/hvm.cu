@@ -229,6 +229,9 @@ typedef    float f32;
 typedef   double f64;
 typedef unsigned long long int u64;
 
+#define FALSE false
+#define TRUE  true
+
 // Configuration
 // -------------
 
@@ -236,7 +239,7 @@ typedef unsigned long long int u64;
 const u64 S = 2520000000;
 
 // Threads per Block
-const u32 TPB_L2 = 7;
+const u32 TPB_L2 = 8;
 const u32 TPB    = 1 << TPB_L2;
 
 // Blocks per GPU
@@ -422,15 +425,8 @@ struct Str {
   char text_buf[256];
 };
 
-// IO Type
-const u32 DONE = 0;
-const u32 PRINT = 1;
-const u32 INPUT = 2;
-const u32 SAVE_FILE = 3;
-const u32 LOAD_FILE = 4;
-
 // Str Type
-const u32 NIL = 0;
+const u32 NIL  = 0;
 const u32 CONS = 1;
 
 // Debugger
@@ -2006,117 +2002,121 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
 // Monadic IO
 // ----------
 
-// Reads back a λ-Encoded constructor from device to host.
-// Encoding: λt ((((t TAG) arg0) arg1) ...)
-Ctr gnet_read_ctr(GNet* gnet, Port port) {
-  Ctr ctr;
-  ctr.tag = -1;
-  ctr.args_len = 0;
+// NOTE: IO is disabled on HVM-CUDA for now since we don't have rendering, which
+// makes it pointless. Seems like opening a window and putting pixels on it in a
+// cross-platform manner is quite involved. We will work this soon.
 
-  // Loads root lambda
-  Port lam_port = gnet_expand(gnet, port);
-  if (get_tag(lam_port) != CON) return ctr;
-  Pair lam_node = gnet_node_load(gnet, get_val(lam_port));
+//// Reads back a λ-Encoded constructor from device to host.
+//// Encoding: λt ((((t TAG) arg0) arg1) ...)
+//Ctr gnet_read_ctr(GNet* gnet, Port port) {
+  //Ctr ctr;
+  //ctr.tag = -1;
+  //ctr.args_len = 0;
 
-  // Loads first application
-  Port app_port = gnet_expand(gnet, get_fst(lam_node));
-  if (get_tag(app_port) != CON) return ctr;
-  Pair app_node = gnet_node_load(gnet, get_val(app_port));
+  //// Loads root lambda
+  //Port lam_port = gnet_expand(gnet, port);
+  //if (get_tag(lam_port) != CON) return ctr;
+  //Pair lam_node = gnet_node_load(gnet, get_val(lam_port));
 
-  // Loads first argument (as the tag)
-  Port arg_port = gnet_expand(gnet, get_fst(app_node));
-  if (get_tag(arg_port) != NUM) return ctr;
-  ctr.tag = get_u24(get_val(arg_port));
+  //// Loads first application
+  //Port app_port = gnet_expand(gnet, get_fst(lam_node));
+  //if (get_tag(app_port) != CON) return ctr;
+  //Pair app_node = gnet_node_load(gnet, get_val(app_port));
 
-  // Loads remaining arguments
-  while (true) {
-    app_port = gnet_expand(gnet, get_snd(app_node));
-    if (get_tag(app_port) != CON) break;
-    app_node = gnet_node_load(gnet, get_val(app_port));
-    arg_port = gnet_expand(gnet, get_fst(app_node));
-    ctr.args_buf[ctr.args_len++] = arg_port;
-  }
+  //// Loads first argument (as the tag)
+  //Port arg_port = gnet_expand(gnet, get_fst(app_node));
+  //if (get_tag(arg_port) != NUM) return ctr;
+  //ctr.tag = get_u24(get_val(arg_port));
 
-  return ctr;
-}
+  //// Loads remaining arguments
+  //while (true) {
+    //app_port = gnet_expand(gnet, get_snd(app_node));
+    //if (get_tag(app_port) != CON) break;
+    //app_node = gnet_node_load(gnet, get_val(app_port));
+    //arg_port = gnet_expand(gnet, get_fst(app_node));
+    //ctr.args_buf[ctr.args_len++] = arg_port;
+  //}
 
-// Reads back a UTF-16 string.
-// Encoding:
-// - λt (t NIL)
-// - λt (((t CONS) head) tail)
-Str gnet_read_str(GNet* gnet, Port port) {
-  // Result
-  Str str;
-  str.text_len = 0;
+  //return ctr;
+//}
+
+//// Reads back a UTF-16 string.
+//// Encoding:
+//// - λt (t NIL)
+//// - λt (((t CONS) head) tail)
+//Str gnet_read_str(GNet* gnet, Port port) {
+  //// Result
+  //Str str;
+  //str.text_len = 0;
   
-  // Readback loop
-  while (true) {
-    // Normalizes the net
-    gnet_normalize(gnet);
+  //// Readback loop
+  //while (true) {
+    //// Normalizes the net
+    //gnet_normalize(gnet);
 
-    //printf("reading str %s\n", show_port(gnet_peek(gnet, port)).x);
+    ////printf("reading str %s\n", show_port(gnet_peek(gnet, port)).x);
 
-    // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
+    //// Reads the λ-Encoded Ctr
+    //Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
 
-    //printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
+    ////printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
 
-    // Reads string layer
-    switch (ctr.tag) {
-      case NIL: {
-        break;
-      }
-      case CONS: {
-        if (ctr.args_len != 2) break;
-        if (get_tag(ctr.args_buf[0]) != NUM) break;
-        //printf("reading chr %d\n", get_u24(get_val(ctr.args_buf[0])));
-        str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
-        gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
-        port = ROOT;
-        continue;
-      }
-    }
-    break;
-  }
+    //// Reads string layer
+    //switch (ctr.tag) {
+      //case NIL: {
+        //break;
+      //}
+      //case CONS: {
+        //if (ctr.args_len != 2) break;
+        //if (get_tag(ctr.args_buf[0]) != NUM) break;
+        ////printf("reading chr %d\n", get_u24(get_val(ctr.args_buf[0])));
+        //str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
+        //gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
+        //port = ROOT;
+        //continue;
+      //}
+    //}
+    //break;
+  //}
 
-  str.text_buf[str.text_len] = '\0';
+  //str.text_buf[str.text_len] = '\0';
 
-  return str;
-}
+  //return str;
+//}
 
-// Encoding:
-// - λt (((t fid) arg) cont)
-bool gnet_run_io(GNet* gnet, Port port) {
-  // IO loop
-  while (true) {
-    // Normalizes the net
-    gnet_normalize(gnet);
+//// Encoding:
+//// - λt (((t fid) arg) cont)
+//bool gnet_run_io(GNet* gnet, Port port) {
+  //// IO loop
+  //while (true) {
+    //// Normalizes the net
+    //gnet_normalize(gnet);
 
-    // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
+    //// Reads the λ-Encoded Ctr
+    //Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
 
-    // Dispatches IO function
-    switch (ctr.tag) {
-      case PRINT: {
-        if (ctr.args_len != 2) break;
-        Str str = gnet_read_str(gnet, ctr.args_buf[0]);
-        printf("PRINT: %s | %s\n", show_port(ctr.args_buf[0]).x, str.text_buf);
-        Port res = new_port(ERA, 0); // IO result
-        Port app = gnet_make_node(gnet, CON, res, ROOT);
-        gnet_boot_redex(gnet, new_pair(app, ctr.args_buf[1]));
-        port = ROOT;
-        continue;
-      }
-      default: {
-        break;
-      }
-    }
+    //// Dispatches IO function
+    //switch (ctr.tag) {
+      //case PRINT: {
+        //if (ctr.args_len != 2) break;
+        //Str str = gnet_read_str(gnet, ctr.args_buf[0]);
+        //printf("PRINT: %s | %s\n", show_port(ctr.args_buf[0]).x, str.text_buf);
+        //Port res = new_port(ERA, 0); // IO result
+        //Port app = gnet_make_node(gnet, CON, res, ROOT);
+        //gnet_boot_redex(gnet, new_pair(app, ctr.args_buf[1]));
+        //port = ROOT;
+        //continue;
+      //}
+      //default: {
+        //break;
+      //}
+    //}
 
-    break;
-  }
+    //break;
+  //}
 
-  return true;
-}
+  //return true;
+//}
 
 // Book Loader
 // -----------
@@ -2496,6 +2496,9 @@ __global__ void print_result(GNet* gnet) {
   // count 1m
   //static const u8 DEMO_BOOK[] = {3, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 0, 0, 8, 0, 0, 0, 0, 1, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 0, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0, 0, 17, 0, 0, 0, 2, 0, 0, 0, 115, 117, 109, 36, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 5, 0, 0, 0, 3, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 0, 36, 0, 0, 0, 13, 0, 0, 0, 8, 0, 0, 0, 22, 0, 0, 0, 16, 0, 0, 0, 3, 2, 0, 128, 30, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 16, 0, 0, 0, 0, 0, 0, 0};
 
+  // sum 30
+  //static const u8 DEMO_BOOK[] = {3, 0, 0, 0, 0, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 9, 0, 0, 0, 4, 0, 0, 0, 11, 15, 0, 0, 12, 0, 0, 0, 11, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 115, 117, 109, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 0, 4, 0, 0, 0, 15, 0, 0, 0, 8, 0, 0, 0, 20, 0, 0, 0, 8, 0, 0, 0, 28, 0, 0, 0, 17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 115, 117, 109, 95, 95, 67, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 14, 0, 0, 0, 6, 0, 0, 0, 4, 0, 0, 0, 9, 0, 0, 128, 68, 0, 0, 0, 9, 0, 0, 128, 100, 0, 0, 0, 13, 0, 0, 0, 20, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0, 0, 29, 0, 0, 0, 32, 0, 0, 0, 38, 0, 0, 0, 54, 0, 0, 0, 51, 1, 0, 0, 46, 0, 0, 0, 163, 0, 0, 0, 16, 0, 0, 0, 51, 1, 0, 0, 62, 0, 0, 0, 35, 0, 0, 0, 24, 0, 0, 0, 8, 0, 0, 0, 76, 0, 0, 0, 24, 0, 0, 0, 86, 0, 0, 0, 3, 2, 0, 128, 94, 0, 0, 0, 40, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 108, 0, 0, 0, 16, 0, 0, 0, 40, 0, 0, 0};
+
 // Main
 // ----
 
@@ -2521,7 +2524,7 @@ extern "C" void hvm_cu(u32* book_buffer) {
   gnet_boot_redex(gnet, new_pair(new_port(REF,0), ROOT));
 
   // Normalizes the GNet
-  gnet_run_io(gnet, ROOT);
+  gnet_normalize(gnet);
 
   // Invokes the Result Printer Kernel
   cudaDeviceSynchronize();
@@ -2566,7 +2569,6 @@ extern "C" void hvm_cu(u32* book_buffer) {
   printf("- LEAK: %llu\n", gnet_get_leak(gnet));
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)gnet_get_itrs(gnet) / duration / 1000000.0);
-
 
 }
 

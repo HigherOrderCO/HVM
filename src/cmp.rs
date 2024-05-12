@@ -24,9 +24,9 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
   code.push_str(&format!("  u32 fid = get_val(a) & 0xFFFFFFF;\n"));
   code.push_str(&format!("  switch (fid) {{\n"));
   for (fid, def) in book.defs.iter().enumerate() {
-    code.push_str(&format!("    case {}: return interact_call_{}(net, tm, a, b);\n", fid, &def.name));
+    code.push_str(&format!("    case {}: return interact_call_{}(net, tm, a, b);\n", fid, &def.name.replace("/","_")));
   }
-  code.push_str(&format!("    default: return false;\n"));
+  code.push_str(&format!("    default: return FALSE;\n"));
   code.push_str(&format!("  }}\n"));
   code.push_str(&format!("}}"));
 
@@ -36,7 +36,7 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
 // Compiles a single Def.
 pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize, fid: hvm::Val) {
   let def = &book.defs[fid as usize];
-  let fun = &def.name;
+  let fun = &def.name.replace("/","_");
 
   // Initializes context
   let neo = &mut 0;
@@ -65,7 +65,7 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
     code.push_str(&format!(" || !n{:x}", i));
   }
   code.push_str(&format!(") {{\n"));
-  code.push_str(&format!("{}return false;\n", indent(tab+2)));
+  code.push_str(&format!("{}return FALSE;\n", indent(tab+2)));
   code.push_str(&format!("{}}}\n", indent(tab+1)));
   for i in 0 .. def.vars {
     code.push_str(&format!("{}vars_create(net, v{:x}, NONE);\n", indent(tab+1), i));
@@ -97,7 +97,7 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
   }
 
   // Return
-  code.push_str(&format!("{}return true;\n", indent(tab+1)));
+  code.push_str(&format!("{}return TRUE;\n", indent(tab+1)));
   code.push_str(&format!("{}}}\n", indent(tab)));
 }
 
@@ -200,7 +200,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
   // ------------- Fast COPY
   // a1 <~ #v
   // a2 <~ #v
-  if a.get_tag() == hvm::DUP {
+  if trg != Target::CUDA && a.get_tag() == hvm::DUP {
     let a_ = &def.node[a.get_val() as usize];
     let p1 = a_.get_fst();
     let p2 = a_.get_snd();
@@ -230,7 +230,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
   // ------------------ Fast ANNI
   // a1 <~ x1
   // a2 <~ x2
-  if a.get_tag() == hvm::CON {
+  if trg != Target::CUDA && a.get_tag() == hvm::CON {
     let a_ = &def.node[a.get_val() as usize];
     let a1 = a_.get_fst();
     let a2 = a_.get_snd();
@@ -269,7 +269,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
   // ATOM <~ *
   // --------- Fast VOID
   // nothing
-  if a.get_tag() == hvm::NUM || a.get_tag() == hvm::ERA {
+  if trg != Target::CUDA && a.get_tag() == hvm::NUM || a.get_tag() == hvm::ERA {
     code.push_str(&format!("{}// fast void\n", indent(tab)));
     code.push_str(&format!("{}if (get_tag({}) == ERA || get_tag({}) == NUM) {{\n", indent(tab), b, b));
     code.push_str(&format!("{}tm->itrs += 1;\n", indent(tab+1)));

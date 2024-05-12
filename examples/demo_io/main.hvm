@@ -1,0 +1,101 @@
+@CONS = 1
+
+@DONE = 0
+
+@DRAWIMAGE = 7
+
+@GETTEXT = 2
+
+@GETTIME = 5
+
+@IO/Done = (a ((a b) (* (* (* (* (* (* (* b)))))))))
+
+@IO/DrawImage = (a (b (* (* (* (* (* (* (* ((a (b c)) c))))))))))
+
+@IO/GetText = (a (* (* ((a b) (* (* (* (* (* b)))))))))
+
+@IO/GetTime = (a (* (* (* (* (* ((a b) (* (* b)))))))))
+
+@IO/PutText = (a (b (* ((a (b c)) (* (* (* (* (* (* c))))))))))
+
+@IO/ReadFile = (a (b (* (* (* (* ((a (b c)) (* (* (* c))))))))))
+
+@IO/Sleep = (a (b (* (* (* (* (* (* ((a (b c)) (* c))))))))))
+
+@IO/WriteFile = (a (b (c (* (* (* ((a (b (c d))) (* (* (* (* d)))))))))))
+
+@Main__C0 = g
+  & @MkStr ~ (f g)
+  & @String/cons ~ (119 (e f))
+  & @String/cons ~ (111 (d e))
+  & @String/cons ~ (114 (c d))
+  & @String/cons ~ (108 (b c))
+  & @String/cons ~ (100 (a b))
+  & @String/cons ~ (10 (@String/nil a))
+
+@Main__C1 = (* d)
+  & @IO/PutText ~ (@Main__C0 ((* c) d))
+  & @IO/DrawImage ~ (((16711680 65280) (255 16711935)) ((* b) c))
+  & @IO/Sleep ~ ((119 3511296) ((* a) b))
+  & @IO/Done ~ (42 a)
+
+@Main__C2 = g
+  & @MkStr ~ (f g)
+  & @String/cons ~ (104 (e f))
+  & @String/cons ~ (101 (d e))
+  & @String/cons ~ (108 (c d))
+  & @String/cons ~ (108 (b c))
+  & @String/cons ~ (111 (a b))
+  & @String/cons ~ (10 (@String/nil a))
+
+@Main__C3 = a
+  & @IO/PutText ~ (@Main__C2 (@Main__C1 a))
+
+@MkIO = ((@MkIO__C7 (@MkIO__C6 (@MkIO__C5 (@MkIO__C4 (@MkIO__C3 (@MkIO__C2 (@MkIO__C1 (@MkIO__C0 a)))))))) a)
+
+@MkIO__C0 = (a ((b c) ((@DRAWIMAGE (a ((b d) e))) e)))
+  & @MkIO ~ (c d)
+
+@MkIO__C1 = (a ((b c) ((@SLEEP (a ((b d) e))) e)))
+  & @MkIO ~ (c d)
+
+@MkIO__C2 = ((a b) ((@GETTIME ((a c) d)) d))
+  & @MkIO ~ (b c)
+
+@MkIO__C3 = (a ((b c) ((@READFILE (a ((b d) e))) e)))
+  & @MkIO ~ (c d)
+
+@MkIO__C4 = (a (b ((c d) ((@WRITEFILE (a (b ((c e) f)))) f))))
+  & @MkIO ~ (d e)
+
+@MkIO__C5 = ((a b) ((@GETTEXT ((a c) d)) d))
+  & @MkIO ~ (b c)
+
+@MkIO__C6 = (a ((b c) ((@PUTTEXT (a ((b d) e))) e)))
+  & @MkIO ~ (c d)
+
+@MkIO__C7 = (a ((@DONE (a b)) b))
+
+@MkStr = ((@MkStr__C1 (@MkStr__C0 a)) a)
+
+@MkStr__C0 = ((@NIL a) a)
+
+@MkStr__C1 = (a (b ((@CONS (a (c d))) d)))
+  & @MkStr ~ (b c)
+
+@NIL = 0
+
+@PUTTEXT = 1
+
+@READFILE = 4
+
+@SLEEP = 6
+
+@String/cons = (a (b ((a (b c)) (* c))))
+
+@String/nil = (* (a a))
+
+@WRITEFILE = 3
+
+@main = a
+  & @MkIO ~ (@Main__C3 a)

@@ -1,5 +1,5 @@
 @main = a
-  & @fun ~ (10 a)
+  & @fun ~ (18 a)
 
 @fun = (?((@fun__C0 @fun__C1) a) a)
 
