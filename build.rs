@@ -29,8 +29,6 @@ fn main() {
     
     println!("cargo:rerun-if-changed=src/hvm.cu");
     println!("cargo:rustc-cfg=feature=\"cuda\"");   
-    println!("cargo:rustc-link-lib=dylib=cuda"); 
-    println!("cargo:rustc-link-lib=dylib=cudart"); 
   }
   else {
     println!("WARNING: CUDA compiler not found. HVM will not be able to run on GPU.");
