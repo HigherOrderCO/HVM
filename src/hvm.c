@@ -270,7 +270,6 @@ u32 min(u32 a, u32 b) {
 // A simple spin-wait barrier using atomic operations
 a64 a_reached = 0; // number of threads that reached the current barrier
 a64 a_barrier = 0; // number of barriers passed during this program
-
 void sync_threads() {
   u64 barrier_old = atomic_load_explicit(&a_barrier, memory_order_relaxed);
   if (atomic_fetch_add_explicit(&a_reached, 1, memory_order_relaxed) == (TPC - 1)) {
@@ -784,31 +783,6 @@ static inline void link_pair(Net* net, TM* tm, Pair AB) {
   //printf("link_pair %016llx\n", AB);
   link(net, tm, get_fst(AB), get_snd(AB));
 }
-
-// Sharing
-// -------
-
-// Sends redex to a friend local thread, when it is starving.
-//void share_redexes(TM* tm, APair* share, u32 tid) {
-  //Pair send = new_pair(NONE, NONE);
-  //Pair recv = new_pair(NONE, NONE);
-  //u32*  ini = &tm->rbag.lo_ini;
-  //u32*  end = &tm->rbag.lo_end;
-  //Pair* bag = tm->rbag.lo_buf;
-  //for (u32 i = 0; i < TPC_L2; ++i) {
-    //u32 a = tm->tid;
-    //u32 b = a ^ (1 << i);
-    //recv = new_pair(NONE, NONE);
-    //send = (*end - *ini) > 1 ? bag[*ini%RLEN] : 0;
-    //atomic_exchange_explicit(&share[a*CACHE_PAD], send, memory_order_relaxed);
-    //while (recv == new_pair(NONE, NONE)) {
-      //recv = atomic_exchange_explicit(&share[b*CACHE_PAD], new_pair(NONE, NONE), memory_order_relaxed);
-    //}
-    //if (!send &&  recv) bag[((*end)++)%RLEN] = recv;
-    //if ( send && !recv) ++(*ini);
-    //sync_threads();
-  //}
-//}
 
 // Interactions
 // ------------
@@ -1735,20 +1709,11 @@ void print_net(Net* net) {
 }
 
 void pretty_print_port(Net* net, Port port) {
-  Port stack[32];
+  Port stack[256];
   stack[0] = port;
   u32 len = 1;
   u32 num = 0;
   while (len > 0) {
-    if (++num > 256) {
-      printf("(...)\n");
-      return;
-    }
-    if (len > 32) {
-      printf("...");
-      --len;
-      continue;
-    }
     Port cur = stack[--len];
     if (cur > 0xFFFFFF00) {
       printf("%c", (char)(cur&0xFF));
@@ -1771,11 +1736,11 @@ void pretty_print_port(Net* net, Port port) {
         break;
       }
       case VAR: {
-        printf("x%x", get_val(cur));
         Port got = vars_load(net, get_val(cur));
         if (got != NONE) {
-          printf("=");
           stack[len++] = got;
+        } else {
+          printf("x%x", get_val(cur));
         }
         break;
       }
