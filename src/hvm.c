@@ -34,12 +34,8 @@ typedef _Atomic(u64) a64;
 // -------------
 
 // Threads per CPU
-#define TPC_L2 4
+#define TPC_L2 3
 #define TPC    (1 << TPC_L2)
-
-// Program
-const u32 DEPTH = 10;
-const u32 LOOPS = 65536;
 
 // Types
 // -----
