@@ -1317,6 +1317,9 @@ __device__ bool interact_link(Net* net, TM* tm, Port a, Port b) {
   return true;
 }
 
+// Declared here for use in call interactions.
+static inline bool interact_eras(Net* net, TM* tm, Port a, Port b);
+
 // The Call Interaction.
 #ifdef COMPILED
 ///COMPILED_INTERACT_CALL///

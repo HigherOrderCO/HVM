@@ -26,50 +26,71 @@ fn main() {
     .about("HVM2: Higher-order Virtual Machine 2 (32-bit Version)")
     .subcommand_required(true)
     .arg_required_else_help(true)
-    .subcommand(Command::new("run").about("Interprets a file (using Rust)").arg(Arg::new("file").required(true)))
-    .subcommand(Command::new("run-c").about("Interprets a file (using C)").arg(Arg::new("file").required(true)).arg(Arg::new("run-io").long("run-io").action(ArgAction::SetTrue)))
-    .subcommand(Command::new("run-cu").about("Interprets a file (using CUDA)").arg(Arg::new("file").required(true)).arg(Arg::new("run-io").long("run-io").action(ArgAction::SetTrue)))
-    .subcommand(Command::new("gen-c").about("Compiles a file with IO (to standalone C)").arg(Arg::new("file").required(true)).arg(Arg::new("run-io").long("run-io").action(ArgAction::SetTrue)))
-    .subcommand(Command::new("gen-cu").about("Compiles a file (to standalone CUDA)").arg(Arg::new("file").required(true)).arg(Arg::new("run-io").long("run-io").action(ArgAction::SetTrue)))
+    .subcommand(
+      Command::new("run")
+        .about("Interprets a file (using Rust)")
+        .arg(Arg::new("file").required(true)))
+    .subcommand(
+      Command::new("run-c")
+        .about("Interprets a file (using C)")
+        .arg(Arg::new("file").required(true))
+        .arg(Arg::new("io")
+          .long("io")
+          .action(ArgAction::SetTrue)
+          .help("Run with IO enabled"))
+    )
+    .subcommand(
+      Command::new("run-cu")
+        .about("Interprets a file (using CUDA)")
+        .arg(Arg::new("file").required(true))
+        .arg(Arg::new("io")
+          .long("io")
+          .action(ArgAction::SetTrue)
+          .help("Run with IO enabled")))
+    .subcommand(
+      Command::new("gen-c")
+        .about("Compiles a file with IO (to standalone C)")
+        .arg(Arg::new("file").required(true))
+        .arg(Arg::new("io")
+          .long("io")
+          .action(ArgAction::SetTrue)
+          .help("Generate with IO enabled")))
+    .subcommand(
+      Command::new("gen-cu")
+        .about("Compiles a file (to standalone CUDA)")
+        .arg(Arg::new("file").required(true))
+        .arg(Arg::new("io")
+          .long("io")
+          .action(ArgAction::SetTrue)
+          .help("Generate with IO enabled")))
     .get_matches();
 
   match matches.subcommand() {
     Some(("run", sub_matches)) => {
-      // Loads file/code/book
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-
-      // Runs on interpreted mode
       run(&book);
     }
     Some(("run-c", sub_matches)) => {
-      // Loads file/code/book
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-
-      // Converts Book to buffer
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
       println!("{:?}", data);
-
-      let run_io = sub_matches.get_flag("run-io");
+      let run_io = sub_matches.get_flag("io");
       unsafe {
         hvm_c(data.as_mut_ptr() as *mut u32, run_io);
       }
     }
     Some(("run-cu", sub_matches)) => {
-      // Loads file/code/book
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-
-      // Converts Book to buffer
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
-
-      let run_io = sub_matches.get_flag("run-io");
+      let run_io = sub_matches.get_flag("io");
       #[cfg(feature = "cuda")]
       unsafe {
         hvm_cu(data.as_mut_ptr() as *mut u32, run_io);
@@ -78,49 +99,35 @@ fn main() {
       println!("CUDA not available!\n");
     }
     Some(("gen-c", sub_matches)) => {
-      // Loads file/code/book
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-
-      // Generates compiled functions
       let fns = cmp::compile_book(cmp::Target::C, &book);
-
-      // Generates compiled C file
       let hvm_c = include_str!("hvm.c");
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
-
-      let run_io = sub_matches.get_flag("run-io");
+      let run_io = sub_matches.get_flag("io");
       let hvm_c = if run_io {
         hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
       } else {
         hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
       };
-
       println!("{}", hvm_c);
     }
     Some(("gen-cu", sub_matches)) => {
-      // Loads file/code/book
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-
-      // Generates compiled functions
       let fns = cmp::compile_book(cmp::Target::CUDA, &book);
-
-      // Generates compiled C file
       let hvm_c = include_str!("hvm.cu");
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
-
-      let run_io = sub_matches.get_flag("run-io");
+      let run_io = sub_matches.get_flag("io");
       let hvm_c = if run_io {
         hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
       } else {
         hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
       };
-
       println!("{}", hvm_c);
     }
     _ => unreachable!(),

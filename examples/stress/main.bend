@@ -1,3 +1,5 @@
+#flavor core
+
 loop = λn
   switch n {
     0: 0
@@ -6,9 +8,9 @@ loop = λn
 
 fun = λn
   switch n {
-    0: (loop 65536)
+    0: (loop 0x10000)
     _: (+ (fun n-1) (fun n-1))
   }
 
 main = 
-  (fun 16)
+  (fun 10)

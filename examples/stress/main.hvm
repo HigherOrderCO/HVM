@@ -1,16 +1,16 @@
-@main = a
-  & @fun ~ (14 a)
-
 @fun = (?((@fun__C0 @fun__C1) a) a)
 
 @fun__C0 = a
-  & @loop ~ (0x20000 a)
+  & @loop ~ (65536 a)
 
 @fun__C1 = ({a b} d)
-  &!@fun ~ (a $(:[+] $(c d)))
-  &!@fun ~ (b c)
+  & @fun ~ (a $(:[+] $(c d)))
+  &! @fun ~ (b c)
 
 @loop = (?((0 @loop__C0) a) a)
 
 @loop__C0 = a
   & @loop ~ a
+
+@main = a
+  & @fun ~ (18 a)
