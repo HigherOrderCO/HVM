@@ -6,13 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define INTERPRETED
+#define RUN_IO
 //#define IO_DRAWIMAGE
 
 #ifdef IO_DRAWIMAGE
 #include <SDL2/SDL.h>
 #endif
-
-#define INTERPRETED
 
 // Integers
 // --------
@@ -800,11 +800,13 @@ static inline bool interact_link(Net* net, TM* tm, Port a, Port b) {
   return TRUE;
 }
 
+// Declared here for use in call interactions.
+static inline bool interact_eras(Net* net, TM* tm, Port a, Port b);
+
 // The Call Interaction.
 #ifdef COMPILED
 ///COMPILED_INTERACT_CALL///
 #else
-static inline bool interact_eras(Net* net, TM* tm, Port a, Port b);
 static inline bool interact_call(Net* net, TM* tm, Port a, Port b, Book* book) {
   // Loads Definition.
   u32  fid = get_val(a) & 0xFFFFFFF;
@@ -1531,7 +1533,7 @@ Port io_sleep(Net* net, Book* book, u32 argc, Port* argv) {
 }
 
 // Runs an IO computation.
-bool run_io(Net* net, Book* book, Port port) {
+bool do_run_io(Net* net, Book* book, Port port) {
   // IO loop
   while (TRUE) {
     // Normalizes the net
@@ -1879,7 +1881,7 @@ void pretty_print_port(Net* net, Port port) {
 // Main
 // ----
 
-void hvm_c(u32* book_buffer) {
+void hvm_c(u32* book_buffer, bool run_io) {
   // Creates static TMs
   alloc_static_tms();
 
@@ -1901,7 +1903,11 @@ void hvm_c(u32* book_buffer) {
   boot_redex(net, new_pair(new_port(REF, 0), ROOT));
 
   // Normalizes and runs IO
-  run_io(net, book, ROOT);
+  if (run_io) {
+    do_run_io(net, book, ROOT);
+  } else {
+    normalize(net, book);
+  }
 
   // Prints the result
   printf("Result: ");
@@ -1923,8 +1929,16 @@ void hvm_c(u32* book_buffer) {
   free(book);
 }
 
+#ifdef COMPILED
 int main() {
-  hvm_c((u32*)DEMO_BOOK);
-  //hvm_c(NULL);
+  //hvm_c((u32*)DEMO_BOOK, false);
+  
+#ifdef RUN_IO
+  hvm_c(NULL, TRUE);
+#else
+  hvm_c(NULL, FALSE);
+#endif
+
   return 0;
 }
+#endif

@@ -13,12 +13,12 @@ mod cmp;
 mod hvm;
 
 extern "C" {
-  fn hvm_c(book_buffer: *const u32);
+  fn hvm_c(book_buffer: *const u32, run_io: bool);
 }
 
 #[cfg(feature = "cuda")]
 extern "C" {
-  fn hvm_cu(book_buffer: *const u32);
+  fn hvm_cu(book_buffer: *const u32, run_io: bool);
 }
 
 fn main() {
@@ -27,10 +27,10 @@ fn main() {
     .subcommand_required(true)
     .arg_required_else_help(true)
     .subcommand(Command::new("run").about("Interprets a file (using Rust)").arg(Arg::new("file").required(true)))
-    .subcommand(Command::new("run-c").about("Interprets a file (using C)").arg(Arg::new("file").required(true)))
-    .subcommand(Command::new("run-cu").about("Interprets a file (using CUDA)").arg(Arg::new("file").required(true)))
-    .subcommand(Command::new("gen-c").about("Compiles a file (to standalone C)").arg(Arg::new("file").required(true)))
-    .subcommand(Command::new("gen-cu").about("Compiles a file (to standalone CUDA)").arg(Arg::new("file").required(true)))
+    .subcommand(Command::new("run-c").about("Interprets a file (using C)").arg(Arg::new("file").required(true)).arg(Arg::new("run-io").long("run-io").action(ArgAction::SetTrue)))
+    .subcommand(Command::new("run-cu").about("Interprets a file (using CUDA)").arg(Arg::new("file").required(true)).arg(Arg::new("run-io").long("run-io").action(ArgAction::SetTrue)))
+    .subcommand(Command::new("gen-c").about("Compiles a file with IO (to standalone C)").arg(Arg::new("file").required(true)).arg(Arg::new("run-io").long("run-io").action(ArgAction::SetTrue)))
+    .subcommand(Command::new("gen-cu").about("Compiles a file (to standalone CUDA)").arg(Arg::new("file").required(true)).arg(Arg::new("run-io").long("run-io").action(ArgAction::SetTrue)))
     .get_matches();
 
   match matches.subcommand() {
@@ -54,8 +54,9 @@ fn main() {
       book.to_buffer(&mut data);
       println!("{:?}", data);
 
+      let run_io = sub_matches.get_flag("run-io");
       unsafe {
-        hvm_c(data.as_mut_ptr() as *mut u32);
+        hvm_c(data.as_mut_ptr() as *mut u32, run_io);
       }
     }
     Some(("run-cu", sub_matches)) => {
@@ -68,9 +69,10 @@ fn main() {
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
 
+      let run_io = sub_matches.get_flag("run-io");
       #[cfg(feature = "cuda")]
       unsafe {
-        hvm_cu(data.as_mut_ptr() as *mut u32);
+        hvm_cu(data.as_mut_ptr() as *mut u32, run_io);
       }
       #[cfg(not(feature = "cuda"))]
       println!("CUDA not available!\n");
@@ -89,6 +91,13 @@ fn main() {
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
 
+      let run_io = sub_matches.get_flag("run-io");
+      let hvm_c = if run_io {
+        hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
+      } else {
+        hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
+      };
+
       println!("{}", hvm_c);
     }
     Some(("gen-cu", sub_matches)) => {
@@ -105,12 +114,18 @@ fn main() {
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
 
+      let run_io = sub_matches.get_flag("run-io");
+      let hvm_c = if run_io {
+        hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
+      } else {
+        hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
+      };
+
       println!("{}", hvm_c);
     }
     _ => unreachable!(),
   }
 }
-
 
 pub fn run(book: &hvm::Book) {
   // Initializes the global net

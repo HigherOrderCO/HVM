@@ -213,6 +213,7 @@
 // - ---- | -------- | --------
 
 #define INTERPRETED
+#define RUN_IO
 //#define DEBUG
 
 #include <stdint.h>
@@ -2502,7 +2503,12 @@ __global__ void print_result(GNet* gnet) {
 // Main
 // ----
 
-extern "C" void hvm_cu(u32* book_buffer) {
+extern "C" void hvm_cu(u32* book_buffer, bool perform_io) {
+  // IO disabled in CUDA
+  if (perform_io) {
+    printf("WARNING: IO not available on CUDA yet.\n");
+  }
+
   // Start the timer
   clock_t start = clock();
   
@@ -2572,8 +2578,16 @@ extern "C" void hvm_cu(u32* book_buffer) {
 
 }
 
+#ifdef COMPILED
 int main() {
-  hvm_cu((u32*)DEMO_BOOK);
-  //hvm_cu(NULL);
+  //hvm_cu((u32*)DEMO_BOOK);
+
+#ifdef RUN_IO
+  hvm_cu(NULL, TRUE);
+#else
+  hvm_cu(NULL, FALSE);
+#endif
+
   return 0;
 }
+#endif
