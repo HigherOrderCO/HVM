@@ -22,53 +22,27 @@ Usage
 
 Install HVM2:
 
-```
+```sh
 cargo +nightly install hvm
 ```
 
-There are multiple ways to run an HVM program.
+There are multiple ways to run an HVM program:
 
-1. **Rust interpreter** (single-core, eager, slow):
-
-```
-hvm run file.hvm
-```
-
-2. **C interpreter** (parallel, eager, fast):
-
-```
-hvm run-c file.hvm
+```sh
+hvm run    <file.hvm> # interpret via Rust
+hvm run-c  <file.hvm> # interpret via C
+hvm run-cu <file.hvm> # interpret via CUDA
+hvm gen-c  <file.hvm> # compile to standalone C
+hvm gen-cu <file.hvm> # compile to standalone CUDA
 ```
 
-3. **C compiler** (parallel, eager, faster):
+All modes produce the same output. The compiled modes require you to compile the
+generated file (with `gcc file.c -o file`, for example), but are faster to run.
+The CUDA versions have much higher peak performance, but are less stable. As a
+rule of thumb, `gen-c` should be used in production.
 
-```
-hvm gen-c file.hvm >> file.c
-gcc file.c -o file
-./file
-```
-
-4. **CUDA interpreter** (massively parallel, eager, fast):
-
-```
-hvm run-cu file.hvm
-```
-
-5. **CUDA compiler** (massively parallel, eager, fastest):
-
-```
-hvm gen-c file.hvm >> file.c
-nvcc file.c -o file
-./file
-```
-
-All versions are equivalent. As a rule of thumb, to test, use the Rust
-interpreter for testing and the C compiler for production. The C/CUDA
-interpreters are also optimized for speed, and can be used in contexts where 
-the compilation time is undesirable. If a NVIDIA GPU is available, the CUDA
-versions can be used too, but they're still experimental.
-
-## Example
+Language
+--------
 
 HVMC is a low-level compile target for high-level languages. It provides a raw
 syntax for wiring interaction nets. For example:
