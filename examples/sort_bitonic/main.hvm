@@ -42,7 +42,7 @@
 
 // A
 @sum$C0 = ({a c} ((b d) f))
-  &!@sum ~ (a (b $(:[+] $(e f))))
+  &!@sum ~ (a (b $([+] $(e f))))
   &!@sum ~ (c (d e))
 
 // B
@@ -58,7 +58,7 @@
 @warp = (?((@warp$C0 @warp$C1) (a (b (c d)))) (a (b (c d))))
 
 // F
-@warp$C0 = ($(:[^] $(b c)) ({$(:[>] $(a b)) d} ({a e} f)))
+@warp$C0 = ($([^] $(b c)) ({$([>] $(a b)) d} ({a e} f)))
   & @swap ~ (c (d (e f)))
 
 // G

@@ -7,6 +7,7 @@ build = "build.rs"
 [dependencies]
 TSPL = "0.0.11"
 clap = "4.5.2"
+highlight_error = "0.1.1"
 
 [build-dependencies]
 cc = "1.0"

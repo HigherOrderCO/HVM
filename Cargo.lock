@@ -111,6 +111,7 @@ dependencies = [
  "TSPL",
  "cc",
  "clap",
+ "highlight_error",
 ]
 
 [[package]]

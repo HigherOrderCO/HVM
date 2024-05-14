@@ -50,22 +50,26 @@ pub const OPER : Rule = 0x6;
 pub const SWIT : Rule = 0x7;
 
 // Numbs
-pub const SYM : Tag = 0x0;
-pub const U24 : Tag = 0x1;
-pub const I24 : Tag = 0x2;
-pub const F24 : Tag = 0x3;
-pub const ADD : Tag = 0x4;
-pub const SUB : Tag = 0x5;
-pub const MUL : Tag = 0x6;
-pub const DIV : Tag = 0x7;
-pub const REM : Tag = 0x8;
-pub const EQ  : Tag = 0x9;
-pub const NEQ : Tag = 0xA;
-pub const LT  : Tag = 0xB;
-pub const GT  : Tag = 0xC;
-pub const AND : Tag = 0xD;
-pub const OR  : Tag = 0xE;
-pub const XOR : Tag = 0xF;
+pub const SYM : Tag = 0x00;
+pub const U24 : Tag = 0x01;
+pub const I24 : Tag = 0x02;
+pub const F24 : Tag = 0x03;
+pub const ADD : Tag = 0x04;
+pub const SUB : Tag = 0x05;
+pub const MUL : Tag = 0x06;
+pub const DIV : Tag = 0x07;
+pub const REM : Tag = 0x08;
+pub const EQ  : Tag = 0x09;
+pub const NEQ : Tag = 0x0A;
+pub const LT  : Tag = 0x0B;
+pub const GT  : Tag = 0x0C;
+pub const AND : Tag = 0x0D;
+pub const OR  : Tag = 0x0E;
+pub const XOR : Tag = 0x0F;
+
+pub const FLIP_SUB : Tag = 0x10;
+pub const FLIP_DIV : Tag = 0x11;
+pub const FLIP_REM : Tag = 0x12;
 
 // Constants
 pub const FREE : Port = Port(0x0);
@@ -216,88 +220,64 @@ impl Numb {
 
   // SYM: a symbolic operator
 
-  pub fn new_sym(val: u32) -> Self {
-    Numb(((val & 0xF) << 4) as Val | (SYM as Val))
+  pub fn new_sym(val: Tag) -> Self {
+    Numb((val as Val) << 5 | (SYM as Val))
   }
 
-  pub fn get_sym(&self) -> u32 {
-    ((self.0 >> 4) & 0xF) as u32
+  pub fn get_sym(&self) -> Tag {
+    (self.0 >> 5) as Tag
   }
 
   // U24: unsigned 24-bit integer
   
   pub fn new_u24(val: u32) -> Self {
-    Numb(((val & 0xFFFFFF) << 4) as Val | (U24 as Val))
+    Numb((val << 5) as Val | (U24 as Val))
   }
 
   pub fn get_u24(&self) -> u32 {
-    ((self.0 >> 4) & 0xFFFFFF) as u32
+    (self.0 >> 5) as u32
   }
 
   // I24: signed 24-bit integer
 
   pub fn new_i24(val: i32) -> Self {
-    Numb((((val as u32) & 0xFFFFFF) << 4) as Val | (I24 as Val))
+    Numb(((val as u32) << 5) as Val | (I24 as Val))
   }
 
   pub fn get_i24(&self) -> i32 {
-    (((self.0 >> 4) & 0xFFFFFF) as i32) << 8 >> 8
+    (self.0 as i32) << 3 >> 8
   }
 
   // F24: 24-bit float
   
   pub fn new_f24(val: f32) -> Self {
     let bits = val.to_bits();
-    let sign = (bits >> 31) & 0x1;
-    let expo = ((bits >> 23) & 0xFF) as i32 - 127;
-    let mant = bits & 0x7FFFFF;
-    assert!(expo >= -63 && expo <= 63);
-    let bits = (expo + 63) as u32;
-    let bits = (sign << 23) | (bits << 16) | (mant >> 7);
-    Numb((bits << 4) as Val | (F24 as Val))
+    let mut shifted_bits = bits >> 8;
+    let lost_bits = bits & 0xFF;
+    shifted_bits += (lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7; // round ties to even
+    shifted_bits |= u32::from((bits & 0x7F800000 == 0x7F800000) && (bits << 9 != 0)); // ensure NaNs don't become infinities
+    Numb((shifted_bits << 5) as Val | (F24 as Val))
   }
 
   pub fn get_f24(&self) -> f32 {
-    let bits = (self.0 >> 4) & 0xFFFFFF;
-    let sign = (bits >> 23) & 0x1;
-    let expo = (bits >> 16) & 0x7F;
-    let mant = bits & 0xFFFF;
-    let iexp = (expo as i32) - 63;
-    let bits = (sign << 31) | (((iexp + 127) as u32) << 23) | (mant << 7);
-    let bits = if mant == 0 && iexp == -63 { sign << 31 } else { bits };
-    f32::from_bits(bits)
+    f32::from_bits((self.0 << 3) & 0xFFFFFF00)
   }
 
   // Gets the numeric type.
 
   pub fn get_typ(&self) -> Tag {
-    return (self.0 & 0xF) as Tag;
+    return (self.0 & 0x1F) as Tag;
   }
 
   // Flip flag.
 
-  pub fn get_flp(&self) -> bool {
-    return (self.0 >> 28) & 1 == 1;
-  }
-
-  pub fn set_flp(&self) -> Self {
-    return Numb(self.0 | 0x1000_0000);
-  }
-
-  pub fn flp_flp(&self) -> Self {
-    Numb(self.0 ^ 0x1000_0000)
-  }
-
   // Partial application.
   pub fn partial(a: Self, b: Self) -> Self {
-    return Numb(b.0 & 0xFFFFFFF0 | a.get_sym());
+    return Numb((b.0 & !0x1F) | a.get_sym() as u32);
   }
 
-  pub fn operate(mut a: Self, mut b: Self) -> Self {
+  pub fn operate(a: Self, b: Self) -> Self {
     //println!("operate {} {}", crate::ast::Numb(a.0).show(), crate::ast::Numb(b.0).show());
-    if a.get_flp() ^ b.get_flp() {
-      (a,b) = (b,a);
-    }
     let at = a.get_typ();
     let bt = b.get_typ();
     if at == SYM && bt == SYM {
@@ -315,8 +295,7 @@ impl Numb {
     if at < ADD && bt < ADD {
       return Numb::new_u24(0);
     }
-    let op = if at >= ADD { at } else { bt };
-    let ty = if at >= ADD { bt } else { at };
+    let (op, a, ty, b) = if at >= ADD { (at, a, bt, b) } else { (bt, b, at, a) };
     match ty {
       U24 => {
         let av = a.get_u24();
@@ -334,6 +313,9 @@ impl Numb {
           AND => Numb::new_u24(av & bv),
           OR  => Numb::new_u24(av | bv),
           XOR => Numb::new_u24(av ^ bv),
+          FLIP_SUB => Numb::new_u24(bv.wrapping_sub(av)),
+          FLIP_DIV => Numb::new_u24(bv.wrapping_div(av)),
+          FLIP_REM => Numb::new_u24(bv.wrapping_rem(av)),
           _   => unreachable!(),
         }
       }
@@ -353,6 +335,9 @@ impl Numb {
           AND => Numb::new_i24(av & bv),
           OR  => Numb::new_i24(av | bv),
           XOR => Numb::new_i24(av ^ bv),
+          FLIP_SUB => Numb::new_i24(bv.wrapping_sub(av)),
+          FLIP_DIV => Numb::new_i24(bv.wrapping_div(av)),
+          FLIP_REM => Numb::new_i24(bv.wrapping_rem(av)),
           _   => unreachable!(),
         }
       }
@@ -372,6 +357,9 @@ impl Numb {
           AND => Numb::new_f24(av.atan2(bv)),
           OR  => Numb::new_f24(bv.log(av)),
           XOR => Numb::new_f24(av.powf(bv)),
+          FLIP_SUB => Numb::new_f24(bv - av),
+          FLIP_DIV => Numb::new_f24(bv / av),
+          FLIP_REM => Numb::new_f24(bv % av),
           _   => unreachable!(),
         }
       }
@@ -758,6 +746,7 @@ impl TMem {
       return false;
     }
 
+    assert_eq!(a.get_tag(), NUM);
     // Loads ports.
     let av = a.get_val();
     let b_ = net.node_take(b.get_val() as usize);
@@ -770,7 +759,7 @@ impl TMem {
       let cv = Numb::operate(Numb(av), Numb(bv));
       self.link_pair(net, Pair::new(Port::new(NUM, cv.0), b2));
     } else {
-      net.node_create(self.nloc[0], Pair::new(Port::new(a.get_tag(), Numb(a.get_val()).flp_flp().0), b2));
+      net.node_create(self.nloc[0], Pair::new(Port::new(a.get_tag(), Numb(a.get_val()).0), b2));
       self.link_pair(net, Pair::new(b1, Port::new(OPR, self.nloc[0] as u32)));
     }
 
@@ -1100,4 +1089,52 @@ impl Book {
       //defs: vec![fun, fun0, fun1, lop, lop0, main],
     //};
   //}
+}
+
+#[test]
+fn test_f24() {
+  // Test that numbers in range round-trip correctly:
+  let min_positive  = f32::from_bits(0b0_00000000_000000000000001_00000000);
+  let max_subnormal = f32::from_bits(0b0_00000000_111111111111111_00000000);
+  let min_normal    = f32::from_bits(0b0_00000001_000000000000000_00000000);
+  for x in [
+    0.0,
+    -0.0,
+    1.0,
+    -1.0,
+    1.1000061,
+    -1.1000061,
+    f32::NAN,
+    f32::NEG_INFINITY,
+    f32::INFINITY,
+    min_positive,
+    -min_positive,
+    min_positive * 123.0,
+    -min_positive * 123.0,
+    max_subnormal,
+    min_normal,
+  ] {
+    let y = Numb::new_f24(x).get_f24();
+    assert!(x.is_nan() && y.is_nan() || x == y);
+  }
+
+  for (i, o) in [
+    // Test rounding ties to even:
+    (f32::from_bits(0b00_00000000), f32::from_bits(0b00_00000000)),
+    (f32::from_bits(0b00_01111111), f32::from_bits(0b00_00000000)),
+    (f32::from_bits(0b00_10000000), f32::from_bits(0b00_00000000)),
+    (f32::from_bits(0b00_10000001), f32::from_bits(0b01_00000000)),
+    (f32::from_bits(0b00_11111111), f32::from_bits(0b01_00000000)),
+    (f32::from_bits(0b01_00000000), f32::from_bits(0b01_00000000)),
+    (f32::from_bits(0b01_01111111), f32::from_bits(0b01_00000000)),
+    (f32::from_bits(0b01_10000000), f32::from_bits(0b10_00000000)),
+    (f32::from_bits(0b01_10000001), f32::from_bits(0b10_00000000)),
+    (f32::from_bits(0b01_11111111), f32::from_bits(0b10_00000000)),
+  ] {
+    assert_eq!(Numb::new_f24(i).get_f24(), o);
+  }
+
+  // Test that NaNs are not turned into infinities
+  assert!(Numb::new_f24(f32::from_bits(0b0_11111111_000000000000000_00000001)).get_f24().is_nan());
+  assert!(Numb::new_f24(f32::from_bits(0b1_11111111_000000000000000_00000001)).get_f24().is_nan());
 }
