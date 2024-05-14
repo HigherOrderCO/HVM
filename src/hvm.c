@@ -56,42 +56,42 @@ typedef u8 Rule; // Rule ::= 3-bit (rounded up to 8)
 typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 
 // Tags
-const Tag VAR = 0x0; // variable
-const Tag REF = 0x1; // reference
-const Tag ERA = 0x2; // eraser
-const Tag NUM = 0x3; // number
-const Tag CON = 0x4; // constructor
-const Tag DUP = 0x5; // duplicator
-const Tag OPR = 0x6; // operator
-const Tag SWI = 0x7; // switch
+#define VAR 0x0 // variable
+#define REF 0x1 // reference
+#define ERA 0x2 // eraser
+#define NUM 0x3 // number
+#define CON 0x4 // constructor
+#define DUP 0x5 // duplicator
+#define OPR 0x6 // operator
+#define SWI 0x7 // switch
 
 // Interaction Rule Values
-const Rule LINK = 0x0;
-const Rule CALL = 0x1;
-const Rule VOID = 0x2;
-const Rule ERAS = 0x3;
-const Rule ANNI = 0x4;
-const Rule COMM = 0x5;
-const Rule OPER = 0x6;
-const Rule SWIT = 0x7;
+#define LINK 0x0
+#define CALL 0x1
+#define VOID 0x2
+#define ERAS 0x3
+#define ANNI 0x4
+#define COMM 0x5
+#define OPER 0x6
+#define SWIT 0x7
 
 // Numbers
-const Tag SYM = 0x0;
-const Tag U24 = 0x1;
-const Tag I24 = 0x2;
-const Tag F24 = 0x3;
-const Tag ADD = 0x4;
-const Tag SUB = 0x5;
-const Tag MUL = 0x6;
-const Tag DIV = 0x7;
-const Tag REM = 0x8;
-const Tag EQ  = 0x9;
-const Tag NEQ = 0xA;
-const Tag LT  = 0xB;
-const Tag GT  = 0xC;
-const Tag AND = 0xD;
-const Tag OR  = 0xE;
-const Tag XOR = 0xF;
+#define SYM 0x0
+#define U24 0x1
+#define I24 0x2
+#define F24 0x3
+#define ADD 0x4
+#define SUB 0x5
+#define MUL 0x6
+#define DIV 0x7
+#define REM 0x8
+#define EQ  0x9
+#define NEQ 0xA
+#define LT  0xB
+#define GT  0xC
+#define AND 0xD
+#define OR  0xE
+#define XOR 0xF
 
 // Constants
 const Port FREE = 0x00000000;
@@ -99,7 +99,7 @@ const Port ROOT = 0xFFFFFFF8;
 const Port NONE = 0xFFFFFFFF;
 
 // Cache Padding
-const u32 CACHE_PAD = 64;
+#define CACHE_PAD 64
 
 // Global Net
 #define HLEN (1 << 16) // max 16k high-priority redexes
