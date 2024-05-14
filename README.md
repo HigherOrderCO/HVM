@@ -11,14 +11,13 @@ GPUs, with near-ideal speedup.
 
 HVM2 is the successor to [HVM1](https://github.com/HigherOrderCO/HVM1), a 2022
 prototype of this concept. Compared to its predecessor, HVM2 is simpler, faster
-and, most importantly, stable and correct. [HOC](https://HigherOrderCO.com/)
-provides long-term support to all features listed on its
-[WHITEPAPER.md](./WHITEPAPER).
+and, most importantly, more correct. [HOC](https://HigherOrderCO.com/) provides
+long-term support to all features listed on its [WHITEPAPER.md](./WHITEPAPER).
 
-This repository exposes a low-level IR language for specifyig the HVM2 nets, and
-a compiler from that language to C and CUDA. It is not meant for direct human
-usage. If you're looking for a high-level language to interface with HVM2, check
-[Bend](https://github.com/HigherOrderCO/Bend) instead!
+This repository provides a low-level IR language for specifyig the HVM2 nets,
+and a compiler from that language to C and CUDA. It is not meant for direct
+human usage. If you're looking for a high-level language to interface with HVM2,
+check [Bend](https://github.com/HigherOrderCO/Bend) instead.
 
 Usage
 -----
@@ -62,7 +61,7 @@ syntax for wiring interaction nets. For example:
 ```
 
 The file above implements a recursive sum. If that looks unreadable to you -
-don't worry, it isn't meant to. [Bend](https://github.com/HigherOrderCO/Bend)
-is the human-readable presentation, and can be used both by end users, and
-languages aiming to target the HVM. If you're looking to learn more about the
-raw syntax, though, please do check the [WHITEPAPER.md](./WHITEPAPER).
+don't worry, it isn't meant to. [Bend](https://github.com/HigherOrderCO/Bend) is
+the human-readable language, and should be used both by end users, and languages
+aiming to target the HVM. If you're are looking to learn more about the core
+syntax and tech, though, please do check the [WHITEPAPER.md](./WHITEPAPER).
