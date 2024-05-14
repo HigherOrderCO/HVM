@@ -3,19 +3,21 @@ Higher-order Virtual Machine 2 (HVM2)
 
 **Higher-order Virtual Machine 2 (HVM2)** is a massively parallel [Interaction
 Combinator](https://www.semanticscholar.org/paper/Interaction-Combinators-Lafont/6cfe09aa6e5da6ce98077b7a048cb1badd78cc76)
-evaluator. By compiling programs from high-level languages (such as Python and
-Haskell) to HVM, one can run these languages directly on massively parallel
-hardware, like GPUs, with near-ideal speedup.
+evaluator.
+
+By compiling programs from high-level languages (such as Python and Haskell) to
+HVM, one can run these languages directly on massively parallel hardware, like
+GPUs, with near-ideal speedup.
 
 HVM2 is the successor to [HVM1](https://github.com/HigherOrderCO/HVM1), a 2022
 prototype of this concept. Compared to its predecessor, HVM2 is simpler, faster
-and, most importantly, more correct. [HOC](https://HigherOrderCO.com/) provides
-long-term support to all features listed on its [REPORT.md](./REPORT). 
+and, most importantly, stable and correct. [HOC](https://HigherOrderCO.com/)
+provides long-term support to all features listed on its [REPORT.md](./REPORT).
 
-This repository exposes a low-level IR syntax for specifyig the HVM2 nets, and a
-compiler from that syntax to C and CUDA. If you're looking for a high-level
-language to interface with HVM2, check the
-[Bend](https://github.com/HigherOrderCO/Bend) language instead. 
+This repository exposes a low-level IR language for specifyig the HVM2 nets, and
+a compiler from that language to C and CUDA. It is not meant for direct human
+usage. If you're looking for a high-level language to interface with HVM2, check
+[Bend](https://github.com/HigherOrderCO/Bend) instead!
 
 Usage
 -----
