@@ -1,11 +1,10 @@
 # HVM2: A Massively Parallel Interaction Combinator Evaluator
 
-> Victor Taelin
-> Higher Order Company
-> taelin@HigherOrderCO.com
+**This paper is an incomplete draft and WIP. It is being actively updated as a
+markdown, and will be ported to LaTeX when it is completed.**
 
-*This paper is an incomplete draft and WIP. It is being actively updated as a
-markdown, and will be ported to LaTeX when it is completed.*
+> Victor Taelin / Higher Order Company / taelin@HigherOrderCO.com
+
 
 # Abstract
 
