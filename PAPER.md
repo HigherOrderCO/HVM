@@ -850,7 +850,7 @@ values is assumed. In HVM2, we just use a simple linear bump allocator, which is
 fast and fragmentation-free in a context where all allocations are at most
 64-bit values (the size of a single node).
 
-# 8. Massively Parallel Evaluator
+# 8. Massively Parallel Evaluation
 
 Provided the architecture we just constructed, evaluating an HVM2 program in
 parallel is surprisingly easy: *just compute global redexes concurrently, until
@@ -981,7 +981,7 @@ another warp local thread is too. This minimizes warp divergence, and has a
 profound impact in performance across many cases. On the `bitonic_sort` example,
 this new policy alone resulted in a jump from 1,300 MIPS to 12,000 MIPS (9x).
 
-## Shared Memory Interactions
+## Optimization: Shared Memory Interactions
 
 GPUs also have another particularity that, if exploited properly, can result in
 significant speedups: shared memory. The NVIDIA RTX 4090, for example, includes
