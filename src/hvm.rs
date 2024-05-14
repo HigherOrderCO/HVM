@@ -8,19 +8,22 @@ use std::mem;
 // =======
 
 // Types
-pub type Tag  = u8;
-pub type Lab  = u32;
-pub type Val  = u32;
-pub type AVal = AtomicU32;
-pub type Rule = u8;
+pub type Tag  = u8;  // Tag  ::= 3-bit (rounded up to u8)
+pub type Lab  = u32; // Lab  ::= 29-bit (rounded up to u32)
+pub type Val  = u32; // Val  ::= 29-bit (rounded up to u32)
+pub type Rule = u8;  // Rule ::= 8-bit (fits a u8)
+
 
 // Port
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub struct Port(pub Val);
-pub struct APort(pub AVal);
 
 // Pair
 pub struct Pair(pub u64);
+
+// Atomics
+pub type AVal = AtomicU32;
+pub struct APort(pub AVal);
 pub struct APair(pub AtomicU64);
 
 // Number

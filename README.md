@@ -12,7 +12,7 @@ GPUs, with near-ideal speedup.
 HVM2 is the successor to [HVM1](https://github.com/HigherOrderCO/HVM1), a 2022
 prototype of this concept. Compared to its predecessor, HVM2 is simpler, faster
 and, most importantly, more correct. [HOC](https://HigherOrderCO.com/) provides
-long-term support to all features listed on its [WHITEPAPER.md](./WHITEPAPER).
+long-term support to all features listed on its [PAPER.md](./PAPER).
 
 This repository provides a low-level IR language for specifyig the HVM2 nets,
 and a compiler from that language to C and CUDA. It is not meant for direct
