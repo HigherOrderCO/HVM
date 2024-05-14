@@ -4,6 +4,7 @@
 
 use clap::{Arg, ArgAction, Command};
 use std::fs;
+use std::alloc;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command as SysCommand;
@@ -11,9 +12,10 @@ use std::process::Command as SysCommand;
 mod ast;
 mod cmp;
 mod hvm;
+mod interop;
 
 extern "C" {
-  fn hvm_c(book_buffer: *const u32, run_io: bool);
+  fn hvm_c(book_buffer: *const u32, net_buffer: *const interop::GNetC, run_io: bool);
 }
 
 #[cfg(feature = "cuda")]
@@ -76,13 +78,8 @@ fn main() {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-      let mut data : Vec<u8> = Vec::new();
-      book.to_buffer(&mut data);
-      println!("{:?}", data);
       let run_io = sub_matches.get_flag("io");
-      unsafe {
-        hvm_c(data.as_mut_ptr() as *mut u32, run_io);
-      }
+      run_c(&book, run_io);
     }
     Some(("run-cu", sub_matches)) => {
       let file = sub_matches.get_one::<String>("file").expect("required");
@@ -170,4 +167,45 @@ pub fn run(book: &hvm::Book) {
   println!("- ITRS: {}", itrs);
   println!("- TIME: {:.2}s", duration.as_secs_f64());
   println!("- MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
+}
+
+pub fn run_c(book: &hvm::Book, run_io: bool) {
+  // Converts Book to buffer
+  let mut data : Vec<u8> = Vec::new();
+  book.to_buffer(&mut data);
+  // println!("{:?}", data);
+  let book_buffer = data.as_mut_ptr() as *mut u32;
+
+  // Allocate network's memory
+  let layout = alloc::Layout::new::<interop::GNetC>();
+  let net_ptr = unsafe { alloc::alloc(layout) as *mut interop::GNetC };
+
+  // Starts the timer
+  let start = std::time::Instant::now();
+
+  // Evaluate
+  unsafe { hvm_c(book_buffer, net_ptr, run_io); }
+
+  // Stops the timer
+  let duration = start.elapsed();
+
+  // Converts the raw pointer to a reference
+  let net_ref = unsafe { &mut *net_ptr };
+
+  // Prints the result
+  if let Some(tree) = ast::Net::readback(net_ref, book) {
+    println!("Result: {}", tree.show());
+  } else {
+    println!("Readback failed. Currently can't print GNet memdump.\n");
+    // println!("{}", net_ref.show());
+  }
+
+  // Prints interactions and time
+  let itrs = net_ref.itrs.load(std::sync::atomic::Ordering::Relaxed);
+  println!("- ITRS: {}", itrs);
+  println!("- TIME: {:.2}s", duration.as_secs_f64());
+  println!("- MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
+
+  // Deallocate network's memory
+  unsafe { alloc::dealloc(net_ptr as *mut u8, layout) };
 }
