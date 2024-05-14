@@ -1,0 +1,17 @@
+@gen = (?(((a a) @gen__C0) b) b)
+
+@gen__C0 = ({a d} ({$([*2] $([+1] b)) $([*2] e)} (c f)))
+  &!@gen ~ (a (b c))
+  &!@gen ~ (d (e f))
+
+@main = a
+  & @sum ~ (26 (@main__C0 a))
+
+@main__C0 = a
+  & @gen ~ (26 (0 a))
+
+@sum = (?(((* 1) @sum__C0) a) a)
+
+@sum__C0 = ({a c} ((b d) f))
+  &!@sum ~ (a (b $(:[+] $(e f))))
+  &!@sum ~ (c (d e))
