@@ -83,7 +83,7 @@ pub struct GNet<'a> {
   pub nlen: usize, // length of the node buffer
   pub vlen: usize, // length of the vars buffer
   pub node: &'a mut [APair], // node buffer
-  pub vars: &'a mut [APair], // vars buffer
+  pub vars: &'a mut [APort], // vars buffer
   pub itrs: AtomicU64, // interaction count
 }
 
@@ -417,9 +417,9 @@ impl RBag {
 impl<'a> GNet<'a> {
   pub fn new(nlen: usize, vlen: usize) -> Self {
     let nlay = Layout::array::<APair>(nlen).unwrap();
-    let vlay = Layout::array::<APair>(vlen).unwrap();
+    let vlay = Layout::array::<APort>(vlen).unwrap();
     let nptr = unsafe { alloc(nlay) as *mut APair };
-    let vptr = unsafe { alloc(vlay) as *mut APair };
+    let vptr = unsafe { alloc(vlay) as *mut APort };
     let node = unsafe { std::slice::from_raw_parts_mut(nptr, nlen) };
     let vars = unsafe { std::slice::from_raw_parts_mut(vptr, vlen) };
     GNet { nlen, vlen, node, vars, itrs: AtomicU64::new(0) }
@@ -430,7 +430,7 @@ impl<'a> GNet<'a> {
   }
 
   pub fn vars_create(&self, var: usize, val: Port) {
-    self.vars[var].0.store(val.0 as u64, Ordering::Relaxed);
+    self.vars[var].0.store(val.0, Ordering::Relaxed);
   }
 
   pub fn node_load(&self, loc: usize) -> Pair {
@@ -446,7 +446,7 @@ impl<'a> GNet<'a> {
   }
 
   pub fn vars_store(&self, var: usize, val: Port) {
-    self.vars[var].0.store(val.0 as u64, Ordering::Relaxed);
+    self.vars[var].0.store(val.0, Ordering::Relaxed);
   }
   
   pub fn node_exchange(&self, loc: usize, val: Pair) -> Pair {
@@ -454,7 +454,7 @@ impl<'a> GNet<'a> {
   }
 
   pub fn vars_exchange(&self, var: usize, val: Port) -> Port {
-    Port(self.vars[var].0.swap(val.0 as u64, Ordering::Relaxed) as u32)
+    Port(self.vars[var].0.swap(val.0, Ordering::Relaxed) as u32)
   }
 
   pub fn node_take(&self, loc: usize) -> Pair {
