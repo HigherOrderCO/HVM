@@ -165,22 +165,22 @@ typedef struct Str {
 } Str;
 
 // IO Tags
-const u32 DONE      = 0;
-const u32 PUTTEXT   = 1;
-const u32 GETTEXT   = 2;
-const u32 WRITEFILE = 3;
-const u32 READFILE  = 4;
-const u32 GETTIME   = 5;
-const u32 SLEEP     = 6;
-const u32 DRAWIMAGE = 7;
+#define DONE      = 0
+#define PUTTEXT   = 1
+#define GETTEXT   = 2
+#define WRITEFILE = 3
+#define READFILE  = 4
+#define GETTIME   = 5
+#define SLEEP     = 6
+#define DRAWIMAGE = 7
 
 // List Type
-const u32 NIL  = 0;
-const u32 CONS = 1;
+#define NIL  = 0
+#define CONS = 1
 
 // Booleans
-const bool TRUE  = 1;
-const bool FALSE = 0;
+#define TRUE  = 1
+#define FALSE = 0
 
 // Debugger
 // --------
