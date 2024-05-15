@@ -35,8 +35,10 @@ typedef _Atomic(u64) a64;
 // -------------
 
 // Threads per CPU
+#ifndef TPC_L2
 #define TPC_L2 0
-#define TPC    (1 << TPC_L2)
+#endif
+#define TPC (1 << TPC_L2)
 
 // Types
 // -----

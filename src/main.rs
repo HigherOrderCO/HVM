@@ -103,16 +103,21 @@ fn main() {
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       let fns = cmp::compile_book(cmp::Target::C, &book);
-      let hvm_c = include_str!(".hvm.c");
+      let cores = num_cpus::get();
+      let tpcl2 = (cores as f64).log2().floor() as u32;
+      let hvm_c = include_str!("hvm.c");
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
       let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
+      let hvm_c = hvm_c.replace("#define TPC_L2 0", &format!("#define TPC_L2 {} // {} cores", tpcl2, cores));
       let run_io = sub_matches.get_flag("io");
       let hvm_c = if run_io {
         hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
       } else {
         hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
       };
+
+
       println!("{}", hvm_c);
     }
     Some(("gen-cu", sub_matches)) => {

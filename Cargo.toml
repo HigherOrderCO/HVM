@@ -1,12 +1,13 @@
 [package]
 name = "hvm"
-version = "2.0.5"
+version = "2.0.6"
 edition = "2021"
 build = "build.rs"
 
 [dependencies]
 TSPL = "0.0.11"
 clap = "4.5.2"
+num_cpus = "1.0"
 
 [build-dependencies]
 cc = "1.0"
