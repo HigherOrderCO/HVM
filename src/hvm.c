@@ -1923,7 +1923,7 @@ void hvm_c(u32* book_buffer, bool run_io) {
 
   // Prints interactions and time
   u64 itrs = atomic_load(&net->itrs);
-  printf("- ITRS: %llu\n", itrs);
+  printf("- ITRS: %lu\n", itrs);
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 
