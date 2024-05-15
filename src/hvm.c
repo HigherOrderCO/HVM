@@ -34,7 +34,7 @@ typedef _Atomic(u64) a64;
 // -------------
 
 // Threads per CPU
-#define TPC_L2 4
+#define TPC_L2 0
 #define TPC    (1 << TPC_L2)
 
 // Types
@@ -1141,6 +1141,7 @@ void evaluator(Net* net, TM* tm, Book* book) {
       if (got != 0) {
         //printf("[%04x] stolen one task from %04x | itrs=%d idle=%d | %s ~ %s\n", tm->tid, sid, tm->itrs, atomic_load_explicit(&net->idle, memory_order_relaxed),show_port(get_fst(got)).x, show_port(get_snd(got)).x);
         push_redex(net, tm, got);
+        continue;
       } else {
         //printf("[%04x] failed to steal from %04x | itrs=%d idle=%d |\n", tm->tid, sid, tm->itrs, atomic_load_explicit(&net->idle, memory_order_relaxed));
         tm->sidx = 0;

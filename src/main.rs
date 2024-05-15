@@ -103,7 +103,7 @@ fn main() {
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       let fns = cmp::compile_book(cmp::Target::C, &book);
-      let hvm_c = include_str!("hvm.c");
+      let hvm_c = include_str!(".hvm.c");
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
       let run_io = sub_matches.get_flag("io");

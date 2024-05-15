@@ -10,3 +10,4 @@ clap = "4.5.2"
 
 [build-dependencies]
 cc = "1.0"
+num_cpus = "1.0"

@@ -1,8 +1,8 @@
 // 0
 @main = f
-  & @sum  ~ (24 (e f))
-  & @sort ~ (24 (0 (d e)))
-  & @gen  ~ (24 (0 d))
+  & @sum  ~ (18 (e f))
+  & @sort ~ (18 (0 (d e)))
+  & @gen  ~ (18 (0 d))
 
 // 1
 @down = (?(((* (a a)) @down$C0) (b (c d))) (b (c d)))
