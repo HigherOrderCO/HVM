@@ -1881,7 +1881,7 @@ void pretty_print_port(Net* net, Port port) {
 // Main
 // ----
 
-void hvm_c(u32* book_buffer, Net* net_buffer, bool run_io) {
+void hvm_c(u32* book_buffer, bool run_io) {
   // Creates static TMs
   alloc_static_tms();
 
@@ -1896,13 +1896,7 @@ void hvm_c(u32* book_buffer, Net* net_buffer, bool run_io) {
   u64 start = time64();
 
   // GMem
-  Net *net;
-  if (net_buffer) {
-    // A buffer for the net has already been allocated
-    net = net_buffer;
-  } else {
-    net = malloc(sizeof(Net));
-  }
+  Net *net = malloc(sizeof(Net));
   net_init(net);
 
   // Creates an initial redex that calls main
@@ -1915,27 +1909,23 @@ void hvm_c(u32* book_buffer, Net* net_buffer, bool run_io) {
     normalize(net, book);
   }
 
-  // Prints the result.
-  // Lets the Rust implementation print the result if it's been used to call
-  // this one
-  if (!net_buffer) {
-    printf("Result: ");
-    pretty_print_port(net, enter(net, ROOT));
-    printf("\n");
+  // Prints the result
+  printf("Result: ");
+  pretty_print_port(net, enter(net, ROOT));
+  printf("\n");
 
-    // Stops the timer
-    double duration = (time64() - start) / 1000000000.0; // seconds
+  // Stops the timer
+  double duration = (time64() - start) / 1000000000.0; // seconds
 
-    // Prints interactions and time
-    u64 itrs = atomic_load(&net->itrs);
-    printf("- ITRS: %llu\n", itrs);
-    printf("- TIME: %.2fs\n", duration);
-    printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
-  }
+  // Prints interactions and time
+  u64 itrs = atomic_load(&net->itrs);
+  printf("- ITRS: %llu\n", itrs);
+  printf("- TIME: %.2fs\n", duration);
+  printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 
   // Frees everything
   free_static_tms();
-  if (!net_buffer) { free(net); }
+  free(net);
   free(book);
 }
 
@@ -1944,9 +1934,9 @@ int main() {
   //hvm_c((u32*)DEMO_BOOK, false);
   
 #ifdef RUN_IO
-  hvm_c(NULL, NULL, TRUE);
+  hvm_c(NULL, TRUE);
 #else
-  hvm_c(NULL, NULL, FALSE);
+  hvm_c(NULL, FALSE);
 #endif
 
   return 0;
