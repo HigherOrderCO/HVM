@@ -165,22 +165,22 @@ typedef struct Str {
 } Str;
 
 // IO Tags
-#define DONE      = 0
-#define PUTTEXT   = 1
-#define GETTEXT   = 2
-#define WRITEFILE = 3
-#define READFILE  = 4
-#define GETTIME   = 5
-#define SLEEP     = 6
-#define DRAWIMAGE = 7
+#define DONE      0
+#define PUTTEXT   1
+#define GETTEXT   2
+#define WRITEFILE 3
+#define READFILE  4
+#define GETTIME   5
+#define SLEEP     6
+#define DRAWIMAGE 7
 
 // List Type
-#define NIL  = 0
-#define CONS = 1
+#define NIL  0
+#define CONS 1
 
 // Booleans
-#define TRUE  = 1
-#define FALSE = 0
+#define TRUE  1
+#define FALSE 0
 
 // Debugger
 // --------
