@@ -2,7 +2,7 @@ fn main() {
 
   // Replaces the core count in the C file by the correct count. FIXME: make less hacky (:
   let cores = num_cpus::get();
-  let tpcl2 = (cores as f64).log2().ceil() as u32;
+  let tpcl2 = (cores as f64).log2().floor() as u32;
   let hvm_c = std::fs::read_to_string("src/hvm.c").expect("Unable to read hvm.c");
   let hvm_c = hvm_c.replace("#define TPC_L2 0", &format!("#define TPC_L2 {} // {} cores", tpcl2, cores));
   std::fs::write("src/.hvm.c", hvm_c).expect("Unable to write .hvm.c");
