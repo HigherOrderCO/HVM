@@ -1,9 +1,13 @@
 fn main() {
-  // Builds hvm.c
+
+  let cores = num_cpus::get();
+  let tpcl2 = (cores as f64).log2().floor() as u32;
+
   match cc::Build::new()
       .file("src/hvm.c")
       .opt_level(3)
       .warnings(false)
+      .define("TPC_L2", &*tpcl2.to_string())
       .try_compile("hvm-c") {
     Ok(_) => println!("cargo:rerun-if-changed=src/hvm.c"),
     Err(e) => {
@@ -33,4 +37,5 @@ fn main() {
   else {
     println!("WARNING: CUDA compiler not found. HVM will not be able to run on GPU.");
   }
+
 }

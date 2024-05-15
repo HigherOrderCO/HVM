@@ -3,11 +3,15 @@ name = "hvm"
 version = "2.0.0"
 edition = "2021"
 build = "build.rs"
+description = "A parallel virtual machine."
+license = "MIT"
 
 [dependencies]
 TSPL = "0.0.11"
 clap = "4.5.2"
 highlight_error = "0.1.1"
+num_cpus = "1.0"
 
 [build-dependencies]
 cc = "1.0"
+num_cpus = "1.0"

@@ -1,67 +1,57 @@
-// 0
-@main = f
-  & @sum  ~ (24 (e f))
-  & @sort ~ (24 (0 (d e)))
-  & @gen  ~ (24 (0 d))
+@down = (?(((a (* a)) @down__C0) (b (c d))) (c (b d)))
 
-// 1
-@down = (?(((* (a a)) @down$C0) (b (c d))) (b (c d)))
+@down__C0 = ({a e} ((c g) ({b f} (d h))))
+  &! @flow ~ (a (b (c d)))
+  &! @flow ~ (e (f (g h)))
 
-// 2
-@down$C0 = ({a e} ({b f} ((c g) (d h))))
-  &!@flow ~ (a (b (c d)))
-  &!@flow ~ (e (f (g h)))
+@flow = (?(((a (* a)) @flow__C0) (b (c d))) (c (b d)))
 
-// 3
-@flow = (?(((* (a a)) @flow$C0) (b (c d))) (b (c d)))
-
-// 4
-@flow$C0 = ({$([+1] a) c} ({b d} ((e f) h)))
+@flow__C0 = ({$([+1] a) c} ((e f) ({b d} h)))
   & @down ~ (a (b (g h)))
   & @warp ~ (c (d (e (f g))))
 
-// 5
-@gen = (?(((a a) @gen$C0) b) b)
+@gen = (?(((a a) @gen__C0) b) b)
 
-// 6
-@gen$C0 = ({a d} ({$([*2] $([+1] b)) $([*2] e)} (c f)))
-  &!@gen ~ (a (b c))
-  &!@gen ~ (d (e f))
+@gen__C0 = ({a d} ({$([*2] $([+1] b)) $([*2] e)} (c f)))
+  &! @gen ~ (a (b c))
+  &! @gen ~ (d (e f))
 
-// 7
-@sort = (?(((* (a a)) @sort$C0) (b (c d))) (b (c d)))
+@main = a
+  & @sum ~ (18 (@main__C1 a))
 
-// 8
-@sort$C0 = ({$([+1] a) {c f}} (b ((d g) i)))
-  & @flow ~ (a (b ((e h) i)))
-  &!@sort ~ (c (0 (d e)))
-  &!@sort ~ (f (1 (g h)))
+@main__C0 = a
+  & @gen ~ (18 (0 a))
 
-// 9
-@sum = (?(((a a) @sum$C0) (b c)) (b c))
+@main__C1 = a
+  & @sort ~ (18 (0 (@main__C0 a)))
+
+@sort = (?(((a (* a)) @sort__C0) (b (c d))) (c (b d)))
+
+@sort__C0 = ({$([+1] a) {c f}} ((d g) (b i)))
+  & @flow ~ (a (b (e (h i))))
+  &! @sort ~ (c (0 (d e)))
+  &! @sort ~ (f (1 (g h)))
+
+@sum = (?(((a a) @sum__C0) b) b)
 
 // A
 @sum$C0 = ({a c} ((b d) f))
   &!@sum ~ (a (b $([+] $(e f))))
   &!@sum ~ (c (d e))
 
-// B
-@swap = (?((@swap$C0 @swap$C1) (a (b c))) (a (b c)))
 
-// C
-@swap$C0 = (a (b (a b)))
+@swap = (?((@swap__C0 @swap__C1) (a (b c))) (b (a c)))
 
-// D
-@swap$C1 = (* (b (a (a b))))
+@swap__C0 = (b (a (a b)))
 
-// E
-@warp = (?((@warp$C0 @warp$C1) (a (b (c d)))) (a (b (c d))))
+@swap__C1 = (* (a (b (a b))))
+
+@warp = (?((@warp__C0 @warp__C1) (a (b (c d)))) (c (b (a d))))
 
 // F
 @warp$C0 = ($([^] $(b c)) ({$([>] $(a b)) d} ({a e} f)))
   & @swap ~ (c (d (e f)))
 
-// G
-@warp$C1 = ({a e} ({b f} ((c g) ((d h) ((i j) (k l))))))
-  &!@warp ~ (a (b (c (d (i k)))))
-  &!@warp ~ (e (f (g (h (j l)))))
+@warp__C1 = ({a f} ((d i) ((c h) ({b g} ((e j) (k l))))))
+  &! @warp ~ (f (g (h (i (j l)))))
+  &! @warp ~ (a (b (c (d (e k)))))
