@@ -619,8 +619,18 @@ impl TMem {
     let def = &book.defs[fid];
 
     // Copy Optimization.
-    if def.safe && b.get_tag() == DUP {
-      return self.interact_eras(net, a, b);
+    if b.get_tag() == DUP {
+      if def.safe {
+        return self.interact_eras(net, a, b);
+      } else {
+        // TODO:
+        // Currently, we'll not allow copying of REFs with DUPs. While this is perfectly valid on
+        // IC semantics (i.e., if the user know what they're doing), this can lead to unsound
+        // reductions when compiling λ-terms to HVM. So, for now, we'll just disable this feature,
+        // and consider it undefined behavior. We should add a `--unsafe` flag that allows it.
+        println!("ERROR: attempt to clone a non-affine global reference.\n");
+        std::process::exit(0);
+      }
     }
 
     // Allocates needed nodes and vars.
