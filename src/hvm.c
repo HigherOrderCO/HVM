@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -1923,9 +1924,10 @@ void hvm_c(u32* book_buffer, bool run_io) {
 
   // Prints interactions and time
   u64 itrs = atomic_load(&net->itrs);
-  printf("- ITRS: %lu\n", itrs);
+  printf("- ITRS: %" PRIu64 "\n", itrs);
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
+
 
   // Frees everything
   free_static_tms();
