@@ -1,3 +1,6 @@
+//static a32 FAST = 0;
+//static a32 SLOW = 0;
+
 @Tup8/New = (a (b (c (d (e (f (g (h ((a (b (c (d (e (f (g (h i)))))))) i)))))))))
 
 @app = (?(((* (a a)) @app__C0) b) b)

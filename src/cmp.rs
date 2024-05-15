@@ -36,7 +36,7 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
 // Compiles a single Def.
 pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize, fid: hvm::Val) {
   let def = &book.defs[fid as usize];
-  let fun = &def.name.replace("/","_");
+  let fun = &def.name.replace("/","_").replace(".","_");
 
   // Initializes context
   let neo = &mut 0;
@@ -249,12 +249,14 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
     code.push_str(&format!("{}Port {} = NONE;\n", indent(tab), &x2));
     code.push_str(&format!("{}// fast anni\n", indent(tab)));
     code.push_str(&format!("{}if (get_tag({}) == CON && node_load(net, get_val({})) != 0) {{\n", indent(tab), b, b));
+    //code.push_str(&format!("{}atomic_fetch_add(&FAST, 1);\n", indent(tab+1)));
     code.push_str(&format!("{}tm->itrs += 1;\n", indent(tab+1)));
     code.push_str(&format!("{}{} = 1;\n", indent(tab+1), &op));
     code.push_str(&format!("{}{} = node_take(net, get_val({}));\n", indent(tab+1), &bv, b));
     code.push_str(&format!("{}{} = get_fst({});\n", indent(tab+1), x1, &bv));
     code.push_str(&format!("{}{} = get_snd({});\n", indent(tab+1), x2, &bv));
     code.push_str(&format!("{}}}\n", indent(tab)));
+    //code.push_str(&format!("{}else {{ atomic_fetch_add(&SLOW, 1); }}\n", indent(tab)));
     compile_link_fast(trg, code, book, neo, tab, def, a2, &x2);
     compile_link_fast(trg, code, book, neo, tab, def, a1, &x1);
     code.push_str(&format!("{}if (!{}) {{\n", indent(tab), &op));
