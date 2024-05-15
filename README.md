@@ -46,7 +46,7 @@ rule of thumb, `gen-c` should be used in production.
 Language
 --------
 
-HVMC is a low-level compile target for high-level languages. It provides a raw
+HVM is a low-level compile target for high-level languages. It provides a raw
 syntax for wiring interaction nets. For example:
 
 ```javascript
