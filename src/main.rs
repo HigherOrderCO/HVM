@@ -78,7 +78,7 @@ fn main() {
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
-      //println!("{:?}", data);
+      println!("{:?}", data);
       let run_io = sub_matches.get_flag("io");
       unsafe {
         hvm_c(data.as_mut_ptr() as *mut u32, run_io);
@@ -106,6 +106,7 @@ fn main() {
       let hvm_c = include_str!(".hvm.c");
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
+      let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
       let run_io = sub_matches.get_flag("io");
       let hvm_c = if run_io {
         hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
@@ -118,10 +119,27 @@ fn main() {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-      let fns = cmp::compile_book(cmp::Target::CUDA, &book);
+      
+
+      //FIXME: currently, CUDA is faster on interpreted mode, so the compiler uses it.
+
+      // Compile with compiled functions:
+
+      //let hvm_c = include_str!("hvm.cu");
+      //let fns = cmp::compile_book(cmp::Target::CUDA, &book);
+      //let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
+      //let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
+      
+      // Compile with interpreted book:
+
       let hvm_c = include_str!("hvm.cu");
-      let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
-      let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
+      let mut demo_book_data : Vec<u8> = Vec::new();
+      book.to_buffer(&mut demo_book_data);
+      let dbook = format!("{:?}", demo_book_data).replace("[","{").replace("]","}");
+      let dbook = format!("static const u8 DEMO_BOOK[] = {};", dbook);
+      let hvm_c = hvm_c.replace("//INTERPRETED_BOOK//", &dbook);
+      let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
+
       let run_io = sub_matches.get_flag("io");
       let hvm_c = if run_io {
         hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")

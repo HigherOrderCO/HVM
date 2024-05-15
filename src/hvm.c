@@ -8,6 +8,7 @@
 
 #define INTERPRETED
 #define RUN_IO
+#define WITHOUT_MAIN
 //#define IO_DRAWIMAGE
 
 #ifdef IO_DRAWIMAGE
@@ -94,9 +95,9 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 #define XOR 0xF
 
 // Constants
-const Port FREE = 0x00000000;
-const Port ROOT = 0xFFFFFFF8;
-const Port NONE = 0xFFFFFFFF;
+#define FREE 0x00000000
+#define ROOT 0xFFFFFFF8
+#define NONE 0xFFFFFFFF
 
 // Cache Padding
 #define CACHE_PAD 64
@@ -1930,7 +1931,7 @@ void hvm_c(u32* book_buffer, bool run_io) {
   free(book);
 }
 
-#ifdef COMPILED
+#ifdef WITH_MAIN
 int main() {
   //hvm_c((u32*)DEMO_BOOK, false);
   
