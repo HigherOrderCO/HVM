@@ -727,7 +727,7 @@ __device__ __host__ inline Tag get_typ(Numb word) {
 }
 
 __device__ __host__ inline bool get_flp(Numb word) {
-  return ((word >> 29) & 1) == 1;
+  return ((word >> 28) & 1) == 1;
 }
 
 __device__ __host__ inline Numb set_flp(Numb word) {
