@@ -2262,12 +2262,7 @@ __device__ void pretty_print_port(Net* net, Port port) {
   Port stack[32];
   stack[0] = port;
   u32 len = 1;
-  u32 num = 0;
   while (len > 0) {
-    if (++num > 256) {
-      printf("(...)\n");
-      return;
-    }
     if (len > 32) {
       printf("...");
       --len;
