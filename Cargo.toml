@@ -1,8 +1,10 @@
 [package]
 name = "hvm"
-version = "2.0.7"
+version = "2.0.0"
 edition = "2021"
 build = "build.rs"
+description = "A parallel virtual machine."
+license = "MIT"
 
 [dependencies]
 TSPL = "0.0.11"

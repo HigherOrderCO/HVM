@@ -99,54 +99,61 @@ fn main() {
       println!("CUDA not available!\n");
     }
     Some(("gen-c", sub_matches)) => {
+      // Reads book from file
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-      let fns = cmp::compile_book(cmp::Target::C, &book);
+
+      // Gets optimal core count
       let cores = num_cpus::get();
       let tpcl2 = (cores as f64).log2().floor() as u32;
+
+      // Generates the interpreted book
+      let mut book_buf : Vec<u8> = Vec::new();
+      book.to_buffer(&mut book_buf);
+      let bookb = format!("{:?}", book_buf).replace("[","{").replace("]","}");
+      let bookb = format!("static const u8 BOOK_BUF[] = {};", bookb);
+
+      // Generates the C file
       let hvm_c = include_str!("hvm.c");
-      let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
+      let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &cmp::compile_book(cmp::Target::C, &book));
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
+      let hvm_c = hvm_c.replace("//COMPILED_BOOK_BUF//", &bookb);
       let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
       let hvm_c = hvm_c.replace("#define TPC_L2 0", &format!("#define TPC_L2 {} // {} cores", tpcl2, cores));
-      let run_io = sub_matches.get_flag("io");
-      let hvm_c = if run_io {
+      let runio = sub_matches.get_flag("io");
+      let hvm_c = if runio {
         hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
       } else {
         hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
       };
-
-
       println!("{}", hvm_c);
     }
     Some(("gen-cu", sub_matches)) => {
+      // Reads book from file
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-      
+
+      // Generates the interpreted book
+      let mut book_buf : Vec<u8> = Vec::new();
+      book.to_buffer(&mut book_buf);
+      let bookb = format!("{:?}", book_buf).replace("[","{").replace("]","}");
+      let bookb = format!("static const u8 BOOK_BUF[] = {};", bookb);
 
       //FIXME: currently, CUDA is faster on interpreted mode, so the compiler uses it.
 
       // Compile with compiled functions:
-
       //let hvm_c = include_str!("hvm.cu");
-      //let fns = cmp::compile_book(cmp::Target::CUDA, &book);
-      //let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &fns);
+      //let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &cmp::compile_book(cmp::Target::CUDA, &book));
       //let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
       
       // Compile with interpreted book:
-
       let hvm_c = include_str!("hvm.cu");
-      let mut demo_book_data : Vec<u8> = Vec::new();
-      book.to_buffer(&mut demo_book_data);
-      let dbook = format!("{:?}", demo_book_data).replace("[","{").replace("]","}");
-      let dbook = format!("static const u8 DEMO_BOOK[] = {};", dbook);
-      let hvm_c = hvm_c.replace("//INTERPRETED_BOOK//", &dbook);
+      let hvm_c = hvm_c.replace("//COMPILED_BOOK_BUF//", &bookb);
       let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
-
-      let run_io = sub_matches.get_flag("io");
-      let hvm_c = if run_io {
+      let runio = sub_matches.get_flag("io");
+      let hvm_c = if runio {
         hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
       } else {
         hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
