@@ -78,7 +78,7 @@ fn main() {
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
-      println!("{:?}", data);
+      //println!("{:?}", data);
       let run_io = sub_matches.get_flag("io");
       unsafe {
         hvm_c(data.as_mut_ptr() as *mut u32, run_io);
