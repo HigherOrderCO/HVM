@@ -39,7 +39,7 @@ typedef _Atomic(u64) a64;
 #ifndef TPC_L2
 #define TPC_L2 0
 #endif
-#define TPC (1 << TPC_L2)
+#define TPC (1ul << TPC_L2)
 
 // Types
 // -----
@@ -106,10 +106,10 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 #define CACHE_PAD 64
 
 // Global Net
-#define HLEN (1 << 16) // max 16k high-priority redexes
-#define RLEN (1 << 24) // max 16m low-priority redexes
-#define G_NODE_LEN (1 << 29) // max 536m nodes
-#define G_VARS_LEN (1 << 29) // max 536m vars
+#define HLEN (1ul << 16) // max 16k high-priority redexes
+#define RLEN (1ul << 24) // max 16m low-priority redexes
+#define G_NODE_LEN (1ul << 29) // max 536m nodes
+#define G_VARS_LEN (1ul << 29) // max 536m vars
 #define G_RBAG_LEN (TPC * RLEN)
 
 typedef struct Net {
