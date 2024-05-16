@@ -7,7 +7,7 @@ description = "A parallel virtual machine."
 license = "MIT"
 
 [dependencies]
-TSPL = "0.0.11"
+TSPL = "0.0.12"
 clap = "4.5.2"
 num_cpus = "1.0"
 
