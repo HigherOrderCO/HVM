@@ -14,7 +14,7 @@ prototype of this concept. Compared to its predecessor, HVM2 is simpler, faster
 and, most importantly, more correct. [HOC](https://HigherOrderCO.com/) provides
 long-term support to all features listed on its [PAPER](./PAPER.pdf).
 
-This repository provides a low-level IR language for specifyig the HVM2 nets,
+This repository provides a low-level IR language for specifying the HVM2 nets,
 and a compiler from that language to C and CUDA. It is not meant for direct
 human usage. If you're looking for a high-level language to interface with HVM2,
 check [Bend](https://github.com/HigherOrderCO/Bend) instead.
