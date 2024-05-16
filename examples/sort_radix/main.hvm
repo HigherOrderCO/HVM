@@ -46,7 +46,7 @@
 
 @radix = (?(((* (* (a a))) @radix$C0) (b (c (d e)))) (b (c (d e))))
 
-@radix$C0 = (a ({b $(:[&] $(d e))} ({$([*2] c) d} (f h))))
+@radix$C0 = (a ({b $([&] $(d e))} ({$([*2] c) d} (f h))))
   & @radix ~ (a (b (c (g h))))
   & @swap ~ (e (f (@Free g)))
 
@@ -57,7 +57,7 @@
 @sum = ((0 ((a a) (@sum$C0 b))) b)
 
 @sum$C0 = (a (b d))
-  &!@sum ~ (a $(:[+] $(c d)))
+  &!@sum ~ (a $([+] $(c d)))
   &!@sum ~ (b c)
 
 @swap = (?((@swap$C0 @swap$C1) a) a)
