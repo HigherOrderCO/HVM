@@ -2260,11 +2260,11 @@ __device__ __host__ void print_net(Net* net, u32 ini, u32 end) {
 }
 
 __device__ void pretty_print_port(Net* net, Port port) {
-  Port stack[32];
+  Port stack[256];
   stack[0] = port;
   u32 len = 1;
   while (len > 0) {
-    if (len > 32) {
+    if (len > 256) {
       printf("ERROR: result too deep to print. This will be fixed soon(TM)");
       --len;
       continue;
@@ -2291,11 +2291,11 @@ __device__ void pretty_print_port(Net* net, Port port) {
         break;
       }
       case VAR: {
-        printf("x%x", get_val(cur));
         Port got = vars_load(net, get_val(cur));
         if (got != NONE) {
-          printf("=");
           stack[len++] = got;
+        } else {
+          printf("x%x", get_val(cur));
         }
         break;
       }
@@ -2534,9 +2534,13 @@ extern "C" void hvm_cu(u32* book_buffer, bool perform_io) {
 
   // Normalizes the GNet
   gnet_normalize(gnet);
-
-  // Invokes the Result Printer Kernel
   cudaDeviceSynchronize();
+
+  // Stops the timer
+  clock_t end = clock();
+  double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
+
+  // Prints the result
   print_result<<<1,1>>>(gnet);
 
   // Reports errors
@@ -2545,10 +2549,6 @@ extern "C" void hvm_cu(u32* book_buffer, bool perform_io) {
     fprintf(stderr, "Failed to launch kernels (error code %s)!\n", cudaGetErrorString(err));
     exit(EXIT_FAILURE);
   }
-
-  // Stops the timer
-  clock_t end = clock();
-  double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
 
   // Prints entire memdump
   //{
