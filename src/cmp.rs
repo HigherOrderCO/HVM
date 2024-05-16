@@ -79,13 +79,13 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
   // Allocs resources (using slow allocator)
   //code.push_str(&format!("{}// Allocates needed resources.\n", indent(tab+1)));
   //code.push_str(&format!("{}if (!get_resources(net, tm, {}, {}, {})) {{\n", indent(tab+1), def.rbag.len()+1, def.node.len(), def.vars));
-  //code.push_str(&format!("{}return false;\n", indent(tab+2)));
+  //code.push_str(&format!("{}return FALSE;\n", indent(tab+2)));
   //code.push_str(&format!("{}}}\n", indent(tab+1)));
   //for i in 0 .. def.node.len() {
-    //code.push_str(&format!("{}Val n{:x} = tm->node_loc[0x{:x}];\n", indent(tab+1), i, i));
+    //code.push_str(&format!("{}Val n{:x} = tm->nloc[0x{:x}];\n", indent(tab+1), i, i));
   //}
   //for i in 0 .. def.vars {
-    //code.push_str(&format!("{}Val v{:x} = tm->vars_loc[0x{:x}];\n", indent(tab+1), i, i));
+    //code.push_str(&format!("{}Val v{:x} = tm->vloc[0x{:x}];\n", indent(tab+1), i, i));
   //}
   //for i in 0 .. def.vars {
     //code.push_str(&format!("{}vars_create(net, v{:x}, NONE);\n", indent(tab+1), i));
@@ -96,7 +96,7 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
 
   // Compiles rbag
   for redex in &def.rbag {
-    let fun = compile_atom(trg, redex.get_fst());
+    let fun = compile_node(trg, code, book, neo, tab+1, def, redex.get_fst());
     let arg = compile_node(trg, code, book, neo, tab+1, def, redex.get_snd());
     code.push_str(&format!("{}link(net, tm, {}, {});\n", indent(tab+1), &fun, &arg));
   }
@@ -321,7 +321,7 @@ pub fn compile_node(trg: Target, code: &mut String, book: &hvm::Book, neo: &mut 
 
 // Compiles an atomic port.
 fn compile_atom(trg: Target, port: hvm::Port) -> String {
-  return format!("new_port({},0x{:08x})", compile_tag(trg, port.get_tag()), port.get_val());
+  return format!("new_port({},0x{:08x})/*atom*/", compile_tag(trg, port.get_tag()), port.get_val());
 }
 
 // Compiles a tag.
