@@ -3,7 +3,9 @@ Usage (Nix)
 
 #### 1. Access/install HVM
 
-[Install Nix](https://nixos.org/manual/nix/stable/installation/installation.html) and enable [Flakes](https://nixos.wiki/wiki/Flakes#Enable_flakes) then, in a shell, run:
+[Install Nix](https://nixos.org/manual/nix/stable/installation/installation.html) and enable [Flakes](https://wiki.nixos.org/wiki/Flakes#Enable_flakes) then, in a shell, run:
+
+
 
 ```sh
 git clone https://github.com/HigherOrderCO/HVM.git
