@@ -295,26 +295,22 @@ const Port ROOT = 0xFFFFFFF8;
 const Port NONE = 0xFFFFFFFF;
 
 // Numbers
-const Tag SYM = 0x00;
-const Tag U24 = 0x01;
-const Tag I24 = 0x02;
-const Tag F24 = 0x03;
-const Tag ADD = 0x04;
-const Tag SUB = 0x05;
-const Tag MUL = 0x06;
-const Tag DIV = 0x07;
-const Tag REM = 0x08;
-const Tag EQ  = 0x09;
-const Tag NEQ = 0x0A;
-const Tag LT  = 0x0B;
-const Tag GT  = 0x0C;
-const Tag AND = 0x0D;
-const Tag OR  = 0x0E;
-const Tag XOR = 0x0F;
-
-const Tag FLIP_SUB = 0x10;
-const Tag FLIP_DIV = 0x11;
-const Tag FLIP_REM = 0x12;
+const Tag SYM = 0x0;
+const Tag U24 = 0x1;
+const Tag I24 = 0x2;
+const Tag F24 = 0x3;
+const Tag ADD = 0x4;
+const Tag SUB = 0x5;
+const Tag MUL = 0x6;
+const Tag DIV = 0x7;
+const Tag REM = 0x8;
+const Tag EQ  = 0x9;
+const Tag NEQ = 0xA;
+const Tag LT  = 0xB;
+const Tag GT  = 0xC;
+const Tag AND = 0xD;
+const Tag OR  = 0xE;
+const Tag XOR = 0xF;
 
 // Evaluation Modes
 const u8 SEED = 0;
@@ -679,20 +675,20 @@ __device__ inline Pair adjust_pair(Net* net, TM* tm, Pair pair) {
 
 // Constructor and getters for SYM (operation selector)
 __device__ __host__ inline Numb new_sym(u32 val) {
-  return (val << 5) | SYM;
+  return ((val & 0xF) << 4) | SYM;
 }
 
 __device__ __host__ inline u32 get_sym(Numb word) {
-  return (word >> 5) & 0xF;
+  return (word >> 4) & 0xF;
 }
 
 // Constructor and getters for U24 (unsigned 24-bit integer)
 __device__ __host__ inline Numb new_u24(u32 val) {
-  return (val << 5) | U24;
+  return ((val & 0xFFFFFF) << 4) | U24;
 }
 
 __device__ __host__ inline u32 get_u24(Numb word) {
-  return word >> 5;
+  return (word >> 4) & 0xFFFFFF;
 }
 
 // Constructor and getters for I24 (signed 24-bit integer)
@@ -701,26 +697,34 @@ __device__ __host__ inline Numb new_i24(i32 val) {
 }
 
 __device__ __host__ inline i32 get_i24(Numb word) {
-  return ((i32)(word << 3)) >> 8;
+  return (((word >> 4) & 0xFFFFFF) << 8) >> 8;
 }
 
 // Constructor and getters for F24 (24-bit float)
 __device__ __host__ inline Numb new_f24(f32 val) {
-  u32 shifted_bits = bits >> 8;
-  u32 lost_bits = bits & 0xFF;
-  shifted_bits += (lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7; // round ties to even
-  shifted_bits |= ((bits & 0x7F800000) == 0x7F800000) && (bits << 9 != 0); // ensure NaNs don't become infinities
-  return (shifted_bits << 5) | F24;
+  u32 bits = *(u32*)&val;
+  u32 sign = (bits >> 31) & 0x1;
+  i32 expo = ((bits >> 23) & 0xFF) - 127;
+  u32 mant = bits & 0x7FFFFF;
+  u32 uexp = expo + 63;
+  u32 bts1 = (sign << 23) | (uexp << 16) | (mant >> 7);
+  return (bts1 << 4) | F24;
 }
 
 __device__ __host__ inline f32 get_f24(Numb word) {
-  u32 bits = (word << 3) & 0xFFFFFF00;
-  return *(f32*)&bits;
+  u32 bits = (word >> 4) & 0xFFFFFF;
+  u32 sign = (bits >> 23) & 0x1;
+  u32 expo = (bits >> 16) & 0x7F;
+  u32 mant = bits & 0xFFFF;
+  i32 iexp = expo - 63;
+  u32 bts0 = (sign << 31) | ((iexp + 127) << 23) | (mant << 7);
+  u32 bts1 = (mant == 0 && iexp == -63) ? (sign << 31) : bts0;
+  return *(f32*)&bts1;
 }
 
 // Flip flag
 __device__ __host__ inline Tag get_typ(Numb word) {
-  return word & 0x1F;
+  return word & 0xF;
 }
 
 __device__ __host__ inline bool get_flp(Numb word) {
@@ -737,11 +741,14 @@ __device__ __host__ inline Numb flp_flp(Numb word) {
 
 // Partial application
 __device__ __host__ inline Numb partial(Numb a, Numb b) {
-  return (b & ~0x1F) | get_sym(a);
+  return b & 0xFFFFFFF0 | get_sym(a);
 }
 
 // Operate function
 __device__ __host__ inline Numb operate(Numb a, Numb b) {
+  if (get_flp(a) ^ get_flp(b)) {
+    Numb t = a; a = b; b = t;
+  }
   Tag at = get_typ(a);
   Tag bt = get_typ(b);
   if (at == SYM && bt == SYM) {
@@ -761,17 +768,6 @@ __device__ __host__ inline Numb operate(Numb a, Numb b) {
   }
   Tag op = (at >= ADD) ? at : bt;
   Tag ty = (at >= ADD) ? bt : at;
-  Tag op, ty;
-  if (at >= ADD) {
-    op = at;
-    ty = bt;
-  } else {
-    op = bt;
-    ty = at;
-    Numb t = a;
-    a = b;
-    b = t;
-  }
   switch (ty) {
     case U24: {
       u32 av = get_u24(a);
@@ -789,9 +785,6 @@ __device__ __host__ inline Numb operate(Numb a, Numb b) {
         case AND: return new_u24(av & bv);
         case OR:  return new_u24(av | bv);
         case XOR: return new_u24(av ^ bv);
-        case FLIP_SUB: return new_u24(bv - av);
-        case FLIP_DIV: return new_u24(bv / av);
-        case FLIP_REM: return new_u24(bv % av);
         default:  return new_u24(0);
       }
     }
@@ -811,9 +804,6 @@ __device__ __host__ inline Numb operate(Numb a, Numb b) {
         case AND: return new_i24(av & bv);
         case OR:  return new_i24(av | bv);
         case XOR: return new_i24(av ^ bv);
-        case FLIP_SUB: return new_i24(bv - av);
-        case FLIP_DIV: return new_i24(bv / av);
-        case FLIP_REM: return new_i24(bv % av);
         default:  return new_i24(0);
       }
     }
@@ -833,9 +823,6 @@ __device__ __host__ inline Numb operate(Numb a, Numb b) {
         case AND: return new_f24(atan2f(av, bv));
         case OR:  return new_f24(logf(bv) / logf(av));
         case XOR: return new_f24(powf(av, bv));
-        case FLIP_SUB: return new_f24(bv - av);
-        case FLIP_DIV: return new_f24(bv / av);
-        case FLIP_REM: return new_f24(fmodf(bv, av));
         default:  return new_f24(0);
       }
     }
@@ -1475,7 +1462,7 @@ __device__ bool interact_oper(Net* net, TM* tm, Port a, Port b) {
     Numb cv = operate(av, bv);
     link_pair(net, tm, new_pair(new_port(NUM, cv), B2));
   } else {
-    node_create(net, tm->nloc[0], new_pair(a, B2));
+    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(av)), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 

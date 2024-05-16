@@ -1,9 +1,8 @@
 //./hvm.rs//
 
 use TSPL::{new_parser, Parser};
-use highlight_error::highlight_error;
 use crate::hvm;
-use std::{collections::BTreeMap, fmt::{Debug, Display}};
+use std::collections::BTreeMap;
 
 // Types
 // -----
@@ -42,82 +41,98 @@ new_parser!(CoreParser);
 
 impl<'i> CoreParser<'i> {
 
-  pub fn parse_numb_sym(&mut self) -> Result<Numb, String> {
+  pub fn parse_numb_sym(&mut self, flp: bool) -> Result<Numb, String> {
     self.consume("[")?;
 
     // Parses the symbol
-    let op = hvm::Numb::new_sym(match () {
-      _ if self.try_consume("+")  => hvm::ADD,
-      _ if self.try_consume("-")  => hvm::SUB,
-      _ if self.try_consume("*")  => hvm::MUL,
-      _ if self.try_consume("/")  => hvm::DIV,
-      _ if self.try_consume("%")  => hvm::REM,
-      _ if self.try_consume("=")  => hvm::EQ,
-      _ if self.try_consume("!")  => hvm::NEQ,
-      _ if self.try_consume("<")  => hvm::LT,
-      _ if self.try_consume(">")  => hvm::GT,
-      _ if self.try_consume("&")  => hvm::AND,
-      _ if self.try_consume("|")  => hvm::OR,
-      _ if self.try_consume("^")  => hvm::XOR,
-      _ if self.try_consume(":-") => hvm::FLIP_SUB,
-      _ if self.try_consume(":/") => hvm::FLIP_DIV,
-      _ if self.try_consume(":%") => hvm::FLIP_REM,
-      _ => self.expected("operator symbol")?,
-    });
+    let num = match self.peek_one().unwrap() {
+      '+' => Ok(hvm::Numb::new_sym(hvm::ADD as hvm::Val)),
+      '-' => Ok(hvm::Numb::new_sym(hvm::SUB as hvm::Val)),
+      '*' => Ok(hvm::Numb::new_sym(hvm::MUL as hvm::Val)),
+      '/' => Ok(hvm::Numb::new_sym(hvm::DIV as hvm::Val)),
+      '%' => Ok(hvm::Numb::new_sym(hvm::REM as hvm::Val)),
+      '=' => Ok(hvm::Numb::new_sym(hvm::EQ  as hvm::Val)),
+      '!' => Ok(hvm::Numb::new_sym(hvm::NEQ as hvm::Val)),
+      '<' => Ok(hvm::Numb::new_sym(hvm::LT  as hvm::Val)),
+      '>' => Ok(hvm::Numb::new_sym(hvm::GT  as hvm::Val)),
+      '&' => Ok(hvm::Numb::new_sym(hvm::AND as hvm::Val)),
+      '|' => Ok(hvm::Numb::new_sym(hvm::OR  as hvm::Val)),
+      '^' => Ok(hvm::Numb::new_sym(hvm::XOR as hvm::Val)),
+      _   => self.expected("operator symbol"),
+    }?;
+    self.advance_one();
 
-    self.skip_trivia();
     // Syntax for partial operations, like `[*2]`
-    let num = if self.peek_one() != Some(']') {
-      hvm::Numb::partial(op, hvm::Numb(self.parse_numb_lit()?.0))
+    let num = if "0123456789+-[:".contains(self.peek_one().unwrap_or(' ')) {
+      hvm::Numb::partial(num, hvm::Numb(self.parse_numb_lit(false)?.0))
     } else {
-      op
+      num
     };
 
     // Closes symbol bracket
     self.consume("]")?;
 
+    // Sets the flip flag, if necessary
+    let num = if flp { num.set_flp() } else { num };
+
     // Returns the symbol
     return Ok(Numb(num.0));
   }
 
-  pub fn parse_numb_lit(&mut self) -> Result<Numb, String> {
-    let start = self.index;
-    let num = self.take_while(|x| x.is_alphanumeric() || x == '+' || x == '-' || x == '.');
-    let end = self.index;
+  pub fn parse_numb_lit(&mut self, flp: bool) -> Result<Numb, String> {
+    // Parses sign
+    let sgn = match self.peek_one() {
+      Some('+') => { self.consume("+")?; Some(1) }
+      Some('-') => { self.consume("-")?; Some(-1) }
+      _         => None,
+    };
 
-    let display_err = |err: &dyn Display| format!("invalid number literal: {err}\n{}", highlight_error(start, end, self.input));
+    // Parses main value 
+    let num = self.parse_u64()? as u32;
 
-    Ok(Numb(if num.contains('.') || num.contains("inf") || num.contains("NaN") {
-      let val: f32 = num.parse().map_err(|err| display_err(&err))?;
-      hvm::Numb::new_f24(val)
-    } else if num.starts_with('+') || num.starts_with('-') {
-      let val = Self::parse_int(&num[1..])? as i32;
-      hvm::Numb::new_i24(if num.starts_with('-') { -val } else { val })
+    // Parses frac value (Float type)
+    let fra = if let Some('.') = self.peek_one() {
+      self.consume(".")?;
+      Some(self.parse_u64()? as u32)
     } else {
-      let val = Self::parse_int(num)? as u32;
-      hvm::Numb::new_u24(val)
-    }.0))
-  }
+      None
+    };
 
-  fn parse_int(input: &str) -> Result<u64, String> {
-    if let Some(rest) = input.strip_prefix("0x") {
-      u64::from_str_radix(rest, 16).map_err(|err| format!("{err:?}"))
-    } else if let Some(rest) = input.strip_prefix("0b") {
-      u64::from_str_radix(rest, 2).map_err(|err| format!("{err:?}"))
-    } else {
-      input.parse::<u64>().map_err(|err| format!("{err:?}"))
+    // Creates a float from value and fraction
+    fn make_float(num: u32, fra: u32) -> f32 {
+      num as f32 + fra as f32 / 10f32.powi(fra.to_string().len() as i32)
     }
+
+    // Gets the numeric bit representation
+    let num = match (sgn, fra) {
+      (Some(s), Some(f)) => hvm::Numb::new_f24(s as f32 * make_float(num, f)),
+      (Some(s), None   ) => hvm::Numb::new_i24(s as i32 * num as i32),
+      (None   , Some(f)) => hvm::Numb::new_f24(make_float(num, f)),
+      (None   , None   ) => hvm::Numb::new_u24(num),
+    };
+
+    // Sets the flip flag, if necessary
+    let num = if flp { num.set_flp() } else { num };
+
+    // Return the parsed number
+    return Ok(Numb(num.0));
   }
   
   pub fn parse_numb(&mut self) -> Result<Numb, String> {
-    self.skip_trivia();
+    // Parses flip flag
+    let flp = if let Some(':') = self.peek_one() {
+      self.consume(":")?;
+      true
+    } else {
+      false
+    };
 
     // Parses symbols (SYM)
     if let Some('[') = self.peek_one() {
-      return self.parse_numb_sym();
+      return self.parse_numb_sym(flp);
     // Parses numbers (U24,I24,F24)
     } else {
-      return self.parse_numb_lit();
+      return self.parse_numb_lit(flp);
     }
   }
 
@@ -170,7 +185,7 @@ impl<'i> CoreParser<'i> {
       }
       _ => {
         if let Some(c) = self.peek_one() {
-          if "0123456789+-[".contains(c) {
+          if "0123456789+-[:".contains(c) {
             return Ok(Tree::Num { val: self.parse_numb()? });
           }
         }
@@ -207,14 +222,6 @@ impl<'i> CoreParser<'i> {
     }
     Ok(Book { defs })
   }
-
-  fn try_consume(&mut self, str: &str) -> bool {
-    let matches = self.peek_many(str.len()) == Some(str);
-    if matches {
-      self.advance_many(str.len());
-    }
-    matches
-  }
 }
 
 // Stringifier
@@ -236,26 +243,31 @@ impl Numb {
         hvm::AND => "[&]".to_string(),
         hvm::OR  => "[|]".to_string(),
         hvm::XOR => "[^]".to_string(),
-        hvm::FLIP_SUB => "[:-]".to_string(),
-        hvm::FLIP_DIV => "[:/]".to_string(),
-        hvm::FLIP_REM => "[:%]".to_string(),
-        _ => "[?]".to_string(),
+        _        => "[?]".to_string(),
       }
       hvm::U24 => {
         let val = numb.get_u24();
-        format!("{}", val)
+        if numb.get_flp() {
+          format!(":{}", val)
+        } else {
+          format!("{}", val)
+        }
       }
       hvm::I24 => {
         let val = numb.get_i24();
-        format!("{:+}", val)
+        let sng = if val < 0 { "-" } else { "+" };
+        if numb.get_flp() {
+          format!(":{}{}", sng, val.abs())  
+        } else {
+          format!("{}{}", sng, val.abs())
+        }
       }
       hvm::F24 => {
         let val = numb.get_f24();
-        match val {
-          f32::INFINITY => format!("+inf"),
-          f32::NEG_INFINITY => format!("-inf"),
-          x if x.is_nan() => format!("+NaN"),
-          _ => format!("{:?}", val)
+        if numb.get_flp() {
+          format!(":{:.3}", val)
+        } else {
+          format!("{:.3}", val)
         }
       }
       _ => {
@@ -274,10 +286,7 @@ impl Numb {
           hvm::AND => "&",
           hvm::OR  => "|",
           hvm::XOR => "^",
-          hvm::FLIP_SUB => ":-",
-          hvm::FLIP_DIV => ":/",
-          hvm::FLIP_REM => ":%",
-          _ => "?",
+          _        => "?",
         }, val)
       }
     }

@@ -80,26 +80,22 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 #define SWIT 0x7
 
 // Numbers
-#define SYM 0x00
-#define U24 0x01
-#define I24 0x02
-#define F24 0x03
-#define ADD 0x04
-#define SUB 0x05
-#define MUL 0x06
-#define DIV 0x07
-#define REM 0x08
-#define EQ  0x09
-#define NEQ 0x0A
-#define LT  0x0B
-#define GT  0x0C
-#define AND 0x0D
-#define OR  0x0E
-#define XOR 0x0F
-  
-#define FLIP_SUB 0x10
-#define FLIP_DIV 0x11
-#define FLIP_REM 0x12
+#define SYM 0x0
+#define U24 0x1
+#define I24 0x2
+#define F24 0x3
+#define ADD 0x4
+#define SUB 0x5
+#define MUL 0x6
+#define DIV 0x7
+#define REM 0x8
+#define EQ  0x9
+#define NEQ 0xA
+#define LT  0xB
+#define GT  0xC
+#define AND 0xD
+#define OR  0xE
+#define XOR 0xF
 
 // Constants
 #define FREE 0x00000000
@@ -375,58 +371,80 @@ static inline Pair adjust_pair(Net* net, TM* tm, Pair pair) {
 
 // Constructor and getters for SYM (operation selector)
 static inline Numb new_sym(u32 val) {
-  return (val << 5) | SYM;
+  return ((val & 0xF) << 4) | SYM;
 }
 
 static inline u32 get_sym(Numb word) {
-  return (word >> 5);
+  return (word >> 4) & 0xF;
 }
 
 // Constructor and getters for U24 (unsigned 24-bit integer)
 static inline Numb new_u24(u32 val) {
-  return (val << 5) | U24;
+  return ((val & 0xFFFFFF) << 4) | U24;
 }
 
 static inline u32 get_u24(Numb word) {
-  return word >> 5;
+  return (word >> 4) & 0xFFFFFF;
 }
 
 // Constructor and getters for I24 (signed 24-bit integer)
 static inline Numb new_i24(i32 val) {
-  return ((u32)val << 5) | I24;
+  return (((u32)val << 4) & 0xFFFFFF) | I24;
 }
 
 static inline i32 get_i24(Numb word) {
-  return ((i32)(word << 3)) >> 8;
+  return (((word >> 4) & 0xFFFFFF) << 8) >> 8;
 }
 
 // Constructor and getters for F24 (24-bit float)
 static inline Numb new_f24(float val) {
   u32 bits = *(u32*)&val;
-  u32 shifted_bits = bits >> 8;
-  u32 lost_bits = bits & 0xFF;
-  shifted_bits += (lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7; // round ties to even
-  shifted_bits |= ((bits & 0x7F800000) == 0x7F800000) && (bits << 9 != 0); // ensure NaNs don't become infinities
-  return (shifted_bits << 5) | F24;
+  u32 sign = (bits >> 31) & 0x1;
+  i32 expo = ((bits >> 23) & 0xFF) - 127;
+  u32 mant = bits & 0x7FFFFF;
+  u32 uexp = expo + 63;
+  u32 bts1 = (sign << 23) | (uexp << 16) | (mant >> 7);
+  return (bts1 << 4) | F24;
 }
 
 static inline float get_f24(Numb word) {
-  u32 bits = (word << 3) & 0xFFFFFF00;
-  return *(float*)&bits;
+  u32 bits = (word >> 4) & 0xFFFFFF;
+  u32 sign = (bits >> 23) & 0x1;
+  u32 expo = (bits >> 16) & 0x7F;
+  u32 mant = bits & 0xFFFF;
+  i32 iexp = expo - 63;
+  u32 bts0 = (sign << 31) | ((iexp + 127) << 23) | (mant << 7);
+  u32 bts1 = (mant == 0 && iexp == -63) ? (sign << 31) : bts0;
+  return *(float*)&bts1;
 }
 
 // Flip flag
 static inline Tag get_typ(Numb word) {
-  return word & 0x1F;
+  return word & 0xF;
+}
+
+static inline bool get_flp(Numb word) {
+  return ((word >> 28) & 1) == 1;
+}
+
+static inline Numb set_flp(Numb word) {
+  return word | 0x10000000;
+}
+
+static inline Numb flp_flp(Numb word) {
+  return word ^ 0x10000000;
 }
 
 // Partial application
 static inline Numb partial(Numb a, Numb b) {
-  return (b & ~0x1F) | get_sym(a);
+  return b & 0xFFFFFFF0 | get_sym(a);
 }
 
 // Operate function
 static inline Numb operate(Numb a, Numb b) {
+  if (get_flp(a) ^ get_flp(b)) {
+    Numb t = a; a = b; b = t;
+  }
   Tag at = get_typ(a);
   Tag bt = get_typ(b);
   if (at == SYM && bt == SYM) {
@@ -444,17 +462,8 @@ static inline Numb operate(Numb a, Numb b) {
   if (at < ADD && bt < ADD) {
     return new_u24(0);
   }
-  Tag op, ty;
-  if (at >= ADD) {
-    op = at;
-    ty = bt;
-  } else {
-    op = bt;
-    ty = at;
-    Numb t = a;
-    a = b;
-    b = t;
-  }
+  Tag op = (at >= ADD) ? at : bt;
+  Tag ty = (at >= ADD) ? bt : at;
   switch (ty) {
     case U24: {
       u32 av = get_u24(a);
@@ -472,9 +481,6 @@ static inline Numb operate(Numb a, Numb b) {
         case AND: return new_u24(av & bv);
         case OR:  return new_u24(av | bv);
         case XOR: return new_u24(av ^ bv);
-        case FLIP_SUB: return new_u24(bv - av);
-        case FLIP_DIV: return new_u24(bv / av);
-        case FLIP_REM: return new_u24(bv % av);
         default:  return new_u24(0);
       }
     }
@@ -494,9 +500,6 @@ static inline Numb operate(Numb a, Numb b) {
         case AND: return new_i24(av & bv);
         case OR:  return new_i24(av | bv);
         case XOR: return new_i24(av ^ bv);
-        case FLIP_SUB: return new_i24(bv - av);
-        case FLIP_DIV: return new_i24(bv / av);
-        case FLIP_REM: return new_i24(bv % av);
         default:  return new_i24(0);
       }
     }
@@ -516,9 +519,6 @@ static inline Numb operate(Numb a, Numb b) {
         case AND: return new_f24(atan2f(av, bv));
         case OR:  return new_f24(logf(bv) / logf(av));
         case XOR: return new_f24(powf(av, bv));
-        case FLIP_SUB: return new_f24(bv - av);
-        case FLIP_DIV: return new_f24(bv / av);
-        case FLIP_REM: return new_f24(fmodf(bv, av));
         default:  return new_f24(0);
       }
     }
@@ -983,7 +983,7 @@ static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
     Numb cv = operate(av, bv);
     link_pair(net, tm, new_pair(new_port(NUM, cv), B2));
   } else {
-    node_create(net, tm->nloc[0], new_pair(a, B2));
+    node_create(net, tm->nloc[0], new_pair(new_port(get_tag(a), flp_flp(av)), B2));
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
