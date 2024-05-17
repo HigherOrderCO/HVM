@@ -26,10 +26,19 @@ fn main() {
       println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
     }
 
-    cc::Build::new()
+    
+
+    let mut builder = cc::Build::new();
+    builder
       .cuda(true)
-      .file("src/hvm.cu")
-      .compile("hvm-cu");
+      .file("src/hvm.cu");
+    println!("cargo::rerun-if-env-changed=CUDA_CCBIN");
+    if let Ok(ccbin) = std::env::var("CUDA_CCBIN") {
+      builder
+        .flag("-ccbin")
+        .flag(&ccbin);
+    };
+    builder.compile("hvm-cu");
     
     println!("cargo:rerun-if-changed=src/hvm.cu");
     println!("cargo:rustc-cfg=feature=\"cuda\"");   
