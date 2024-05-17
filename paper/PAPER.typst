@@ -1160,7 +1160,7 @@ that achieves near-linear speedup as a function of core count. While the
 resulting system still has many limitations, we proposed sensible plans to
 address them in the future.
 
-This work creates a solid foundation for arallel programming languages that are
+This work creates a solid foundation for parallel programming languages that are
 able to harness the massively parallel capabilities of modern hardware, without
 demanding explicit low-level management of threads, locks, mutexes and other
 complex synchronization primitives by the programmer.
