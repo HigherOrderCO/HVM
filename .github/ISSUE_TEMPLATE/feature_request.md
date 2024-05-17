@@ -3,7 +3,6 @@ name: Feature request
 about: Suggest a feature that you think should be added.
 title: ''
 labels: ''
-assignees: ''
 
 ---
 
