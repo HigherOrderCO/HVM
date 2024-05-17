@@ -33,7 +33,7 @@ framework for parallel computing. By translating constructs such as functions, a
 
 = Syntax
 
-HVM2's syntax consists of an Interaction Calculus system which textually represents an Interaction Combinator system @Calculus_1999. This textual system is capable of representing any arbitrary Interaction Net, and therefore possible to represent "vicious circles" @Lafont_1997. We only consider HVM2 programs which do not contain any vicious circles.
+HVM2's syntax consists of an Interaction Calculus system which textually represents an Interaction Combinator system @Calculus_1999. This textual system is capable of representing any arbitrary Interaction Net, and it is therefore possible to represent "vicious circles" @Lafont_1997. We only consider HVM2 programs which do not contain any vicious circles.
 
 HVM2's syntax has seven different types of _agents_ (in Lafont's terms) or _Nodes_. Additionally, HVM2 also has _Variables_ to represent wires which connect ports across Nodes. _Trees_ are either Variables or Nodes. They are represented syntactically as:
 
