@@ -1015,7 +1015,7 @@ TODO: include example translations from high-level languages to HVM2
 
 The HVM2 architecture, as currently presented, is capable of evaluating modern,
 high-level programs in massively parallel hardware with near-ideal speedup,
-which is a remarkable feat. That said, it has severe impactiful limitations that
+which is a remarkable feat. That said, it has severe impactful limitations that
 must be understood. Below is a list of many of these limitations, and how they
 can be addressed in the future.
 
