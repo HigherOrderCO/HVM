@@ -22,6 +22,8 @@ check [Bend](https://github.com/HigherOrderCO/Bend) instead.
 Usage
 -----
 
+__Important: Windows is not currently supported natively, only throught WSL__
+
 Install HVM2:
 
 ```sh
