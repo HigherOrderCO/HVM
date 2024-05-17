@@ -22,7 +22,7 @@ check [Bend](https://github.com/HigherOrderCO/Bend) instead.
 Usage
 -----
 
-__Important: Windows is not currently supported natively, only throught WSL__
+__Important: Windows is not currently supported natively, only through WSL__
 
 Install HVM2:
 
