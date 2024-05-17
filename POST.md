@@ -3,7 +3,7 @@
 Bend is a massively parallel, high-level programming language. Unlike existing
 alternatives like CUDA, OpenCL and Metal, which are low-level and limited, Bend
 has the feel and features of a modern language like Python and Haskell. Yet, for
-the first time ever, it language runs directly on GPUs, using
+the first time ever, this language runs directly on GPUs, using
 thousands of cores with 0 annotations, powered by the [HVM2](https://github.com/HigherOrderCO/hvm2).
 
 HVM2 is the successor to HVM1, a 2022 prototype of this concept. Through the
@@ -11,7 +11,7 @@ last year, we put massive effort into polishing, simplifying, and verifying
 HVM's correctness. As a result, we're now finally able to run it smoothly on
 GPUs. It still has many limitations, but it is finally stable, production-ready,
 and a solid foundation for all that is to come. HOC will provide long-term
-support to all features listed on HVM2's whitepaper.
+support for all features listed on HVM2's whitepaper.
 
 ## Using Bend
 
@@ -27,9 +27,9 @@ And then run `bend <file.bend>`.
 
 In Bend, any work that can be done in parallel *will* be done in parallel, with
 maximum granularity. For example, in `f(A) + g(B)`, both calls are independent,
-so, Bend will execute them in parallel. This gives us a very general way to
+so Bend will execute them in parallel. This gives us a very general way to
 implement parallelism: via recursion. For example, the program below adds all
-numbers from 0 to ~1 billion, in a *parallelizable fashion*:
+numbers from 0 to ~1 billion in a *parallelizable fashion*:
 
 ```
 # Sums all numbers from 0 til 2^depth:
@@ -54,7 +54,7 @@ Here is how it performs:
 
 - GPU, NVIDIA RTX 4090, 32k threads: **1.88 seconds**
 
-Of course, adding numbers recursively isn't the best use-case for Bend, as you
+Of course, adding numbers recursively isn't the best use case for Bend, as you
 could do it very fast with a low-level sequential loop. But not everything can
 be done that way. 
 
@@ -70,7 +70,7 @@ arrow points towards to largest. At the end, all numbers will be sorted!
 
 Implementing a Bitonic Sort in C-like languages can be challenging, as it
 involves coordination of shared memory accesses. A less known fact is that all
-sorting algorithms can be describes as a series of tree rotations. Bend supports
+sorting algorithms can be described as a series of tree rotations. Bend supports
 a functional style, allowing one to implement it with just 9 equations:
 
 ```
@@ -100,7 +100,7 @@ Unlike the CUDA counterpart, this version of the algorithm is extremely
 high-level, relying on millions of small allocations, tree rotations and
 recursion. It isn't even possible to express it that way in any existing
 GPU-targeting language. Bend is capable of compiling that algorithm, as is, 
-to in more than 32 thousand CUDA threads, achieving near-ideal speedup:
+to in more than 32 thousand CUDA threads, achieving a near-ideal speedup:
 
 ... graphics or numbers here ...
 
