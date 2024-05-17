@@ -12,7 +12,7 @@ GPUs, with near-ideal speedup.
 HVM2 is the successor to [HVM1](https://github.com/HigherOrderCO/HVM1), a 2022
 prototype of this concept. Compared to its predecessor, HVM2 is simpler, faster
 and, most importantly, more correct. [HOC](https://HigherOrderCO.com/) provides
-long-term support for all features listed on its [PAPER](./PAPER.pdf).
+long-term support for all features listed on its [PAPER](./paper/PAPER.pdf).
 
 This repository provides a low-level IR language for specifying the HVM2 nets
 and a compiler from that language to C and CUDA. It is not meant for direct
@@ -64,4 +64,4 @@ The file above implements a recursive sum. If that looks unreadable to you -
 don't worry, it isn't meant to. [Bend](https://github.com/HigherOrderCO/Bend) is
 the human-readable language and should be used both by end users and by languages
 aiming to target the HVM. If you're looking to learn more about the core
-syntax and tech, though, please check the [PAPER](./PAPER.pdf).
+syntax and tech, though, please check the [PAPER](./paper/PAPER.pdf).
