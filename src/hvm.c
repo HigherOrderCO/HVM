@@ -197,6 +197,7 @@ Show show_port(Port port);
 Show show_rule(Rule rule);
 //void print_rbag(RBag* rbag);
 void print_net(Net* net);
+void pretty_print_numb(Numb word);
 void pretty_print_port(Net* net, Book* book, Port port);
 //void pretty_print_rbag(Net* net, RBag* rbag);
 
@@ -1715,6 +1716,66 @@ void print_net(Net* net) {
   printf("==== | ============ |\n");
 }
 
+void pretty_print_numb(Numb word) {
+  switch (get_typ(word)) {
+    case SYM:
+      switch (get_sym(word)) {
+        case ADD: printf("[+]"); break;
+        case SUB: printf("[-]"); break;
+        case MUL: printf("[*]"); break;
+        case DIV: printf("[/]"); break;
+        case REM: printf("[%%]"); break;
+        case EQ:  printf("[=]"); break;
+        case LT:  printf("[<]"); break;
+        case GT:  printf("[>]"); break;
+        case AND: printf("[&]"); break;
+        case OR:  printf("[|]"); break;
+        case XOR: printf("[^]"); break;
+        default:  printf("[?]"); break;
+      }
+      break;
+    case U24:
+      if (get_flp(word)) {
+        printf(":%u", get_u24(word));
+      } else {
+        printf("%u", get_u24(word));
+      }
+      break;
+    case I24:
+      if (get_flp(word)) {
+        printf(":%d", get_i24(word));
+      } else {
+        printf("%d", get_i24(word));
+      }
+      break;
+    case F24:
+      if (get_flp(word)) {
+        printf(":%f", get_f24(word));
+      } else {
+        printf("%f", get_f24(word));
+      }
+      break;
+    default:
+      // Here, use a proper switch
+      switch (get_typ(word)) {
+        case ADD: printf("[+%07X]", get_u24(word)); break;
+        case SUB: printf("[-%07X]", get_u24(word)); break;
+        case MUL: printf("[*%07X]", get_u24(word)); break;
+        case DIV: printf("[/%07X]", get_u24(word)); break;
+        case REM: printf("[%%%07X]", get_u24(word)); break;
+        case EQ:  printf("[=%07X]", get_u24(word)); break;
+        case NEQ: printf("[!%07X]", get_u24(word)); break;
+        case LT:  printf("[<%07X]", get_u24(word)); break;
+        case GT:  printf("[>%07X]", get_u24(word)); break;
+        case AND: printf("[&%07X]", get_u24(word)); break;
+        case OR:  printf("[|%07X]", get_u24(word)); break;
+        case XOR: printf("[^%07X]", get_u24(word)); break;
+        default:  printf("[?%07X]", get_u24(word)); break;
+      }
+      break;
+  }
+}
+
 void pretty_print_port(Net* net, Book* book, Port port) {
   Port stack[256];
   stack[0] = port;
@@ -1752,13 +1813,7 @@ void pretty_print_port(Net* net, Book* book, Port port) {
         break;
       }
       case NUM: {
-        Numb word = get_val(cur);
-        switch (get_typ(word)) {
-          case SYM: printf("[%x]", get_sym(word)); break;
-          case U24: printf("%u", get_u24(word)); break;
-          case I24: printf("%d", get_i24(word)); break;
-          case F24: printf("%f", get_f24(word)); break;
-        }
+        pretty_print_numb(get_val(cur));
         break;
       }
       case DUP: {
@@ -1776,8 +1831,8 @@ void pretty_print_port(Net* net, Book* book, Port port) {
         Pair node = node_load(net,get_val(cur));
         Port p2   = get_snd(node);
         Port p1   = get_fst(node);
-        printf("<+ ");
-        stack[len++] = (0xFFFFFF00) | (u32)('>');
+        printf("$(");
+        stack[len++] = (0xFFFFFF00) | (u32)(')');
         stack[len++] = p2;
         stack[len++] = (0xFFFFFF00) | (u32)(' ');
         stack[len++] = p1;
@@ -1787,8 +1842,8 @@ void pretty_print_port(Net* net, Book* book, Port port) {
         Pair node = node_load(net,get_val(cur));
         Port p2   = get_snd(node);
         Port p1   = get_fst(node);
-        printf("?<");
-        stack[len++] = (0xFFFFFF00) | (u32)('>');
+        printf("?(");
+        stack[len++] = (0xFFFFFF00) | (u32)(')');
         stack[len++] = p2;
         stack[len++] = (0xFFFFFF00) | (u32)(' ');
         stack[len++] = p1;
