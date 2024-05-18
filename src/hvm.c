@@ -128,8 +128,8 @@ typedef struct Def {
   u32  node_len;
   u32  vars_len;
   Port root;
-  Pair rbag_buf[32];
-  Pair node_buf[32];
+  Pair rbag_buf[0xFFF];
+  Pair node_buf[0xFFF];
 } Def;
 
 // Book of Definitions
@@ -147,8 +147,8 @@ typedef struct TM {
   u32  hput; // next hbag push index
   u32  rput; // next rbag push index
   u32  sidx; // steal index
-  u32  nloc[32]; // node allocation indices
-  u32  vloc[32]; // vars allocation indices
+  u32  nloc[0xFFF]; // node allocation indices
+  u32  vloc[0xFFF]; // vars allocation indices
   Pair hbag_buf[HLEN]; // high-priority redexes
 } TM;
 
