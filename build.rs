@@ -12,12 +12,10 @@ fn main() {
       .warnings(false)
       .define("TPC_L2", &*tpcl2.to_string())
       .try_compile("hvm-c") {
-    Ok(_) => {
-      println!("cargo:rustc-cfg=feature=\"c\"");
-    }
+    Ok(_) => println!("cargo:rustc-cfg=feature=\"c\""),
     Err(e) => {
-      println!("cargo:warning=WARNING: Failed to compile hvm.c: {}Ignoring hvm.c and proceeding with build.", e);
-      println!("cargo:warning=Ignoring hvm.c and proceeding with build.");
+      println!("cargo:warning=WARNING: Failed to compile hvm.c: {}", e);
+      println!("cargo:warning=Ignoring hvm.c and proceeding with build. The C runtime will not be available.");
     }
   }
 
