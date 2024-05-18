@@ -12,15 +12,17 @@ GPUs, with near-ideal speedup.
 HVM2 is the successor to [HVM1](https://github.com/HigherOrderCO/HVM1), a 2022
 prototype of this concept. Compared to its predecessor, HVM2 is simpler, faster
 and, most importantly, more correct. [HOC](https://HigherOrderCO.com/) provides
-long-term support to all features listed on its [PAPER](./PAPER.pdf).
+long-term support for all features listed on its [PAPER](./paper/PAPER.pdf).
 
-This repository provides a low-level IR language for specifying the HVM2 nets,
+This repository provides a low-level IR language for specifying the HVM2 nets
 and a compiler from that language to C and CUDA. It is not meant for direct
 human usage. If you're looking for a high-level language to interface with HVM2,
 check [Bend](https://github.com/HigherOrderCO/Bend) instead.
 
 Usage
 -----
+
+> DISCLAIMER: Windows is currently not supported, please use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) for now as a workaround.
 
 Install HVM2:
 
@@ -40,7 +42,7 @@ hvm gen-cu <file.hvm> # compile to standalone CUDA
 
 All modes produce the same output. The compiled modes require you to compile the
 generated file (with `gcc file.c -o file`, for example), but are faster to run.
-The CUDA versions have much higher peak performance, but are less stable. As a
+The CUDA versions have much higher peak performance but are less stable. As a
 rule of thumb, `gen-c` should be used in production.
 
 Language
@@ -62,6 +64,6 @@ syntax for wiring interaction nets. For example:
 
 The file above implements a recursive sum. If that looks unreadable to you -
 don't worry, it isn't meant to. [Bend](https://github.com/HigherOrderCO/Bend) is
-the human-readable language, and should be used both by end users, and languages
-aiming to target the HVM. If you're are looking to learn more about the core
-syntax and tech, though, please do check the [PAPER](./PAPER.pdf).
+the human-readable language and should be used both by end users and by languages
+aiming to target the HVM. If you're looking to learn more about the core
+syntax and tech, though, please check the [PAPER](./paper/PAPER.pdf).

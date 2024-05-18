@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links: 
+    - name: Bend Related Issues
+      url: https://github.com/HigherOrderCO/Bend/issues/new/choose
+      about: For Bend related Issues, please Report them on the Bend repository.  
