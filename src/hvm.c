@@ -1,6 +1,9 @@
 #include <inttypes.h>
 #include <math.h>
-#include <pthread.h>
+#include <threads.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -113,9 +116,9 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 #define G_RBAG_LEN (TPC * RLEN)
 
 typedef struct Net {
-  APair node_buf[G_NODE_LEN]; // global node buffer
-  APort vars_buf[G_VARS_LEN]; // global vars buffer
-  APair rbag_buf[G_RBAG_LEN]; // global rbag buffer
+  APair* node_buf; // global node buffer, size = G_NODE_LEN
+  APort* vars_buf; // global vars buffer, size = G_VARS_LEN
+  APair* rbag_buf; // global rbag buffer, size = G_RBAG_LEN
   a64 itrs; // interaction count
   a32 idle; // idle thread counter
 } Net;
@@ -268,9 +271,11 @@ static inline void swap(Port *a, Port *b) {
   Port x = *a; *a = *b; *b = x;
 }
 
+#ifndef _WIN32
 u32 min(u32 a, u32 b) {
   return (a < b) ? a : b;
 }
+#endif
 
 // A simple spin-wait barrier using atomic operations
 a64 a_reached = 0; // number of threads that reached the current barrier
@@ -284,7 +289,7 @@ void sync_threads() {
   } else {
     u32 tries = 0;
     while (atomic_load_explicit(&a_barrier, memory_order_acquire) == barrier_old) {
-      sched_yield();
+      thrd_yield();
     }
   }
 }
@@ -301,10 +306,22 @@ u32 global_sum(u32 x) {
 }
 
 // TODO: write a time64() function that returns the time as fast as possible as a u64
+// The time should be in nanoseconds, but not related to UTC time
 static inline u64 time64() {
+
+// if not on windows
+#ifndef _WIN32
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (u64)ts.tv_sec * 1000000000ULL + (u64)ts.tv_nsec;
+#else
+  // @developedby: We dont care about system time, this is just a timer.
+  LARGE_INTEGER freq;
+  LARGE_INTEGER counter;
+  QueryPerformanceFrequency(&freq);
+  QueryPerformanceCounter(&counter);
+  return (u64)((counter.QuadPart * 1000000000ULL) / freq.QuadPart);
+#endif
 }
 
 // Ports / Pairs / Rules
@@ -645,6 +662,11 @@ static inline void net_init(Net* net) {
   // is that needed?
   atomic_store(&net->itrs, 0);
   atomic_store(&net->idle, 0);
+  
+  // allocates global buffers
+  net->node_buf = malloc(G_NODE_LEN * sizeof(APair));
+  net->vars_buf = malloc(G_VARS_LEN * sizeof(APort));
+  net->rbag_buf = malloc(G_RBAG_LEN * sizeof(APair));
 }
 
 // Allocator
@@ -1153,7 +1175,7 @@ void evaluator(Net* net, TM* tm, Book* book) {
       }
       
       // Chill...
-      sched_yield();
+      thrd_yield();
       // Halt if all threads are idle
       if (tick % 256 == 0) {
         if (atomic_load_explicit(&net->idle, memory_order_relaxed) == TPC) {
@@ -1179,7 +1201,7 @@ typedef struct {
   Book* book;
 } ThreadArg;
 
-void* thread_func(void* arg) {
+thrd_start_t thread_func(void* arg) {
   ThreadArg* data = (ThreadArg*)arg;
   evaluator(data->net, data->tm, data->book);
   return NULL;
@@ -1203,14 +1225,14 @@ void normalize(Net* net, Book* book) {
   }
 
   // Spawns the evaluation threads
-  pthread_t threads[TPC];
+  thrd_t threads[TPC];
   for (u32 t = 0; t < TPC; ++t) {
-    pthread_create(&threads[t], NULL, thread_func, &thread_arg[t]);
+    thrd_create(&threads[t], thread_func, &thread_arg[t]);
   }
 
   // Wait for the threads to finish
   for (u32 t = 0; t < TPC; ++t) {
-    pthread_join(threads[t], NULL);
+    thrd_join(threads[t], NULL);
   }
 }
 
@@ -1532,7 +1554,7 @@ Port io_sleep(Net* net, Book* book, u32 argc, Port* argv) {
   struct timespec ts;
   ts.tv_sec = dur_ns / 1000000000;
   ts.tv_nsec = dur_ns % 1000000000;
-  nanosleep(&ts, NULL);
+  thrd_sleep(&ts, NULL);
 
   // Return an eraser
   return new_port(ERA, 0);
