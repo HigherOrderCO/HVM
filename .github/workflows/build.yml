@@ -26,6 +26,8 @@ jobs:
         id: cuda-toolkit
         with:
           cuda: '12.4.1'
+          method: 'network'
+          sub-packages: '["nvcc"]'
         if: matrix.os != 'macOS-latest'
 
       - name: Clippy Check

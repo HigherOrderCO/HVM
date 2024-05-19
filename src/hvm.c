@@ -1,10 +1,16 @@
 #include <inttypes.h>
 #include <math.h>
-#include <threads.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <threads.h>
 #else
 #include <pthread.h>
+typedef pthread_t thrd_t;
+typedef void* thrd_start_t;
+#define thrd_create(a, b, c) pthread_create(a, NULL, b, c)
+#define thrd_join(a, b) pthread_join(a, b)
+#define thrd_yield() sched_yield()
+#define thrd_sleep(a, b) nanosleep(a, b)
 #endif
 #include <stdatomic.h>
 #include <stdint.h>
@@ -662,7 +668,7 @@ static inline void net_init(Net* net) {
   // is that needed?
   atomic_store(&net->itrs, 0);
   atomic_store(&net->idle, 0);
-
+  
   // allocates global buffers
   net->node_buf = malloc(G_NODE_LEN * sizeof(APair));
   net->vars_buf = malloc(G_VARS_LEN * sizeof(APort));
