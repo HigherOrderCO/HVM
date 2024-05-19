@@ -346,13 +346,13 @@ const u32 G_RBAG_LEN = TPB * BPG * RLEN * 3; // max 4m redexes
 struct GNet {
   u32  rbag_use_A; // total rbag redex count (buffer A)
   u32  rbag_use_B; // total rbag redex count (buffer B)
-  Pair rbag_buf_A[G_RBAG_LEN]; // global redex bag (buffer A)
-  Pair rbag_buf_B[G_RBAG_LEN]; // global redex bag (buffer B)
-  Pair node_buf[G_NODE_LEN]; // global node buffer
-  Port vars_buf[G_VARS_LEN]; // global vars buffer
-  u32  node_put[TPB*BPG];
-  u32  vars_put[TPB*BPG];
-  u32  rbag_pos[TPB*BPG];
+  Pair* rbag_buf_A; // global redex bag (buffer A), size = G_RBAG_LEN
+  Pair* rbag_buf_B; // global redex bag (buffer B), size = G_RBAG_LEN
+  Pair* node_buf; // global node buffer, size = G_NODE_LEN
+  Port* vars_buf; // global vars buffer, size = G_VARS_LEN
+  u32*  node_put; // size = TPB*BPG
+  u32*  vars_put; // size = TPB*BPG
+  u32*  rbag_pos; // size = TPB*BPG
   u8   mode; // evaluation mode (curr)
   u64  itrs; // interaction count
   u64  iadd; // interaction count adder
@@ -1895,10 +1895,29 @@ __global__ void evaluator(GNet* gnet) {
 // -------------------
 
 GNet* gnet_create() {
-  GNet *gnet;
-  cudaMalloc((void**)&gnet, sizeof(GNet));
-  cudaMemset(gnet, 0, sizeof(GNet));
-  return gnet;
+  GNet gnet;
+  memset(&gnet, 0, sizeof(GNet));
+
+  #define ALLOCATE_HOST_POINTER(__host_pointer, __size) \
+    do { \
+      cudaMalloc((void**)&(__host_pointer), __size); \
+      cudaMemset(__host_pointer, 0, __size); \
+    } while(0)
+
+  ALLOCATE_HOST_POINTER(gnet.rbag_buf_A, G_RBAG_LEN * sizeof(Pair));
+  ALLOCATE_HOST_POINTER(gnet.rbag_buf_B, G_RBAG_LEN * sizeof(Pair));
+  ALLOCATE_HOST_POINTER(gnet.node_buf, G_NODE_LEN * sizeof(Pair));
+  ALLOCATE_HOST_POINTER(gnet.vars_buf, G_VARS_LEN * sizeof(Port));
+  ALLOCATE_HOST_POINTER(gnet.node_put, BPG * TPB * sizeof(u32));
+  ALLOCATE_HOST_POINTER(gnet.vars_put, BPG * TPB * sizeof(u32));
+  ALLOCATE_HOST_POINTER(gnet.rbag_pos, BPG * TPB * sizeof(u32));
+
+  #undef ALLOCATE_HOST_POINTER
+
+  GNet* gnet_d;
+  cudaMalloc(&gnet_d, sizeof(GNet));
+  cudaMemcpy(gnet_d, &gnet, sizeof(GNet), cudaMemcpyHostToDevice);
+  return gnet_d;
 }
 
 u32 gnet_get_rlen(GNet* gnet, u32 turn) {

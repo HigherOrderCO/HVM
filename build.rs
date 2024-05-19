@@ -6,9 +6,16 @@ fn main() {
   println!("cargo:rerun-if-changed=src/hvm.c");
   println!("cargo:rerun-if-changed=src/hvm.cu");
 
-  match cc::Build::new()
+  let mut build = cc::Build::new();
+
+  if cfg!(target_env = "msvc") {
+    build.flag("/experimental:c11atomics");
+  }
+
+  match build
       .file("src/hvm.c")
       .opt_level(3)
+      .std("c11")
       .warnings(false)
       .define("TPC_L2", &*tpcl2.to_string())
       .try_compile("hvm-c") {
