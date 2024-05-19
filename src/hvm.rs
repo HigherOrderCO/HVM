@@ -926,8 +926,14 @@ impl Book {
 
       // Writes the name
       let name_bytes = def.name.as_bytes();
-      buf.extend_from_slice(&name_bytes[..32.min(name_bytes.len())]);
-      buf.resize(buf.len() + (32 - name_bytes.len()), 0);
+      if name_bytes.len() < 31 {
+        buf.extend_from_slice(&name_bytes[..name_bytes.len()]);
+        buf.resize(buf.len() + (32 - name_bytes.len()), 0);
+      } else {
+        buf.extend_from_slice(&name_bytes[..28]);
+        buf.extend_from_slice("...".as_bytes());
+        buf.push(0);
+      }
 
       // Writes the safe flag
       buf.extend_from_slice(&(def.safe as u32).to_ne_bytes());
