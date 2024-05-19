@@ -24,6 +24,11 @@ Usage
 
 > DISCLAIMER: Windows is currently not supported, please use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) for now as a workaround.
 
+First install the dependencies:
+* If you want to use the C runtime, install a C-11 compatible compiler like GCC or Clang.
+* If you want to use the CUDA runtime, install CUDA and nvcc (the CUDA compiler).
+  - _HVM requires CUDA 12.x and currently only works on Nvidia GPUs._
+
 Install HVM2:
 
 ```sh

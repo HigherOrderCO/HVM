@@ -100,7 +100,7 @@ fn main() {
         hvm_cu(data.as_mut_ptr() as *mut u32, run_io);
       }
       #[cfg(not(feature = "cuda"))]
-      println!("CUDA not available!\n");
+      println!("CUDA runtime not available!\n If you've installed CUDA and nvcc after HVM, please reinstall HVM.");
     }
     Some(("gen-c", sub_matches)) => {
       // Reads book from file
