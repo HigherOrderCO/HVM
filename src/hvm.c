@@ -5,6 +5,7 @@
 #include <threads.h>
 #else
 #include <pthread.h>
+#include <time.h>
 typedef pthread_t thrd_t;
 typedef void* thrd_start_t;
 #define thrd_create(a, b, c) pthread_create(a, NULL, b, c)

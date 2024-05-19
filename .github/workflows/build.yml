@@ -18,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
+      - run: rustup component add clippy
       - uses: Swatinem/rust-cache@v2
         with:
           # To only cache runs from `master`:
@@ -27,7 +28,6 @@ jobs:
         with:
           cuda: '12.4.1'
           method: 'network'
-          sub-packages: '["nvcc"]'
         if: matrix.os != 'macOS-latest'
 
       - name: Clippy Check
