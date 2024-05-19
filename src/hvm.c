@@ -131,8 +131,8 @@ typedef struct Def {
   u32  node_len;
   u32  vars_len;
   Port root;
-  Pair rbag_buf[32];
-  Pair node_buf[32];
+  Pair rbag_buf[0xFFF];
+  Pair node_buf[0xFFF];
 } Def;
 
 // Book of Definitions
@@ -150,8 +150,8 @@ typedef struct TM {
   u32  hput; // next hbag push index
   u32  rput; // next rbag push index
   u32  sidx; // steal index
-  u32  nloc[32]; // node allocation indices
-  u32  vloc[32]; // vars allocation indices
+  u32  nloc[0xFFF]; // node allocation indices
+  u32  vloc[0xFFF]; // vars allocation indices
   Pair hbag_buf[HLEN]; // high-priority redexes
 } TM;
 
@@ -305,20 +305,8 @@ u32 global_sum(u32 x) {
   return sum;
 }
 
-#ifdef _WIN32
-static int64_t _win_time_offset = 0;
-static LARGE_INTEGER _win_time_freq, _win_perf_offset;
-
-static inline void _win_start_timer() {
-  QueryPerformanceFrequency(&_win_time_freq);
-  QueryPerformanceCounter(&_win_perf_offset);
-  int64_t now;
-  GetSystemTimePreciseAsFileTime((FILETIME*)&now);
-  _win_time_offset = (u64)now * 100ULL;
-}
-#endif
-
 // TODO: write a time64() function that returns the time as fast as possible as a u64
+// The time should be in nanoseconds, but not related to UTC time
 static inline u64 time64() {
 
 // if not on windows
@@ -327,14 +315,12 @@ static inline u64 time64() {
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (u64)ts.tv_sec * 1000000000ULL + (u64)ts.tv_nsec;
 #else
-  LARGE_INTEGER now;
-  QueryPerformanceCounter(&now);
-
-  // Calculate the time in nanoseconds
-  long double diff = (long double)(now.QuadPart - _win_perf_offset.QuadPart);
-  diff *= 1000000000.0L;
-  diff /= (long double)_win_time_freq.QuadPart;
-  return _win_time_offset + (u64)diff;
+  // @developedby: We dont care about system time, this is just a timer.
+  LARGE_INTEGER freq;
+  LARGE_INTEGER counter;
+  QueryPerformanceFrequency(&freq);
+  QueryPerformanceCounter(&counter);
+  return (u64)((counter.QuadPart * 1000000000ULL) / freq.QuadPart);
 #endif
 }
 
@@ -1991,11 +1977,6 @@ void hvm_c(u32* book_buffer, bool run_io) {
     book = (Book*)malloc(sizeof(Book));
     book_load(book_buffer, book);
   }
-
-#ifdef _WIN32
-  // Initializes the timer on Windows
-  _win_start_timer();
-#endif
 
   // Starts the timer
   u64 start = time64();
