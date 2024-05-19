@@ -513,8 +513,8 @@ impl TMem {
       itrs: 0,
       nput: 0,
       vput: 0,
-      nloc: vec![0; 32],
-      vloc: vec![0; 32],
+      nloc: vec![0; 0xFFF], // FIXME: move to a constant
+      vloc: vec![0; 0xFFF],
       rbag: RBag::new(),
     }
   }

@@ -386,8 +386,8 @@ struct TM {
   u32  mode; // evaluation mode
   u32  itrs; // interactions
   u32  leak; // leaks
-  u32  nloc[32]; // node allocs
-  u32  vloc[32]; // vars allocs
+  u32  nloc[L_NODE_LEN/TPB]; // node allocs
+  u32  vloc[L_NODE_LEN/TPB]; // vars allocs
   RBag rbag; // tmem redex bag
 };
 
@@ -399,14 +399,14 @@ struct Def {
   u32  node_len;
   u32  vars_len;
   Port root;
-  Pair rbag_buf[32];
-  Pair node_buf[32];
+  Pair rbag_buf[L_NODE_LEN/TPB];
+  Pair node_buf[L_NODE_LEN/TPB];
 };
 
 // Book of Definitions
 struct Book {
   u32 defs_len;
-  Def defs_buf[64];
+  Def defs_buf[2048];
 };
 
 // Static Book

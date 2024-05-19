@@ -12,6 +12,7 @@ mod ast;
 mod cmp;
 mod hvm;
 
+#[cfg(feature = "c")]
 extern "C" {
   fn hvm_c(book_buffer: *const u32, run_io: bool);
 }
@@ -80,9 +81,12 @@ fn main() {
       book.to_buffer(&mut data);
       //println!("{:?}", data);
       let run_io = sub_matches.get_flag("io");
+      #[cfg(feature = "c")]
       unsafe {
         hvm_c(data.as_mut_ptr() as *mut u32, run_io);
       }
+      #[cfg(not(feature = "c"))]
+      println!("C runtime not available!\n");
     }
     Some(("run-cu", sub_matches)) => {
       let file = sub_matches.get_one::<String>("file").expect("required");
