@@ -12,13 +12,13 @@
   bibliography: bibliography("refs.bib", style: "annual-reviews"),
 )
 
-*This paper is a work in progress. It will be continuously updated on HVM's repository (github.com/HigherOrderCO/HVM) as it is written.*
+*This paper is a work in progress. See the #link("https://github.com/HigherOrderCO/HVM")[HVM repo] for the  latest version.*
 
 = Introduction
 
-Interaction Combinators (IC) were introduced by Lafont @Lafont_1997 as a minimal and concurrent model of computation. Lafont proved that IC's were not only Turing Complete, but that they also preserve the complexity class and degree of parallelism. Moreover, Lafont argued that while Turing Machines are a universal model of sequential computation, IC's are a universal model of #emph[distributed] computation. The locality and strong confluence of Lafont's ICs make it suitable for massive parallel computation. This heavily implied that IC's are an optimal model of computation, in a very fundamental sense. Yet, it remained to be seen if this system could be implemented efficiently in practice.
+Interaction Nets (IN's) @Lafont_1990 and Interaction Combinators (IC's) @Lafont_1997 were introduced by Lafont as a minimal and concurrent model of computation. Lafont proved that IC's were not only Turing Complete, but that they also preserve the complexity class and degree of parallelism. Moreover, Lafont argued that while Turing Machines are a universal model of sequential computation, IC's are a universal model of #emph[distributed] computation. The locality and strong confluence of Lafont's ICs make it suitable for massive parallel computation. This heavily implied that IC's are an optimal model of computation, in a very fundamental sense. Yet, it remained to be seen if this system could be implemented efficiently in practice.
 
-In this paper, we answer this question positively. By storing Interaction Combinator nodes in a memory-efficient format, we're able to implement its core operations (annihilation, commutation, and erasure) as lightweight C procedures and CUDA kernels. Furthermore, by representing wires as atomic variables, we're able to perform interactions atomically, in a lock-free fashion and with minimal synchronization overhead. We also extend our system with global definitions (for fast function applications) and native numbers (for fast numeric operations). The result, HVM2, is an efficient, massively parallel evaluator for ICs that achieves near-ideal speedup, up to at least 16,384 concurrent cores, peaking at 74 billion interactions per second on an NVIDIA RTX 4090.
+In this paper, we answer this question positively. By storing Interaction Combinator nodes in a memory-efficient format, we're able to implement its core operations (annihilation, commutation, and erasure) as lightweight C procedures and CUDA kernels. Furthermore, by representing wires as atomic variables, we're able to perform interactions atomically, in a lock-free fashion and with minimal synchronization. We also extend our system with global definitions (for fast function applications) and native numbers (for fast numeric operations). The result, HVM2, is an efficient, massively parallel evaluator for ICs that achieves near-ideal speedup, up to at least 16,384 concurrent cores, peaking at 74 billion interactions per second on an NVIDIA RTX 4090.
 
 This level of performance makes it compelling to propose HVM2 as a general
 framework for parallel computing. By translating constructs such as functions, algebraic data types, pattern matching, and recursion to HVM2, we see it as a potential compilation target for modern programming languages such as Python and Haskell. As a demonstration of this possibility, we also introduce #link("https://github.com/HigherOrderCO/bend")[Bend], a high-level programming language that compiles to HVM2. We explain how some of these translations work, and set up a general framework to translate arbitrary languages, procedural or functional, to HVM2.
@@ -41,20 +41,22 @@ HVM2's syntax has seven different types of _agents_ (in Lafont's terms) or _Node
   ```
   <Node> ::=
       | "*"                    -- (ERA)ser
-      | "@" <name>             -- (REF)erence
-      | <number>               -- (NUM)ber
+      | "@" <alphanumeric>     -- (REF)erence
+      | <Numeric>              -- (NUM)eric
       | "(" <Tree> <Tree> ")"  -- (CON)structor
       | "{" <Tree> <Tree> "}"  -- (DUP)licator
       | "$(" <Tree> <Tree> ")" -- (OPE)rator
       | "?(" <Tree> <Tree> ")" -- (SWI)tch
 
   <Tree> ::=
-      | <name>                 -- (VAR)iable
+      | <alphanumeric>         -- (VAR)iable
       | <Node>
-  ```
-]
+  ``` \
+  _(For details on the `<Numeric>` syntax, see Numbers (@numbers))_
+] \
+  \
 
-Notice that Nodes form a tree-like structure, and throughout this document we will make systematic confusion between Nodes and Trees. In the Interaction rules (@interactions), it is critical to know when a Variable is permissible or not when referring to arbitrary Nodes. In Memory Layout (@memory), however, we purposefully blur the line between Nodes and Variables as the memory layout is greatly simplified by doing so.
+Notice that Nodes form a tree-like structure, and throughout this document we will make systematic confusion between Nodes and Trees. For example, in Interactions (@interactions), it is critical to know when a Variable is permissible or not when referring to arbitrary Nodes. In Memory Layout (@memory), however, we purposefully blur the line between Nodes and Variables as the memory layout is greatly simplified by doing so.
 
 The first three node types (`ERA`, `REF`, `NUM`) are nullary, and the last 4 types (`CON`, `DUP`, `OPE`, `SWI`) are binary. As implied above, `VAR` can be seen as an additional node type. As in Lafont's Interaction Nets, every node has an extra distinguished edge, called the main or principal port @Lafont_1997. Thus, nullary nodes have one port (one main and zero auxiliary), while binary nodes have three ports (one main and two auxiliary).
 
@@ -91,12 +93,13 @@ graphically represents a net like,
   #figure(
     image("configuration.png", width: 50%),
     caption: [
-      A configuration. Modified image @Salikhmetov_2016.
+      A configuration #footnote[This is a modified image
+ of a configuration with multiple free main ports @Salikhmetov_2016.]
     ],
   )
 ]
 
-where $omega$ is a wiring. Thus, HVM2 Nets contain only a single free main port. Wirings are possible between trees through pairs of `VAR` nodes with the same names. Note, however, that a variable can only occur twice. This aligns with Interaction Nets in that a wire can only connect two ports. 
+where $omega$ is a wiring. Thus, HVM2 Nets contain only a single free main port. Wirings are possible between trees through pairs of `VAR` nodes with the same names. Note, however, that a variable can only occur twice. This aligns with Interaction Nets in that a wire can only connect two ports.
 
 Lastly, an Book consists of a list of top-level definitions, or, "named" Nets:
 
@@ -133,8 +136,7 @@ Represents the HVM2 encoding of the Lambda Calculus term `λs λz (s (s z))`, an
   ```
 ]
 
-Notice how `CON`/`DUP` nodes in HVM2 correspond directly to constructor and
-duplicator nodes in Lafont's Interaction Combinators @Lafont_1997. Aux-to-main wires are implicit through the tree-like structure of the syntax, while aux-to-aux wires are explicit through variable nodes, which are always paired.
+Notice how `CON`/`DUP` nodes in HVM2 correspond directly to constructor and duplicator nodes in Lafont's Interaction Combinators @Lafont_1997. Aux-to-main wires are implicit through the tree-like structure of the syntax, while aux-to-aux wires are explicit through variable nodes, which are always paired.
 
 Additionally, main ports being implicit is critical to storing nodes efficiently in memory. Nodes can be represented as just two ports (the HVM2 memory model for wires) rather than three. In HVM2, since every port is 32 bits, this allows us to store a single node in a 64-bit word. This compact representation lets us use built-in atomic operations in various parts of the code, which was key to making parallel C and CUDA versions efficient. For details on the precise memory representation, see @architecture.
 
@@ -150,17 +152,18 @@ Semantically, `CON`, `DUP`, and `ERA` nodes correspond accordingly to Lafont's #
 
 = Interactions <interactions>
 
-The AST above specifies HVM2's data format. As a virtual machine, it also provides a mechanism to compute with that data. In traditional VMs, these are called *instructions*. In term rewriting systems, there are usually *reductions*. In HVM2, the mechanism for computation is called *interactions*. There are ten of them. All interactions are listed below, using Gentzen-style rules (the line above reduces to the line below).
+The AST above specifies HVM2's data format. As a virtual machine, it also provides a mechanism to compute with that data. In traditional VMs, these are called *instructions*. In term rewriting systems, there are usually *reductions*. In HVM2, the mechanism for computation is called *interactions*. There are ten of them. All interactions are listed below using Gentzen-style rules (redexes in the line above reduce to ones in the line below).
+
 #v(1em)
 $
   & "Arbitrary Nodes (including" #raw("VAR") ")" #h(2em) & #raw("A"), #raw("B"), #raw("C"), #raw("D") &:= #raw("<Tree>") \
   & "Binary Nodes" #footnote[In the interaction rules `()` and `{}` refer to arbitrary binary nodes, not just `CON` and `DUP`.] & #raw("()"), #raw("{}") &:= #raw("CON") | #raw("DUP") | #raw("OPA") | #raw("SWI") \
   & "Nullary Nodes" & circle.filled.small, circle.stroked.small &:= #raw("ERA") | #raw("REF") | #raw("NUM") \
-
-  & "Numeric Nodes" & #raw("#n"), #raw("#m") &:= #raw("NUM") "where" #raw("n"), #raw("m") in bb(Q) \
+  & "Numeric Nodes" & #raw("N"), #raw("M") &:= #raw("NUM") "(Numbers or Operations)"\
+  & "Numeric Value Nodes" & #raw("n"), #raw("m") &:= #raw("NUM") "where" #raw("n"), #raw("m") in bb(Q) \
   & "Erasure Nodes" & #raw("*") &:= #raw("ERA") \
   & "Variables" & #raw("x"), #raw("y"), #raw("z"), #raw("w") &:= #raw("VAR") \
-  
+
 $
 
 #v(1em)
@@ -170,7 +173,7 @@ $
   align: center,
   columns: (1fr, 1fr),
   gutter: 1pt,
-  [ 
+  [
     #smallcaps[(#strong[link])]
     #math.frac(
       [
@@ -180,11 +183,11 @@ $
       [`B[x` $arrow.l$ `A]`]
     )
   ],
-  [ 
+  [
     #smallcaps[(#strong[call])]
     #math.frac(
       [
-      `A` is not a `VAR` node 
+      `A` is not a `VAR` node
       #v(1em) \
       `@foo ~ A`
     ],
@@ -197,11 +200,11 @@ $
   align: center,
   columns: (1fr, 1fr),
   gutter: 1pt,
-  [ 
+  [
     #smallcaps[(#strong[void])]
     #math.frac([$circle.filled.small$ `~` $circle.stroked.small$], ``)
   ],
-  [ 
+  [
     #smallcaps[(#strong[eras]e)]
     #math.frac([$circle.filled.small$ `~ (A B)`],
       [
@@ -243,9 +246,9 @@ $
   align: center,
   columns: (1fr, 1fr),
   gutter: 1pt,
-[ 
+[
     #smallcaps[(#strong[oper]ate 1)]
-    #math.frac(`#n ~ $(#m A)`, `op(n, m) ~ A`)
+    #math.frac(`N ~ $(M A)`, `op(N, M) ~ A`)
   ],
   [
     #smallcaps[(#strong[swit]ch 1)]
@@ -258,16 +261,16 @@ $
 #grid(
   align: center,
   columns: (1fr, 1fr),
-  gutter: 1pt,  
-  [ 
+  gutter: 1pt,
+  [
     #smallcaps[(#strong[oper]ate 2)]
     #math.frac(
       [
         `A` is not a `NUM` node
         #v(1em) \
-        `#n ~ $(A B)`
+        `N ~ $(A B)`
       ],
-      `A ~ $(#n B)`
+      `A ~ $(N B)`
     )
   ],
   [
@@ -278,10 +281,10 @@ $
 #v(2em)
 #show math.equation: set text(10pt)
 
-Note that these rules are #emph[symmetric]: if a rule applies to a redex `A ~ B` then it also applies to `B ~ A`. Explanations and implementation details of each of the rules follow.
+Note that rules are #emph[symmetric]: if a rule applies to a redex `A ~ B` then it also applies to `B ~ A`. Explanations and implementation details of each of the rules follow.
 
 == Link
-"Links" two ports where at least one is a `VAR` Node. A *global substitution* is performed replacing the single other occurrence of `x` with `A`. Recall that there is _exactly_ one other occurrence of `x` in the net. In the graph-rewriting system of Interaction Nets, linking two ports isn't technically an interaction, as wires are not named. However, for the term-rewriting calculus, wires are named and must be substituted for. This is the only rule where nodes "far apart" can affect each other. See <linker> for details on the `link` function.
+"Links" two ports where at least one is a `VAR` Node. A *global substitution* is performed replacing the single other occurrence of `x` with `A`. Recall that there is _exactly_ one other occurrence of `x` in the net. In the graph-rewriting system of Interaction Nets, linking two ports isn't technically an interaction, as wires are not named. However, for the term-rewriting calculus, wires are named and must be substituted for. When applying this rule, the redex `x ~ A` is removed, and the occurrence of `x` in `B` node is replaced with `A`. This is the only rule where nodes "far apart" can affect each other. See <linker> for details on the `link` function.
 
 == Call
 Expands a `REF`, replacing it with its definition. The definition is essentially copied from the static Book to the global memory, allocating its nodes and creating fresh variables. This operation is key to enable fast function application, since, without it, one would need to use duplicator nodes for the same purpose, which brings considerable overhead. It also introduces some laziness in a strict evaluator, allowing for global recursive functions, and constant-space tail-calls.
@@ -295,13 +298,13 @@ Erases a binary node `(A B)` connected to an nullary node, propagating the nulla
 When the nullary node is a `NUM` or a `REF`, the #smallcaps[erase] rule actually behaves as a copy operation, cloning the `NUM` or `REF`, and connecting to both ports. #emph[However], when a copy operation is applied to a `REF` which contains `DUP` nodes, it instead is computed as a normal #smallcaps[call] operation. This allows us to perform fast copy of "function pointers", while still preserving Interaction Combinator semantics.
 
 == Commute
-Commutes two binary nodes of different types, essentially cloning them. The #smallcaps[commute] rule can be used to clone data and to perform loops and recursion, although these are preferably done via #smallcaps[call]s #highlight[(preferably in what sense?)].
+Commutes two binary nodes of different types, essentially cloning them. The #smallcaps[commute] rule can be used to clone data and to perform loops and recursion, although these are preferably done via #smallcaps[call]s: Cloning large networks is faster through the #smallcaps[call] interaction, as it can be done in a single pass, as opposed to the incremental #smallcaps[commute] interactions that would have to propagate throughout the network.
 
 == Annihilate
 Annihilates two binary nodes of the same type connected to each-other, replacing them with two redexes. The #smallcaps[annihilate] rule is the most essential computation rule, and is used to implement beta-reduction and pattern-matching.
 
 == Operate
-Performs a numeric operation between two `NUM` nodes `#n` and `#m` connected by an `OPE` node. If `A` is not a `NUM`, it is partially applied instead. There is only one binary operation interaction. Dispatching to different native numeric operations depends on the numbers themselves. See @numbers for details.
+Performs a numeric operation between two `NUM` nodes `N` and `M` connected by an `OPE` node. Note that `N` and `M` should not both be numeric values for this interaction to perform a sensible numeric operation. Dispatching to different native numeric operations depends on the `N` and `M` nodes themselves. See Numbers (@numbers) for details.
 
 Note than when counting the number interactions, #smallcaps[operate 2] is not counted, as this would cause the number of interactions to be non-deterministic.
 
@@ -331,7 +334,7 @@ Since there are eight node types, there is a total of 64 possible pairwise node 
 
 \
 
-Because for each active pair exactly one rule applies, HVM2 retains the same _strong confluence_ that Lafont's Interaction Combinators do @Lafont_1997. This implies that not only can HVM2 programs be reduced completely in parallel, but also that the number of reductions is invariant to the order in which interaction rules are applied. This ensures that HVM2 can reduce redexes in any order without any risk of complexity blowups. 
+Because for each active pair exactly one rule applies, HVM2 retains the same _strong confluence_ that Lafont's Interaction Combinators do @Lafont_1997. This implies that not only can HVM2 programs be reduced completely in parallel, but also that the number of reductions is invariant to the order in which interaction rules are applied. This ensures that HVM2 can reduce redexes in any order without any risk of complexity blowups.
 
 #pagebreak()
 
@@ -364,7 +367,7 @@ Notice that in the reduction of these two redexes, both `Thread_0` and `Thread_1
 
 In HVM2, there is a global collection of redexes that is mutated in parallel by a variety of threads. See Architecture (@architecture) for details. Since every variable occurs exactly twice, the #smallcaps[link] interaction with a variable `x` will also occur twice, but _possibly at very different times_. The first time is when this variable is first encountered, and somehow a substitution must be "deferred" until the #smallcaps[link] interaction rule is applied to the second occurrence of `x`.
 
-This is accomplished by a global, atomic substitution map. The substitution map keeps track of these deferred substitutions. That is, when a variable is linked to a node, or to another variable, it is inserted into the substitution map. When that same variable is linked again then the connection is made, it will already have an entry in the substitution map, and then the proper redex will be constructed.
+This is accomplished by a global, atomic substitution map, which tracks these deferred substitutions. When a variable is linked to a node, or to another variable, it is inserted into the substitution map. When that same variable is linked again, it will already have an entry in the substitution map, and then the proper redex will be constructed.
 
 The substitution map can be represented efficiently with a flat buffer, where the index is the variable name, and the value is the node that has been substituted. This can be done atomically, via a simple lock-free linker. In pseudocode, this roughly looks like:
 
@@ -409,13 +412,13 @@ To see how this algorithm works, let's consider, again, the scenario above:
 ]
 #v(1em)
 
-Assume we start with a substitution `a` $arrow.l$ `#42`, and let both threads reduce a redex in parallel. Since both redexes are an `ANNI` rule, their effect is to link both ports; thus, the resulting net (focusing on the `a` and `e` wires) should be:
+Assume we start with a substitution `a` $arrow.l$ `#42`, and let both threads reduce a redex in parallel. Each thread  are an `ANNI` rule, their effect is to link both ports; thus, the resulting wire connected to `#42` (with the wires `a`, `d`, and `e` labelled for clarity) should be
 
 #v(1em)
 #align(center)[
   ```
-  #42--------.              .--------e
-              '------------'
+  #42 ---a---.         .---e---
+              '---d---'
   ```
 ]
 #v(1em)
@@ -431,13 +434,13 @@ That is, `e` must be directly linked to `#42`. Let's now evaluate the algorithm 
 ]
 #v(1em)
 
-And we're observing ports `a`, `d`, and `e`. Two links therefore must be performed: `link(a, d)` and `link(d, e)`. There are many possible orders of execution:
+And for simplicity we're observing only ports `a`, `d`, and `e`. `Thread_0` will attempt to perform `link(a, d)` and `Thread_1` will attempt `link(d, e)`. There are many possible orders of execution:
 
 #pagebreak()
 
 == Possible Execution Order 1
 
-#align(center)[
+#pad(left: 2em)[
   ```
   - a: #42
   ======= Thread_2: link(d, e)
@@ -457,7 +460,7 @@ The resulting substitution map is linking `e` to `42`, as required.
 
 == Possible Execution Order 2
 
-#align(center)[
+#pad(left: 2em)[
   ```
   - a: #42
   ======= Thread_1: link(d, a)
@@ -477,7 +480,7 @@ The resulting substitution map is linking, again, `e` to `42`, as required.
 
 == Possible Execution Order 3
 
-#align(center)[
+#pad(left: 2em)[
   ```
   - a: #42
   ======= Thread_1: link(d, a)
@@ -495,53 +498,67 @@ In this case, the result isn't directly linking `e` to `#42`. But it does link `
 #pagebreak()
 
 = Numbers <numbers>
-HVM2 has a built-in support for 32-bit numerics represented by the `NUM` node type. Numbers in HVM2 have a 5-bit tag and a 24-bit payload. Depending on the tag, numbers can represent unsigned integers (U24), signed integers (I24), IEEE 754 binary32 floats (F24), or partially applied operators. These choices mean any number can be represented in 29 bits, which can be unboxed in a 32-bit pointer with a 3 bit tag for the node type.
+HVM2 has a built-in support for 32-bit numerics and operations represented by the `NUM` node type. `NUM` nodes in HVM2 have a 5-bit tag and a 24-bit payload. Depending on the tag, numbers can represent unsigned integers (U24), signed integers (I24), IEEE 754 binary32 floats (F24), or (possibly partially applied) operators. These choices mean any numeric node can be represented in 29 bits, which can be unboxed in a 32-bit port with a 3 bit tag for the node type.
 
-== Number Tags
+== Syntax
 
-There are three number tags that represent types:
-
-#align(center)[
-  ```
-  tag  SYM syntax
-  ---------------
-  U24  [u24]
-  I24  [i24]
-  F24  [f24]
-  ```
-]
-
-And fifteen that represent operations:
+Numeric nodes can either be a number or a (possibly partially applied) operator. Syntactically,
 
 #align(center)[
   ```
-  tag      SYM syntax
-  -------------------
-  ADD      [+]
-  SUB      [-]
-  MUL      [*]
-  DIV      [/]
-  REM      [%]
-  EQ       [=]
-  NEQ      [!]
-  LT       [<]
-  GT       [>]
-  AND      [&]
-  OR       [|]
-  XOR      [^]
-  FLIP-SUB [:-]
-  FLIP-DIV [:/]
-  FLIP-REM [:%]
+  <Numeric> ::=
+      | <Number>
+      | <Operator>
+
+  <Number> ::=
+      | <Nat>
+      | <Int>
+      | <Float>
+
+  <Operator> ::=
+      | "[" <Operation> "]"           -- (unapplied)
+      | "[" <Operation> <Number> "]"  -- (partially applied)
+
+  <Operation> ::=
+      | "+"   -- (ADD)
+      | "-"   -- (SUB)
+      | "*"   -- (MUL)
+      | "/"   -- (DIV)
+      | "%"   -- (REM)
+      | "="   -- (EQ)
+      | "!"   -- (NEQ)
+      | "<"   -- (LT)
+      | ">"   -- (GT)
+      | "&"   -- (AND)
+      | "|"   -- (OR)
+      | "^"   -- (XOR)
+      | ":-"  -- (FLIP-SUB)
+      | ":/"  -- (FLIP-DIV)
+      | ":%"  -- (FLIP-REM)
   ```
 ]
 
-Finally, there is the `SYM` tag, which is treated specially and is used to cast between tags.
+Flipped versions of some non-symmetric operators are provided for convenience.
+`<Int>` is disambiguated from `<Nat>` by requiring a sign prefix `+`/`-`.
 
-== The `SYM` Operation
+#pagebreak()
 
-The `SYM` operation is special — its payload represents another numeric tag, and when it is applied to another number, it combines the stored numeric tag with the other payload, effectively casting the other number to a different numeric tag. For example, `[+]` is a `SYM` number with payload `ADD`, and when it operates on `1` (a U24 number with payload `0x000001`), it outputs `[+1]` (an `ADD` number with payload `0x000001`).
+== Numeric Node Memory Layout
 
-== U24 - Unsigned 24-bit Integer 
+In order to understand how numeric operations are derived from the numeric nodes, we must look at the memory layout of the different numeric values and operations. As stated above, numeric nodes fit into 29 bits, so they can be inlined into a 32-bit ports. Numeric nodes have the following layout
+
+#align(center)[
+  ```
+  VVVVVVVVVVVVVVVVVVVVVVVVTTTTT
+  ```
+]
+
+Where the 5-bit tag `T` has 19 possible values: one of the three number types (`U24`, `I24`, `F24`), one of the 15 operations, or a special value `SYM`. The 24-bit value `V` has a few possible interpretations:
+- If $#raw("T") in {#raw("U24"), #raw("I24"), #raw("F24")}$, then `V` is interpreted as a number with the type `T`. For example: `123`, `-123`, `1.0`.
+- If $#raw("T") in #raw("<Operation>")$, then `V` is an untyped number. This is a partially applied operation. The type of the second argument (when applied) will dictate the interpretation of `V`. For example: `[/123]`, `[*-123]`, `[%1.0]`.
+- If $#raw("T") = #raw("SYM")$, then $#raw("V") in #raw("<Operator>")$. This is an unapplied operator, like `[+]`.
+
+== U24 - Unsigned 24-bit Integer
 
 U24 numbers represent unsigned integers from 0 to 16,777,215 ($2^24 - 1$).
 
@@ -563,19 +580,17 @@ The 24-bit payload uses two's complement encoding. For example:
 
 #align(center)[
   ```
-  0000 0000 0000 0000 0000 0000 = 0 
+  0000 0000 0000 0000 0000 0000 = 0
   0000 0000 0000 0000 0000 0001 = 1
-  0111 1111 1111 1111 1111 1111 = 8,388,607  
+  0111 1111 1111 1111 1111 1111 = 8,388,607
   1000 0000 0000 0000 0000 0000 = -8,388,608
   1111 1111 1111 1111 1111 1111 = -1
   ```
 ]
 
-== F24 - 24-bit IEEE 754 binary32 Float 
+== F24 - 24-bit IEEE 754 binary32 Float
 
-F24 numbers represent a subset of IEEE 754 binary32 floating point numbers.
-
-The 24-bit payload is laid out as follows:
+F24 numbers represent a subset of IEEE 754 binary32 floating point numbers; it supports approximately the same range, but with less precision. The 24-bit payload is laid out as follows:
 
 #align(center)[
   ```
@@ -584,32 +599,33 @@ The 24-bit payload is laid out as follows:
 ]
 
 Where:
-- `S` is the sign bit (1 = negative, 0 = positive) 
-- `E` is the 7-bit exponent, with a bias of 63
-- `M` is the 16-bit significand precision
+- S is the sign bit (1 = negative, 0 = positive)
+- E is the 8-bit exponent, with a bias of 127 (range of −126 to +127)
+- M is the 15-bit significand (mantissa) precision
 
 The value is calculated as:
-- If `E` = 0 and `M` = 0, the value is signed zero
-- If `E` = 0 and `M` $eq.not$ 0, the value is a subnormal number: \ 
-  #h(1em) $-1^S dot 2^(-62) dot 0.M$
-- If 0 < E < 127, the value is a normal number: \
-  #h(1em) $-1^S dot 2^(E-63) dot 1.M$
-- If E = 127 and M = 0, the value is signed infinity
-- If E = 127 and M $eq.not$ 0, the value is NaN (Not a Number)
+- If E = 0 and M = 0, the value is signed zero
+- If E = 0 and M $eq.not$ 0, the value is a subnormal number: \
+  $(-1)^S times 2^(-126) times (0.M "in base 2")$
+- If 0 < E < 255, the value is a normal number: \
+  $(-1)^S times 2^(E-127) times (1.M "in base 2")$
+- If E = 255 and M = 0, the value is signed infinity
+- If E = 255 and M $eq.not$ 0, the value is NaN (Not-a-Number)
 
-F24 supports a range of about $plus.minus 3.4 times 10^38$. The smallest positive normal number is $2^(-62) approx 2.2 times 10^(-19)$. Subnormal F24 numbers go down to about $1.4 times 10^(-45)$.
+F24 supports a range of approximately $plus.minus 3.4 times 10^38$. The smallest positive normal number is $2^(-126) approx 1.2 times 10^(-38)$, while the smallest subnormal numbers go down to $2^(-141) approx 3.6 times 10^(-43)$.
 
-== Number Operations
+== Numeric Operations
 
-When two `NUM` nodes are connected by an `OPE` node, a numeric operation is performed. The operation to be performed depends on the tags of each number.
+When two `NUM` nodes are connected by an `OPE` node, as shown in Interaction Rules (@interactions), a numeric operation is performed using the `op` function. The operation to be performed depends on the tags of each numeric node.
 
-Some operations are invalid, and simply return zero:
-- If both number tags represent types, the result is zero.
-- If both number tags represent operations, the result is zero.
-- If both number tags are `SYM`, the result is zero.
+Some operations `op(N, M)` are invalid, and simply return `0`:
+- If both numeric tags are types.
+- If both numeric tags are operations.
+- If both numeric tags are `SYM`.
 
 Otherwise:
-- If one of the tags is `SYM`, the output has the tag represented by the SYM number and the payload of the other operand. For example:
+- If one of the tags is `SYM`, the output has the tag represented by the `SYM` numeric node and the payload of the other operand. For example,
+
 #align(center)[
   ```
   OP([+], 10) = [+10]
@@ -619,14 +635,14 @@ Otherwise:
 
 - If one of the tags is an operation, and the other is a type, a native
   operation is performed, according to the following table:
-  
+
 #align(center)[
   ```
   |   | U24 | I24 | F24   |
   |---|-----|-----|-------|
   |ADD| +   | +   | +     |
   |SUB| -   | -   | -     |
-  |MUL| *   | *   | *     |    
+  |MUL| *   | *   | *     |
   |DIV| /   | /   | /     |
   |REM| %   | %   | %     |
   |EQ | ==  | ==  | ==    |
@@ -639,13 +655,19 @@ Otherwise:
   ```
 ]
 
-The result type is the same as the input type, except for comparison operators (`EQ`, `NEQ`, `LT`, `GT`) which always return U24 0 or 1.
+The resulting number type is the same as the input type, except for comparison operators (`EQ`, `NEQ`, `LT`, `GT`) which always return `U24` `0` or `1`.
 
-The number tagged with the operation is the left operand of the native operation, and the number tagged with the type is the right operand.
+The number tagged with the operation is the left operand of the native operation, and the number tagged with the type is the right operand. For example,
+
+#align(center)[
+  ```
+  op([/1.2], 3.0) = op(3.0, [/1.2]) = 1.2 / 3.0
+  ```
+]
 
 Note that this means that the number type used in an operation is always determined by the right operand; if the left operand is of a different type, its bits will be reinterpreted.
 
-Finally, flipped operations (such as `FLIP-SUB`) interpret their operands in the opposite order (e.g. `SUB` represents `a-b` whereas `FLIP-SUB` represents `b-a`). This allows representing e.g. both `1 - x` and `x - 1` with partially-applied operations (`[-1]` and `[:-1]` respectively).
+Finally, flipped operations (such as `FLIP-SUB`) interpret their operands in the opposite order (e.g. `SUB` represents `a - b` whereas `FLIP-SUB` represents `b - a`). This allows representing e.g. both `1 - x` and `x - 1` with partially-applied operations (`[-1]` and `[:-1]` respectively).
 
 #align(center)[
 ```
@@ -654,11 +676,13 @@ OP([:-2], 1) = -1
 ```
 ]
 
-Note that `OP` is a symmetric function (since the order of the operands is determined by their tags). This makes the "swap" pseudo-interaction in `OPER` valid.
+Note that `op` is a symmetric function (since the order of the operands is determined by their tags). That is, `op(N, M) = op(M, N)`. This makes the "swap" interaction in #smallcaps[operate 2] valid.
+
+#pagebreak()
 
 = The 32-bit Architecture <architecture>
 
-The initial version of HVM2, as implemented in this paper, is based on a 32-bit architecture. In this section, we'll use snippets of the Rust reference implementation of the interpreter, available at the #link("https://github.com/HigherOrderCO/hvm2")[HVM2] repository, to document this architecture.
+The initial version of HVM2, as implemented in this paper, is based on a 32-bit architecture. In this section, we'll use snippets of the Rust reference implementation of the interpreter, available at the #link("https://github.com/HigherOrderCO/hvm2")[HVM2 repo], to document this architecture.
 
 == Memory Layout <memory>
 
@@ -711,7 +735,7 @@ pub struct Book {
 ```
 ]
 
-This concludes HVM2's memory layout. For more details, check the reference Rust implementation in the #link("https://github.com/HigherOrderCO/hvm2")[HVM2] repository.
+This concludes HVM2's memory layout. For more details, check the reference Rust implementation in the #link("https://github.com/HigherOrderCO/hvm2")[HVM2 repo].
 
 == Example Net
 
@@ -720,11 +744,11 @@ Consider, again, the following net:
 #align(center)[
 ```
 (a b)
-& (b a) ~ (x (y *)) 
+& (b a) ~ (x (y *))
 & {y x} ~ @foo
 ```
 ]
- 
+
 In HVM2's memory, it would be represented as:
 
 #align(center)[
@@ -780,7 +804,7 @@ pub fn interact_comm(&mut self, net: &GNet, a: Port, b: Port) -> bool {
   let b_ = net.node_take(b.get_val() as usize);
   let b1 = b_.get_fst();
   let b2 = b_.get_snd();
-    
+
   // Stores new vars.
   net.vars_create(self.v0, NONE);
   net.vars_create(self.v1, NONE);
@@ -798,7 +822,7 @@ pub fn interact_comm(&mut self, net: &GNet, a: Port, b: Port) -> bool {
   self.link_pair(net, pair(port(b.get_tag(), self.n1), a2));
   self.link_pair(net, pair(port(a.get_tag(), self.n2), b1));
   self.link_pair(net, pair(port(a.get_tag(), self.n3), b2));
-  
+
   return true;
 }
 ```
@@ -821,7 +845,7 @@ there is no more work to do*.
 
 HVM2's local interactions exposes the original program's full degree of
 parallelism, ensuring that every work that *can* be done in parallel *will* be
-done in parallel. In other words, it maximizes the theoretical speedup, per 
+done in parallel. In other words, it maximizes the theoretical speedup, per
 Amdahl's law. The atomic linking procedure ensures that points of
 synchronization that emerge from the original program are solved safely and
 efficiently, without no room for race conditions. Finally, the strong confluence
