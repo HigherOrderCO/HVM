@@ -14,8 +14,8 @@ fn main() {
       .try_compile("hvm-c") {
     Ok(_) => println!("cargo:rustc-cfg=feature=\"c\""),
     Err(e) => {
-      println!("cargo:warning=WARNING: Failed to compile hvm.c: {}", e);
-      println!("cargo:warning=Ignoring hvm.c and proceeding with build. The C runtime will not be available.");
+      println!("cargo:warning=\x1b[1m\x1b[31mWARNING: Failed to compile hvm.c:\x1b[0m {}", e);
+      println!("cargo:warning=Ignoring hvm.c and proceeding with build. \x1b[1mThe C runtime will not be available.\x1b[0m");
     }
   }
 
@@ -35,7 +35,7 @@ fn main() {
     println!("cargo:rustc-cfg=feature=\"cuda\"");
   }
   else {
-    println!("cargo:warning=WARNING: CUDA compiler not found. HVM will not be able to run on GPU.");
+    println!("cargo:warning=\x1b[1m\x1b[31mWARNING: CUDA compiler not found.\x1b[0m \x1b[1mHVM will not be able to run on GPU.\x1b[0m");
   }
 
 }
