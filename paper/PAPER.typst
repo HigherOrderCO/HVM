@@ -1065,7 +1065,7 @@ extension. [cite: the optimizing optimal evaluation paper]
 == Ultra-Eager Evaluation Only
 
 In our first implementation, HVM1, we used a lazy evaluation model. This not
-only ensured that no unecessary work was done, but also allowed one to compute
+only ensured that no unnecessary work was done, but also allowed one to compute
 with infinite structures, like lists. Since the implementation presented here
 reduces *all* available redexes eagerly, that means neither of these hold. For
 example, if you allocate a big structure, but only read one branch, HVM2 will
