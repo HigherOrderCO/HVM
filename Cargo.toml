@@ -6,6 +6,10 @@ build = "build.rs"
 description = "A massively parallel, optimal functional runtime in Rust."
 license = "Apache-2.0"
 
+[lib]
+name = "hvm"
+path = "src/lib.rs"
+
 [dependencies]
 TSPL = "0.0.12"
 clap = "4.5.2"
