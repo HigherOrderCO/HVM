@@ -3,14 +3,11 @@
 #![allow(unused_variables)]
 
 use clap::{Arg, ArgAction, Command};
+use ::hvm::{ast, cmp, hvm};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command as SysCommand;
-
-mod ast;
-mod cmp;
-mod hvm;
 
 #[cfg(feature = "c")]
 extern "C" {
