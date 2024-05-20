@@ -28,7 +28,7 @@
 @sort = (?(((a (* a)) @sort__C0) (b (c d))) (c (b d)))
 
 @sort__C0 = ({$([+1] a) {c f}} ((d g) (b i)))
-  & @flow ~ (a (b (e (h i))))
+  & @flow ~ (a (b ((e h) i)))
   &! @sort ~ (c (0 (d e)))
   &! @sort ~ (f (1 (g h)))
 

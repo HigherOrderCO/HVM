@@ -53,7 +53,7 @@ def sort(d, s, t):
       return t
     case _:
       (t.a, t.b) = t
-      return flow(d, s, sort(d-1, 0, t.a), sort(d-1, 1, t.b))
+      return flow(d, s, (sort(d-1, 0, t.a), sort(d-1, 1, t.b)))
 
 def main:
   return sum(18, sort(18, 0, gen(18, 0)))

@@ -1,6 +1,6 @@
 [package]
 name = "hvm"
-version = "2.0.11"
+version = "2.0.12"
 edition = "2021"
 build = "build.rs"
 description = "A massively parallel, optimal functional runtime in Rust."
