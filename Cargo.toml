@@ -13,6 +13,7 @@ path = "src/lib.rs"
 [dependencies]
 TSPL = "0.0.12"
 clap = "4.5.2"
+highlight_error = "0.1.1"
 num_cpus = "1.0"
 
 [build-dependencies]

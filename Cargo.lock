@@ -118,6 +118,7 @@ dependencies = [
  "TSPL",
  "cc",
  "clap",
+ "highlight_error",
  "num_cpus",
 ]
 

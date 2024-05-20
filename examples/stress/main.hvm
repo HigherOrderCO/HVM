@@ -4,7 +4,7 @@
   & @loop ~ (65536 a)
 
 @fun__C1 = ({a b} d)
-  & @fun ~ (a $(:[+] $(c d)))
+  & @fun ~ (a $([+] $(c d)))
   &! @fun ~ (b c)
 
 @loop = (?((0 @loop__C0) a) a)
