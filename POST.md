@@ -4,7 +4,7 @@ Bend is a massively parallel, high-level programming language. Unlike existing
 alternatives like CUDA, OpenCL and Metal, which are low-level and limited, Bend
 has the feel and features of a modern language like Python and Haskell. Yet, for
 the first time ever, this language runs directly on GPUs, using
-thousands of cores with 0 annotations, powered by the [HVM2](https://github.com/HigherOrderCO/hvm2).
+thousands of cores with 0 annotations, powered by the [HVM2](https://github.com/HigherOrderCO/HVM).
 
 HVM2 is the successor to HVM1, a 2022 prototype of this concept. Through the
 last year, we put massive effort into polishing, simplifying, and verifying
