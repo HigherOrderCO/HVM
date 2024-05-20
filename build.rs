@@ -10,12 +10,12 @@ fn main() {
 
   if cfg!(target_env = "msvc") {
     build.flag("/experimental:c11atomics");
+    build.std("c11");
   }
 
   match build
       .file("src/hvm.c")
       .opt_level(3)
-      .std("c11")
       .warnings(false)
       .define("TPC_L2", &*tpcl2.to_string())
       .try_compile("hvm-c") {

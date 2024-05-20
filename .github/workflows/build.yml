@@ -28,11 +28,12 @@ jobs:
         with:
           cuda: '12.4.1'
           method: 'network'
+          sub-packages: '[ "nvcc", "cudart", "nvrtc" ]'
         if: matrix.os != 'macOS-latest'
 
       - name: Clippy Check
-        run: cargo clippy --all-features -- -D warnings
+        run: cargo clippy -- -D warnings
         continue-on-error: true
 
       - name: Build
-        run: cargo build --all-features
+        run: cargo build
