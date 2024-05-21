@@ -4,10 +4,10 @@ body:
  - type: markdown
    attributes: 
      value: |
-      # Bug Report
+      ## Bug Report
       - Note, your issue might have been already reported, please check [issues](https://github.com/HigherOrderCO/HVM/issues), and if you find the same report as yours, respond with a reaction or any other information that you may find would be helpful
       
-      # For Windows Users
+      ## For Windows Users
       If Curently, there is no native way to install the HVM, as a temporary workaround, please use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
 
   
