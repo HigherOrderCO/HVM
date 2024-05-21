@@ -31,6 +31,9 @@ fn main() {
     cc::Build::new()
       .cuda(true)
       .file("src/hvm.cu")
+      .flag("-diag-suppress=177")
+      .flag("-diag-suppress=550")
+      .flag("-diag-suppress=20039")
       .compile("hvm-cu");
     println!("cargo:rustc-cfg=feature=\"cuda\"");
   }
