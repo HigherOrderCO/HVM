@@ -499,8 +499,10 @@ __device__ __host__ inline Numb new_f24(f32 val) {
   u32 bits = *(u32*)&val;
   u32 shifted_bits = bits >> 8;
   u32 lost_bits = bits & 0xFF;
-  shifted_bits += (lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7; // round ties to even
-  shifted_bits |= ((bits & 0x7F800000) == 0x7F800000) && (bits << 9 != 0); // ensure NaNs don't become infinities
+  // round ties to even
+  shifted_bits += (!isnan(val)) & ((lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7);
+  // ensure NaNs don't become infinities
+  shifted_bits |= isnan(val);
   return (shifted_bits << 5) | TY_F24;
 }
 
