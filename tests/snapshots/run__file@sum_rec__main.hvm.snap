@@ -4,4 +4,3 @@ expression: rust_output
 input_file: examples/sum_rec/main.hvm
 ---
 Result: 8388608
-- ITRS: 402653167

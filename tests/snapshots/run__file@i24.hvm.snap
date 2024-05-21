@@ -4,4 +4,3 @@ expression: rust_output
 input_file: tests/programs/i24.hvm
 ---
 Result: {+12 {+8 {+20 {+5 {+0 {+0 {+1 {+0 {+1 {+2 {+10 {+8 {+8388607 {-8388608 {+1 {+1 {-1 {-1 *}}}}}}}}}}}}}}}}}}
-- ITRS: 94

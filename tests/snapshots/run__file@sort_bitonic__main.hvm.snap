@@ -4,4 +4,3 @@ expression: rust_output
 input_file: examples/sort_bitonic/main.hvm
 ---
 Result: 16744448
-- ITRS: 253525989

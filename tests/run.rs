@@ -68,10 +68,12 @@ fn parse_output(output: &str) -> Result<String, String> {
   let mut parser = hvm::ast::CoreParser::new(output);
   parser.consume("Result:")?;
   let mut tree = parser.parse_tree()?;
-  parser.consume("- ITRS:")?;
-  let itrs = parser.parse_u64()?;
   normalize_vars(&mut tree, &mut HashMap::new());
-  Ok(format!("Result: {}\n- ITRS: {}", tree.show(), itrs))
+  // TODO: include iteration count in snapshot once consistent
+  // parser.consume("- ITRS:")?;
+  // let itrs = parser.parse_u64()?;
+  // Ok(format!("Result: {}\n- ITRS: {}", tree.show(), itrs))
+  Ok(format!("Result: {}", tree.show()))
 }
 
 fn normalize_vars(tree: &mut Tree, vars: &mut HashMap<String, usize>) {

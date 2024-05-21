@@ -4,4 +4,3 @@ expression: rust_output
 input_file: examples/stress/main.hvm
 ---
 Result: 0
-- ITRS: 402675702
