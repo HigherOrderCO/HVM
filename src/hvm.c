@@ -414,11 +414,11 @@ static inline u32 get_u24(Numb word) {
 
 // Constructor and getters for I24 (signed 24-bit integer)
 static inline Numb new_i24(i32 val) {
-  return (((u32)val << 4) & 0xFFFFFF) | I24;
+  return (((u32)val & 0xFFFFFF) << 4) | I24;
 }
 
 static inline i32 get_i24(Numb word) {
-  return (((word >> 4) & 0xFFFFFF) << 8) >> 8;
+  return ((i32)((word >> 4) & 0xFFFFFF)) << 8 >> 8;
 }
 
 // Constructor and getters for F24 (24-bit float)

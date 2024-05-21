@@ -23,7 +23,7 @@ def swap(s, a, b):
 def warp(d, s, a, b):
   switch d:
     case 0:
-      return swap(s + (a > b), a, b)
+      return swap(s ^ (a > b), a, b)
     case _:
       (a.a,a.b) = a
       (b.a,b.b) = b
@@ -56,4 +56,4 @@ def sort(d, s, t):
       return flow(d, s, (sort(d-1, 0, t.a), sort(d-1, 1, t.b)))
 
 def main:
-  return sum(18, sort(18, 0, gen(18, 0)))
+  return sum(20, sort(20, 0, gen(20, 0)))

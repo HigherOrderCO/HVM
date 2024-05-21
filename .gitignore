@@ -9,3 +9,4 @@ tmp/
 examples/**/main
 examples/**/*.c
 examples/**/*.cu
+.out.hvm

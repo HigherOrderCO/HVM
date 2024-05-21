@@ -566,7 +566,7 @@ impl TMem {
     // Attempts to directionally point `A ~> B`
     loop {
       // If `A` is NODE: swap `A` and `B`, and continue
-      if a.get_tag() != VAR && a.get_tag() == VAR {
+      if a.get_tag() != VAR && b.get_tag() == VAR {
         let x = a; a = b; b = x;
       }
 
