@@ -7,4 +7,4 @@ sum = λn λx switch n {
      (+ fst snd)
 }
 
-main = (sum 30 0)
+main = (sum 24 0)

@@ -1,0 +1,7 @@
+---
+source: tests/run.rs
+expression: rust_output
+input_file: tests/programs/u24.hvm
+---
+Result: {12 {8 {20 {5 {0 {0 {1 {0 {1 {2 {10 {8 {40 {2 {16777215 {0 {3 *}}}}}}}}}}}}}}}}}
+- ITRS: 35

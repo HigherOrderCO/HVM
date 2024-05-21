@@ -1,0 +1,7 @@
+---
+source: tests/run.rs
+expression: rust_output
+input_file: examples/tuples/tuples.hvm
+---
+Result: ((1 (2 (3 (4 (5 (6 (7 (8 x0)))))))) x0)
+- ITRS: 170000018
