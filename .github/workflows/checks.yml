@@ -1,0 +1,48 @@
+name: Checks
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dsherret/rust-toolchain-file@v1
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-check-${{ hashFiles('**/Cargo.lock') }}
+      - run: RUSTFLAGS="-D warnings" cargo check --all-targets
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dsherret/rust-toolchain-file@v1
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
+      - run: cargo test --release
+  test-cuda:
+    needs: test # don't bother the cuda machine if other tests are failing
+    runs-on: [self-hosted, cuda]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dsherret/rust-toolchain-file@v1
+      - run: cargo test --release
+        shell: bash -l {0}
+
