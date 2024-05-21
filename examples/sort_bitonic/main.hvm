@@ -17,13 +17,13 @@
   &! @gen ~ (d (e f))
 
 @main = a
-  & @sum ~ (20 (@main__C1 a))
+  & @sum ~ (18 (@main__C1 a))
 
 @main__C0 = a
-  & @gen ~ (20 (0 a))
+  & @gen ~ (18 (0 a))
 
 @main__C1 = a
-  & @sort ~ (20 (0 (@main__C0 a)))
+  & @sort ~ (18 (0 (@main__C0 a)))
 
 @sort = (?(((a (* a)) @sort__C0) (b (c d))) (c (b d)))
 
