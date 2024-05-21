@@ -5,13 +5,10 @@ body:
    attributes: 
      value: |
       ### Bug Report
-        Note, your issue might have been already reported, please check [issues](https://github.com/HigherOrderCO/HVM/issues), and if you find the same report as yours, respond with a reaction or any other information that you may find would be helpful
+      Note, your issue might have been already reported, please check [issues](https://github.com/HigherOrderCO/HVM/issues), and if you find the same report as yours, respond with a reaction or any other information that you may find would be useful. 
 
-
-      
       ### For Windows Users
-        If Curently, there is no native way to install the HVM, as a temporary workaround, please use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
- 
+      If Curently, there is no native way to install the HVM, as a temporary workaround, please use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install)
   
  - type: textarea
    attributes:
@@ -31,11 +28,11 @@ body:
     label: System Settings
     description: Your System's settings
     value: |
-      Example:
-       - OS:   [e.g. Linux (Ubuntu 22.04)]
-       - CPU: [e.g. Intel i9-14900KF]
-       - GPU: [e.g. RTX 4090]
-       - Cuda Version [e.g. release 12.4, V12.4.131]
+     Example:
+      - OS:   [e.g. Linux (Ubuntu 22.04)]
+      - CPU: [e.g. Intel i9-14900KF]
+      - GPU: [e.g. RTX 4090]
+      - Cuda Version [e.g. release 12.4, V12.4.131]
    validations:
      required: true
  - type: input
