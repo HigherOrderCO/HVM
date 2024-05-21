@@ -1,5 +1,5 @@
 name: Bug report
-about: Create a report to help us improve.
+description: Create a report to help us improve.
 body:
  - type: markdown
    attributes: 
@@ -22,7 +22,7 @@ body:
        Error...
        Expected behavior....
    validations:
-   required: true
+    required: true
  
  - type: textarea
    attributes:
@@ -34,8 +34,8 @@ body:
        - CPU: [e.g. Intel i9-14900KF]
        - GPU: [e.g. RTX 4090]
        - Cuda Version [e.g. release 12.4, V12.4.131]
-    validations:
-    required: true
+   validations:
+     required: true
  - type: input
    attributes:
     label: Additional context
