@@ -1,40 +1,41 @@
 @half = xN & 1.0 ~ $([/] $(2.0 xN))
 @nan = xN & 0.0 ~ $([/] $(0.0 xN))
 
-@main = x0
-  // nan and inf divisions
-  & x0 ~ {n0 x1} & 1.0  ~ $([/] $(0.0 n0)) // +inf
-  & x1 ~ {n1 x2} & -1.0 ~ $([/] $(0.0 n1)) // -inf
-  & x2 ~ {n2 x3} & 0.0  ~ $([/] $(0.0 n2)) // NaN
+@main = x & @t0 ~ (* x)
 
-  // general operators
-  & x3 ~ {n3 x4} & @half ~ $([+] $(2.0 n3))  // 2.5
-  & x4 ~ {n4 x5} & @half ~ $([-] $(2.0 n4))  // -1.5
-  & x5 ~ {n5 x6} & @half ~ $([*] $(2.3 n5))  // 1.15
-  & x6 ~ {n6 x7} & @half ~ $([/] $(2.0 n6))  // 0.25
-  & x7 ~ {n7 x8} & @half ~ $([%] $(2.0 n7))  // 0.5
+// nan and inf divisions
+@t0 = (* {n x}) & @t1 ~ (* x) & 1.0  ~ $([/] $(0.0 n)) // +inf
+@t1 = (* {n x}) & @t2 ~ (* x) & -1.0 ~ $([/] $(0.0 n)) // -inf
+@t2 = (* {n x}) & @t3 ~ (* x) & 0.0  ~ $([/] $(0.0 n)) // NaN
 
-  // comparisons (returning ints)
-  & x8 ~ {n8 x9} & @half ~ $([=] $(2.0 n8)) // 0
-  & x9 ~ {n9 xA} & @half ~ $([!] $(2.0 n9)) // 1
-  & xA ~ {nA xB} & @half ~ $([<] $(2.0 nA))  // 1
-  & xB ~ {nB xC} & @half ~ $([>] $(2.0 nB))  // 0
+// general operators
+@t3 = (* {n x}) & @t4 ~ (* x) & @half ~ $([+] $(2.0 n)) // 2.5
+@t4 = (* {n x}) & @t5 ~ (* x) & @half ~ $([-] $(2.0 n)) // -1.5
+@t5 = (* {n x}) & @t6 ~ (* x) & @half ~ $([*] $(2.3 n)) // 1.15
+@t6 = (* {n x}) & @t7 ~ (* x) & @half ~ $([/] $(2.0 n)) // 0.25
+@t7 = (* {n x}) & @t8 ~ (* x) & @half ~ $([%] $(2.0 n)) // 0.5
 
-  // ieee nan comparisons
-  & xC ~ {nC xD} & @nan ~ $([=] $(@nan nC)) // 0
-  & xD ~ {nD xE} & @nan ~ $([<] $(@nan nD))  // 0
-  & xE ~ {nE xF} & @nan ~ $([>] $(@nan nE))  // 0
+// comparisons (returning ints)
+@t8 = (* {n x}) & @t9 ~ (* x) & @half ~ $([=] $(2.0 n)) // 0
+@t9 = (* {n x}) & @tA ~ (* x) & @half ~ $([!] $(2.0 n)) // 1
+@tA = (* {n x}) & @tB ~ (* x) & @half ~ $([<] $(2.0 n)) // 1
+@tB = (* {n x}) & @tC ~ (* x) & @half ~ $([>] $(2.0 n)) // 0
 
-  // parsing
-  & xF ~ {nF xG} & +NaN ~ $([+] $(0.0 nF)) // NaN
-  & xG ~ {nG xH} & +inf ~ $([+] $(0.0 nG)) // inf
-  & xH ~ {nH xI} & -inf ~ $([+] $(0.0 nH)) // -inf
-  & xI ~ {nI xJ} & 1.02 ~ $([+] $(0.0 nI)) // 1.02
+// ieee nan comparisons
+@tC = (* {n x}) & @tD ~ (* x) & @nan ~ $([=] $(@nan n)) // 0
+@tD = (* {n x}) & @tE ~ (* x) & @nan ~ $([<] $(@nan n)) // 0
+@tE = (* {n x}) & @tF ~ (* x) & @nan ~ $([>] $(@nan n)) // 0
 
-  // modulo
-  & xJ ~ {nJ xK} & +1.2 ~ $([%] $(+1.1 nJ)) // +0.1
-  & xK ~ {nK xL} & +1.2 ~ $([%] $(-1.1 nK)) // +0.1
-  & xL ~ {nL xM} & -1.2 ~ $([%] $(+1.1 nL)) // -0.1
-  & xM ~ {nM xN} & -1.2 ~ $([%] $(-1.1 nM)) // -0.1
+// parsing
+@tF = (* {n x}) & @tG ~ (* x) & +NaN ~ $([+] $(0.0 n)) // NaN
+@tG = (* {n x}) & @tH ~ (* x) & +inf ~ $([+] $(0.0 n)) // inf
+@tH = (* {n x}) & @tI ~ (* x) & -inf ~ $([+] $(0.0 n)) // -inf
+@tI = (* {n x}) & @tJ ~ (* x) & 1.02 ~ $([+] $(0.0 n)) // 1.02
 
-  & xN ~ *
+// modulo
+@tJ = (* {n x}) & @tK ~ (* x) & +1.2 ~ $([%] $(+1.1 n)) // +0.1
+@tK = (* {n x}) & @tL ~ (* x) & +1.2 ~ $([%] $(-1.1 n)) // +0.1
+@tL = (* {n x}) & @tM ~ (* x) & -1.2 ~ $([%] $(+1.1 n)) // -0.1
+@tM = (* {n x}) & @tN ~ (* x) & -1.2 ~ $([%] $(-1.1 n)) // -0.1
+
+@tN = *
