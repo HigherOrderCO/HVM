@@ -276,7 +276,7 @@ pub fn compile_link_fast(trg: Target, code: &mut String, book: &hvm::Book, neo: 
   // ATOM <~ *
   // --------- Fast VOID
   // nothing
-  if trg != Target::CUDA && a.get_tag() == hvm::NUM || a.get_tag() == hvm::ERA {
+  if trg != Target::CUDA && (a.get_tag() == hvm::NUM || a.get_tag() == hvm::ERA) {
     code.push_str(&format!("{}// fast void\n", indent(tab)));
     code.push_str(&format!("{}if (get_tag({}) == ERA || get_tag({}) == NUM) {{\n", indent(tab), b, b));
     code.push_str(&format!("{}tm->itrs += 1;\n", indent(tab+1)));
@@ -320,9 +320,9 @@ pub fn compile_node(trg: Target, code: &mut String, book: &hvm::Book, neo: &mut 
 }
 
 // Compiles an atomic port.
-fn compile_atom(trg: Target, port: hvm::Port) -> String {
-  return format!("new_port({},0x{:08x})/*atom*/", compile_tag(trg, port.get_tag()), port.get_val());
-}
+//fn compile_atom(trg: Target, port: hvm::Port) -> String {
+  //return format!("new_port({},0x{:08x})/*atom*/", compile_tag(trg, port.get_tag()), port.get_val());
+//}
 
 // Compiles a tag.
 pub fn compile_tag(trg: Target, tag: hvm::Tag) -> &'static str {

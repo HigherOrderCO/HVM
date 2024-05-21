@@ -35,7 +35,7 @@
 @sum = (?(((a a) @sum__C0) b) b)
 
 @sum__C0 = ({a c} ((b d) f))
-  &! @sum ~ (a (b $(:[+] $(e f))))
+  &! @sum ~ (a (b $([+] $(e f))))
   &! @sum ~ (c (d e))
 
 @swap = (?((@swap__C0 @swap__C1) (a (b c))) (b (a c)))
@@ -46,7 +46,7 @@
 
 @warp = (?((@warp__C0 @warp__C1) (a (b (c d)))) (c (b (a d))))
 
-@warp__C0 = ({a e} ({$(:[>] $(a b)) d} ($(:[^] $(b c)) f)))
+@warp__C0 = ({a e} ({$([>] $(a b)) d} ($([^] $(b c)) f)))
   & @swap ~ (c (d (e f)))
 
 @warp__C1 = ({a f} ((d i) ((c h) ({b g} ((e j) (k l))))))

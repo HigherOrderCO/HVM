@@ -1,5 +1,3 @@
-//./hvm.rs//
-
 use TSPL::{new_parser, Parser};
 use highlight_error::highlight_error;
 use crate::hvm;
@@ -47,21 +45,25 @@ impl<'i> CoreParser<'i> {
 
     // Parses the symbol
     let op = hvm::Numb::new_sym(match () {
-      _ if self.try_consume("+")  => hvm::ADD,
-      _ if self.try_consume("-")  => hvm::SUB,
-      _ if self.try_consume("*")  => hvm::MUL,
-      _ if self.try_consume("/")  => hvm::DIV,
-      _ if self.try_consume("%")  => hvm::REM,
-      _ if self.try_consume("=")  => hvm::EQ,
-      _ if self.try_consume("!")  => hvm::NEQ,
-      _ if self.try_consume("<")  => hvm::LT,
-      _ if self.try_consume(">")  => hvm::GT,
-      _ if self.try_consume("&")  => hvm::AND,
-      _ if self.try_consume("|")  => hvm::OR,
-      _ if self.try_consume("^")  => hvm::XOR,
-      _ if self.try_consume(":-") => hvm::FLIP_SUB,
-      _ if self.try_consume(":/") => hvm::FLIP_DIV,
-      _ if self.try_consume(":%") => hvm::FLIP_REM,
+      _ if self.try_consume("+")   => hvm::OP_ADD,
+      _ if self.try_consume("-")   => hvm::OP_SUB,
+      _ if self.try_consume(":-")  => hvm::FP_SUB,
+      _ if self.try_consume("*")   => hvm::OP_MUL,
+      _ if self.try_consume("/")   => hvm::OP_DIV,
+      _ if self.try_consume(":/")  => hvm::FP_DIV,
+      _ if self.try_consume("%")   => hvm::OP_REM,
+      _ if self.try_consume(":%")  => hvm::FP_REM,
+      _ if self.try_consume("=")   => hvm::OP_EQ,
+      _ if self.try_consume("!")   => hvm::OP_NEQ,
+      _ if self.try_consume("<")   => hvm::OP_LT,
+      _ if self.try_consume(">")   => hvm::OP_GT,
+      _ if self.try_consume("&")   => hvm::OP_AND,
+      _ if self.try_consume("|")   => hvm::OP_OR,
+      _ if self.try_consume("^")   => hvm::OP_XOR,
+      _ if self.try_consume("<<")  => hvm::OP_SHL,
+      _ if self.try_consume(":<<") => hvm::FP_SHL,
+      _ if self.try_consume(">>")  => hvm::OP_SHR,
+      _ if self.try_consume(":>>") => hvm::FP_SHR,
       _ => self.expected("operator symbol")?,
     });
 
@@ -81,14 +83,11 @@ impl<'i> CoreParser<'i> {
   }
 
   pub fn parse_numb_lit(&mut self) -> Result<Numb, String> {
-    let start = self.index;
+    let ini = self.index;
     let num = self.take_while(|x| x.is_alphanumeric() || x == '+' || x == '-' || x == '.');
     let end = self.index;
-
-    let display_err = |err: &dyn Display| format!("invalid number literal: {err}\n{}", highlight_error(start, end, self.input));
-
     Ok(Numb(if num.contains('.') || num.contains("inf") || num.contains("NaN") {
-      let val: f32 = num.parse().map_err(|err| display_err(&err))?;
+      let val: f32 = num.parse().map_err(|err| format!("invalid number literal: {}\n{}", err, highlight_error(ini, end, self.input)))?;
       hvm::Numb::new_f24(val)
     } else if num.starts_with('+') || num.starts_with('-') {
       let val = Self::parse_int(&num[1..])? as i32;
@@ -224,60 +223,74 @@ impl Numb {
   pub fn show(&self) -> String {
     let numb = hvm::Numb(self.0);
     match numb.get_typ() {
-      hvm::SYM => match numb.get_sym() as hvm::Tag {
-        hvm::ADD => "[+]".to_string(),
-        hvm::SUB => "[-]".to_string(),
-        hvm::MUL => "[*]".to_string(),
-        hvm::DIV => "[/]".to_string(),
-        hvm::REM => "[%]".to_string(),
-        hvm::EQ  => "[=]".to_string(),
-        hvm::LT  => "[<]".to_string(),
-        hvm::GT  => "[>]".to_string(),
-        hvm::AND => "[&]".to_string(),
-        hvm::OR  => "[|]".to_string(),
-        hvm::XOR => "[^]".to_string(),
-        hvm::FLIP_SUB => "[:-]".to_string(),
-        hvm::FLIP_DIV => "[:/]".to_string(),
-        hvm::FLIP_REM => "[:%]".to_string(),
-        _ => "[?]".to_string(),
+      hvm::TY_SYM => match numb.get_sym() as hvm::Tag {
+        hvm::OP_ADD => "[+]".to_string(),
+        hvm::OP_SUB => "[-]".to_string(),
+        hvm::FP_SUB => "[:-]".to_string(),
+        hvm::OP_MUL => "[*]".to_string(),
+        hvm::OP_DIV => "[/]".to_string(),
+        hvm::FP_DIV => "[:/]".to_string(),
+        hvm::OP_REM => "[%]".to_string(),
+        hvm::FP_REM => "[:%]".to_string(),
+        hvm::OP_EQ  => "[=]".to_string(),
+        hvm::OP_NEQ => "[!]".to_string(),
+        hvm::OP_LT  => "[<]".to_string(),
+        hvm::OP_GT  => "[>]".to_string(),
+        hvm::OP_AND => "[&]".to_string(),
+        hvm::OP_OR  => "[|]".to_string(),
+        hvm::OP_XOR => "[^]".to_string(),
+        hvm::OP_SHL => "[<<]".to_string(),
+        hvm::FP_SHL => "[:<<]".to_string(),
+        hvm::OP_SHR => "[>>]".to_string(),
+        hvm::FP_SHR => "[:>>]".to_string(),
+        _           => "[?]".to_string(),
       }
-      hvm::U24 => {
+      hvm::TY_U24 => {
         let val = numb.get_u24();
         format!("{}", val)
       }
-      hvm::I24 => {
+      hvm::TY_I24 => {
         let val = numb.get_i24();
         format!("{:+}", val)
       }
-      hvm::F24 => {
+      hvm::TY_F24 => {
         let val = numb.get_f24();
-        match val {
-          f32::INFINITY => format!("+inf"),
-          f32::NEG_INFINITY => format!("-inf"),
-          x if x.is_nan() => format!("+NaN"),
-          _ => format!("{:?}", val)
+        if val.is_infinite() {
+          if val.is_sign_positive() {
+            format!("+inf")
+          } else {
+            format!("-inf")
+          }
+        } else if val.is_nan() {
+          format!("+NaN")
+        } else {
+          format!("{:?}", val)
         }
       }
       _ => {
         let typ = numb.get_typ();
         let val = numb.get_u24();
         format!("[{}{:07X}]", match typ {
-          hvm::ADD => "+",
-          hvm::SUB => "-", 
-          hvm::MUL => "*",
-          hvm::DIV => "/",
-          hvm::REM => "%",
-          hvm::EQ  => "=",
-          hvm::NEQ => "!",
-          hvm::LT  => "<",
-          hvm::GT  => ">",
-          hvm::AND => "&",
-          hvm::OR  => "|",
-          hvm::XOR => "^",
-          hvm::FLIP_SUB => ":-",
-          hvm::FLIP_DIV => ":/",
-          hvm::FLIP_REM => ":%",
-          _ => "?",
+          hvm::OP_ADD => "+",
+          hvm::OP_SUB => "-", 
+          hvm::FP_SUB => ":-",
+          hvm::OP_MUL => "*",
+          hvm::OP_DIV => "/",
+          hvm::FP_DIV => ":/",
+          hvm::OP_REM => "%",
+          hvm::FP_REM => ":%",
+          hvm::OP_EQ  => "=",
+          hvm::OP_NEQ => "!",
+          hvm::OP_LT  => "<",
+          hvm::OP_GT  => ">",
+          hvm::OP_AND => "&",
+          hvm::OP_OR  => "|",
+          hvm::OP_XOR => "^",
+          hvm::OP_SHL => "<<",
+          hvm::FP_SHL => ":<<",
+          hvm::OP_SHR => ">>",
+          hvm::FP_SHR => ":>>",
+          _           => "?",
         }, val)
       }
     }
@@ -484,7 +497,7 @@ impl Book {
     let mut fid_to_name = BTreeMap::new();
     fid_to_name.insert(0, "main".to_string());
     name_to_fid.insert("main".to_string(), 0);
-    for (i, (name, _)) in self.defs.iter().enumerate() {
+    for (_i, (name, _)) in self.defs.iter().enumerate() {
       if name != "main" {
         fid_to_name.insert(name_to_fid.len() as hvm::Val, name.clone());
         name_to_fid.insert(name.clone(), name_to_fid.len() as hvm::Val);

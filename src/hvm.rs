@@ -2,8 +2,6 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::alloc::{alloc, dealloc, Layout};
 use std::mem;
 
-//ok
-
 // Runtime
 // =======
 
@@ -12,7 +10,6 @@ pub type Tag  = u8;  // Tag  ::= 3-bit (rounded up to u8)
 pub type Lab  = u32; // Lab  ::= 29-bit (rounded up to u32)
 pub type Val  = u32; // Val  ::= 29-bit (rounded up to u32)
 pub type Rule = u8;  // Rule ::= 8-bit (fits a u8)
-
 
 // Port
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
@@ -50,26 +47,29 @@ pub const OPER : Rule = 0x6;
 pub const SWIT : Rule = 0x7;
 
 // Numbs
-pub const SYM : Tag = 0x00;
-pub const U24 : Tag = 0x01;
-pub const I24 : Tag = 0x02;
-pub const F24 : Tag = 0x03;
-pub const ADD : Tag = 0x04;
-pub const SUB : Tag = 0x05;
-pub const MUL : Tag = 0x06;
-pub const DIV : Tag = 0x07;
-pub const REM : Tag = 0x08;
-pub const EQ  : Tag = 0x09;
-pub const NEQ : Tag = 0x0A;
-pub const LT  : Tag = 0x0B;
-pub const GT  : Tag = 0x0C;
-pub const AND : Tag = 0x0D;
-pub const OR  : Tag = 0x0E;
-pub const XOR : Tag = 0x0F;
-
-pub const FLIP_SUB : Tag = 0x10;
-pub const FLIP_DIV : Tag = 0x11;
-pub const FLIP_REM : Tag = 0x12;
+pub const TY_SYM : Tag = 0x00;
+pub const TY_U24 : Tag = 0x01;
+pub const TY_I24 : Tag = 0x02;
+pub const TY_F24 : Tag = 0x03;
+pub const OP_ADD : Tag = 0x04;
+pub const OP_SUB : Tag = 0x05;
+pub const FP_SUB : Tag = 0x06;
+pub const OP_MUL : Tag = 0x07;
+pub const OP_DIV : Tag = 0x08;
+pub const FP_DIV : Tag = 0x09;
+pub const OP_REM : Tag = 0x0A;
+pub const FP_REM : Tag = 0x0B;
+pub const OP_EQ  : Tag = 0x0C;
+pub const OP_NEQ : Tag = 0x0D;
+pub const OP_LT  : Tag = 0x0E;
+pub const OP_GT  : Tag = 0x0F;
+pub const OP_AND : Tag = 0x10;
+pub const OP_OR  : Tag = 0x11;
+pub const OP_XOR : Tag = 0x12;
+pub const OP_SHL : Tag = 0x13;
+pub const FP_SHL : Tag = 0x14;
+pub const OP_SHR : Tag = 0x15;
+pub const FP_SHR : Tag = 0x16;
 
 // Constants
 pub const FREE : Port = Port(0x0);
@@ -221,7 +221,7 @@ impl Numb {
   // SYM: a symbolic operator
 
   pub fn new_sym(val: Tag) -> Self {
-    Numb((val as Val) << 5 | (SYM as Val))
+    Numb((val as Val) << 5 | (TY_SYM as Val))
   }
 
   pub fn get_sym(&self) -> Tag {
@@ -231,7 +231,7 @@ impl Numb {
   // U24: unsigned 24-bit integer
   
   pub fn new_u24(val: u32) -> Self {
-    Numb((val << 5) as Val | (U24 as Val))
+    Numb((val << 5) as Val | (TY_U24 as Val))
   }
 
   pub fn get_u24(&self) -> u32 {
@@ -241,7 +241,7 @@ impl Numb {
   // I24: signed 24-bit integer
 
   pub fn new_i24(val: i32) -> Self {
-    Numb(((val as u32) << 5) as Val | (I24 as Val))
+    Numb(((val as u32) << 5) as Val | (TY_I24 as Val))
   }
 
   pub fn get_i24(&self) -> i32 {
@@ -256,7 +256,7 @@ impl Numb {
     let lost_bits = bits & 0xFF;
     shifted_bits += (lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7; // round ties to even
     shifted_bits |= u32::from((bits & 0x7F800000 == 0x7F800000) && (bits << 9 != 0)); // ensure NaNs don't become infinities
-    Numb((shifted_bits << 5) as Val | (F24 as Val))
+    Numb((shifted_bits << 5) as Val | (TY_F24 as Val))
   }
 
   pub fn get_f24(&self) -> f32 {
@@ -280,87 +280,91 @@ impl Numb {
     //println!("operate {} {}", crate::ast::Numb(a.0).show(), crate::ast::Numb(b.0).show());
     let at = a.get_typ();
     let bt = b.get_typ();
-    if at == SYM && bt == SYM {
+    if at == TY_SYM && bt == TY_SYM {
       return Numb::new_u24(0);
     }
-    if at == SYM && bt != SYM {
+    if at == TY_SYM && bt != TY_SYM {
       return Numb::partial(a, b);
     }
-    if at != SYM && bt == SYM {
+    if at != TY_SYM && bt == TY_SYM {
       return Numb::partial(b, a);
     }
-    if at >= ADD && bt >= ADD {
+    if at >= OP_ADD && bt >= OP_ADD {
       return Numb::new_u24(0);
     }
-    if at < ADD && bt < ADD {
+    if at < OP_ADD && bt < OP_ADD {
       return Numb::new_u24(0);
     }
-    let (op, a, ty, b) = if at >= ADD { (at, a, bt, b) } else { (bt, b, at, a) };
+    let (op, a, ty, b) = if at >= OP_ADD { (at, a, bt, b) } else { (bt, b, at, a) };
     match ty {
-      U24 => {
+      TY_U24 => {
         let av = a.get_u24();
         let bv = b.get_u24();
         match op {
-          ADD => Numb::new_u24(av.wrapping_add(bv)),
-          SUB => Numb::new_u24(av.wrapping_sub(bv)),
-          MUL => Numb::new_u24(av.wrapping_mul(bv)),
-          DIV => Numb::new_u24(av.wrapping_div(bv)),
-          REM => Numb::new_u24(av.wrapping_rem(bv)),
-          EQ  => Numb::new_u24((av == bv) as u32),
-          NEQ => Numb::new_u24((av != bv) as u32),
-          LT  => Numb::new_u24((av <  bv) as u32),
-          GT  => Numb::new_u24((av >  bv) as u32),
-          AND => Numb::new_u24(av & bv),
-          OR  => Numb::new_u24(av | bv),
-          XOR => Numb::new_u24(av ^ bv),
-          FLIP_SUB => Numb::new_u24(bv.wrapping_sub(av)),
-          FLIP_DIV => Numb::new_u24(bv.wrapping_div(av)),
-          FLIP_REM => Numb::new_u24(bv.wrapping_rem(av)),
-          _   => unreachable!(),
+          OP_ADD => Numb::new_u24(av.wrapping_add(bv)),
+          OP_SUB => Numb::new_u24(av.wrapping_sub(bv)),
+          FP_SUB => Numb::new_u24(bv.wrapping_sub(av)),
+          OP_MUL => Numb::new_u24(av.wrapping_mul(bv)),
+          OP_DIV => Numb::new_u24(av.wrapping_div(bv)),
+          FP_DIV => Numb::new_u24(bv.wrapping_div(av)),
+          OP_REM => Numb::new_u24(av.wrapping_rem(bv)),
+          FP_REM => Numb::new_u24(bv.wrapping_rem(av)),
+          OP_EQ  => Numb::new_u24((av == bv) as u32),
+          OP_NEQ => Numb::new_u24((av != bv) as u32),
+          OP_LT  => Numb::new_u24((av <  bv) as u32),
+          OP_GT  => Numb::new_u24((av >  bv) as u32),
+          OP_AND => Numb::new_u24(av & bv),
+          OP_OR  => Numb::new_u24(av | bv),
+          OP_XOR => Numb::new_u24(av ^ bv),
+          OP_SHL => Numb::new_u24(av << (bv & 31)),
+          OP_SHR => Numb::new_u24(av >> (bv & 31)),
+          FP_SHL => Numb::new_u24(bv << (av & 31)), 
+          FP_SHR => Numb::new_u24(bv >> (av & 31)),
+          _      => unreachable!(),
         }
       }
-      I24 => {
+      TY_I24 => {
         let av = a.get_i24();
         let bv = b.get_i24();
         match op {
-          ADD => Numb::new_i24(av.wrapping_add(bv)),
-          SUB => Numb::new_i24(av.wrapping_sub(bv)),
-          MUL => Numb::new_i24(av.wrapping_mul(bv)),
-          DIV => Numb::new_i24(av.wrapping_div(bv)),
-          REM => Numb::new_i24(av.wrapping_rem(bv)),
-          EQ  => Numb::new_i24((av == bv) as i32),
-          NEQ => Numb::new_i24((av != bv) as i32),
-          LT  => Numb::new_i24((av <  bv) as i32),
-          GT  => Numb::new_i24((av >  bv) as i32),
-          AND => Numb::new_i24(av & bv),
-          OR  => Numb::new_i24(av | bv),
-          XOR => Numb::new_i24(av ^ bv),
-          FLIP_SUB => Numb::new_i24(bv.wrapping_sub(av)),
-          FLIP_DIV => Numb::new_i24(bv.wrapping_div(av)),
-          FLIP_REM => Numb::new_i24(bv.wrapping_rem(av)),
-          _   => unreachable!(),
+          OP_ADD => Numb::new_i24(av.wrapping_add(bv)),
+          OP_SUB => Numb::new_i24(av.wrapping_sub(bv)),
+          FP_SUB => Numb::new_i24(bv.wrapping_sub(av)),
+          OP_MUL => Numb::new_i24(av.wrapping_mul(bv)),
+          OP_DIV => Numb::new_i24(av.wrapping_div(bv)),
+          FP_DIV => Numb::new_i24(bv.wrapping_div(av)),
+          OP_REM => Numb::new_i24(av.wrapping_rem(bv)),
+          FP_REM => Numb::new_i24(bv.wrapping_rem(av)),
+          OP_EQ  => Numb::new_i24((av == bv) as i32),
+          OP_NEQ => Numb::new_i24((av != bv) as i32),
+          OP_LT  => Numb::new_i24((av <  bv) as i32),
+          OP_GT  => Numb::new_i24((av >  bv) as i32),
+          OP_AND => Numb::new_i24(av & bv),
+          OP_OR  => Numb::new_i24(av | bv),
+          OP_XOR => Numb::new_i24(av ^ bv),
+          _      => unreachable!(),
         }
       }
-      F24 => {
+      TY_F24 => {
         let av = a.get_f24();
         let bv = b.get_f24();
         match op {
-          ADD => Numb::new_f24(av + bv),
-          SUB => Numb::new_f24(av - bv),
-          MUL => Numb::new_f24(av * bv),
-          DIV => Numb::new_f24(av / bv),
-          REM => Numb::new_f24(av % bv),
-          EQ  => Numb::new_u24((av == bv) as u32),
-          NEQ => Numb::new_u24((av != bv) as u32),
-          LT  => Numb::new_u24((av <  bv) as u32),
-          GT  => Numb::new_u24((av >  bv) as u32),
-          AND => Numb::new_f24(av.atan2(bv)),
-          OR  => Numb::new_f24(bv.log(av)),
-          XOR => Numb::new_f24(av.powf(bv)),
-          FLIP_SUB => Numb::new_f24(bv - av),
-          FLIP_DIV => Numb::new_f24(bv / av),
-          FLIP_REM => Numb::new_f24(bv % av),
-          _   => unreachable!(),
+          OP_ADD => Numb::new_f24(av + bv),
+          OP_SUB => Numb::new_f24(av - bv),
+          FP_SUB => Numb::new_f24(bv - av),
+          OP_MUL => Numb::new_f24(av * bv),
+          OP_DIV => Numb::new_f24(av / bv),
+          FP_DIV => Numb::new_f24(bv / av),
+          OP_REM => Numb::new_f24(av % bv),
+          FP_REM => Numb::new_f24(bv % av),
+          OP_EQ  => Numb::new_u24((av == bv) as u32),
+          OP_NEQ => Numb::new_u24((av != bv) as u32),
+          OP_LT  => Numb::new_u24((av <  bv) as u32),
+          OP_GT  => Numb::new_u24((av >  bv) as u32),
+          OP_AND => Numb::new_f24(av.atan2(bv)),
+          OP_OR  => Numb::new_f24(bv.log(av)),
+          OP_XOR => Numb::new_f24(av.powf(bv)),
+          _      => unreachable!(),
         }
       }
       _ => Numb::new_u24(0),

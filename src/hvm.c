@@ -80,26 +80,29 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 #define SWIT 0x7
 
 // Numbers
-#define SYM 0x00
-#define U24 0x01
-#define I24 0x02
-#define F24 0x03
-#define ADD 0x04
-#define SUB 0x05
-#define MUL 0x06
-#define DIV 0x07
-#define REM 0x08
-#define EQ  0x09
-#define NEQ 0x0A
-#define LT  0x0B
-#define GT  0x0C
-#define AND 0x0D
-#define OR  0x0E
-#define XOR 0x0F
-  
-#define FLIP_SUB 0x10
-#define FLIP_DIV 0x11
-#define FLIP_REM 0x12
+#define TY_SYM 0x00
+#define TY_U24 0x01
+#define TY_I24 0x02
+#define TY_F24 0x03
+#define OP_ADD 0x04
+#define OP_SUB 0x05
+#define FP_SUB 0x06
+#define OP_MUL 0x07
+#define OP_DIV 0x08
+#define FP_DIV 0x09
+#define OP_REM 0x0A
+#define FP_REM 0x0B
+#define OP_EQ  0x0C
+#define OP_NEQ 0x0D
+#define OP_LT  0x0E
+#define OP_GT  0x0F
+#define OP_AND 0x10
+#define OP_OR  0x11
+#define OP_XOR 0x12
+#define OP_SHL 0x13
+#define FP_SHL 0x14
+#define OP_SHR 0x15
+#define FP_SHR 0x16
 
 // Constants
 #define FREE 0x00000000
@@ -376,7 +379,7 @@ static inline Pair adjust_pair(Net* net, TM* tm, Pair pair) {
 
 // Constructor and getters for SYM (operation selector)
 static inline Numb new_sym(u32 val) {
-  return (val << 5) | SYM;
+  return (val << 5) | TY_SYM;
 }
 
 static inline u32 get_sym(Numb word) {
@@ -385,7 +388,7 @@ static inline u32 get_sym(Numb word) {
 
 // Constructor and getters for U24 (unsigned 24-bit integer)
 static inline Numb new_u24(u32 val) {
-  return (val << 5) | U24;
+  return (val << 5) | TY_U24;
 }
 
 static inline u32 get_u24(Numb word) {
@@ -394,7 +397,7 @@ static inline u32 get_u24(Numb word) {
 
 // Constructor and getters for I24 (signed 24-bit integer)
 static inline Numb new_i24(i32 val) {
-  return (((u32)val & 0xFFFFFF) << 4) | I24;
+  return (((u32)val & 0xFFFFFF) << 4) | TY_I24;
 }
 
 static inline i32 get_i24(Numb word) {
@@ -408,7 +411,7 @@ static inline Numb new_f24(float val) {
   u32 lost_bits = bits & 0xFF;
   shifted_bits += (lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7; // round ties to even
   shifted_bits |= ((bits & 0x7F800000) == 0x7F800000) && (bits << 9 != 0); // ensure NaNs don't become infinities
-  return (shifted_bits << 5) | F24;
+  return (shifted_bits << 5) | TY_F24;
 }
 
 static inline float get_f24(Numb word) {
@@ -430,97 +433,97 @@ static inline Numb partial(Numb a, Numb b) {
 static inline Numb operate(Numb a, Numb b) {
   Tag at = get_typ(a);
   Tag bt = get_typ(b);
-  if (at == SYM && bt == SYM) {
+  if (at == TY_SYM && bt == TY_SYM) {
     return new_u24(0);
   }
-  if (at == SYM && bt != SYM) {
+  if (at == TY_SYM && bt != TY_SYM) {
     return partial(a, b);
   }
-  if (at != SYM && bt == SYM) {
+  if (at != TY_SYM && bt == TY_SYM) {
     return partial(b, a);
   }
-  if (at >= ADD && bt >= ADD) {
+  if (at >= OP_ADD && bt >= OP_ADD) {
     return new_u24(0);
   }
-  if (at < ADD && bt < ADD) {
+  if (at < OP_ADD && bt < OP_ADD) {
     return new_u24(0);
   }
   Tag op, ty;
-  if (at >= ADD) {
-    op = at;
-    ty = bt;
+  Numb swp;
+  if (at >= OP_ADD) {
+    op = at; ty = bt;
   } else {
-    op = bt;
-    ty = at;
-    Numb t = a;
-    a = b;
-    b = t;
+    op = bt; ty = at; swp = a; a = b; b = swp;
   }
   switch (ty) {
-    case U24: {
+    case TY_U24: {
       u32 av = get_u24(a);
       u32 bv = get_u24(b);
       switch (op) {
-        case ADD: return new_u24(av + bv);
-        case SUB: return new_u24(av - bv);
-        case MUL: return new_u24(av * bv);
-        case DIV: return new_u24(av / bv);
-        case REM: return new_u24(av % bv);
-        case EQ:  return new_u24(av == bv);
-        case NEQ: return new_u24(av != bv);
-        case LT:  return new_u24(av < bv);
-        case GT:  return new_u24(av > bv);
-        case AND: return new_u24(av & bv);
-        case OR:  return new_u24(av | bv);
-        case XOR: return new_u24(av ^ bv);
-        case FLIP_SUB: return new_u24(bv - av);
-        case FLIP_DIV: return new_u24(bv / av);
-        case FLIP_REM: return new_u24(bv % av);
-        default:  return new_u24(0);
+        case OP_ADD: return new_u24(av + bv);
+        case OP_SUB: return new_u24(av - bv);
+        case FP_SUB: return new_u24(bv - av);
+        case OP_MUL: return new_u24(av * bv);
+        case OP_DIV: return new_u24(av / bv);
+        case FP_DIV: return new_u24(bv / av);
+        case OP_REM: return new_u24(av % bv);
+        case FP_REM: return new_u24(bv % av);
+        case OP_EQ:  return new_u24(av == bv);
+        case OP_NEQ: return new_u24(av != bv);
+        case OP_LT:  return new_u24(av < bv);
+        case OP_GT:  return new_u24(av > bv);
+        case OP_AND: return new_u24(av & bv);
+        case OP_OR:  return new_u24(av | bv);
+        case OP_XOR: return new_u24(av ^ bv);
+        case OP_SHL: return new_u24(av << (bv & 31));
+        case FP_SHL: return new_u24(bv << (av & 31));
+        case OP_SHR: return new_u24(av >> (bv & 31));
+        case FP_SHR: return new_u24(bv >> (av & 31));
+        default:     return new_u24(0);
       }
     }
-    case I24: {
+    case TY_I24: {
       i32 av = get_i24(a);
       i32 bv = get_i24(b);
       switch (op) {
-        case ADD: return new_i24(av + bv);
-        case SUB: return new_i24(av - bv);
-        case MUL: return new_i24(av * bv);
-        case DIV: return new_i24(av / bv);
-        case REM: return new_i24(av % bv);
-        case EQ:  return new_i24(av == bv);
-        case NEQ: return new_i24(av != bv);
-        case LT:  return new_i24(av < bv);
-        case GT:  return new_i24(av > bv);
-        case AND: return new_i24(av & bv);
-        case OR:  return new_i24(av | bv);
-        case XOR: return new_i24(av ^ bv);
-        case FLIP_SUB: return new_i24(bv - av);
-        case FLIP_DIV: return new_i24(bv / av);
-        case FLIP_REM: return new_i24(bv % av);
-        default:  return new_i24(0);
+        case OP_ADD: return new_i24(av + bv);
+        case OP_SUB: return new_i24(av - bv);
+        case FP_SUB: return new_i24(bv - av);
+        case OP_MUL: return new_i24(av * bv);
+        case OP_DIV: return new_i24(av / bv);
+        case FP_DIV: return new_i24(bv / av);
+        case OP_REM: return new_i24(av % bv);
+        case FP_REM: return new_i24(bv % av);
+        case OP_EQ:  return new_i24(av == bv);
+        case OP_NEQ: return new_i24(av != bv);
+        case OP_LT:  return new_i24(av < bv);
+        case OP_GT:  return new_i24(av > bv);
+        case OP_AND: return new_i24(av & bv);
+        case OP_OR:  return new_i24(av | bv);
+        case OP_XOR: return new_i24(av ^ bv);
+        default:     return new_i24(0);
       }
     }
-    case F24: {
+    case TY_F24: {
       float av = get_f24(a);
       float bv = get_f24(b);
       switch (op) {
-        case ADD: return new_f24(av + bv);
-        case SUB: return new_f24(av - bv);
-        case MUL: return new_f24(av * bv);
-        case DIV: return new_f24(av / bv);
-        case REM: return new_f24(fmodf(av, bv));
-        case EQ:  return new_u24(av == bv);
-        case NEQ: return new_u24(av != bv);
-        case LT:  return new_u24(av < bv);
-        case GT:  return new_u24(av > bv);
-        case AND: return new_f24(atan2f(av, bv));
-        case OR:  return new_f24(logf(bv) / logf(av));
-        case XOR: return new_f24(powf(av, bv));
-        case FLIP_SUB: return new_f24(bv - av);
-        case FLIP_DIV: return new_f24(bv / av);
-        case FLIP_REM: return new_f24(fmodf(bv, av));
-        default:  return new_f24(0);
+        case OP_ADD: return new_f24(av + bv);
+        case OP_SUB: return new_f24(av - bv);
+        case FP_SUB: return new_f24(bv - av);
+        case OP_MUL: return new_f24(av * bv);
+        case OP_DIV: return new_f24(av / bv);
+        case FP_DIV: return new_f24(bv / av);
+        case OP_REM: return new_f24(fmodf(av, bv));
+        case FP_REM: return new_f24(fmodf(bv, av));
+        case OP_EQ:  return new_u24(av == bv);
+        case OP_NEQ: return new_u24(av != bv);
+        case OP_LT:  return new_u24(av < bv);
+        case OP_GT:  return new_u24(av > bv);
+        case OP_AND: return new_f24(atan2f(av, bv));
+        case OP_OR:  return new_f24(logf(bv) / logf(av));
+        case OP_XOR: return new_f24(powf(av, bv));
+        default:     return new_f24(0);
       }
     }
     default: return new_u24(0);
@@ -1718,62 +1721,80 @@ void print_net(Net* net) {
 
 void pretty_print_numb(Numb word) {
   switch (get_typ(word)) {
-    case SYM:
+    case TY_SYM: {
       switch (get_sym(word)) {
-        case ADD: printf("[+]"); break;
-        case SUB: printf("[-]"); break;
-        case MUL: printf("[*]"); break;
-        case DIV: printf("[/]"); break;
-        case REM: printf("[%%]"); break;
-        case EQ:  printf("[=]"); break;
-        case LT:  printf("[<]"); break;
-        case GT:  printf("[>]"); break;
-        case AND: printf("[&]"); break;
-        case OR:  printf("[|]"); break;
-        case XOR: printf("[^]"); break;
-        default:  printf("[?]"); break;
+        case OP_ADD: printf("[+]"); break;
+        case OP_SUB: printf("[-]"); break;
+        case FP_SUB: printf("[:-]"); break;
+        case OP_MUL: printf("[*]"); break;
+        case OP_DIV: printf("[/]"); break;
+        case FP_DIV: printf("[:/]"); break;
+        case OP_REM: printf("[%%]"); break;
+        case FP_REM: printf("[:%%]"); break;
+        case OP_EQ:  printf("[=]"); break;
+        case OP_NEQ: printf("[!]"); break;
+        case OP_LT:  printf("[<]"); break;
+        case OP_GT:  printf("[>]"); break;
+        case OP_AND: printf("[&]"); break;
+        case OP_OR:  printf("[|]"); break;
+        case OP_XOR: printf("[^]"); break;
+        case OP_SHL: printf("[<<]"); break;
+        case FP_SHL: printf("[:<<]"); break;
+        case OP_SHR: printf("[>>]"); break;
+        case FP_SHR: printf("[:>>]"); break;
+        default:     printf("[?]"); break;
       }
       break;
-    case U24:
-      if (get_flp(word)) {
-        printf(":%u", get_u24(word));
-      } else {
-        printf("%u", get_u24(word));
-      }
+    }
+    case TY_U24: {
+      printf("%u", get_u24(word));
       break;
-    case I24:
-      if (get_flp(word)) {
-        printf(":%d", get_i24(word));
-      } else {
-        printf("%d", get_i24(word));
-      }
+    }
+    case TY_I24: {
+      printf("%+d", get_i24(word));
       break;
-    case F24:
-      if (get_flp(word)) {
-        printf(":%f", get_f24(word));
+    }
+    case TY_F24: {
+      if (isinf(get_f24(word))) {
+        if (signbit(get_f24(word))) {
+          printf("-inf");
+        } else {
+          printf("+inf");
+        }
+      } else if (isnan(get_f24(word))) {
+        printf("+NaN");
       } else {
         printf("%f", get_f24(word));
       }
       break;
-    default:
-      // Here, use a proper switch
+    }
+    default: {
       switch (get_typ(word)) {
-        case ADD: printf("[+%07X]", get_u24(word)); break;
-        case SUB: printf("[-%07X]", get_u24(word)); break;
-        case MUL: printf("[*%07X]", get_u24(word)); break;
-        case DIV: printf("[/%07X]", get_u24(word)); break;
-        case REM: printf("[%%%07X]", get_u24(word)); break;
-        case EQ:  printf("[=%07X]", get_u24(word)); break;
-        case NEQ: printf("[!%07X]", get_u24(word)); break;
-        case LT:  printf("[<%07X]", get_u24(word)); break;
-        case GT:  printf("[>%07X]", get_u24(word)); break;
-        case AND: printf("[&%07X]", get_u24(word)); break;
-        case OR:  printf("[|%07X]", get_u24(word)); break;
-        case XOR: printf("[^%07X]", get_u24(word)); break;
-        default:  printf("[?%07X]", get_u24(word)); break;
+        case OP_ADD: printf("[+%07X]", get_u24(word)); break;
+        case OP_SUB: printf("[-%07X]", get_u24(word)); break;
+        case FP_SUB: printf("[:-%07X]", get_u24(word)); break;
+        case OP_MUL: printf("[*%07X]", get_u24(word)); break;
+        case OP_DIV: printf("[/%07X]", get_u24(word)); break;
+        case FP_DIV: printf("[:/%07X]", get_u24(word)); break;
+        case OP_REM: printf("[%%%07X]", get_u24(word)); break;
+        case FP_REM: printf("[:%%%07X]", get_u24(word)); break;
+        case OP_EQ:  printf("[=%07X]", get_u24(word)); break;
+        case OP_NEQ: printf("[!%07X]", get_u24(word)); break;
+        case OP_LT:  printf("[<%07X]", get_u24(word)); break;
+        case OP_GT:  printf("[>%07X]", get_u24(word)); break;
+        case OP_AND: printf("[&%07X]", get_u24(word)); break;
+        case OP_OR:  printf("[|%07X]", get_u24(word)); break;
+        case OP_XOR: printf("[^%07X]", get_u24(word)); break;
+        case OP_SHL: printf("[<<%07X]", get_u24(word)); break;
+        case FP_SHL: printf("[:<<%07X]", get_u24(word)); break;
+        case OP_SHR: printf("[>>%07X]", get_u24(word)); break;
+        case FP_SHR: printf("[:>>%07X]", get_u24(word)); break;
+        default:     printf("[?%07X]", get_u24(word)); break;
       }
       break;
+    }
   }
+
 }
 
 void pretty_print_port(Net* net, Book* book, Port port) {
