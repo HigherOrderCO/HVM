@@ -473,7 +473,7 @@ __device__ __host__ inline Numb new_sym(u32 val) {
 }
 
 __device__ __host__ inline u32 get_sym(Numb word) {
-  return (word >> 5) & 0xF;
+  return (word >> 5);
 }
 
 // Constructor and getters for U24 (unsigned 24-bit integer)
