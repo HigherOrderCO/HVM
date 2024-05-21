@@ -1,5 +1,4 @@
 fn main() {
-
   let cores = num_cpus::get();
   let tpcl2 = (cores as f64).log2().floor() as u32;
 
@@ -21,7 +20,6 @@ fn main() {
 
   // Builds hvm.cu
   if std::process::Command::new("nvcc").arg("--version").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok() {
-  
     if let Ok(cuda_path) = std::env::var("CUDA_HOME") {
       println!("cargo:rustc-link-search=native={}/lib64", cuda_path);
     } else {
@@ -31,14 +29,14 @@ fn main() {
     cc::Build::new()
       .cuda(true)
       .file("src/hvm.cu")
-      .flag("-diag-suppress=177")
-      .flag("-diag-suppress=550")
-      .flag("-diag-suppress=20039")
+      .flag("-diag-suppress=177") // function was declared but never referenced
+      .flag("-diag-suppress=550") // variable was set but never used
+      .flag("-diag-suppress=20039") // a __host__ function redeclared with __device__, hence treated as a __host__ __device__ function
       .compile("hvm-cu");
+
     println!("cargo:rustc-cfg=feature=\"cuda\"");
   }
   else {
     println!("cargo:warning=\x1b[1m\x1b[31mWARNING: CUDA compiler not found.\x1b[0m \x1b[1mHVM will not be able to run on GPU.\x1b[0m");
   }
-
 }
