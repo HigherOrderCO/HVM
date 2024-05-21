@@ -918,14 +918,13 @@ impl Book {
       buf.extend_from_slice(&(fid as u32).to_ne_bytes());
 
       // Writes the name
+      // TODO: store as varlen to save space
       let name_bytes = def.name.as_bytes();
-      if name_bytes.len() < 31 {
+      if name_bytes.len() < 256 {
         buf.extend_from_slice(&name_bytes[..name_bytes.len()]);
-        buf.resize(buf.len() + (32 - name_bytes.len()), 0);
+        buf.resize(buf.len() + (256 - name_bytes.len()), 0);
       } else {
-        buf.extend_from_slice(&name_bytes[..28]);
-        buf.extend_from_slice("...".as_bytes());
-        buf.push(0);
+        panic!("Name too long: {}", def.name);
       }
 
       // Writes the safe flag

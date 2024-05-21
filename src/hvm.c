@@ -129,7 +129,7 @@ typedef struct Net {
 
 // Top-Level Definition
 typedef struct Def {
-  char name[32];
+  char name[256];
   bool safe;
   u32  rbag_len;
   u32  node_len;
@@ -1617,8 +1617,8 @@ void book_load(u32* buf, Book* book) {
     Def* def = &book->defs_buf[fid];
     
     // Reads name
-    memcpy(def->name, buf, 32);
-    buf += 8;
+    memcpy(def->name, buf, 256);
+    buf += 64;
 
     // Reads safe flag
     def->safe = *buf++;
