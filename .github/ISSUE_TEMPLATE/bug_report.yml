@@ -35,7 +35,7 @@ body:
       - Cuda Version [e.g. release 12.4, V12.4.131]
    validations:
      required: true
- - type: input
+ - type: textarea
    attributes:
     label: Additional context
     description: Add any other context about the problem here (Optional). 
