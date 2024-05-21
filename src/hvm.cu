@@ -2396,7 +2396,7 @@ extern "C" void hvm_cu(u32* book_buffer, bool perform_io) {
 
 }
 
-//#ifdef WITH_MAIN
+#ifdef WITH_MAIN
 int main() {
   hvm_cu((u32*)BOOK_BUF, FALSE);
 //#ifdef RUN_IO
@@ -2406,4 +2406,4 @@ int main() {
 //#endif
   return 0;
 }
-//#endif
+#endif
