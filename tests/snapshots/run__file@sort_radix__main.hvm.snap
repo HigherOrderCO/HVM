@@ -1,0 +1,6 @@
+---
+source: tests/run.rs
+expression: rust_output
+input_file: examples/sort_radix/main.hvm
+---
+Result: 16744448

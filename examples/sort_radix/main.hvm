@@ -23,7 +23,7 @@
 @main = c
   & @sum ~ (b c)
   & @sort ~ (a b)
-  & @gen ~ (20 (0 a))
+  & @gen ~ (16 (0 a))
 
 @merge = ((@merge$C5 (@merge$C3 (@merge$C2 a))) a)
 

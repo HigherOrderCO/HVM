@@ -1,0 +1,6 @@
+---
+source: tests/run.rs
+expression: rust_output
+input_file: examples/stress/main.hvm
+---
+Result: 0

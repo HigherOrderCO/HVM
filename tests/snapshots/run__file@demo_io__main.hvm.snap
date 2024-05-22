@@ -1,0 +1,6 @@
+---
+source: tests/run.rs
+expression: rust_output
+input_file: examples/demo_io/main.hvm
+---
+Result: ((@PUTTEXT (@Main__C2 ((* ((@PUTTEXT (@Main__C0 ((* ((@DRAWIMAGE (((16711680 65280) (255 16711935)) ((* ((@SLEEP ((119 3511296) ((* ((@DONE (42 x0)) x0)) x1))) x1)) x2))) x2)) x3))) x3)) x4))) x4)

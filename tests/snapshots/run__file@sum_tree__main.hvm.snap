@@ -1,0 +1,6 @@
+---
+source: tests/run.rs
+expression: rust_output
+input_file: examples/sum_tree/main.hvm
+---
+Result: 1048576

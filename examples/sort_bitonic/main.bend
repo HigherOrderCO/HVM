@@ -56,4 +56,4 @@ def sort(d, s, t):
       return flow(d, s, (sort(d-1, 0, t.a), sort(d-1, 1, t.b)))
 
 def main:
-  return sum(20, sort(20, 0, gen(20, 0)))
+  return sum(16, sort(16, 0, gen(16, 0)))

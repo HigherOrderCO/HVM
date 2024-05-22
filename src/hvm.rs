@@ -254,8 +254,10 @@ impl Numb {
     let bits = val.to_bits();
     let mut shifted_bits = bits >> 8;
     let lost_bits = bits & 0xFF;
-    shifted_bits += (lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7; // round ties to even
-    shifted_bits |= u32::from((bits & 0x7F800000 == 0x7F800000) && (bits << 9 != 0)); // ensure NaNs don't become infinities
+    // round ties to even
+    shifted_bits += u32::from(!val.is_nan()) & ((lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7);
+    // ensure NaNs don't become infinities
+    shifted_bits |= u32::from(val.is_nan());
     Numb((shifted_bits << 5) as Val | (TY_F24 as Val))
   }
 
@@ -1156,4 +1158,5 @@ fn test_f24() {
   // Test that NaNs are not turned into infinities
   assert!(Numb::new_f24(f32::from_bits(0b0_11111111_000000000000000_00000001)).get_f24().is_nan());
   assert!(Numb::new_f24(f32::from_bits(0b1_11111111_000000000000000_00000001)).get_f24().is_nan());
+  assert!(Numb::new_f24(f32::from_bits(0b0_11111111_111111111111111_11111111)).get_f24().is_nan());
 }
