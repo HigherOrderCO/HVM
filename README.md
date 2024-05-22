@@ -22,7 +22,7 @@ check [Bend](https://github.com/HigherOrderCO/Bend) instead.
 Usage
 -----
 
-> DISCLAIMER: Windows is currently not supported, please use [WSL](https://learn.microsoft.com/en-us/windows/wsl/install) for now as a workaround.
+> For native Windows build, you will need at least Visual Studio 2022 version 17.5 for [C11 Atomics](https://devblogs.microsoft.com/cppblog/c11-atomics-in-visual-studio-2022-version-17-5-preview-2/) support.
 
 First install the dependencies:
 * If you want to use the C runtime, install a C-11 compatible compiler like GCC or Clang.

@@ -5,7 +5,14 @@ fn main() {
   println!("cargo:rerun-if-changed=src/hvm.c");
   println!("cargo:rerun-if-changed=src/hvm.cu");
 
-  match cc::Build::new()
+  let mut build = cc::Build::new();
+
+  if cfg!(target_env = "msvc") {
+    build.flag("/experimental:c11atomics");
+    build.std("c11");
+  }
+
+  match build
       .file("src/hvm.c")
       .opt_level(3)
       .warnings(false)

@@ -1,0 +1,39 @@
+name: Build and Lint on Multiple Platforms
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: rustup component add clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # To only cache runs from `master`:
+          save-if: ${{ github.ref == 'refs/heads/master' }}
+      - uses: Jimver/cuda-toolkit@v0.2.15
+        id: cuda-toolkit
+        with:
+          cuda: '12.4.1'
+          method: 'network'
+          sub-packages: '[ "nvcc", "cudart", "nvrtc" ]'
+        if: matrix.os != 'macOS-latest'
+
+      - name: Clippy Check
+        run: cargo clippy -- -D warnings
+        continue-on-error: true
+
+      - name: Build
+        run: cargo build
