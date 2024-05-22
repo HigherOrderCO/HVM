@@ -1,3 +1,4 @@
+//#include <dlfcn.h>
 #include <inttypes.h>
 #include <math.h>
 #include <pthread.h>
@@ -133,10 +134,20 @@ typedef struct Def {
   Pair node_buf[0xFFF];
 } Def;
 
+typedef struct Book Book;
+
+// A Foreign Function
+typedef struct {
+  char name[256];
+  Port (*func)(Net*, Book*, Port);
+} FFn;
+
 // Book of Definitions
 typedef struct Book {
   u32 defs_len;
-  Def defs_buf[256];
+  Def defs_buf[0x4000];
+  u32 ffns_len;
+  FFn ffns_buf[0x4000];
 } Book;
 
 // Local Thread Memory
@@ -168,13 +179,13 @@ typedef struct Str {
   char text_buf[256];
 } Str;
 
-// FFI Magic Number
-#define FFI_MAGIC_0 0xD0CA11
-#define FFI_MAGIC_1 0xFF1FF1
+// IO Magic Number
+#define IO_MAGIC_0 0xD0CA11
+#define IO_MAGIC_1 0xFF1FF1
 
-// FFI Tags
-#define FFI_DONE 0
-#define FFI_CALL 1
+// IO Tags
+#define IO_DONE 0
+#define IO_CALL 1
 
 // List Type
 #define LIST_NIL  0
@@ -1352,22 +1363,72 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
   }
 }
 
-//// FFI: PutText
-//Port ffi_put_text(Net* net, Book* book, u32 argc, Port* argv) {
-  //// Checks argument count
-  //if (argc != 1) return NONE;
+// Primitive IO Fns
+// -----------------
 
-  //// Converts first argument to C string
-  //Str str = read_str(net, book, argv[0]);
+// IO: GetText
+Port io_get_text(Net* net, Book* book, Port argm) {
+  printf("TODO\n");
+  return new_port(ERA, 0);
+}
 
-  //// Prints it
-  //printf("%s", str.text_buf);
+// IO: PutText
+Port io_put_text(Net* net, Book* book, Port argm) {
+  // Converts argument to C string
+  Str str = read_str(net, book, argm);
+  // Prints it
+  printf("%s", str.text_buf);
+  // Returns result (in this case, just an eraser)
+  return new_port(ERA, 0);
+}
 
-  //// Returns result (in this case, just an eraser)
-  //return new_port(ERA, 0);
-//}
+// IO: GetFile
+Port io_get_file(Net* net, Book* book, Port argm) {
+  printf("TODO\n");
+  return new_port(ERA, 0);
+}
 
-//#ifdef FFI_DRAWIMAGE
+// IO: PutFile
+Port io_put_file(Net* net, Book* book, Port argm) {
+  printf("TODO\n");
+  return new_port(ERA, 0);
+}
+
+// IO: GetTime
+Port io_get_time(Net* net, Book* book, Port argm) {
+  // Get the current time in nanoseconds 
+  u64 time_ns = time64();
+  // Encode the time as a 64-bit unsigned integer
+  u32 time_hi = (u32)(time_ns >> 24) & 0xFFFFFFF;
+  u32 time_lo = (u32)(time_ns & 0xFFFFFFF);
+  // Allocate a node to store the time
+  u32 lps = 0;
+  u32 loc = node_alloc_1(net, tm[0], &lps);
+  node_create(net, loc, new_pair(new_port(NUM, new_u24(time_hi)), new_port(NUM, new_u24(time_lo))));
+  // Return the encoded time
+  return new_port(CON, loc);
+}
+
+// IO: PutTime 
+// NOTE: changing this name will corrupt the timeline. You've been warned.
+Port io_put_time(Net* net, Book* book, Port argm) {
+  // Get the sleep duration node
+  Pair dur_node = node_load(net, get_val(argm));
+  // Get the high and low 24-bit parts of the duration 
+  u32 dur_hi = get_u24(get_val(get_fst(dur_node)));
+  u32 dur_lo = get_u24(get_val(get_snd(dur_node)));
+  // Combine into a 48-bit duration in nanoseconds
+  u64 dur_ns = (((u64)dur_hi) << 24) | dur_lo;
+  // Sleep for the specified duration
+  struct timespec ts;
+  ts.tv_sec = dur_ns / 1000000000;
+  ts.tv_nsec = dur_ns % 1000000000;
+  nanosleep(&ts, NULL);
+  // Return an eraser
+  return new_port(ERA, 0);
+}
+
+//#ifdef IO_DRAWIMAGE
 //// Global variables for the window and renderer
 //static SDL_Window *window = NULL;
 //static SDL_Renderer *renderer = NULL;
@@ -1440,8 +1501,8 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
     //}
   //}
 //}
-//// FFI: DrawImage
-//Port ffi_draw_image(Net* net, Book* book, u32 argc, Port* argv) {
+//// IO: DrawImage
+//Port io_put_image(Net* net, Book* book, u32 argc, Port* argv) {
   //u32 width = 256;
   //u32 height = 256;
   //// Create a buffer
@@ -1465,78 +1526,23 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
   //return new_port(ERA, 0);
 //}
 //#else
-//// FFI: DrawImage
-//Port ffi_draw_image(Net* net, Book* book, u32 argc, Port* argv) {
+//// IO: DrawImage
+//Port io_put_image(Net* net, Book* book, u32 argc, Port* argv) {
   //printf("DRAWIMAGE: disabled.\n");
   //printf("Image rendering is a WIP. For now, to enable it, you must:\n");
   //printf("1. Generate a C file, with `hvm gen-c your_file.hvm`.\n");
-  //printf("2. Manually un-comment the '#define FFI_DRAWIMAGE' line on it.\n");
+  //printf("2. Manually un-comment the '#define IO_DRAWIMAGE' line on it.\n");
   //printf("3. Have SDL installed and compile it with '-lSDL2'.\n");
   //return new_port(ERA, 0);
 //}
 //#endif
 
-//// FFI: GetTime
-//Port ffi_get_time(Net* net, Book* book, u32 argc, Port* argv) {
-  //// Get the current time in nanoseconds 
-  //u64 time_ns = time64();
+// Monadic IO Evaluator
+// ---------------------
 
-  //// Encode the time as a 64-bit unsigned integer
-  //u32 time_hi = (u32)(time_ns >> 24) & 0xFFFFFFF;
-  //u32 time_lo = (u32)(time_ns & 0xFFFFFFF);
-  
-  //// Allocate a node to store the time
-  //u32 loc = node_alloc_1(net, tm[0], &argc);
-  //node_create(net, loc, new_pair(new_port(NUM, new_u24(time_hi)), new_port(NUM, new_u24(time_lo))));
-
-  //// Return the encoded time
-  //return new_port(CON, loc);
-//}
-
-//// FFI: Sleep 
-//// NOTE: receives a CON node. it decodes it into a u48 similarly to above.
-//Port ffi_sleep(Net* net, Book* book, u32 argc, Port* argv) {
-  //// Check argument count
-  //if (argc != 1) return NONE;
-
-    //// Get the sleep duration node
-  //Pair dur_node = node_load(net, get_val(argv[0]));
-  
-  //// Get the high and low 24-bit parts of the duration 
-  //u32 dur_hi = get_u24(get_val(get_fst(dur_node)));
-  //u32 dur_lo = get_u24(get_val(get_snd(dur_node)));
-
-  //// Combine into a 48-bit duration in nanoseconds
-  //u64 dur_ns = (((u64)dur_hi) << 24) | dur_lo;
-  
-  //// Sleep for the specified duration
-  //struct timespec ts;
-  //ts.tv_sec = dur_ns / 1000000000;
-  //ts.tv_nsec = dur_ns % 1000000000;
-  //nanosleep(&ts, NULL);
-
-  //// Return an eraser
-  //return new_port(ERA, 0);
-//}
-
-//// Util: creates a node.
-//Port make_node(Net* net, Tag tag, Port fst, Port snd) {
-  //u32 lps = 0;
-  //u32 loc = node_alloc_1(net, tm[0], &lps);
-  //node_create(net, loc, new_pair(fst, snd));
-  //return new_port(tag, loc);
-//}
-
-//// Util: applies an FFI cont to the intermediate result.
-//Port run_ffi_next(Net* net, Port cont, Port arg) {
-  //Port app = make_node(net, CON, arg, ROOT);
-  //boot_redex(net, new_pair(app, cont));
-  //return ROOT;
-//}
-
-// Runs an FFI computation.
-void do_run_ffi(Net* net, Book* book, Port port) {
-  // FFI loop
+// Runs an IO computation.
+void do_run_io(Net* net, Book* book, Port port) {
+  // IO loop
   while (TRUE) {
     // Normalizes the net
     normalize(net, book);
@@ -1544,33 +1550,44 @@ void do_run_ffi(Net* net, Book* book, Port port) {
     // Reads the λ-Encoded Ctr
     Ctr ctr = read_ctr(net, book, peek(net, port));
 
-    // Checks if FFI Magic Number is a CON
+    // Checks if IO Magic Number is a CON
     if (get_tag(ctr.args_buf[0]) != CON) {
       break;
     }
 
-    // Checks the FFI Magic Number
-    Pair ffi_magic = node_load(net, get_val(ctr.args_buf[0]));
-    printf("%08x %08x\n", get_u24(get_val(get_fst(ffi_magic))), get_u24(get_val(get_snd(ffi_magic))));
-    if (get_val(get_fst(ffi_magic)) != new_u24(FFI_MAGIC_0) || get_val(get_snd(ffi_magic)) != new_u24(FFI_MAGIC_1)) {
+    // Checks the IO Magic Number
+    Pair io_magic = node_load(net, get_val(ctr.args_buf[0]));
+    //printf("%08x %08x\n", get_u24(get_val(get_fst(io_magic))), get_u24(get_val(get_snd(io_magic))));
+    if (get_val(get_fst(io_magic)) != new_u24(IO_MAGIC_0) || get_val(get_snd(io_magic)) != new_u24(IO_MAGIC_1)) {
       break;
     }
 
     switch (ctr.tag) {
-      case FFI_CALL: {
+      case IO_CALL: {
         Str  func = read_str(net, book, ctr.args_buf[1]);
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
-        printf("CALL: %s %s\n", func.text_buf, show_port(argm).x);
-        u32 lps = 0;
-        u32 loc = node_alloc_1(net, tm[0], &lps);
-        u32 ret = new_port(NUM, new_u24(123));
+        u32  lps  = 0;
+        u32  loc  = node_alloc_1(net, tm[0], &lps);
+        Port ret  = new_port(ERA, 0);
+        FFn* ffn  = NULL;
+        // FIXME: optimize this linear search
+        for (u32 fid = 0; fid < book->ffns_len; ++fid) {
+          if (strcmp(func.text_buf, book->ffns_buf[fid].name) == 0) {
+            ffn = &book->ffns_buf[fid];
+            break;
+          }
+        }
+        if (ffn == NULL) {
+          break;
+        }
+        ret = ffn->func(net, book, argm);
         node_create(net, loc, new_pair(ret, ROOT));
         boot_redex(net, new_pair(new_port(CON, loc), cont));
         port = ROOT;
         continue;
       }
-      case FFI_DONE: {
+      case IO_DONE: {
         printf("DONE\n");
         break;
       }
@@ -1579,11 +1596,21 @@ void do_run_ffi(Net* net, Book* book, Port port) {
   }
 }
 
-
 // Book Loader
 // -----------
 
-void book_load(u32* buf, Book* book) {
+// TODO: initialize ffns_len with the builtin ffns
+void book_init(Book* book) {
+  book->ffns_len = 6;
+  book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
+  book->ffns_buf[1] = (FFn){"PUT_TEXT", io_put_text};
+  book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
+  book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
+  book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
+  book->ffns_buf[5] = (FFn){"PUT_TIME", io_put_time};
+}
+
+void book_load(Book* book, u32* buf) {
   // Reads defs_len
   book->defs_len = *buf++;
 
@@ -1905,7 +1932,8 @@ void hvm_c(u32* book_buffer) {
   Book* book = NULL;
   if (book_buffer) {
     book = (Book*)malloc(sizeof(Book));
-    book_load(book_buffer, book);
+    book_init(book);
+    book_load(book, book_buffer);
   }
 
   // Starts the timer
@@ -1918,8 +1946,8 @@ void hvm_c(u32* book_buffer) {
   // Creates an initial redex that calls main
   boot_redex(net, new_pair(new_port(REF, 0), ROOT));
 
-  // Normalizes and runs FFI
-  do_run_ffi(net, book, ROOT);
+  // Normalizes and runs IO
+  do_run_io(net, book, ROOT);
 
   // Prints the result
   printf("Result: ");
@@ -1935,7 +1963,6 @@ void hvm_c(u32* book_buffer) {
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
 
-
   // Frees everything
   free_static_tms();
   free(net);
@@ -1948,3 +1975,5 @@ int main() {
   return 0;
 }
 #endif
+
+

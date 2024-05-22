@@ -1,27 +1,25 @@
-type FFI:
+type IO_T:
   Done { magic, expr }
   Call { magic, func, argm, cont }
 
-def FFI/MAGIC:
+def IO_T/MAGIC:
   return (0xD0CA11, 0xFF1FF1)
 
-def FFI/wrap(x):
-  return FFI/Done(FFI/MAGIC, x)
+def IO_T/wrap(x):
+  return IO_T/Done(IO_T/MAGIC, x)
 
-def FFI/bind(a, b):
+def IO_T/bind(a, b):
   match a:
-    case FFI/Done:
+    case IO_T/Done:
       return b(a.expr)
-    case FFI/Call:
-      return FFI/Call(FFI/MAGIC, a.func, a.argm, lambda x: FFI/bind(a.cont(x), b))
+    case IO_T/Call:
+      return IO_T/Call(IO_T/MAGIC, a.func, a.argm, lambda x: IO_T/bind(a.cont(x), b))
 
 def call(func, argm):
-  return FFI/Call(FFI/MAGIC, func, argm, lambda x: FFI/Done(FFI/MAGIC, x))
+  return IO_T/Call(IO_T/MAGIC, func, argm, lambda x: IO_T/Done(IO_T/MAGIC, x))
 
 def main:
-  do FFI:
-    x <- call("foo", 42)
-    y <- call("bar", 64)
-    z <- call("tic", 12)
-    w <- call("tac", 34)
-    return 80
+  do IO_T:
+    x <- call("PUT_TEXT", "hello\n")
+    y <- call("PUT_TEXT", "world\n")
+    return 42

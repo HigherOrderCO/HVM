@@ -1,64 +1,68 @@
-@FFI/Call = (a (b (c (d ((1 (a (b (c (d e))))) e)))))
+@IO_T/Call = (a (b (c (d ((1 (a (b (c (d e))))) e)))))
 
-@FFI/Done = (a (b ((0 (a (b c))) c)))
+@IO_T/Done = (a (b ((0 (a (b c))) c)))
 
-@FFI/MAGIC = (13683217 16719857)
+@IO_T/MAGIC = (13683217 16719857)
 
-@FFI/bind = ((@FFI/bind__C2 a) a)
+@IO_T/bind = ((@IO_T/bind__C2 a) a)
 
-@FFI/bind__C0 = (* (a ((a b) b)))
+@IO_T/bind__C0 = (* (a ((a b) b)))
 
-@FFI/bind__C1 = (* (* (a (b ((c d) (e g))))))
-  & @FFI/Call ~ (@FFI/MAGIC (a (b ((c f) g))))
-  & @FFI/bind ~ (d (e f))
+@IO_T/bind__C1 = (* (* (a (b ((c d) (e g))))))
+  & @IO_T/Call ~ (@IO_T/MAGIC (a (b ((c f) g))))
+  & @IO_T/bind ~ (d (e f))
 
-@FFI/bind__C2 = (?((@FFI/bind__C0 @FFI/bind__C1) a) a)
+@IO_T/bind__C2 = (?((@IO_T/bind__C0 @IO_T/bind__C1) a) a)
 
-@FFI/wrap = a
-  & @FFI/Done ~ (@FFI/MAGIC a)
+@IO_T/wrap = a
+  & @IO_T/Done ~ (@IO_T/MAGIC a)
 
 @String/Cons = (a (b ((1 (a (b c))) c)))
 
 @String/Nil = ((0 a) a)
 
 @call = (a (b c))
-  & @FFI/Call ~ (@FFI/MAGIC (a (b (@call__C0 c))))
+  & @IO_T/Call ~ (@IO_T/MAGIC (a (b (@call__C0 c))))
 
 @call__C0 = a
-  & @FFI/Done ~ (@FFI/MAGIC a)
+  & @IO_T/Done ~ (@IO_T/MAGIC a)
 
 @main = a
-  & @FFI/bind ~ (@main__C6 (@main__C5 a))
+  & @IO_T/bind ~ (@main__C2 (@main__C1 a))
 
-@main__C0 = d
-  & @call ~ (c (34 d))
-  & @String/Cons ~ (116 (b c))
-  & @String/Cons ~ (97 (a b))
-  & @String/Cons ~ (99 (@String/Nil a))
+@main__C0 = o
+  & @call ~ (h (n o))
+  & @String/Cons ~ (80 (g h))
+  & @String/Cons ~ (85 (f g))
+  & @String/Cons ~ (84 (e f))
+  & @String/Cons ~ (95 (d e))
+  & @String/Cons ~ (84 (c d))
+  & @String/Cons ~ (69 (b c))
+  & @String/Cons ~ (88 (a b))
+  & @String/Cons ~ (84 (@String/Nil a))
+  & @String/Cons ~ (119 (m n))
+  & @String/Cons ~ (111 (l m))
+  & @String/Cons ~ (114 (k l))
+  & @String/Cons ~ (108 (j k))
+  & @String/Cons ~ (100 (i j))
+  & @String/Cons ~ (10 (@String/Nil i))
 
 @main__C1 = (* a)
-  & @FFI/bind ~ (@main__C0 ((* 80) a))
+  & @IO_T/bind ~ (@main__C0 ((* 42) a))
 
-@main__C2 = d
-  & @call ~ (c (12 d))
-  & @String/Cons ~ (116 (b c))
-  & @String/Cons ~ (105 (a b))
-  & @String/Cons ~ (99 (@String/Nil a))
-
-@main__C3 = (* a)
-  & @FFI/bind ~ (@main__C2 (@main__C1 a))
-
-@main__C4 = d
-  & @call ~ (c (64 d))
-  & @String/Cons ~ (98 (b c))
-  & @String/Cons ~ (97 (a b))
-  & @String/Cons ~ (114 (@String/Nil a))
-
-@main__C5 = (* a)
-  & @FFI/bind ~ (@main__C4 (@main__C3 a))
-
-@main__C6 = d
-  & @call ~ (c (42 d))
-  & @String/Cons ~ (102 (b c))
-  & @String/Cons ~ (111 (a b))
-  & @String/Cons ~ (111 (@String/Nil a))
+@main__C2 = o
+  & @call ~ (h (n o))
+  & @String/Cons ~ (80 (g h))
+  & @String/Cons ~ (85 (f g))
+  & @String/Cons ~ (84 (e f))
+  & @String/Cons ~ (95 (d e))
+  & @String/Cons ~ (84 (c d))
+  & @String/Cons ~ (69 (b c))
+  & @String/Cons ~ (88 (a b))
+  & @String/Cons ~ (84 (@String/Nil a))
+  & @String/Cons ~ (104 (m n))
+  & @String/Cons ~ (101 (l m))
+  & @String/Cons ~ (108 (k l))
+  & @String/Cons ~ (108 (j k))
+  & @String/Cons ~ (111 (i j))
+  & @String/Cons ~ (10 (@String/Nil i))

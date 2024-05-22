@@ -1,6 +1,5 @@
 #define INTERPRETED
 #define WITHOUT_MAIN
-#define RUN_IO
 //#define DEBUG
 
 #include <stdint.h>
@@ -199,7 +198,7 @@ struct Def {
 // Book of Definitions
 struct Book {
   u32 defs_len;
-  Def defs_buf[2048];
+  Def defs_buf[0x4000]; // 256 MB
 };
 
 // Static Book
@@ -1794,129 +1793,10 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
   return ret;
 }
 
-// Monadic IO
-// ----------
-
-// NOTE: IO is disabled on HVM-CUDA for now since we don't have rendering, which
-// makes it pointless. Seems like opening a window and putting pixels on it in a
-// cross-platform manner is quite involved. We will work this soon.
-
-//// Reads back a λ-Encoded constructor from device to host.
-//// Encoding: λt ((((t TAG) arg0) arg1) ...)
-//Ctr gnet_read_ctr(GNet* gnet, Port port) {
-  //Ctr ctr;
-  //ctr.tag = -1;
-  //ctr.args_len = 0;
-
-  //// Loads root lambda
-  //Port lam_port = gnet_expand(gnet, port);
-  //if (get_tag(lam_port) != CON) return ctr;
-  //Pair lam_node = gnet_node_load(gnet, get_val(lam_port));
-
-  //// Loads first application
-  //Port app_port = gnet_expand(gnet, get_fst(lam_node));
-  //if (get_tag(app_port) != CON) return ctr;
-  //Pair app_node = gnet_node_load(gnet, get_val(app_port));
-
-  //// Loads first argument (as the tag)
-  //Port arg_port = gnet_expand(gnet, get_fst(app_node));
-  //if (get_tag(arg_port) != NUM) return ctr;
-  //ctr.tag = get_u24(get_val(arg_port));
-
-  //// Loads remaining arguments
-  //while (true) {
-    //app_port = gnet_expand(gnet, get_snd(app_node));
-    //if (get_tag(app_port) != CON) break;
-    //app_node = gnet_node_load(gnet, get_val(app_port));
-    //arg_port = gnet_expand(gnet, get_fst(app_node));
-    //ctr.args_buf[ctr.args_len++] = arg_port;
-  //}
-
-  //return ctr;
-//}
-
-//// Reads back a UTF-16 string.
-//// Encoding:
-//// - λt (t NIL)
-//// - λt (((t CONS) head) tail)
-//Str gnet_read_str(GNet* gnet, Port port) {
-  //// Result
-  //Str str;
-  //str.text_len = 0;
-  
-  //// Readback loop
-  //while (true) {
-    //// Normalizes the net
-    //gnet_normalize(gnet);
-
-    ////printf("reading str %s\n", show_port(gnet_peek(gnet, port)).x);
-
-    //// Reads the λ-Encoded Ctr
-    //Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
-
-    ////printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
-
-    //// Reads string layer
-    //switch (ctr.tag) {
-      //case NIL: {
-        //break;
-      //}
-      //case CONS: {
-        //if (ctr.args_len != 2) break;
-        //if (get_tag(ctr.args_buf[0]) != NUM) break;
-        ////printf("reading chr %d\n", get_u24(get_val(ctr.args_buf[0])));
-        //str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
-        //gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
-        //port = ROOT;
-        //continue;
-      //}
-    //}
-    //break;
-  //}
-
-  //str.text_buf[str.text_len] = '\0';
-
-  //return str;
-//}
-
-//// Encoding:
-//// - λt (((t fid) arg) cont)
-//bool gnet_run_io(GNet* gnet, Port port) {
-  //// IO loop
-  //while (true) {
-    //// Normalizes the net
-    //gnet_normalize(gnet);
-
-    //// Reads the λ-Encoded Ctr
-    //Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
-
-    //// Dispatches IO function
-    //switch (ctr.tag) {
-      //case PRINT: {
-        //if (ctr.args_len != 2) break;
-        //Str str = gnet_read_str(gnet, ctr.args_buf[0]);
-        //printf("PRINT: %s | %s\n", show_port(ctr.args_buf[0]).x, str.text_buf);
-        //Port res = new_port(ERA, 0); // IO result
-        //Port app = gnet_make_node(gnet, CON, res, ROOT);
-        //gnet_boot_redex(gnet, new_pair(app, ctr.args_buf[1]));
-        //port = ROOT;
-        //continue;
-      //}
-      //default: {
-        //break;
-      //}
-    //}
-
-    //break;
-  //}
-
-  //return true;
-//}
-
 // Book Loader
 // -----------
 
-void book_load(u32* buf, Book* book) {
+void book_load(Book* book, u32* buf) {
   // Reads defs_len
   book->defs_len = *buf++;
 
@@ -2320,19 +2200,14 @@ __global__ void print_result(GNet* gnet) {
 // ----
 
 
-extern "C" void hvm_cu(u32* book_buffer, bool perform_io) {
-  // IO disabled in CUDA
-  if (perform_io) {
-    printf("WARNING: IO not available on CUDA yet.\n");
-  }
-
+extern "C" void hvm_cu(u32* book_buffer) {
   // Start the timer
   clock_t start = clock();
   
   // Loads the Book
   if (book_buffer) {
     Book* book = (Book*)malloc(sizeof(Book));
-    book_load((u32*)book_buffer, book);
+    book_load(book, (u32*)book_buffer);
     cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
     free(book);
   }
@@ -2399,12 +2274,7 @@ extern "C" void hvm_cu(u32* book_buffer, bool perform_io) {
 
 #ifdef WITH_MAIN
 int main() {
-  hvm_cu((u32*)BOOK_BUF, FALSE);
-//#ifdef RUN_IO
-  //hvm_cu(NULL, TRUE);
-//#else
-  //hvm_cu(NULL, FALSE);
-//#endif
+  hvm_cu((u32*)BOOK_BUF);
   return 0;
 }
 #endif
