@@ -5,7 +5,7 @@ body:
    attributes: 
      value: |
       ### Bug Report
-      Note, your issue might have been already reported, please check [issues](https://github.com/HigherOrderCO/HVM/issues), and if you find the same report as yours, respond with a reaction or any other information that you may find would be useful. 
+      Note, your issue might have been already reported, please check [issues](https://github.com/HigherOrderCO/HVM/issues). If you find a similar issue, respond with a reaction or any additional information that you feel may be helpful.
 
       ### For Windows Users
       There is currently no native way to install HVM, as a temporary workaround, please use [WSL2](https://learn.microsoft.com/en-us/windows/wsl/install).
