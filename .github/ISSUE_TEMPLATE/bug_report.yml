@@ -29,7 +29,7 @@ body:
     description: Your System's settings
     value: |
      Example:
-      - OS:   [e.g. Linux (Ubuntu 22.04)]
+      - OS: [e.g. Linux (Ubuntu 22.04)]
       - CPU: [e.g. Intel i9-14900KF]
       - GPU: [e.g. RTX 4090]
       - Cuda Version [e.g. release 12.4, V12.4.131]
