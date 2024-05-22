@@ -1,101 +1,64 @@
-@CONS = 1
+@FFI/Call = (a (b (c (d ((1 (a (b (c (d e))))) e)))))
 
-@DONE = 0
+@FFI/Done = (a (b ((0 (a (b c))) c)))
 
-@DRAWIMAGE = 7
+@FFI/MAGIC = (13683217 16719857)
 
-@GETTEXT = 2
+@FFI/bind = ((@FFI/bind__C2 a) a)
 
-@GETTIME = 5
+@FFI/bind__C0 = (* (a ((a b) b)))
 
-@IO/Done = (a ((a b) (* (* (* (* (* (* (* b)))))))))
+@FFI/bind__C1 = (* (* (a (b ((c d) (e g))))))
+  & @FFI/Call ~ (@FFI/MAGIC (a (b ((c f) g))))
+  & @FFI/bind ~ (d (e f))
 
-@IO/DrawImage = (a (b (* (* (* (* (* (* (* ((a (b c)) c))))))))))
+@FFI/bind__C2 = (?((@FFI/bind__C0 @FFI/bind__C1) a) a)
 
-@IO/GetText = (a (* (* ((a b) (* (* (* (* (* b)))))))))
+@FFI/wrap = a
+  & @FFI/Done ~ (@FFI/MAGIC a)
 
-@IO/GetTime = (a (* (* (* (* (* ((a b) (* (* b)))))))))
+@String/Cons = (a (b ((1 (a (b c))) c)))
 
-@IO/PutText = (a (b (* ((a (b c)) (* (* (* (* (* (* c))))))))))
+@String/Nil = ((0 a) a)
 
-@IO/ReadFile = (a (b (* (* (* (* ((a (b c)) (* (* (* c))))))))))
+@call = (a (b c))
+  & @FFI/Call ~ (@FFI/MAGIC (a (b (@call__C0 c))))
 
-@IO/Sleep = (a (b (* (* (* (* (* (* ((a (b c)) (* c))))))))))
-
-@IO/WriteFile = (a (b (c (* (* (* ((a (b (c d))) (* (* (* (* d)))))))))))
-
-@Main__C0 = g
-  & @MkStr ~ (f g)
-  & @String/cons ~ (119 (e f))
-  & @String/cons ~ (111 (d e))
-  & @String/cons ~ (114 (c d))
-  & @String/cons ~ (108 (b c))
-  & @String/cons ~ (100 (a b))
-  & @String/cons ~ (10 (@String/nil a))
-
-@Main__C1 = (* d)
-  & @IO/PutText ~ (@Main__C0 ((* c) d))
-  & @IO/DrawImage ~ (((16711680 65280) (255 16711935)) ((* b) c))
-  & @IO/Sleep ~ ((119 3511296) ((* a) b))
-  & @IO/Done ~ (42 a)
-
-@Main__C2 = g
-  & @MkStr ~ (f g)
-  & @String/cons ~ (104 (e f))
-  & @String/cons ~ (101 (d e))
-  & @String/cons ~ (108 (c d))
-  & @String/cons ~ (108 (b c))
-  & @String/cons ~ (111 (a b))
-  & @String/cons ~ (10 (@String/nil a))
-
-@Main__C3 = a
-  & @IO/PutText ~ (@Main__C2 (@Main__C1 a))
-
-@MkIO = ((@MkIO__C7 (@MkIO__C6 (@MkIO__C5 (@MkIO__C4 (@MkIO__C3 (@MkIO__C2 (@MkIO__C1 (@MkIO__C0 a)))))))) a)
-
-@MkIO__C0 = (a ((b c) ((@DRAWIMAGE (a ((b d) e))) e)))
-  & @MkIO ~ (c d)
-
-@MkIO__C1 = (a ((b c) ((@SLEEP (a ((b d) e))) e)))
-  & @MkIO ~ (c d)
-
-@MkIO__C2 = ((a b) ((@GETTIME ((a c) d)) d))
-  & @MkIO ~ (b c)
-
-@MkIO__C3 = (a ((b c) ((@READFILE (a ((b d) e))) e)))
-  & @MkIO ~ (c d)
-
-@MkIO__C4 = (a (b ((c d) ((@WRITEFILE (a (b ((c e) f)))) f))))
-  & @MkIO ~ (d e)
-
-@MkIO__C5 = ((a b) ((@GETTEXT ((a c) d)) d))
-  & @MkIO ~ (b c)
-
-@MkIO__C6 = (a ((b c) ((@PUTTEXT (a ((b d) e))) e)))
-  & @MkIO ~ (c d)
-
-@MkIO__C7 = (a ((@DONE (a b)) b))
-
-@MkStr = ((@MkStr__C1 (@MkStr__C0 a)) a)
-
-@MkStr__C0 = ((@NIL a) a)
-
-@MkStr__C1 = (a (b ((@CONS (a (c d))) d)))
-  & @MkStr ~ (b c)
-
-@NIL = 0
-
-@PUTTEXT = 1
-
-@READFILE = 4
-
-@SLEEP = 6
-
-@String/cons = (a (b ((a (b c)) (* c))))
-
-@String/nil = (* (a a))
-
-@WRITEFILE = 3
+@call__C0 = a
+  & @FFI/Done ~ (@FFI/MAGIC a)
 
 @main = a
-  & @MkIO ~ (@Main__C3 a)
+  & @FFI/bind ~ (@main__C6 (@main__C5 a))
+
+@main__C0 = d
+  & @call ~ (c (34 d))
+  & @String/Cons ~ (116 (b c))
+  & @String/Cons ~ (97 (a b))
+  & @String/Cons ~ (99 (@String/Nil a))
+
+@main__C1 = (* a)
+  & @FFI/bind ~ (@main__C0 ((* 80) a))
+
+@main__C2 = d
+  & @call ~ (c (12 d))
+  & @String/Cons ~ (116 (b c))
+  & @String/Cons ~ (105 (a b))
+  & @String/Cons ~ (99 (@String/Nil a))
+
+@main__C3 = (* a)
+  & @FFI/bind ~ (@main__C2 (@main__C1 a))
+
+@main__C4 = d
+  & @call ~ (c (64 d))
+  & @String/Cons ~ (98 (b c))
+  & @String/Cons ~ (97 (a b))
+  & @String/Cons ~ (114 (@String/Nil a))
+
+@main__C5 = (* a)
+  & @FFI/bind ~ (@main__C4 (@main__C3 a))
+
+@main__C6 = d
+  & @call ~ (c (42 d))
+  & @String/Cons ~ (102 (b c))
+  & @String/Cons ~ (111 (a b))
+  & @String/Cons ~ (111 (@String/Nil a))

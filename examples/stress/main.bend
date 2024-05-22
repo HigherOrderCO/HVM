@@ -1,16 +1,16 @@
-#flavor core
+def loop(n):
+  switch n:
+    case 0:
+      return 0
+    case _:
+      return loop(n-1)
 
-loop = λn
-  switch n {
-    0: 0
-    _: (loop n-1)
-  }
+def fun(n):
+  switch n:
+    case 0:
+      return loop(0x10000)
+    case _:
+      return fun(n-1) + fun(n-1)
 
-fun = λn
-  switch n {
-    0: (loop 0x10000)
-    _: (+ (fun n-1) (fun n-1))
-  }
-
-main = 
-  (fun 10)
+def main:
+  return fun(12)
