@@ -400,11 +400,11 @@ static inline u32 get_u24(Numb word) {
 
 // Constructor and getters for I24 (signed 24-bit integer)
 static inline Numb new_i24(i32 val) {
-  return (((u32)val & 0xFFFFFF) << 4) | TY_I24;
+  return ((u32)val << 5) | TY_I24;
 }
 
 static inline i32 get_i24(Numb word) {
-  return ((i32)((word >> 4) & 0xFFFFFF)) << 8 >> 8;
+  return ((i32)word) << 3 >> 8;
 }
 
 // Constructor and getters for F24 (24-bit float)
@@ -412,8 +412,10 @@ static inline Numb new_f24(float val) {
   u32 bits = *(u32*)&val;
   u32 shifted_bits = bits >> 8;
   u32 lost_bits = bits & 0xFF;
-  shifted_bits += (lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7; // round ties to even
-  shifted_bits |= ((bits & 0x7F800000) == 0x7F800000) && (bits << 9 != 0); // ensure NaNs don't become infinities
+  // round ties to even
+  shifted_bits += (!isnan(val)) & ((lost_bits - ((lost_bits >> 7) & !shifted_bits)) >> 7);
+  // ensure NaNs don't become infinities
+  shifted_bits |= isnan(val);
   return (shifted_bits << 5) | TY_F24;
 }
 
@@ -1810,24 +1812,24 @@ void pretty_print_port(Net* net, Book* book, Port port) {
   u32 num = 0;
   while (len > 0) {
     Port cur = stack[--len];
-    if (cur > 0xFFFFFF00) {
-      printf("%c", (char)(cur&0xFF));
-      continue;
-    }
     switch (get_tag(cur)) {
       case CON: {
         Pair node = node_load(net,get_val(cur));
         Port p2   = get_snd(node);
         Port p1   = get_fst(node);
         printf("(");
-        stack[len++] = (0xFFFFFF00) | (u32)(')');
+        stack[len++] = new_port(ERA, (u32)(')'));
         stack[len++] = p2;
-        stack[len++] = (0xFFFFFF00) | (u32)(' ');
+        stack[len++] = new_port(ERA, (u32)(' '));
         stack[len++] = p1;
         break;
       }
       case ERA: {
-        printf("*");
+        if (get_val(cur) != 0) {
+          printf("%c", (char)get_val(cur));
+        } else {
+          printf("*");
+        }
         break;
       }
       case VAR: {
@@ -1848,9 +1850,9 @@ void pretty_print_port(Net* net, Book* book, Port port) {
         Port p2   = get_snd(node);
         Port p1   = get_fst(node);
         printf("{");
-        stack[len++] = (0xFFFFFF00) | (u32)('}');
+        stack[len++] = new_port(ERA, (u32)('}'));
         stack[len++] = p2;
-        stack[len++] = (0xFFFFFF00) | (u32)(' ');
+        stack[len++] = new_port(ERA, (u32)(' '));
         stack[len++] = p1;
         break;
       }
@@ -1859,9 +1861,9 @@ void pretty_print_port(Net* net, Book* book, Port port) {
         Port p2   = get_snd(node);
         Port p1   = get_fst(node);
         printf("$(");
-        stack[len++] = (0xFFFFFF00) | (u32)(')');
+        stack[len++] = new_port(ERA, (u32)(')'));
         stack[len++] = p2;
-        stack[len++] = (0xFFFFFF00) | (u32)(' ');
+        stack[len++] = new_port(ERA, (u32)(' '));
         stack[len++] = p1;
         break;
       }
@@ -1870,9 +1872,9 @@ void pretty_print_port(Net* net, Book* book, Port port) {
         Port p2   = get_snd(node);
         Port p1   = get_fst(node);
         printf("?(");
-        stack[len++] = (0xFFFFFF00) | (u32)(')');
+        stack[len++] = new_port(ERA, (u32)(')'));
         stack[len++] = p2;
-        stack[len++] = (0xFFFFFF00) | (u32)(' ');
+        stack[len++] = new_port(ERA, (u32)(' '));
         stack[len++] = p1;
         break;
       }
