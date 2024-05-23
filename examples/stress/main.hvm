@@ -13,4 +13,4 @@
   & @loop ~ a
 
 @main = a
-  & @fun ~ (10 a)
+  & @fun ~ (8 a)
