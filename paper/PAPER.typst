@@ -126,7 +126,17 @@ The following definition:
 ]
 
 Represents the HVM2 encoding of the $lambda$-calculus term `λs λz (s (s z))`, and can be drawn as the following Interaction Combinator net:
-
+/*
+          :
+         /_\
+      ...: :...
+      :       :
+     /#\     /_\
+   ..: :..   a R
+  /_\   /_\  : :
+  a b...b R..:.:
+  :..........:
+*/
 #figure(caption: [An example $lambda$-calculus term.], canvas({
   import draw: *
 
@@ -566,15 +576,15 @@ Numeric nodes can either be a number or a (possibly partially applied) operator.
       | "^"   -- (XOR)
       | ">>"  -- (SHR)
       | "<<"  -- (SHL)
-      | ":-"  -- (FLIP-SUB)
-      | ":/"  -- (FLIP-DIV)
-      | ":%"  -- (FLIP-REM)
-      | ":>>" -- (FLIP-SHR)
-      | ":<<" -- (FLIP-SHL)
+      | ":-"  -- (FP_SUB)
+      | ":/"  -- (FP_DIV)
+      | ":%"  -- (FP_REM)
+      | ":>>" -- (FP_SHR)
+      | ":<<" -- (FP_SHL)
   ```
 ]
 
-Flipped versions of some non-symmetric operators are provided for convenience. `<Int>` is disambiguated from `<Nat>` by requiring a sign prefix `+`/`-`.
+where `<Int>` is disambiguated from `<Nat>` by requiring a sign prefix `+`/`-`, and flipped versions of non-commutative operators (`FP_*`) are provided for convenience.
 
 #pagebreak()
 
@@ -707,7 +717,7 @@ The number tagged with the operation is the left operand of the native operation
 
 Note that this means that the number type used in an operation is always determined by the right operand; if the left operand is of a different type, its bits will be reinterpreted.
 
-Finally, flipped operations (such as `FLIP-SUB`) interpret their operands in the opposite order (e.g. `SUB` represents `a - b` whereas `FLIP-SUB` represents `b - a`). This allows representing e.g. both `1 - x` and `x - 1` with partially-applied operations (`[-1]` and `[:-1]` respectively).
+Finally, flipped operations (such as `FP_SUB`) interpret their operands in the opposite order (e.g. `SUB` represents `a - b` whereas `FP_SUB` represents `b - a`). This allows representing e.g. both `1 - x` and `x - 1` with partially-applied operations (`[-1]` and `[:-1]` respectively).
 
 #align(center)[
 ```
