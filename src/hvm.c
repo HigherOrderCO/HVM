@@ -496,10 +496,10 @@ static inline Numb operate(Numb a, Numb b) {
         case FP_DIV: return new_i24(bv / av);
         case OP_REM: return new_i24(av % bv);
         case FP_REM: return new_i24(bv % av);
-        case OP_EQ:  return new_i24(av == bv);
-        case OP_NEQ: return new_i24(av != bv);
-        case OP_LT:  return new_i24(av < bv);
-        case OP_GT:  return new_i24(av > bv);
+        case OP_EQ:  return new_u24(av == bv);
+        case OP_NEQ: return new_u24(av != bv);
+        case OP_LT:  return new_u24(av < bv);
+        case OP_GT:  return new_u24(av > bv);
         case OP_AND: return new_i24(av & bv);
         case OP_OR:  return new_i24(av | bv);
         case OP_XOR: return new_i24(av ^ bv);
