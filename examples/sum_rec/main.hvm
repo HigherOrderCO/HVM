@@ -1,5 +1,5 @@
 @main = a
-  & @sum ~ (24 (0 a))
+  & @sum ~ (20 (0 a))
 
 @sum = (?(((a a) @sum__C0) b) b)
 

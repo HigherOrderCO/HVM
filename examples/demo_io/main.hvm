@@ -17,52 +17,10 @@
 @IO_T/wrap = a
   & @IO_T/Done ~ (@IO_T/MAGIC a)
 
-@String/Cons = (a (b ((1 (a (b c))) c)))
-
-@String/Nil = ((0 a) a)
-
 @call = (a (b c))
   & @IO_T/Call ~ (@IO_T/MAGIC (a (b (@call__C0 c))))
 
 @call__C0 = a
   & @IO_T/Done ~ (@IO_T/MAGIC a)
 
-@main = a
-  & @IO_T/bind ~ (@main__C2 (@main__C1 a))
-
-@main__C0 = o
-  & @call ~ (h (n o))
-  & @String/Cons ~ (80 (g h))
-  & @String/Cons ~ (85 (f g))
-  & @String/Cons ~ (84 (e f))
-  & @String/Cons ~ (95 (d e))
-  & @String/Cons ~ (84 (c d))
-  & @String/Cons ~ (69 (b c))
-  & @String/Cons ~ (88 (a b))
-  & @String/Cons ~ (84 (@String/Nil a))
-  & @String/Cons ~ (119 (m n))
-  & @String/Cons ~ (111 (l m))
-  & @String/Cons ~ (114 (k l))
-  & @String/Cons ~ (108 (j k))
-  & @String/Cons ~ (100 (i j))
-  & @String/Cons ~ (10 (@String/Nil i))
-
-@main__C1 = (* a)
-  & @IO_T/bind ~ (@main__C0 ((* 42) a))
-
-@main__C2 = o
-  & @call ~ (h (n o))
-  & @String/Cons ~ (80 (g h))
-  & @String/Cons ~ (85 (f g))
-  & @String/Cons ~ (84 (e f))
-  & @String/Cons ~ (95 (d e))
-  & @String/Cons ~ (84 (c d))
-  & @String/Cons ~ (69 (b c))
-  & @String/Cons ~ (88 (a b))
-  & @String/Cons ~ (84 (@String/Nil a))
-  & @String/Cons ~ (104 (m n))
-  & @String/Cons ~ (101 (l m))
-  & @String/Cons ~ (108 (k l))
-  & @String/Cons ~ (108 (j k))
-  & @String/Cons ~ (111 (i j))
-  & @String/Cons ~ (10 (@String/Nil i))
+@main = 42

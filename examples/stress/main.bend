@@ -13,4 +13,4 @@ def fun(n):
       return fun(n-1) + fun(n-1)
 
 def main:
-  return fun(12)
+  return fun(8)
