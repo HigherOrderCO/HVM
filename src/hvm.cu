@@ -1685,10 +1685,24 @@ __global__ void evaluator(GNet* gnet) {
 // GNet Host Functions
 // -------------------
 
+// Initializes the GNet
+__global__ void initialize(GNet* gnet) {
+  gnet->node_put[GID()] = 0;
+  gnet->vars_put[GID()] = 0;
+  gnet->rbag_pos[GID()] = 0;
+  for (u32 i = 0; i < RLEN; ++i) {
+    gnet->rbag_buf_A[G_RBAG_LEN / TPG * GID()] = 0;
+  }
+  for (u32 i = 0; i < RLEN; ++i) {
+    gnet->rbag_buf_B[G_RBAG_LEN / TPG * GID()] = 0;
+  }
+}
+
 GNet* gnet_create() {
   GNet *gnet;
   cudaMalloc((void**)&gnet, sizeof(GNet));
-  cudaMemset(gnet, 0, sizeof(GNet));
+  initialize<<<BPG, TPB>>>(gnet);
+  //cudaMemset(gnet, 0, sizeof(GNet));
   return gnet;
 }
 
