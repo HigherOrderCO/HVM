@@ -22,6 +22,7 @@ extern "C" {
 fn main() {
   let matches = Command::new("hvm")
     .about("HVM2: Higher-order Virtual Machine 2 (32-bit Version)")
+    .version(env!("CARGO_PKG_VERSION"))
     .subcommand_required(true)
     .arg_required_else_help(true)
     .subcommand(
