@@ -1,7 +1,10 @@
 #import "@preview/unequivocal-ams:0.1.0": ams-article, theorem, proof
+#import "@preview/cetz:0.2.2": canvas, draw
+#import "inet.typ"
 
 #show link: underline
 #set cite(form: "normal", style: "iso-690-author-date")
+
 
 #show: ams-article.with(
   title: [HVM2: A Parallel Evaluator for Interaction Combinators],
@@ -51,6 +54,8 @@ HVM2's syntax has seven different types of _agents_ (in Lafont's terms) or _Node
   <Tree> ::=
       | <alphanumeric>         -- (VAR)iable
       | <Node>
+
+  <alphanumeric> ::= [a-zA-Z0-9_.-/]+
   ``` \
   _(For details on the `<Numeric>` syntax, see Numbers (@numbers))_
 ] \
@@ -120,21 +125,47 @@ The following definition:
   ```
 ]
 
-Represents the HVM2 encoding of the Lambda Calculus term `λs λz (s (s z))`, and can be drawn as the following Interaction Combinator net:
+Represents the HVM2 encoding of the $lambda$-calculus term `λs λz (s (s z))`, and can be drawn as the following Interaction Combinator net:
 
-#align(center)[
-  ```
-          :
-         /_\
-      ...: :...
-      :       :
-     /#\     /_\
-   ..: :..   a R
-  /_\   /_\  : :
-  a b...b R..:.:
-  :..........:
-  ```
-]
+#figure(caption: [An example $lambda$-calculus term.], canvas({
+  import draw: *
+
+  // inet.con(name: "a", pos: (0, 2), rot: -90deg)
+  // inet.con(name: "b", pos: (2, 0), rot: -180deg)
+  // inet.con(name: "c", pos: (0, -2), rot: 90deg)
+  inet.con(name: "a", pos: (0, 0), rot: 90deg)
+  inet.dup(name: "b", pos: (1.5, -1), rot: 90deg)
+  inet.con(name: "c", pos: (1.5, 1), rot: 90deg)
+  inet.con(name: "d", pos: (3, -2), rot: 90deg)
+  inet.con(name: "e", pos: (3, 0), rot: 90deg)
+  inet.link("a.0", "a.0")
+
+  inet.link("a.1", "b.0")
+  inet.link("a.2", "c.0")
+  inet.link("b.1", "d.0")
+  inet.link("b.2", "e.0")
+
+  inet.link("d.2", "e.1")
+  content((3.5, -1), [`b`])
+
+  // "c.2" -> "e.2"
+  inet.port("R", (3.45, 1 + 1/6), -90deg)
+  inet.port("R'", (3.45, 1 + 1/6), 90deg)
+  inet.link("e.2", "R")
+  inet.link("c.2", "R'")
+  content((3, 1.5), [`R`])
+
+  // "c.1" -> "d.1"
+  inet.port("A1", (4.1, -1), -180deg)
+  inet.port("A2", (4.1, 0), 0deg)
+  inet.port("A3", (3.45, 1 - 1/6), 90deg)
+  inet.port("A3'", (3.45, 1 - 1/6), -90deg)
+  inet.link("d.1", "A1")
+  inet.link("A1", "A2")
+  inet.link("A2", "A3'")
+  inet.link("c.1", "A3")
+  content((4.4, -0.5), [`a`])
+}))
 
 Notice how `CON`/`DUP` nodes in HVM2 correspond directly to constructor and duplicator nodes in Lafont's Interaction Combinators @Lafont_1997. Aux-to-main wires are implicit through the tree-like structure of the syntax, while aux-to-aux wires are explicit through variable nodes, which are always paired.
 
@@ -160,7 +191,7 @@ $
   & "Binary Nodes" #footnote[In the interaction rules `()` and `{}` refer to arbitrary binary nodes, not just `CON` and `DUP`.] & #raw("()"), #raw("{}") &:= #raw("CON") | #raw("DUP") | #raw("OPA") | #raw("SWI") \
   & "Nullary Nodes" & circle.filled.small, circle.stroked.small &:= #raw("ERA") | #raw("REF") | #raw("NUM") \
   & "Numeric Nodes" & #raw("N"), #raw("M") &:= #raw("NUM") "(Numbers or Operations)"\
-  & "Numeric Value Nodes" & #raw("n"), #raw("m") &:= #raw("NUM") "where" #raw("n"), #raw("m") in bb(Q) \
+  & "Numeric Value Nodes (Not Operators)" & #raw("#n"), #raw("#m") &:= #raw("NUM") "where" #raw("n"), #raw("m") in bb(Q) \
   & "Erasure Nodes" & #raw("*") &:= #raw("ERA") \
   & "Variables" & #raw("x"), #raw("y"), #raw("z"), #raw("w") &:= #raw("VAR") \
 
@@ -177,7 +208,7 @@ $
     #smallcaps[(#strong[link])]
     #math.frac(
       [
-        `B` containing `x` \
+        `B` contains `x` \
         `x ~ A`
       ],
       [`B[x` $arrow.l$ `A]`]
@@ -314,7 +345,8 @@ Performs a switch on a `NUM` node `#n` connected to a `SWI` node, treating it li
 #pagebreak()
 
 == Interaction Table
-Since there are eight node types, there is a total of 64 possible pairwise node interactions. The interaction rule for an active pair is uniquely determined by the types of the two nodes in the pair. The table below shows which interaction rule is triggered for each possible pair of nodes that form a redex. Since the interaction rules are symmetric, this table is symmetric across the diagonal. #highlight[`CON`-`SWI` being #smallcaps[comm] is problematic; should be removed or the reduction for #smallcaps[swit] should change].
+
+Since there are eight node types, there is a total of 64 possible pairwise node interactions. The interaction rule for an active pair is _uniquely_ determined by the types of the two nodes in the pair. The table below shows which interaction rule is triggered for each possible pair of nodes that form a redex. Since the interaction rules are symmetric, this table is symmetric across the main diagonal. #highlight[`CON`-`SWI` being #smallcaps[comm] is problematic; should be removed or the reduction for #smallcaps[swit] should change].
 #v(1em)
 
 #align(center)[
@@ -532,14 +564,17 @@ Numeric nodes can either be a number or a (possibly partially applied) operator.
       | "&"   -- (AND)
       | "|"   -- (OR)
       | "^"   -- (XOR)
+      | ">>"  -- (SHR)
+      | "<<"  -- (SHL)
       | ":-"  -- (FLIP-SUB)
       | ":/"  -- (FLIP-DIV)
       | ":%"  -- (FLIP-REM)
+      | ":>>" -- (FLIP-SHR)
+      | ":<<" -- (FLIP-SHL)
   ```
 ]
 
-Flipped versions of some non-symmetric operators are provided for convenience.
-`<Int>` is disambiguated from `<Nat>` by requiring a sign prefix `+`/`-`.
+Flipped versions of some non-symmetric operators are provided for convenience. `<Int>` is disambiguated from `<Nat>` by requiring a sign prefix `+`/`-`.
 
 #pagebreak()
 
@@ -652,10 +687,15 @@ Otherwise:
   |AND| &   | &   | atan2 |
   |OR | |   | |   | log   |
   |XOR| ^   | ^   | pow   |
+  |SHR| >>  |     |       |
+  |SHL| <<  |     |       |
   ```
 ]
+Where empty cells are intentionally left unspecified.
 
 The resulting number type is the same as the input type, except for comparison operators (`EQ`, `NEQ`, `LT`, `GT`) which always return `U24` `0` or `1`.
+
+#pagebreak()
 
 The number tagged with the operation is the left operand of the native operation, and the number tagged with the type is the right operand. For example,
 
@@ -686,19 +726,19 @@ The initial version of HVM2, as implemented in this paper, is based on a 32-bit 
 
 == Memory Layout <memory>
 
-Ports are 32-bit values that represent a wire connected to a main port. The low 3-bits are reserved to identify the type of the node (`VAR`, `REF`, `ERA`, etc) whose main port the wire is connected to. This is called a Tag. The upper 29-bits hold the value. The interpretation of this value is dependent on the tag. It is either an address (for `CON`, `DUP`, `OPR`, and `SWI` nodes), a virtual function address (for `REF` nodes), an unboxed 29-bit number (for `NUM` nodes), or a variable name (for `VAR` nodes), or `0` (for `ERA` nodes). Nodes are represented in memory as a pair of two ports. Notice that the type of a node (`VAR`, `REF`, `ERA`, etc.) is stored in the port. That is, ports store the kind of node they are connecting to.
+Ports are 32-bit values that represent a wire connected to a main port. The low 3-bits are reserved to identify the type of the node (`VAR`, `REF`, `ERA`, etc) whose main port the wire is connected to. This is a port's _tag_. The upper 29-bits hold a port's _value_. The interpretation of the value is dependent on the tag. The value is either an address (for binary `CON`, `DUP`, `OPR`, and `SWI` nodes), a virtual function address (for `REF` nodes), an unboxed 29-bit number (for `NUM` nodes), a variable name (for `VAR` nodes), or `0` (for `ERA` nodes). Binary nodes are represented in memory as a pair of two ports. Notice that _ports store the kind of node they are connecting to_, nodes don't store their own type.
 
 #align(center)[
 ```rust
 pub type Tag = u8;  // 3 bits  (rounded up to u8)
 pub type Val = u32; // 29 bits (rounded up to u32)
 
-pub struct Port(pub Val); // Tag  + Val  (32 bits)
+pub struct Port(pub Val); //  Tag + Val  (32 bits)
 pub struct Pair(pub u64); // Port + Port (64 bits)
 ```
 ]
 
-The Global Net structure includes three shared memory buffers: `node`: a node buffer where nodes are allocated, `vars`: a buffer representing the substitution map (with the 29-bit key being the variable name, and the value being the current substitution), and `rbag`: a collection of active redexes. `APair` and `APort` are atomic variants of `Pair` and `Port`.
+The Global Net structure includes three shared memory buffers, `node`: a node buffer where nodes are allocated, `vars`: a buffer representing the current substitution map (with the 29-bit key being the variable name, and the value being the current substitution), and `rbag`: a collection of active redexes. `APair` and `APort` are atomic variants of `Pair` and `Port`, respectively,
 
 #align(center)[
 ```rust
@@ -725,7 +765,7 @@ pub struct Def {
 ```
 ]
 
-Finally, the global Book is just a map of names to defs:
+Finally, the global Book is just a map of names to `Def`s:
 
 #align(center)[
 ```rust
@@ -735,9 +775,11 @@ pub struct Book {
 ```
 ]
 
+Notice that, like variables, names are simply indexes into the global `Book`.
+
 This concludes HVM2's memory layout. For more details, check the reference Rust implementation in the #link("https://github.com/HigherOrderCO/hvm2")[HVM2 repo].
 
-== Example Net
+== Example Interaction Net Layout
 
 Consider, again, the following net:
 
@@ -855,7 +897,7 @@ generating extra work.
 
 == Redex Sharing
 
-The last question, thus, is: how do we actually distribute that workload through
+An additional question, is, how do we actually distribute that workload through
 all cores of a modern processor? The act of sharing a redex is, itself, a point
 of synchronization. If this is done without enough caution, it can result in
 contention, and slowing up execution. HVM2 solves this by two different
