@@ -229,9 +229,17 @@ struct Str {
   char text_buf[256];
 };
 
-// Str Type
-const u32 NIL  = 0;
-const u32 CONS = 1;
+// IO Magic Number
+#define IO_MAGIC_0 0xD0CA11
+#define IO_MAGIC_1 0xFF1FF1
+
+// IO Tags
+#define IO_DONE 0
+#define IO_CALL 1
+
+// List Type
+#define LIST_NIL  0
+#define LIST_CONS 1
 
 // Debugger
 // --------
@@ -684,6 +692,24 @@ __device__ TM tmem_new() {
 
 // Net
 // ----
+
+
+Net gnet_vnet_new(GNet* gnet, void* smem, u32 turn) {
+  Net net;
+  net.l_node_dif   = 0;
+  net.l_vars_dif   = 0;
+  net.l_node_buf   = ((LNet*)smem)->node_buf;
+  net.l_vars_buf   = ((LNet*)smem)->vars_buf;
+  net.g_rbag_use_A = turn % 2 == 0 ? &gnet->rbag_use_A : &gnet->rbag_use_B;
+  net.g_rbag_use_B = turn % 2 == 0 ? &gnet->rbag_use_B : &gnet->rbag_use_A;
+  net.g_rbag_buf_A = turn % 2 == 0 ? gnet->rbag_buf_A : gnet->rbag_buf_B;
+  net.g_rbag_buf_B = turn % 2 == 0 ? gnet->rbag_buf_B : gnet->rbag_buf_A;
+  net.g_node_buf   = gnet->node_buf;
+  net.g_vars_buf   = gnet->vars_buf;
+  net.g_node_put   = &gnet->node_put[0];
+  net.g_vars_put   = &gnet->vars_put[0];
+  return net;
+}
 
 __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   Net net;
@@ -1819,6 +1845,148 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
   return ret;
 }
 
+// Readback
+// --------
+
+// Reads back a λ-Encoded constructor from device to host.
+// Encoding: λt ((((t TAG) arg0) arg1) ...)
+Ctr gnet_read_ctr(GNet* gnet, Port port) {
+  Ctr ctr;
+  ctr.tag = -1;
+  ctr.args_len = 0;
+
+  // Loads root lambda
+  Port lam_port = gnet_expand(gnet, port);
+  if (get_tag(lam_port) != CON) return ctr;
+  Pair lam_node = gnet_node_load(gnet, get_val(lam_port));
+
+  // Loads first application
+  Port app_port = gnet_expand(gnet, get_fst(lam_node));
+  if (get_tag(app_port) != CON) return ctr;
+  Pair app_node = gnet_node_load(gnet, get_val(app_port));
+
+  // Loads first argument (as the tag)
+  Port arg_port = gnet_expand(gnet, get_fst(app_node));
+  if (get_tag(arg_port) != NUM) return ctr;
+  ctr.tag = get_u24(get_val(arg_port));
+
+  // Loads remaining arguments
+  while (TRUE) {
+    app_port = gnet_expand(gnet, get_snd(app_node));
+    if (get_tag(app_port) != CON) break;
+    app_node = gnet_node_load(gnet, get_val(app_port));
+    arg_port = gnet_expand(gnet, get_fst(app_node));
+    ctr.args_buf[ctr.args_len++] = arg_port;
+  }
+
+  return ctr;
+}
+
+// Reads back a UTF-16 string.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Str gnet_read_str(GNet* gnet, Port port) {
+  // Result
+  Str str;
+  str.text_len = 0;
+
+  // Readback loop
+  while (TRUE) {
+    // Normalizes the net
+    gnet_normalize(gnet);
+
+    //printf("reading str %s\n", show_port(peek(net, port)).x);
+
+    // Reads the λ-Encoded Ctr
+    Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
+
+    //printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
+
+    // Reads string layer
+    switch (ctr.tag) {
+      case LIST_NIL: {
+        break;
+      }
+      case LIST_CONS: {
+        if (ctr.args_len != 2) break;
+        if (get_tag(ctr.args_buf[0]) != NUM) break;
+        if (str.text_len >= 256) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
+        //printf("reading chr %d\n", get_u24(get_val(ctr.args_buf[0])));
+        str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
+        gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
+        port = ROOT;
+        continue;
+      }
+    }
+    break;
+  }
+
+  str.text_buf[str.text_len] = '\0';
+
+  return str;
+}
+
+// Monadic IO Evaluator
+// ---------------------
+
+// Runs an IO computation.
+__host__ void do_run_io(GNet* gnet, Book* book, Port port) {
+  // IO loop
+  while (TRUE) {
+    // Normalizes the net
+    gnet_normalize(gnet);
+
+    // Reads the λ-Encoded Ctr
+    Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
+
+    // Checks if IO Magic Number is a CON
+    if (get_tag(ctr.args_buf[0]) != CON) {
+      break;
+    }
+
+    // Checks the IO Magic Number
+    Pair io_magic = gnet_node_load(gnet, get_val(ctr.args_buf[0]));
+    //printf("%08x %08x\n", get_u24(get_val(get_fst(io_magic))), get_u24(get_val(get_snd(io_magic))));
+    if (get_val(get_fst(io_magic)) != new_u24(IO_MAGIC_0) || get_val(get_snd(io_magic)) != new_u24(IO_MAGIC_1)) {
+      break;
+    }
+
+    switch (ctr.tag) {
+      case IO_CALL: {
+        Str  func = gnet_read_str(gnet, ctr.args_buf[1]);
+        FFn* ffn  = NULL;
+        // FIXME: optimize this linear search
+        for (u32 fid = 0; fid < book->ffns_len; ++fid) {
+          if (strcmp(func.text_buf, book->ffns_buf[fid].name) == 0) {
+            ffn = &book->ffns_buf[fid];
+            break;
+          }
+        }
+        if (ffn == NULL) {
+          printf("FOUND NOTHING when looking for %s\n", func.text_buf);
+          break;
+        }
+
+        Net  net  = gnet_vnet_new(gnet, NULL, gnet->turn);
+        Port argm = ctr.args_buf[2];
+        Port cont = ctr.args_buf[3];
+        Port ret  = ffn->func(&net, book, argm);
+
+        Port p = gnet_make_node(gnet, CON, ret, ROOT);
+        gnet_boot_redex(gnet, new_pair(p, cont));
+        port = ROOT;
+        continue;
+      }
+      case IO_DONE: {
+        printf("DONE\n");
+        break;
+      }
+    }
+    break;
+  }
+}
+
 // Book Loader
 // -----------
 
@@ -2242,12 +2410,11 @@ extern "C" void hvm_cu(u32* book_buffer) {
   clock_t start = clock();
   
   // Loads the Book
+  Book* book = (Book*)malloc(sizeof(Book));
   if (book_buffer) {
-    Book* book = (Book*)malloc(sizeof(Book));
     book_init(book);
     book_load(book, (u32*)book_buffer);
     cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
-    free(book);
   }
 
   // Configures Shared Memory Size
@@ -2257,10 +2424,11 @@ extern "C" void hvm_cu(u32* book_buffer) {
   GNet* gnet = gnet_create();
 
   // Boots root redex, to expand @main
-  gnet_boot_redex(gnet, new_pair(new_port(REF,0), ROOT));
+  gnet_boot_redex(gnet, new_pair(new_port(REF, 0), ROOT));
 
-  // Normalizes the GNet
-  gnet_normalize(gnet);
+  // Normalizes and runs IO
+  do_run_io(gnet, book, ROOT);
+
   cudaDeviceSynchronize();
 
   // Stops the timer
