@@ -10,3 +10,7 @@ examples/**/main
 examples/**/*.c
 examples/**/*.cu
 .out.hvm
+
+# nix-direnv
+/.direnv/
+/.envrc
