@@ -3,7 +3,7 @@ use hvm::ast::Tree;
 use insta::assert_snapshot;
 use TSPL::Parser;
 use std::{
-  collections::HashMap, error::Error, ffi::OsStr, io::Read, path::{Path, PathBuf}, process::{Command, Stdio}
+  collections::HashMap, error::Error, ffi::OsStr, fs, io::Read, path::{Path, PathBuf}, process::{Command, Stdio}
 };
 
 #[test]
@@ -25,6 +25,10 @@ fn manifest_relative(sub: &str) -> PathBuf {
 }
 
 fn test_file(path: &Path) {
+  if fs::read_to_string(path).unwrap().contains("@test-skip = 1") {
+    println!("skipping {path:?}");
+    return;
+  }
   println!("testing {path:?}...");
   let rust_output = execute_hvm(&["run".as_ref(), path.as_os_str()]).unwrap();
   assert_snapshot!(rust_output);

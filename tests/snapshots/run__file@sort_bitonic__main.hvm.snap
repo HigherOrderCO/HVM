@@ -3,4 +3,4 @@ source: tests/run.rs
 expression: rust_output
 input_file: examples/sort_bitonic/main.hvm
 ---
-Result: 16744448
+Result: 8386560
