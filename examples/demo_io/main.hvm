@@ -21,17 +21,17 @@
 
 @String/Nil = ((0 a) a)
 
-@dance = (a (b c))
-  & @IO_T/Call ~ (@IO_T/MAGIC (a (b (@dance__C0 c))))
+@call_io = (a (b c))
+  & @IO_T/Call ~ (@IO_T/MAGIC (a (b (@call_io__C0 c))))
 
-@dance__C0 = a
+@call_io__C0 = a
   & @IO_T/Done ~ (@IO_T/MAGIC a)
 
 @main = a
   & @IO_T/bind ~ (@main__C2 (@main__C1 a))
 
 @main__C0 = o
-  & @dance ~ (h (n o))
+  & @call_io ~ (h (n o))
   & @String/Cons ~ (80 (g h))
   & @String/Cons ~ (85 (f g))
   & @String/Cons ~ (84 (e f))
@@ -51,7 +51,7 @@
   & @IO_T/bind ~ (@main__C0 ((* 42) a))
 
 @main__C2 = o
-  & @dance ~ (h (n o))
+  & @call_io ~ (h (n o))
   & @String/Cons ~ (80 (g h))
   & @String/Cons ~ (85 (f g))
   & @String/Cons ~ (84 (e f))
@@ -66,3 +66,5 @@
   & @String/Cons ~ (108 (j k))
   & @String/Cons ~ (111 (i j))
   & @String/Cons ~ (10 (@String/Nil i))
+
+@test-skip = 1

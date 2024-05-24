@@ -1,1 +1,93 @@
-@main = 42
+@Busy = (* (a (* a)))
+
+@Concat = (a (b (* (* ((a (b c)) c)))))
+
+@Empty = (a (* (* a)))
+
+@Free = (a (* (* a)))
+
+@Node = (a (b (* (* ((a (b c)) c)))))
+
+@Single = (a (* ((a b) (* b))))
+
+@gen = (?((@gen__C0 @gen__C1) a) a)
+
+@gen__C0 = a
+  & @Single ~ a
+
+@gen__C1 = ({a d} ($([*2] {e $([+1] b)}) g))
+  & @Concat ~ (c (f g))
+  &! @gen ~ (a (b c))
+  &! @gen ~ (d (e f))
+
+@main = a
+  & @sum ~ (@main__C1 a)
+
+@main__C0 = a
+  & @gen ~ (16 (0 a))
+
+@main__C1 = a
+  & @sort ~ (@main__C0 a)
+
+@merge = ((@merge__C5 (@merge__C4 (@merge__C3 a))) a)
+
+@merge__C0 = (b (e (a (d g))))
+  & @Node ~ (c (f g))
+  &! @merge ~ (a (b c))
+  &! @merge ~ (d (e f))
+
+@merge__C1 = a
+  & @Node ~ a
+
+@merge__C2 = a
+  & @Node ~ a
+
+@merge__C3 = (a (b ((@merge__C1 ((* (* 0)) (@merge__C0 (a (b c))))) c)))
+
+@merge__C4 = ((@Busy (@Busy ((* (* 0)) a))) a)
+
+@merge__C5 = ((@Free (@Busy (@merge__C2 a))) a)
+
+@radix = (?(((* (* (a a))) @radix__C0) b) b)
+
+@radix__C0 = (a ({b $([&] $(d e))} ({$([*2] c) d} (f h))))
+  & @radix ~ (a (b (c (g h))))
+  & @swap ~ (e (f (@Free g)))
+
+@sort = (a c)
+  & @to_arr ~ (b (0 c))
+  & @to_map ~ (a b)
+
+@sum = ((0 ((a a) (@sum__C0 b))) b)
+
+@sum__C0 = (a (b d))
+  &! @sum ~ (a $([+] $(c d)))
+  &! @sum ~ (b c)
+
+@swap = (?((@swap__C0 @swap__C1) a) a)
+
+@swap__C0 = a
+  & @Node ~ a
+
+@swap__C1 = (* (b (a c)))
+  & @Node ~ (a (b c))
+
+@to_arr = (((* @Empty) (@to_arr__C1 (@to_arr__C0 a))) a)
+
+@to_arr__C0 = (a (d ({$([*2] $([+1] e)) $([*2] $([+0] b))} g)))
+  & @Concat ~ (c (f g))
+  &! @to_arr ~ (a (b c))
+  &! @to_arr ~ (d (e f))
+
+@to_arr__C1 = a
+  & @Single ~ a
+
+@to_map = ((@Free (@to_map__C1 (@to_map__C0 a))) a)
+
+@to_map__C0 = (a (c e))
+  & @merge ~ (b (d e))
+  &! @to_map ~ (a b)
+  &! @to_map ~ (c d)
+
+@to_map__C1 = (a b)
+  & @radix ~ (24 (a (1 (@Busy b))))
