@@ -261,6 +261,13 @@ __global__ void print_heatmap(GNet* gnet, u32 turn);
 // Utils
 // -----
 
+// TODO: write a time64() function that returns the time as fast as possible as a u64
+static inline u64 time64() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (u64)ts.tv_sec * 1000000000ULL + (u64)ts.tv_nsec;
+}
+
 __device__ inline u32 TID() {
   return threadIdx.x;
 }
@@ -321,7 +328,7 @@ __device__ __host__ Pair set_par_flag(Pair pair) {
   Port p1 = get_fst(pair);
   Port p2 = get_snd(pair);
   if (get_tag(p1) == REF) {
-    return new_pair(new_port(get_tag(p1), get_val(p1) | 0x10000000), p2);  
+    return new_pair(new_port(get_tag(p1), get_val(p1) | 0x10000000), p2);
   } else {
     return pair;
   }
@@ -331,7 +338,7 @@ __device__ __host__ Pair clr_par_flag(Pair pair) {
   Port p1 = get_fst(pair);
   Port p2 = get_snd(pair);
   if (get_tag(p1) == REF) {
-    return new_pair(new_port(get_tag(p1), get_val(p1) & 0xFFFFFFF), p2);  
+    return new_pair(new_port(get_tag(p1), get_val(p1) & 0xFFFFFFF), p2);
   } else {
     return pair;
   }
@@ -1264,7 +1271,7 @@ __device__ bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = enter(net, tm, get_snd(B));
-    
+
   // Performs operation.
   if (get_tag(B1) == NUM) {
     Val  bv = get_val(B1);
@@ -1634,7 +1641,7 @@ __global__ void evaluator(GNet* gnet) {
         //__syncthreads();
       //}
       //__syncthreads();
-      
+
       //printf("[%04x] span is %d\n", TID(), span);
       //__syncthreads();
     }
@@ -1649,7 +1656,7 @@ __global__ void evaluator(GNet* gnet) {
 
   // WORK MODE
   // ---------
-  
+
   if (tm.mode == WORK) {
     u32 chkt = 0;
     u32 chka = 1;
@@ -1760,7 +1767,7 @@ void gnet_normalize(GNet* gnet) {
     //printf("==================================================== ");
     //printf("TURN: %04x | RLEN: %04x | ITRS: %012llu\n", turn, rlen, itrs);
     //cudaDeviceSynchronize();
-    
+
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(gnet);
     inbetween<<<1, 1>>>(gnet);
     //cudaDeviceSynchronize();
@@ -1820,7 +1827,7 @@ Port gnet_expand(GNet* gnet, Port port) {
 Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
   Port ret;
   Port* d_ret;
-  cudaMalloc(&d_ret, sizeof(Port)); 
+  cudaMalloc(&d_ret, sizeof(Port));
   make_node<<<1,1>>>(gnet, tag, fst, snd, d_ret);
   cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
   cudaFree(d_ret);
@@ -1909,13 +1916,64 @@ Str gnet_read_str(GNet* gnet, Port port) {
   return str;
 }
 
+// Primitive IO Fns
+// -----------------
+
+// IO: GetText
+Port io_get_text(GNet* gnet, Port argm) {
+  printf("TODO\n");
+  return new_port(ERA, 0);
+}
+
 // IO: PutText
-Port io_put_text(GNet* net, Port argm) {
+Port io_put_text(GNet* gnet, Port argm) {
   // Converts argument to C string
-  Str str = gnet_read_str(net, argm);
+  Str str = gnet_read_str(gnet, argm);
   // Prints it
   printf("%s", str.text_buf);
   // Returns result (in this case, just an eraser)
+  return new_port(ERA, 0);
+}
+
+// IO: GetFile
+Port io_get_file(GNet* gnet, Port argm) {
+  printf("TODO\n");
+  return new_port(ERA, 0);
+}
+
+// IO: PutFile
+Port io_put_file(GNet* gnet, Port argm) {
+  printf("TODO\n");
+  return new_port(ERA, 0);
+}
+
+// IO: GetTime
+Port io_get_time(GNet* gnet, Port argm) {
+  // Get the current time in nanoseconds
+  u64 time_ns = time64();
+  // Encode the time as a 64-bit unsigned integer
+  u32 time_hi = (u32)(time_ns >> 24) & 0xFFFFFFF;
+  u32 time_lo = (u32)(time_ns & 0xFFFFFFF);
+  // Return the encoded time
+  return gnet_make_node(gnet, CON, new_port(NUM, new_u24(time_hi)), new_port(NUM, new_u24(time_lo)));
+}
+
+// IO: PutTime
+// NOTE: changing this name will corrupt the timeline. You've been warned.
+Port io_put_time(GNet* gnet, Port argm) {
+  // Get the sleep duration node
+  Pair dur_node = gnet_node_load(gnet, get_val(argm));
+  // Get the high and low 24-bit parts of the duration
+  u32 dur_hi = get_u24(get_val(get_fst(dur_node)));
+  u32 dur_lo = get_u24(get_val(get_snd(dur_node)));
+  // Combine into a 48-bit duration in nanoseconds
+  u64 dur_ns = (((u64)dur_hi) << 24) | dur_lo;
+  // Sleep for the specified duration
+  struct timespec ts;
+  ts.tv_sec = dur_ns / 1000000000;
+  ts.tv_nsec = dur_ns % 1000000000;
+  nanosleep(&ts, NULL);
+  // Return an eraser
   return new_port(ERA, 0);
 }
 
@@ -1983,13 +2041,13 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
 
 // TODO: initialize ffns_len with the builtin ffns
 void book_init(Book* book) {
-  book->ffns_len = 1;
-  // book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
+  book->ffns_len = 6;
+  book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
   book->ffns_buf[0] = (FFn){"PUT_TEXT", io_put_text};
-  // book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
-  // book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
-  // book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
-  // book->ffns_buf[5] = (FFn){"PUT_TIME", io_put_time};
+  book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
+  book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
+  book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
+  book->ffns_buf[5] = (FFn){"PUT_TIME", io_put_time};
 }
 
 void book_load(Book* book, u32* buf) {
@@ -2005,7 +2063,7 @@ void book_load(Book* book, u32* buf) {
 
     // Gets def
     Def* def = &book->defs_buf[fid];
-    
+
     // Reads name
     memcpy(def->name, buf, 256);
     buf += 64;
@@ -2024,7 +2082,7 @@ void book_load(Book* book, u32* buf) {
     // Reads rbag_buf
     memcpy(def->rbag_buf, buf, 8*def->rbag_len);
     buf += def->rbag_len * 2;
-    
+
     // Reads node_buf
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
@@ -2399,7 +2457,7 @@ __global__ void print_result(GNet* gnet) {
 extern "C" void hvm_cu(u32* book_buffer) {
   // Start the timer
   clock_t start = clock();
-  
+
   // Loads the Book
   Book* book = (Book*)malloc(sizeof(Book));
   if (book_buffer) {
@@ -2410,7 +2468,7 @@ extern "C" void hvm_cu(u32* book_buffer) {
 
   // Configures Shared Memory Size
   cudaFuncSetAttribute(evaluator, cudaFuncAttributeMaxDynamicSharedMemorySize, sizeof(LNet));
-  
+
   // Creates a new GNet
   GNet* gnet = gnet_create();
 
