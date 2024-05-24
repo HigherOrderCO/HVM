@@ -1,3 +1,6 @@
+# TODO: update tests to handle IO
+test-skip = 1
+
 type IO_T:
   Done { magic, expr }
   Call { magic, func, argm, cont }
@@ -15,15 +18,11 @@ def IO_T/bind(a, b):
     case IO_T/Call:
       return IO_T/Call(IO_T/MAGIC, a.func, a.argm, lambda x: IO_T/bind(a.cont(x), b))
 
-def call(func, argm):
+def call_io(func, argm):
   return IO_T/Call(IO_T/MAGIC, func, argm, lambda x: IO_T/Done(IO_T/MAGIC, x))
 
 def main:
-  return 42
-
-# FIXME: tests still can't handle IO, so I commented this out
-#def main:
-  #do IO_T:
-    #x <- call("PUT_TEXT", "hello\n")
-    #y <- call("PUT_TEXT", "world\n")
-    #return 42
+  do IO_T:
+    x <- call_io("PUT_TEXT", "hello\n")
+    y <- call_io("PUT_TEXT", "world\n")
+    return 42
