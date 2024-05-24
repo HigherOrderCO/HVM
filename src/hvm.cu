@@ -195,10 +195,20 @@ struct Def {
   Pair node_buf[L_NODE_LEN/TPB];
 };
 
+typedef struct Book Book;
+
+// A Foreign Function
+typedef struct {
+  char name[256];
+  Port (*func)(Net*, Book*, Port);
+} FFn;
+
 // Book of Definitions
 struct Book {
   u32 defs_len;
   Def defs_buf[0x4000]; // 256 MB
+  u32 ffns_len;
+  FFn ffns_buf[0x4000]; // 256 MB
 };
 
 // Static Book
@@ -1812,6 +1822,17 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
 // Book Loader
 // -----------
 
+// TODO: initialize ffns_len with the builtin ffns
+void book_init(Book* book) {
+  book->ffns_len = 0;
+  // book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
+  // book->ffns_buf[1] = (FFn){"PUT_TEXT", io_put_text};
+  // book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
+  // book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
+  // book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
+  // book->ffns_buf[5] = (FFn){"PUT_TIME", io_put_time};
+}
+
 void book_load(Book* book, u32* buf) {
   // Reads defs_len
   book->defs_len = *buf++;
@@ -2223,6 +2244,7 @@ extern "C" void hvm_cu(u32* book_buffer) {
   // Loads the Book
   if (book_buffer) {
     Book* book = (Book*)malloc(sizeof(Book));
+    book_init(book);
     book_load(book, (u32*)book_buffer);
     cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
     free(book);
