@@ -200,7 +200,7 @@ typedef struct Book Book;
 // A Foreign Function
 typedef struct {
   char name[256];
-  Port (*func)(Net*, Book*, Port);
+  Port (*func)(GNet*, Port);
 } FFn;
 
 // Book of Definitions
@@ -692,24 +692,6 @@ __device__ TM tmem_new() {
 
 // Net
 // ----
-
-
-Net gnet_vnet_new(GNet* gnet, void* smem, u32 turn) {
-  Net net;
-  net.l_node_dif   = 0;
-  net.l_vars_dif   = 0;
-  net.l_node_buf   = ((LNet*)smem)->node_buf;
-  net.l_vars_buf   = ((LNet*)smem)->vars_buf;
-  net.g_rbag_use_A = turn % 2 == 0 ? &gnet->rbag_use_A : &gnet->rbag_use_B;
-  net.g_rbag_use_B = turn % 2 == 0 ? &gnet->rbag_use_B : &gnet->rbag_use_A;
-  net.g_rbag_buf_A = turn % 2 == 0 ? gnet->rbag_buf_A : gnet->rbag_buf_B;
-  net.g_rbag_buf_B = turn % 2 == 0 ? gnet->rbag_buf_B : gnet->rbag_buf_A;
-  net.g_node_buf   = gnet->node_buf;
-  net.g_vars_buf   = gnet->vars_buf;
-  net.g_node_put   = &gnet->node_put[0];
-  net.g_vars_put   = &gnet->vars_put[0];
-  return net;
-}
 
 __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   Net net;
@@ -1927,11 +1909,21 @@ Str gnet_read_str(GNet* gnet, Port port) {
   return str;
 }
 
+// IO: PutText
+Port io_put_text(GNet* net, Port argm) {
+  // Converts argument to C string
+  Str str = gnet_read_str(net, argm);
+  // Prints it
+  printf("%s", str.text_buf);
+  // Returns result (in this case, just an eraser)
+  return new_port(ERA, 0);
+}
+
 // Monadic IO Evaluator
 // ---------------------
 
 // Runs an IO computation.
-__host__ void do_run_io(GNet* gnet, Book* book, Port port) {
+void do_run_io(GNet* gnet, Book* book, Port port) {
   // IO loop
   while (TRUE) {
     // Normalizes the net
@@ -1968,10 +1960,9 @@ __host__ void do_run_io(GNet* gnet, Book* book, Port port) {
           break;
         }
 
-        Net  net  = gnet_vnet_new(gnet, NULL, gnet->turn);
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
-        Port ret  = ffn->func(&net, book, argm);
+        Port ret  = ffn->func(gnet, argm);
 
         Port p = gnet_make_node(gnet, CON, ret, ROOT);
         gnet_boot_redex(gnet, new_pair(p, cont));
@@ -1992,9 +1983,9 @@ __host__ void do_run_io(GNet* gnet, Book* book, Port port) {
 
 // TODO: initialize ffns_len with the builtin ffns
 void book_init(Book* book) {
-  book->ffns_len = 0;
+  book->ffns_len = 1;
   // book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
-  // book->ffns_buf[1] = (FFn){"PUT_TEXT", io_put_text};
+  book->ffns_buf[0] = (FFn){"PUT_TEXT", io_put_text};
   // book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
   // book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
   // book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
