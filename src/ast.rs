@@ -505,9 +505,7 @@ impl Book {
     }
     let mut book = hvm::Book { defs: Vec::new() };
     for (fid, name) in &fid_to_name {
-      let Some(ast_def) = self.defs.get(name) else {
-        panic!("missing `@main` definition");
-      };
+      let ast_def = self.defs.get(name).expect("missing `@main` definition");
       let mut def = hvm::Def {
         name: name.clone(),
         safe: true,
