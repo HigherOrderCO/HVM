@@ -836,6 +836,8 @@ impl TMem {
       let x = a; a = b; b = x;
     }
 
+    //println!("[{:04x}] REDUCE {} ~ {} | {}", self.tid, a.show(), b.show(), rule);
+
     let success = match rule {
       LINK => self.interact_link(net, a, b),
       CALL => self.interact_call(net, a, b, book),

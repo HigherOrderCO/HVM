@@ -1224,12 +1224,14 @@ void normalize(Net* net, Book* book) {
 
 // Util: expands a REF Port.
 Port expand(Net* net, Book* book, Port port) {
+  Port old = vars_load(net, get_val(ROOT));
   Port got = peek(net, port);
   while (get_tag(got) == REF) {
     boot_redex(net, new_pair(new_port(REF,get_val(got)), ROOT));
     normalize(net, book);
     got = peek(net, vars_load(net, get_val(ROOT)));
   }
+  vars_store(net, get_val(ROOT), old);
   return got;
 }
 
