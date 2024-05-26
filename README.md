@@ -32,7 +32,7 @@ First install the dependencies:
 Install HVM2:
 
 ```sh
-cargo +nightly install hvm
+cargo install hvm
 ```
 
 There are multiple ways to run an HVM program:
