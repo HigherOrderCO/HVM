@@ -206,9 +206,9 @@ typedef struct {
 // Book of Definitions
 struct Book {
   u32 defs_len;
-  Def defs_buf[0x4000]; // 256 MB
+  Def defs_buf[0x4000];
   u32 ffns_len;
-  FFn ffns_buf[0x4000]; // 256 MB
+  FFn ffns_buf[0x4000];
 };
 
 // Static Book
