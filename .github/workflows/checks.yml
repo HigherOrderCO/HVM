@@ -13,9 +13,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
-        with:
-          profile: minimal
-          toolchain: 1.74.0
       - uses: actions/cache@v2
         with:
           path: |
@@ -29,9 +26,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
-        with:
-          profile: minimal
-          toolchain: 1.74.0
       - uses: actions/cache@v2
         with:
           path: |
@@ -46,9 +40,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
-        with:
-          profile: minimal
-          toolchain: 1.74.0
       - run: cargo test --release
         shell: bash -l {0}
 
