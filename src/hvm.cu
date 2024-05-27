@@ -221,7 +221,7 @@ struct Ctr {
   Port args_buf[16];
 };
 
-// Readback: λ-Encoded Str (UTF-16)
+// Readback: λ-Encoded Str (UTF-32)
 // FIXME: this is actually ASCII :|
 // FIXME: remove len limit
 struct Str {
@@ -1871,7 +1871,9 @@ Ctr gnet_read_ctr(GNet* gnet, Port port) {
   return ctr;
 }
 
-// Reads back a UTF-16 string.
+// Reads back a UTF-32 (truncated to 24 bits) string.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
@@ -1885,12 +1887,8 @@ Str gnet_read_str(GNet* gnet, Port port) {
     // Normalizes the net
     gnet_normalize(gnet);
 
-    //printf("reading str %s\n", show_port(peek(net, port)).x);
-
     // Reads the λ-Encoded Ctr
     Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
-
-    //printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
 
     // Reads string layer
     switch (ctr.tag) {
@@ -1901,7 +1899,7 @@ Str gnet_read_str(GNet* gnet, Port port) {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
         if (str.text_len >= 256) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
-        //printf("reading chr %d\n", get_u24(get_val(ctr.args_buf[0])));
+
         str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
         gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
         port = ROOT;
