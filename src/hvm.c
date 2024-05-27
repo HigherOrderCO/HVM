@@ -171,7 +171,7 @@ typedef struct Ctr {
   Port args_buf[16];
 } Ctr;
 
-// Readback: λ-Encoded Str (UTF-16)
+// Readback: λ-Encoded Str (UTF-32)
 // FIXME: this is actually ASCII :|
 // FIXME: remove len limit
 typedef struct Str {
@@ -765,7 +765,7 @@ static inline void link(Net* net, TM* tm, Port A, Port B) {
     if (get_tag(A) != VAR && get_tag(B) == VAR) {
       Port X = A; A = B; B = X;
     }
-    
+
     // If `A` is NODE: create the `A ~ B` redex
     if (get_tag(A) != VAR) {
       push_redex(net, tm, new_pair(A, B)); // TODO: move global ports to local
@@ -806,7 +806,7 @@ static inline bool interact_link(Net* net, TM* tm, Port a, Port b) {
   if (!get_resources(net, tm, 1, 0, 0)) {
     return FALSE;
   }
-  
+
   // Links.
   link_pair(net, tm, new_pair(a, b));
 
@@ -879,7 +879,7 @@ static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_exchange(net, get_val(b), 0);
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-  
+
   //if (B == 0) printf("[%04x] ERROR2: %s\n", tid, show_port(b).x);
 
   // Links.
@@ -910,7 +910,7 @@ static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-      
+
   //if (A == 0) printf("[%04x] ERROR3: %s\n", tid, show_port(a).x);
   //if (B == 0) printf("[%04x] ERROR4: %s\n", tid, show_port(b).x);
 
@@ -985,7 +985,7 @@ static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = enter(net, get_snd(B));
-     
+
   // Performs operation.
   if (get_tag(B1) == NUM) {
     Val  bv = get_val(B1);
@@ -1016,7 +1016,7 @@ static inline bool interact_swit(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
- 
+
   // Stores new nodes.
   if (av == 0) {
     node_create(net, tm->nloc[0], new_pair(B2, new_port(ERA,0)));
@@ -1124,7 +1124,7 @@ void evaluator(Net* net, TM* tm, Book* book) {
       // Update global idle counter
       if (busy) atomic_fetch_add_explicit(&net->idle, 1, memory_order_relaxed);
       busy = FALSE;
-      
+
       //// Peeks a redex from target
       u32  sid = (tm->tid - 1) % TPC;
       u32  idx = sid*(G_RBAG_LEN/TPC) + (tm->sidx++);
@@ -1149,7 +1149,7 @@ void evaluator(Net* net, TM* tm, Book* book) {
       //}
 
       // Stealing Everything: this will steal all redexes
-      
+
       Pair got = atomic_exchange_explicit(&net->rbag_buf[idx], 0, memory_order_relaxed);
       if (got != 0) {
         //printf("[%04x] stolen one task from %04x | itrs=%d idle=%d | %s ~ %s\n", tm->tid, sid, tm->itrs, atomic_load_explicit(&net->idle, memory_order_relaxed),show_port(get_fst(got)).x, show_port(get_snd(got)).x);
@@ -1159,7 +1159,7 @@ void evaluator(Net* net, TM* tm, Book* book) {
         //printf("[%04x] failed to steal from %04x | itrs=%d idle=%d |\n", tm->tid, sid, tm->itrs, atomic_load_explicit(&net->idle, memory_order_relaxed));
         tm->sidx = 0;
       }
-      
+
       // Chill...
       sched_yield();
       // Halt if all threads are idle
@@ -1272,7 +1272,9 @@ Ctr read_ctr(Net* net, Book* book, Port port) {
   return ctr;
 }
 
-// Reads back a UTF-16 string.
+// Reads back a UTF-32 (truncated to 24 bits) string.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
@@ -1280,7 +1282,7 @@ Str read_str(Net* net, Book* book, Port port) {
   // Result
   Str str;
   str.text_len = 0;
-  
+
   // Readback loop
   while (TRUE) {
     // Normalizes the net
@@ -1335,7 +1337,7 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
     Port port = enter(net, rect.port);
     u32  lv   = rect.lv;
     u32  x0   = rect.x0;
-    u32  x1   = rect.x1; 
+    u32  x1   = rect.x1;
     u32  y0   = rect.y0;
     u32  y1   = rect.y1;
     if (get_tag(port) == CON) {
@@ -1400,7 +1402,7 @@ Port io_put_file(Net* net, Book* book, Port argm) {
 
 // IO: GetTime
 Port io_get_time(Net* net, Book* book, Port argm) {
-  // Get the current time in nanoseconds 
+  // Get the current time in nanoseconds
   u64 time_ns = time64();
   // Encode the time as a 64-bit unsigned integer
   u32 time_hi = (u32)(time_ns >> 24) & 0xFFFFFFF;
@@ -1413,12 +1415,12 @@ Port io_get_time(Net* net, Book* book, Port argm) {
   return new_port(CON, loc);
 }
 
-// IO: PutTime 
+// IO: PutTime
 // NOTE: changing this name will corrupt the timeline. You've been warned.
 Port io_put_time(Net* net, Book* book, Port argm) {
   // Get the sleep duration node
   Pair dur_node = node_load(net, get_val(argm));
-  // Get the high and low 24-bit parts of the duration 
+  // Get the high and low 24-bit parts of the duration
   u32 dur_hi = get_u24(get_val(get_fst(dur_node)));
   u32 dur_lo = get_u24(get_val(get_snd(dur_node)));
   // Combine into a 48-bit duration in nanoseconds
@@ -1625,7 +1627,7 @@ void book_load(Book* book, u32* buf) {
 
     // Gets def
     Def* def = &book->defs_buf[fid];
-    
+
     // Reads name
     memcpy(def->name, buf, 256);
     buf += 64;
@@ -1644,7 +1646,7 @@ void book_load(Book* book, u32* buf) {
     // Reads rbag_buf
     memcpy(def->rbag_buf, buf, 8*def->rbag_len);
     buf += def->rbag_len * 2;
-    
+
     // Reads node_buf
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
@@ -1657,7 +1659,7 @@ void book_load(Book* book, u32* buf) {
 void put_u32(char* B, u32 val) {
   for (int i = 0; i < 8; i++, val >>= 4) {
     B[8-i-1] = "0123456789ABCDEF"[val & 0xF];
-  }  
+  }
 }
 
 Show show_port(Port port) {
