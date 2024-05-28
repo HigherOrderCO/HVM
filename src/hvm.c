@@ -34,7 +34,7 @@ typedef _Atomic(u64) a64;
 #ifndef TPC_L2
 #define TPC_L2 0
 #endif
-#define TPC (1ul << TPC_L2)
+unsigned long TPC = (1ul << TPC_L2);
 
 // Types
 // -----
@@ -117,7 +117,7 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 typedef struct Net {
   APair node_buf[G_NODE_LEN]; // global node buffer
   APort vars_buf[G_VARS_LEN]; // global vars buffer
-  APair rbag_buf[G_RBAG_LEN]; // global rbag buffer
+  APair* rbag_buf; // global rbag buffer
   a64 itrs; // interaction count
   a32 idle; // idle thread counter
 } Net;
@@ -565,7 +565,7 @@ static inline u32 rbag_len(Net* net, TM* tm) {
 // TM
 // --
 
-static TM* tm[TPC];
+static TM** tm;
 
 TM* tm_new(u32 tid) {
   TM* tm   = malloc(sizeof(TM));
@@ -580,6 +580,7 @@ TM* tm_new(u32 tid) {
 }
 
 void alloc_static_tms() {
+  tm = malloc(sizeof(TM*) * TPC);
   for (u32 t = 0; t < TPC; ++t) {
     tm[t] = tm_new(t);
   }
@@ -589,6 +590,7 @@ void free_static_tms() {
   for (u32 t = 0; t < TPC; ++t) {
     free(tm[t]);
   }
+  free(tm);
 }
 
 // Net
@@ -650,9 +652,15 @@ static inline Port vars_take(Net* net, u32 var) {
 
 // Initializes a net.
 static inline void net_init(Net* net) {
+  net->rbag_buf = malloc(sizeof(APair) * G_RBAG_LEN);
   // is that needed?
   atomic_store(&net->itrs, 0);
   atomic_store(&net->idle, 0);
+}
+
+static inline void net_free(Net* net) {
+  free(net->rbag_buf);
+  free(net);
 }
 
 // Allocator
@@ -1931,6 +1939,10 @@ void pretty_print_port(Net* net, Book* book, Port port) {
 // ----
 
 void hvm_c(u32* book_buffer) {
+  char* hvm_num_threads = getenv("HVM_NUM_THREADS");
+  if (hvm_num_threads) {
+    TPC = strtoul(hvm_num_threads, NULL, 10);
+  }
   // Creates static TMs
   alloc_static_tms();
 
@@ -1971,7 +1983,7 @@ void hvm_c(u32* book_buffer) {
 
   // Frees everything
   free_static_tms();
-  free(net);
+  net_free(net);
   free(book);
 }
 
