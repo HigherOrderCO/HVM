@@ -270,7 +270,7 @@ impl Numb {
       _ => {
         let typ = numb.get_typ();
         let val = numb.get_u24();
-        format!("[{}{:07X}]", match typ {
+        format!("[{}0x{:07X}]", match typ {
           hvm::OP_ADD => "+",
           hvm::OP_SUB => "-",
           hvm::FP_SUB => ":-",
