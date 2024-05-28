@@ -107,7 +107,7 @@ impl<'i> CoreParser<'i> {
       input.parse::<u64>().map_err(|err| format!("{err:?}"))
     }
   }
-  
+
   pub fn parse_numb(&mut self) -> Result<Numb, String> {
     self.skip_trivia();
 
@@ -194,7 +194,7 @@ impl<'i> CoreParser<'i> {
     }
     Ok(Net { root, rbag })
   }
-  
+
   pub fn parse_book(&mut self) -> Result<Book, String> {
     let mut defs = BTreeMap::new();
     while !self.is_eof() {
@@ -272,7 +272,7 @@ impl Numb {
         let val = numb.get_u24();
         format!("[{}{:07X}]", match typ {
           hvm::OP_ADD => "+",
-          hvm::OP_SUB => "-", 
+          hvm::OP_SUB => "-",
           hvm::FP_SUB => ":-",
           hvm::OP_MUL => "*",
           hvm::OP_DIV => "/",
@@ -362,7 +362,7 @@ impl Tree {
         return Some(Tree::Era);
       }
       hvm::NUM => {
-        return Some(Tree::Num { val: Numb(port.get_val()) });  
+        return Some(Tree::Num { val: Numb(port.get_val()) });
       }
       hvm::CON => {
         let pair = net.node_load(port.get_val() as usize);
@@ -386,7 +386,7 @@ impl Tree {
         let pair = net.node_load(port.get_val() as usize);
         let fst = Tree::readback(net, pair.get_fst(), fids)?;
         let snd = Tree::readback(net, pair.get_snd(), fids)?;
-        return Some(Tree::Swi { fst: Box::new(fst), snd: Box::new(snd) }); 
+        return Some(Tree::Swi { fst: Box::new(fst), snd: Box::new(snd) });
       }
       _ => {
         unreachable!()
