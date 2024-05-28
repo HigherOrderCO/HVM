@@ -1,34 +1,33 @@
 
 use hvm::ast::Tree;
 use insta::assert_snapshot;
+use dyntest::{dyntest, DynTester};
 use TSPL::Parser;
-use std::{
-  collections::HashMap, error::Error, ffi::OsStr, fs, io::Read, path::{Path, PathBuf}, process::{Command, Stdio}
-};
+use std::{collections::HashMap, error::Error, ffi::OsStr, fs, io::Read, path::Path, process::{Command, Stdio}};
 
-#[test]
-fn test_run_programs() {
-  test_dir(&manifest_relative("tests/programs/"));
-}
+dyntest!(test);
 
-#[test]
-fn test_run_examples() {
-  test_dir(&manifest_relative("examples/"));
-}
-
-fn test_dir(dir: &Path) {
-  insta::glob!(dir, "**/*.hvm", test_file)
-}
-
-fn manifest_relative(sub: &str) -> PathBuf {
-  format!("{}/{}", env!("CARGO_MANIFEST_DIR"), sub).into()
-}
-
-fn test_file(path: &Path) {
-  if fs::read_to_string(path).unwrap().contains("@test-skip = 1") {
-    println!("skipping {path:?}");
-    return;
+fn test(t: &mut DynTester) {
+  for (name, path) in t.glob("{examples,tests/programs}/**/*.hvm") {
+    let test = t.test(name.clone(), {
+      let path = path.clone();
+      move || {
+        let mut settings = insta::Settings::new();
+        settings.set_prepend_module_to_snapshot(false);
+        settings.set_input_file(&path);
+        settings.set_snapshot_suffix(name);
+        settings.bind(|| {
+          test_run(&path);
+        })
+      }
+    });
+    if fs::read_to_string(path).unwrap().contains("@test-skip = 1") {
+      test.ignore(true);
+    }
   }
+}
+
+fn test_run(path: &Path) {
   println!("testing {path:?}...");
   let rust_output = execute_hvm(&["run".as_ref(), path.as_os_str()]).unwrap();
   assert_snapshot!(rust_output);

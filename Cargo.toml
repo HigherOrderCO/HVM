@@ -29,3 +29,8 @@ cuda = []
 
 [dev-dependencies]
 insta = { version = "1.39.0", features = ["glob"] }
+dyntest = "0.1.2"
+
+[[test]]
+name = "run"
+harness = false

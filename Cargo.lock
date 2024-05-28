@@ -131,6 +131,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "dyntest"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "829631f0607b7cf07af83ed53c58c8d1e0682663c6c92f737d9cc22d056736df"
+dependencies = [
+ "globset",
+ "walkdir",
+]
+
+[[package]]
 name = "encode_unicode"
 version = "0.3.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -168,6 +178,7 @@ dependencies = [
  "TSPL",
  "cc",
  "clap",
+ "dyntest",
  "highlight_error",
  "insta",
  "num_cpus",
