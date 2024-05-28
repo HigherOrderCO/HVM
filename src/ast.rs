@@ -316,8 +316,8 @@ impl Net {
   pub fn show(&self) -> String {
     let mut s = self.root.show();
     for (par, fst, snd) in &self.rbag {
-      s.push_str(" & ");
-      s.push_str(if *par { "!" } else { "" });
+      s.push_str(" &");
+      s.push_str(if *par { "!" } else { " " });
       s.push_str(&fst.show());
       s.push_str(" ~ ");
       s.push_str(&snd.show());
