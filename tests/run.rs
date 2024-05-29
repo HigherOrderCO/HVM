@@ -60,7 +60,7 @@ fn execute_hvm(args: &[&OsStr]) -> Result<String, Box<dyn Error>> {
   stderr.read_to_string(&mut output)?;
 
   Ok(if !status.success() {
-    format!("exited with code {status}:\n{output}")
+    format!("{status}\n{output}")
   } else {
     parse_output(&output).unwrap_or_else(|err| {
       panic!("error parsing output:\n{err}\n\n{output}")
