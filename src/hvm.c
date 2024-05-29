@@ -21,6 +21,8 @@ typedef uint16_t u16;
 typedef  int32_t i32;
 typedef uint32_t u32;
 typedef uint64_t u64;
+typedef    float f32;
+typedef   double f64;
 
 typedef _Atomic(u8) a8;
 typedef _Atomic(u16) a16;
@@ -429,9 +431,34 @@ static inline Tag get_typ(Numb word) {
   return word & 0x1F;
 }
 
+static inline bool is_num(Numb word) {
+  return get_typ(word) >= TY_U24 && get_typ(word) <= TY_F24;
+}
+
+static inline bool is_cast(Numb word) {
+  return get_typ(word) == TY_SYM && get_sym(word) >= TY_U24 && get_sym(word) <= TY_F24;
+}
+
 // Partial application
 static inline Numb partial(Numb a, Numb b) {
   return (b & ~0x1F) | get_sym(a);
+}
+
+// Cast a number to another type.
+static inline Numb cast(Numb a, Numb b) {
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_U24) return b;
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_I24) return new_u24((u32) get_i24(b));
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_F24) return new_u24((u32) get_f24(b));
+
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_U24) return new_i24((i32) get_u24(b));
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_I24) return b;
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_F24) return new_i24((i32) get_f24(b));
+
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_U24) return new_f24((f32) get_u24(b));
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_I24) return new_f24((f32) get_i24(b));
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_F24) return b;
+
+  return new_u24(0);
 }
 
 // Operate function
@@ -440,6 +467,12 @@ static inline Numb operate(Numb a, Numb b) {
   Tag bt = get_typ(b);
   if (at == TY_SYM && bt == TY_SYM) {
     return new_u24(0);
+  }
+  if (is_cast(a) && is_num(b)) {
+    return cast(a, b);
+  }
+  if (is_cast(b) && is_num(a)) {
+    return cast(b, a);
   }
   if (at == TY_SYM && bt != TY_SYM) {
     return partial(a, b);
@@ -1776,7 +1809,7 @@ void pretty_print_numb(Numb word) {
       } else if (isnan(get_f24(word))) {
         printf("+NaN");
       } else {
-        printf("%f", get_f24(word));
+        printf("%.7e", get_f24(word));
       }
       break;
     }

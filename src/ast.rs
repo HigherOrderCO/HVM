@@ -283,7 +283,7 @@ impl Numb {
         } else if val.is_nan() {
           format!("+NaN")
         } else {
-          format!("{:?}", val)
+          format!("{:.7e}", val)
         }
       }
       _ => {
