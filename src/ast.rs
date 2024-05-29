@@ -43,8 +43,22 @@ impl<'i> CoreParser<'i> {
   pub fn parse_numb_sym(&mut self) -> Result<Numb, String> {
     self.consume("[")?;
 
+      // numeric casts
+    if let Some(cast) = match () {
+      _ if self.try_consume("to_u24") => Some(hvm::TY_U24),
+      _ if self.try_consume("to_i24") => Some(hvm::TY_I24),
+      _ if self.try_consume("to_f24") => Some(hvm::TY_F24),
+      _ => None
+    } {
+      // Closes symbol bracket, as casts can't be partially applied
+      self.consume("]")?;
+
+      return Ok(Numb(hvm::Numb::new_sym(cast).0));
+    }
+
     // Parses the symbol
     let op = hvm::Numb::new_sym(match () {
+      // numeric operations
       _ if self.try_consume("+")   => hvm::OP_ADD,
       _ if self.try_consume("-")   => hvm::OP_SUB,
       _ if self.try_consume(":-")  => hvm::FP_SUB,
@@ -224,6 +238,11 @@ impl Numb {
     let numb = hvm::Numb(self.0);
     match numb.get_typ() {
       hvm::TY_SYM => match numb.get_sym() as hvm::Tag {
+        // casts
+        hvm::TY_U24 => "[to_u24]".to_string(),
+        hvm::TY_I24 => "[to_i24]".to_string(),
+        hvm::TY_F24 => "[to_f24]".to_string(),
+        // operations
         hvm::OP_ADD => "[+]".to_string(),
         hvm::OP_SUB => "[-]".to_string(),
         hvm::FP_SUB => "[:-]".to_string(),
