@@ -335,8 +335,8 @@ impl Net {
   pub fn show(&self) -> String {
     let mut s = self.root.show();
     for (par, fst, snd) in &self.rbag {
-      s.push_str(" & ");
-      s.push_str(if *par { "!" } else { "" });
+      s.push_str(" &");
+      s.push_str(if *par { "!" } else { " " });
       s.push_str(&fst.show());
       s.push_str(" ~ ");
       s.push_str(&snd.show());
@@ -524,18 +524,17 @@ impl Book {
     }
     let mut book = hvm::Book { defs: Vec::new() };
     for (fid, name) in &fid_to_name {
-      if let Some(ast_def) = self.defs.get(name) {
-        let mut def = hvm::Def {
-          name: name.clone(),
-          safe: true,
-          root: hvm::Port(0),
-          rbag: vec![],
-          node: vec![],
-          vars: 0,
-        };
-        ast_def.build(&mut def, &name_to_fid, &mut BTreeMap::new());
-        book.defs.push(def);
-      }
+      let ast_def = self.defs.get(name).expect("missing `@main` definition");
+      let mut def = hvm::Def {
+        name: name.clone(),
+        safe: true,
+        root: hvm::Port(0),
+        rbag: vec![],
+        node: vec![],
+        vars: 0,
+      };
+      ast_def.build(&mut def, &name_to_fid, &mut BTreeMap::new());
+      book.defs.push(def);
     }
     return book;
   }
