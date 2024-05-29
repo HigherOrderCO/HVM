@@ -229,7 +229,7 @@ impl Numb {
   }
 
   // U24: unsigned 24-bit integer
-  
+
   pub fn new_u24(val: u32) -> Self {
     Numb((val << 5) as Val | (TY_U24 as Val))
   }
@@ -249,7 +249,7 @@ impl Numb {
   }
 
   // F24: 24-bit float
-  
+
   pub fn new_f24(val: f32) -> Self {
     let bits = val.to_bits();
     let mut shifted_bits = bits >> 8;
@@ -320,7 +320,7 @@ impl Numb {
           OP_XOR => Numb::new_u24(av ^ bv),
           OP_SHL => Numb::new_u24(av << (bv & 31)),
           OP_SHR => Numb::new_u24(av >> (bv & 31)),
-          FP_SHL => Numb::new_u24(bv << (av & 31)), 
+          FP_SHL => Numb::new_u24(bv << (av & 31)),
           FP_SHR => Numb::new_u24(bv >> (av & 31)),
           _      => unreachable!(),
         }
@@ -442,7 +442,7 @@ impl<'a> GNet<'a> {
   pub fn vars_store(&self, var: usize, val: Port) {
     self.vars[var].0.store(val.0, Ordering::Relaxed);
   }
-  
+
   pub fn node_exchange(&self, loc: usize, val: Pair) -> Pair {
     Pair(self.node[loc].0.swap(val.0, Ordering::Relaxed))
   }
@@ -512,7 +512,7 @@ impl TMem {
       rbag: RBag::new(),
     }
   }
-  
+
   pub fn node_alloc(&mut self, net: &GNet, num: usize) -> usize {
     let mut got = 0;
     for _ in 0..net.nlen {
@@ -603,7 +603,7 @@ impl TMem {
 
     // Links.
     self.link_pair(net, Pair::new(a, b));
-    
+
     true
   }
 
@@ -649,7 +649,7 @@ impl TMem {
       self.link_pair(net, pair.adjust_pair(self));
     }
     self.link_pair(net, Pair::new(def.root.adjust_port(self), b));
-  
+
     true
   }
 
@@ -678,7 +678,7 @@ impl TMem {
     // Links.
     self.link_pair(net, Pair::new(a, b1));
     self.link_pair(net, Pair::new(a, b2));
-    
+
     true
   }
 
@@ -728,7 +728,7 @@ impl TMem {
     let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
     let b2 = b_.get_snd();
-      
+
     // Stores new vars.
     net.vars_create(self.vloc[0], NONE);
     net.vars_create(self.vloc[1], NONE);
@@ -746,7 +746,7 @@ impl TMem {
     self.link_pair(net, Pair::new(Port::new(b.get_tag(), self.nloc[1] as u32), a2));
     self.link_pair(net, Pair::new(Port::new(a.get_tag(), self.nloc[2] as u32), b1));
     self.link_pair(net, Pair::new(Port::new(a.get_tag(), self.nloc[3] as u32), b2));
-    
+
     true
   }
 
@@ -768,7 +768,7 @@ impl TMem {
     let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
     let b2 = net.enter(b_.get_snd());
-     
+
     // Performs operation.
     if b1.get_tag() == NUM {
       let bv = b1.get_val();
@@ -788,7 +788,7 @@ impl TMem {
     if !self.get_resources(net, 1, 2, 0) {
       return false;
     }
-  
+
     // Checks availability
     if net.node_load(b.get_val() as usize).0 == 0 {
       return false;
@@ -799,7 +799,7 @@ impl TMem {
     let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
     let b2 = b_.get_snd();
- 
+
     // Stores new nodes.
     if av == 0 {
       net.node_create(self.nloc[0], Pair::new(b2, Port::new(ERA,0)));
@@ -936,13 +936,13 @@ impl Book {
 
       // Writes the rbag length
       buf.extend_from_slice(&(def.rbag.len() as u32).to_ne_bytes());
-      
+
       // Writes the node length
       buf.extend_from_slice(&(def.node.len() as u32).to_ne_bytes());
 
       // Writes the vars length
       buf.extend_from_slice(&(def.vars as u32).to_ne_bytes());
-      
+
       // Writes the root
       buf.extend_from_slice(&def.root.0.to_ne_bytes());
 

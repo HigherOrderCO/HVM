@@ -1782,26 +1782,26 @@ void pretty_print_numb(Numb word) {
     }
     default: {
       switch (get_typ(word)) {
-        case OP_ADD: printf("[+%07X]", get_u24(word)); break;
-        case OP_SUB: printf("[-%07X]", get_u24(word)); break;
-        case FP_SUB: printf("[:-%07X]", get_u24(word)); break;
-        case OP_MUL: printf("[*%07X]", get_u24(word)); break;
-        case OP_DIV: printf("[/%07X]", get_u24(word)); break;
-        case FP_DIV: printf("[:/%07X]", get_u24(word)); break;
-        case OP_REM: printf("[%%%07X]", get_u24(word)); break;
-        case FP_REM: printf("[:%%%07X]", get_u24(word)); break;
-        case OP_EQ:  printf("[=%07X]", get_u24(word)); break;
-        case OP_NEQ: printf("[!%07X]", get_u24(word)); break;
-        case OP_LT:  printf("[<%07X]", get_u24(word)); break;
-        case OP_GT:  printf("[>%07X]", get_u24(word)); break;
-        case OP_AND: printf("[&%07X]", get_u24(word)); break;
-        case OP_OR:  printf("[|%07X]", get_u24(word)); break;
-        case OP_XOR: printf("[^%07X]", get_u24(word)); break;
-        case OP_SHL: printf("[<<%07X]", get_u24(word)); break;
-        case FP_SHL: printf("[:<<%07X]", get_u24(word)); break;
-        case OP_SHR: printf("[>>%07X]", get_u24(word)); break;
-        case FP_SHR: printf("[:>>%07X]", get_u24(word)); break;
-        default:     printf("[?%07X]", get_u24(word)); break;
+        case OP_ADD: printf("[+0x%07X]", get_u24(word)); break;
+        case OP_SUB: printf("[-0x%07X]", get_u24(word)); break;
+        case FP_SUB: printf("[:-0x%07X]", get_u24(word)); break;
+        case OP_MUL: printf("[*0x%07X]", get_u24(word)); break;
+        case OP_DIV: printf("[/0x%07X]", get_u24(word)); break;
+        case FP_DIV: printf("[:/0x%07X]", get_u24(word)); break;
+        case OP_REM: printf("[%%0x%07X]", get_u24(word)); break;
+        case FP_REM: printf("[:%%0x%07X]", get_u24(word)); break;
+        case OP_EQ:  printf("[=0x%07X]", get_u24(word)); break;
+        case OP_NEQ: printf("[!0x%07X]", get_u24(word)); break;
+        case OP_LT:  printf("[<0x%07X]", get_u24(word)); break;
+        case OP_GT:  printf("[>0x%07X]", get_u24(word)); break;
+        case OP_AND: printf("[&0x%07X]", get_u24(word)); break;
+        case OP_OR:  printf("[|0x%07X]", get_u24(word)); break;
+        case OP_XOR: printf("[^0x%07X]", get_u24(word)); break;
+        case OP_SHL: printf("[<<0x%07X]", get_u24(word)); break;
+        case FP_SHL: printf("[:<<0x%07X]", get_u24(word)); break;
+        case OP_SHR: printf("[>>0x%07X]", get_u24(word)); break;
+        case FP_SHR: printf("[:>>0x%07X]", get_u24(word)); break;
+        default:     printf("[?0x%07X]", get_u24(word)); break;
       }
       break;
     }
