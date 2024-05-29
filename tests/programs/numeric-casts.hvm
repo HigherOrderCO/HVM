@@ -1,14 +1,14 @@
 @main = x & @tu0 ~ (* x)
 
 // casting to u24 (casts from a value of of range of u24 is UB)
-@tu0 = (* {n x}) & @tu1 ~ (* x) &  2.55 ~ $([to_u24] n) // 3
+@tu0 = (* {n x}) & @tu1 ~ (* x) &  2.55 ~ $([to_u24] n) // 2
 @tu1 = (* {n x}) & @tu2 ~ (* x) &  0.15 ~ $([to_u24] n) // 0
 @tu2 = (* {n x}) & @tu3 ~ (* x) & +1234 ~ $([to_u24] n) // 1234
 @tu3 = (* {n x}) & @ti0 ~ (* x) &  4321 ~ $([to_u24] n) // 4321
 
 // casting to i24 (casts from a value out of range of i24 is UB)
-@ti0 = (* {n x}) & @ti1 ~ (* x) &  2.55 ~ $([to_i24] n) // +3
-@ti1 = (* {n x}) & @ti2 ~ (* x) & -2.15 ~ $([to_i24] n) // -1
+@ti0 = (* {n x}) & @ti1 ~ (* x) &  2.55 ~ $([to_i24] n) // +2
+@ti1 = (* {n x}) & @ti2 ~ (* x) & -2.15 ~ $([to_i24] n) // -2
 @ti2 = (* {n x}) & @ti3 ~ (* x) &  0.15 ~ $([to_i24] n) // +0
 @ti3 = (* {n x}) & @ti4 ~ (* x) & -1234 ~ $([to_i24] n) // -1234
 @ti4 = (* {n x}) & @ti5 ~ (* x) & +1234 ~ $([to_i24] n) // +1234
