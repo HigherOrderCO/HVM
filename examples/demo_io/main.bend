@@ -23,6 +23,12 @@ def call_io(func, argm):
 
 def main:
   do IO_T:
-    x <- call_io("PUT_TEXT", "hello\n")
-    y <- call_io("PUT_TEXT", "world\n")
+    * <- call_io("PUT_TEXT", "what is your name?\n")
+    n <- call_io("GET_LINE", "")
+    c <- call_io("PUT_LINE", "pick a number 0-9?\n")
+    * <- call_io("PUT_TEXT", "hello, '")
+    * <- call_io("PUT_TEXT", n)
+    * <- call_io("PUT_TEXT", "', you picked '")
+    * <- call_io("PUT_TEXT", c)
+    * <- call_io("PUT_TEXT", "'! Nice choice!")
     return 42

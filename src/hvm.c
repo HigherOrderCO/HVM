@@ -599,7 +599,7 @@ static inline void node_create(Net* net, u32 loc, Pair val) {
   atomic_store_explicit(&net->node_buf[loc], val, memory_order_relaxed);
 }
 
-// Stores a var on global. Returns old.
+// Stores a var on global.
 static inline void vars_create(Net* net, u32 var, Port val) {
   atomic_store_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
@@ -617,11 +617,6 @@ static inline Port vars_load(Net* net, u32 var) {
 // Stores a node on global.
 static inline void node_store(Net* net, u32 loc, Pair val) {
   atomic_store_explicit(&net->node_buf[loc], val, memory_order_relaxed);
-}
-
-// Stores a var on global. Returns old.
-static inline void vars_store(Net* net, u32 var, Port val) {
-  atomic_store_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
 
 // Exchanges a node on global by a value. Returns old.
@@ -1231,7 +1226,7 @@ Port expand(Net* net, Book* book, Port port) {
     normalize(net, book);
     got = peek(net, vars_load(net, get_val(ROOT)));
   }
-  vars_store(net, get_val(ROOT), old);
+  vars_create(net, get_val(ROOT), old);
   return got;
 }
 
@@ -1240,7 +1235,7 @@ Port expand(Net* net, Book* book, Port port) {
 
 // Reads back a λ-Encoded constructor from device to host.
 // Encoding: λt ((((t TAG) arg0) arg1) ...)
-Ctr read_ctr(Net* net, Book* book, Port port) {
+Ctr port_to_ctr(Net* net, Book* book, Port port) {
   Ctr ctr;
   ctr.tag = -1;
   ctr.args_len = 0;
@@ -1272,13 +1267,13 @@ Ctr read_ctr(Net* net, Book* book, Port port) {
   return ctr;
 }
 
-// Reads back a UTF-32 (truncated to 24 bits) string.
+// Converts a UTF-32 (truncated to 24 bits) string to a Port.
 // Since unicode scalars can fit in 21 bits, HVM's u24
 // integers can contain any unicode scalar value.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Str read_str(Net* net, Book* book, Port port) {
+Str port_to_str(Net* net, Book* book, Port port) {
   // Result
   Str str;
   str.text_len = 0;
@@ -1291,7 +1286,7 @@ Str read_str(Net* net, Book* book, Port port) {
     //printf("reading str %s\n", show_port(peek(net, port)).x);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = read_ctr(net, book, peek(net, port));
+    Ctr ctr = port_to_ctr(net, book, peek(net, port));
 
     //printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
 
@@ -1317,6 +1312,58 @@ Str read_str(Net* net, Book* book, Port port) {
   str.text_buf[str.text_len] = '\0';
 
   return str;
+}
+
+/// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
+Port nil_port(Net* net) {
+  if (!get_resources(net, tm[0], 0, 2, 1)) {
+    printf("failed to get resources... (nil)\n");
+    return new_port(ERA, 0);
+  }
+
+  vars_create(net, tm[0]->vloc[0], NONE);
+  Port var = new_port(VAR, tm[0]->vloc[0]);
+
+  node_create(net, tm[0]->nloc[0], new_pair(new_port(NUM, new_u24(LIST_NIL)), var));
+  node_create(net, tm[0]->nloc[1], new_pair(new_port(CON, tm[0]->nloc[0]), var));
+
+  return new_port(CON, tm[0]->nloc[1]);
+}
+
+/// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
+Port cons_port(Net* net, Port head, Port tail) {
+  if (!get_resources(net, tm[0], 0, 4, 1)) {
+    printf("failed to get resources... (cons)\n");
+    return new_port(ERA, 0);
+  }
+
+  vars_create(net, tm[0]->vloc[0], NONE);
+  Port var = new_port(VAR, tm[0]->vloc[0]);
+
+  node_create(net, tm[0]->nloc[0], new_pair(tail, var));
+  node_create(net, tm[0]->nloc[1], new_pair(head, new_port(CON, tm[0]->nloc[0])));
+  node_create(net, tm[0]->nloc[2], new_pair(new_port(NUM, new_u24(LIST_CONS)), new_port(CON, tm[0]->nloc[1])));
+  node_create(net, tm[0]->nloc[3], new_pair(new_port(CON, tm[0]->nloc[2]), var));
+
+  return new_port(CON, tm[0]->nloc[3]);
+}
+
+// Converts a UTF-32 (truncated to 24 bits) string to a Port.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Port str_to_port(Net* net, Str *str) {
+  Port port = nil_port(net);
+
+  u32 len = str->text_len;
+  for (u32 i = 0; i < len; i++) {
+    Port chr = new_port(NUM, new_u24(str->text_buf[len - i - 1]));
+    port = cons_port(net, chr, port);
+  }
+
+  return port;
 }
 
 // Reads back an image.
@@ -1372,16 +1419,42 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
 // Primitive IO Fns
 // -----------------
 
-// IO: GetText
-Port io_get_text(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
-  return new_port(ERA, 0);
+// IO: GetChar
+// Reads a single char from stdin.
+Port io_get_char(Net* net, Book* book, Port argm) {
+  /// Read a string.
+  Str str;
+
+  str.text_buf[0] = fgetc(stdin);
+  str.text_buf[1] = 0;
+  str.text_len = 1;
+
+  return str_to_port(net, &str);
+}
+
+// IO: GetLine
+// Reads from stdin at most 255 characters or until a newline is seen.
+Port io_get_line(Net* net, Book* book, Port argm) {
+  /// Read a string.
+  Str str;
+
+  fgets(str.text_buf, sizeof(str.text_buf), stdin);
+  str.text_len = strlen(str.text_buf);
+
+  // Strip any trailing newline.
+  if (str.text_len > 0 && str.text_buf[str.text_len - 1] == '\n') {
+    str.text_buf[str.text_len] = 0;
+    str.text_len--;
+  }
+
+  // Convert it to a port.
+  return str_to_port(net, &str);
 }
 
 // IO: PutText
 Port io_put_text(Net* net, Book* book, Port argm) {
   // Converts argument to C string
-  Str str = read_str(net, book, argm);
+  Str str = port_to_str(net, book, argm);
   // Prints it
   printf("%s", str.text_buf);
   // Returns result (in this case, just an eraser)
@@ -1554,7 +1627,7 @@ void do_run_io(Net* net, Book* book, Port port) {
     normalize(net, book);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = read_ctr(net, book, peek(net, port));
+    Ctr ctr = port_to_ctr(net, book, peek(net, port));
 
     // Checks if IO Magic Number is a CON
     if (get_tag(ctr.args_buf[0]) != CON) {
@@ -1570,7 +1643,7 @@ void do_run_io(Net* net, Book* book, Port port) {
 
     switch (ctr.tag) {
       case IO_CALL: {
-        Str  func = read_str(net, book, ctr.args_buf[1]);
+        Str  func = port_to_str(net, book, ctr.args_buf[1]);
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
         u32  lps  = 0;
@@ -1607,13 +1680,14 @@ void do_run_io(Net* net, Book* book, Port port) {
 
 // TODO: initialize ffns_len with the builtin ffns
 void book_init(Book* book) {
-  book->ffns_len = 6;
-  book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
-  book->ffns_buf[1] = (FFn){"PUT_TEXT", io_put_text};
-  book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
-  book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
-  book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
-  book->ffns_buf[5] = (FFn){"PUT_TIME", io_put_time};
+  book->ffns_len = 7;
+  book->ffns_buf[0] = (FFn){"GET_CHAR", io_get_char};
+  book->ffns_buf[1] = (FFn){"GET_LINE", io_get_line};
+  book->ffns_buf[2] = (FFn){"PUT_TEXT", io_put_text};
+  book->ffns_buf[3] = (FFn){"GET_FILE", io_get_file};
+  book->ffns_buf[4] = (FFn){"PUT_FILE", io_put_file};
+  book->ffns_buf[5] = (FFn){"GET_TIME", io_get_time};
+  book->ffns_buf[6] = (FFn){"PUT_TIME", io_put_time};
 }
 
 void book_load(Book* book, u32* buf) {
