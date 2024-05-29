@@ -43,14 +43,14 @@ impl<'i> CoreParser<'i> {
   pub fn parse_numb_sym(&mut self) -> Result<Numb, String> {
     self.consume("[")?;
 
-      // numeric casts
+    // numeric casts
     if let Some(cast) = match () {
       _ if self.try_consume("to_u24") => Some(hvm::TY_U24),
       _ if self.try_consume("to_i24") => Some(hvm::TY_I24),
       _ if self.try_consume("to_f24") => Some(hvm::TY_F24),
       _ => None
     } {
-      // Closes symbol bracket, as casts can't be partially applied
+      // Casts can't be partially applied, so nothing should follow.
       self.consume("]")?;
 
       return Ok(Numb(hvm::Numb::new_sym(cast).0));
