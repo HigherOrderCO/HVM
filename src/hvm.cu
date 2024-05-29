@@ -540,6 +540,31 @@ __device__ __host__ inline Tag get_typ(Numb word) {
   return word & 0x1F;
 }
 
+__device__ __host__ inline bool is_num(Numb word) {
+  return get_typ(word) >= TY_U24 && get_typ(word) <= TY_F24;
+}
+
+__device__ __host__ inline bool is_cast(Numb word) {
+  return get_typ(word) == TY_SYM && get_sym(word) >= TY_U24 && get_sym(word) <= TY_F24;
+}
+
+// Cast a number to another type.
+__device__ __host__ inline Numb cast(Numb a, Numb b) {
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_U24) return b;
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_I24) return new_u24((u32) get_i24(b));
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_F24) return new_u24((u32) get_f24(b));
+
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_U24) return new_i24((i32) get_u24(b));
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_I24) return b;
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_F24) return new_i24((i32) get_f24(b));
+
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_U24) return new_f24((f32) get_u24(b));
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_I24) return new_f24((f32) get_i24(b));
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_F24) return b;
+
+  return new_u24(0);
+}
+
 // Partial application
 __device__ __host__ inline Numb partial(Numb a, Numb b) {
   return (b & ~0x1F) | get_sym(a);
@@ -551,6 +576,12 @@ __device__ __host__ inline Numb operate(Numb a, Numb b) {
   Tag bt = get_typ(b);
   if (at == TY_SYM && bt == TY_SYM) {
     return new_u24(0);
+  }
+  if (is_cast(a) && is_num(b)) {
+    return cast(a, b);
+  }
+  if (is_cast(b) && is_num(a)) {
+    return cast(b, a);
   }
   if (at == TY_SYM && bt != TY_SYM) {
     return partial(a, b);
@@ -2226,7 +2257,7 @@ __device__ void pretty_print_numb(Numb word) {
       } else if (isnan(get_f24(word))) {
         printf("+NaN");
       } else {
-        printf("%f", get_f24(word));
+        printf("%.7e", get_f24(word));
       }
       break;
     }
