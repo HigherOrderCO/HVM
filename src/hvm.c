@@ -1317,7 +1317,7 @@ Str port_to_str(Net* net, Book* book, Port port) {
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
 Port nil_port(Net* net) {
   if (!get_resources(net, tm[0], 0, 2, 1)) {
-    printf("failed to get resources... (nil)\n");
+    fprintf(stderr, "nil_port: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
@@ -1333,7 +1333,7 @@ Port nil_port(Net* net) {
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
 Port cons_port(Net* net, Port head, Port tail) {
   if (!get_resources(net, tm[0], 0, 4, 1)) {
-    printf("failed to get resources... (cons)\n");
+    fprintf(stderr, "cons_port: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
@@ -1427,6 +1427,7 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
 // - 2 -> stderr
 static FILE* FILE_POINTERS[256];
 
+// Converts a NUM port (file descriptor) to file pointer.
 FILE* port_to_file(Port port) {
   if (get_tag(port) != NUM) {
     fprintf(stderr, "non-num where file descriptor was expected: %i\n", get_tag(port));
