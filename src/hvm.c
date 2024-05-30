@@ -1419,26 +1419,66 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
 // Primitive IO Fns
 // -----------------
 
-// IO: GetChar
-// Reads a single char from stdin.
-Port io_get_char(Net* net, Book* book, Port argm) {
+// Open file pointers. Indices into this array
+// are used as "file descriptors".
+// Indices 0 1 and 2 are reserved.
+// - 0 -> stdin
+// - 1 -> stdout
+// - 2 -> stderr
+static FILE* FILE_POINTERS[256];
+
+FILE* port_to_file(Port port) {
+  if (get_tag(port) != NUM) {
+    fprintf(stderr, "non-num where file descriptor was expected: %i\n", get_tag(port));
+    return NULL;
+  }
+
+  u32 idx = get_u24(get_val(port));
+
+  if (idx == 0) return stdin;
+  if (idx == 1) return stdout;
+  if (idx == 2) return stderr;
+
+  FILE* fp = FILE_POINTERS[idx];
+  if (fp == NULL) {
+    fprintf(stderr, "invalid file descriptor\n");
+    return NULL;
+  }
+
+  return fp;
+}
+
+// Reads a single char from `argm`.
+Port io_read_char(Net* net, Book* book, Port argm) {
+  FILE* fp = port_to_file(peek(net, argm));
+  if (fp == NULL) {
+    return new_port(ERA, 0);
+  }
+
   /// Read a string.
   Str str;
 
-  str.text_buf[0] = fgetc(stdin);
+  str.text_buf[0] = fgetc(fp);
   str.text_buf[1] = 0;
   str.text_len = 1;
 
   return str_to_port(net, &str);
 }
 
-// IO: GetLine
-// Reads from stdin at most 255 characters or until a newline is seen.
-Port io_get_line(Net* net, Book* book, Port argm) {
+// Reads from `argm` at most 255 characters or until a newline is seen.
+Port io_read_line(Net* net, Book* book, Port argm) {
+  FILE* fp = port_to_file(peek(net, argm));
+  if (fp == NULL) {
+    fprintf(stderr, "io_read_line: invalid file descriptor\n");
+    return new_port(ERA, 0);
+  }
+
   /// Read a string.
   Str str;
 
-  fgets(str.text_buf, sizeof(str.text_buf), stdin);
+  if (fgets(str.text_buf, sizeof(str.text_buf), fp) == NULL) {
+    fprintf(stderr, "io_read_line: failed to read\n");
+  }
   str.text_len = strlen(str.text_buf);
 
   // Strip any trailing newline.
@@ -1451,29 +1491,77 @@ Port io_get_line(Net* net, Book* book, Port argm) {
   return str_to_port(net, &str);
 }
 
-// IO: PutText
-Port io_put_text(Net* net, Book* book, Port argm) {
-  // Converts argument to C string
-  Str str = port_to_str(net, book, argm);
-  // Prints it
-  printf("%s", str.text_buf);
-  // Returns result (in this case, just an eraser)
+// Opens a file with the provided mode.
+// `argm` is a tuple (CON node) of the
+// file name and mode as strings.
+Port io_open_file(Net* net, Book* book, Port argm) {
+  if (get_tag(peek(net, argm)) != CON) {
+    fprintf(stderr, "io_open_file: expected tuple\n");
+    return new_port(ERA, 0);
+  }
+
+  Pair args = node_load(net, get_val(argm));
+  Str name = port_to_str(net, book, get_fst(args));
+  Str mode = port_to_str(net, book, get_snd(args));
+
+  for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
+    if (FILE_POINTERS[fd] == NULL) {
+      FILE_POINTERS[fd] = fopen(name.text_buf, mode.text_buf);
+      return new_port(NUM, new_u24(fd));
+    }
+  }
+
+  fprintf(stderr, "io_open_file: too many open files\n");
+
   return new_port(ERA, 0);
 }
 
-// IO: GetFile
-Port io_get_file(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
+// Closes a file, reclaiming the file descriptor.
+Port io_close_file(Net* net, Book* book, Port argm) {
+  FILE* fp = port_to_file(peek(net, argm));
+  if (fp == NULL) {
+    fprintf(stderr, "io_close_file: failed to close\n");
+    return new_port(ERA, 0);
+  }
+
+  int err = fclose(fp) != 0;
+  if (err != 0) {
+    fprintf(stderr, "io_close_file: failed to close: %i\n", err);
+    return new_port(ERA, 0);
+  }
+
+  FILE_POINTERS[get_u24(get_val(argm))] = NULL;
+
   return new_port(ERA, 0);
 }
 
-// IO: PutFile
-Port io_put_file(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
+// Writes a string to a file.
+// `argm` is a tuple (CON node) of the
+// file descriptor and string to write.
+Port io_write(Net* net, Book* book, Port argm) {
+  if (get_tag(peek(net, argm)) != CON) {
+    fprintf(stderr, "io_write: expected tuple, but got %u, port: %u\n", get_tag(peek(net, argm)), argm);
+    return new_port(ERA, 0);
+  }
+
+  Pair args = node_load(net, get_val(argm));
+  FILE* fp = port_to_file(peek(net, get_fst(args)));
+  Str str = port_to_str(net, book, get_snd(args));
+
+  if (fp == NULL) {
+    fprintf(stderr, "io_write: invalid file descriptor\n");
+    return new_port(ERA, 0);
+  }
+
+  if (fputs(str.text_buf, fp) == EOF) {
+    fprintf(stderr, "io_write: failed to write\n");
+  }
+
   return new_port(ERA, 0);
 }
 
-// IO: GetTime
+// Returns the current time as a tuple of the high
+// and low 24 bits of a 48-bit nanosecond timestamp.
 Port io_get_time(Net* net, Book* book, Port argm) {
   // Get the current time in nanoseconds
   u64 time_ns = time64();
@@ -1488,9 +1576,10 @@ Port io_get_time(Net* net, Book* book, Port argm) {
   return new_port(CON, loc);
 }
 
-// IO: PutTime
-// NOTE: changing this name will corrupt the timeline. You've been warned.
-Port io_put_time(Net* net, Book* book, Port argm) {
+// Sleeps.
+// `argm` is a tuple (CON node) of the high and low
+// 24 bits for a 48-bit duration in nanoseconds.
+Port io_sleep(Net* net, Book* book, Port argm) {
   // Get the sleep duration node
   Pair dur_node = node_load(net, get_val(argm));
   // Get the high and low 24-bit parts of the duration
@@ -1681,13 +1770,13 @@ void do_run_io(Net* net, Book* book, Port port) {
 // TODO: initialize ffns_len with the builtin ffns
 void book_init(Book* book) {
   book->ffns_len = 7;
-  book->ffns_buf[0] = (FFn){"GET_CHAR", io_get_char};
-  book->ffns_buf[1] = (FFn){"GET_LINE", io_get_line};
-  book->ffns_buf[2] = (FFn){"PUT_TEXT", io_put_text};
-  book->ffns_buf[3] = (FFn){"GET_FILE", io_get_file};
-  book->ffns_buf[4] = (FFn){"PUT_FILE", io_put_file};
+  book->ffns_buf[0] = (FFn){"READ_CHAR", io_read_char};
+  book->ffns_buf[1] = (FFn){"READ_LINE", io_read_line};
+  book->ffns_buf[2] = (FFn){"OPEN_FILE", io_open_file};
+  book->ffns_buf[3] = (FFn){"CLOSE_FILE", io_close_file};
+  book->ffns_buf[4] = (FFn){"WRITE", io_write};
   book->ffns_buf[5] = (FFn){"GET_TIME", io_get_time};
-  book->ffns_buf[6] = (FFn){"PUT_TIME", io_put_time};
+  book->ffns_buf[6] = (FFn){"SLEEP", io_sleep};
 }
 
 void book_load(Book* book, u32* buf) {
