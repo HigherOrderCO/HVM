@@ -261,7 +261,7 @@ __global__ void print_heatmap(GNet* gnet, u32 turn);
 // Utils
 // -----
 
-inline f32 clamp(f32 x, f32 min, f32 max) {
+__device__ __host__ f32 clamp(f32 x, f32 min, f32 max) {
   const f32 t = x < min ? min : x;
   return (t > max) ? max : t;
 }
@@ -561,7 +561,7 @@ __device__ __host__ inline bool is_cast(Numb word) {
 //                saturating if out of range and 0 if NaN
 // - i24  -> f24,
 //   u24  -> f24: casts to the "closest" float representing this integer.
-static inline Numb cast(Numb a, Numb b) {
+__device__ __host__ inline Numb cast(Numb a, Numb b) {
   if (get_sym(a) == TY_U24 && get_typ(b) == TY_U24) return b;
   if (get_sym(a) == TY_U24 && get_typ(b) == TY_I24) {
     // reinterpret bits
