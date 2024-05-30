@@ -284,6 +284,13 @@ impl Numb {
   }
 
   // Cast a number to another type.
+  // The semantics are meant to spiritually resemble rust's numeric casts:
+  // - i24 <-> u24: is just reinterpretation of bits
+  // - f24  -> i24,
+  //   f24  -> u24: casts to the "closest" integer representing this float,
+  //                saturating if out of range and 0 if NaN
+  // - i24  -> f24,
+  //   u24  -> f24: casts to the "closest" float representing this integer.
   pub fn cast(a: Self, b: Self) -> Self {
     match (a.get_sym(), b.get_typ()) {
       (TY_U24, TY_U24) => b,
