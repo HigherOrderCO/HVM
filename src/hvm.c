@@ -1541,7 +1541,7 @@ Port io_close_file(Net* net, Book* book, Port argm) {
 // file descriptor and string to write.
 Port io_write(Net* net, Book* book, Port argm) {
   if (get_tag(peek(net, argm)) != CON) {
-    fprintf(stderr, "io_write: expected tuple, but got %u, port: %u\n", get_tag(peek(net, argm)), argm);
+    fprintf(stderr, "io_write: expected tuple, but got %u\n", get_tag(peek(net, argm)));
     return new_port(ERA, 0);
   }
 
