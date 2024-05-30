@@ -280,8 +280,13 @@ static inline void swap(Port *a, Port *b) {
   Port x = *a; *a = *b; *b = x;
 }
 
-u32 min(u32 a, u32 b) {
+inline u32 min(u32 a, u32 b) {
   return (a < b) ? a : b;
+}
+
+inline f32 clamp(f32 x, f32 min, f32 max) {
+  const f32 t = x < min ? min : x;
+  return (t > max) ? max : t;
 }
 
 // A simple spin-wait barrier using atomic operations
@@ -445,14 +450,41 @@ static inline Numb partial(Numb a, Numb b) {
 }
 
 // Cast a number to another type.
+// The semantics are meant to spiritually resemble rust's numeric casts:
+// - i24 <-> u24: is just reinterpretation of bits
+// - f24  -> i24,
+//   f24  -> u24: casts to the "closest" integer representing this float,
+//                saturating if out of range and 0 if NaN
+// - i24  -> f24,
+//   u24  -> f24: casts to the "closest" float representing this integer.
 static inline Numb cast(Numb a, Numb b) {
   if (get_sym(a) == TY_U24 && get_typ(b) == TY_U24) return b;
-  if (get_sym(a) == TY_U24 && get_typ(b) == TY_I24) return new_u24((u32) get_i24(b));
-  if (get_sym(a) == TY_U24 && get_typ(b) == TY_F24) return new_u24((u32) get_f24(b));
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_I24) {
+    // reinterpret bits
+    i32 val = get_i24(b);
+    return new_u24(*(u32*) &val);
+  }
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_F24) {
+    f32 val = get_f24(b);
+    if (isnan(val)) {
+      return new_u24(0);
+    }
+    return new_u24((u32) clamp(val, 0.0, 16777215));
+  }
 
-  if (get_sym(a) == TY_I24 && get_typ(b) == TY_U24) return new_i24((i32) get_u24(b));
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_U24) {
+    // reinterpret bits
+    u32 val = get_u24(b);
+    return new_i24(*(i32*) &val);
+  }
   if (get_sym(a) == TY_I24 && get_typ(b) == TY_I24) return b;
-  if (get_sym(a) == TY_I24 && get_typ(b) == TY_F24) return new_i24((i32) get_f24(b));
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_F24) {
+    f32 val = get_f24(b);
+    if (isnan(val)) {
+      return new_i24(0);
+    }
+    return new_i24((i32) clamp(val, -8388608.0, 8388607.0));
+  }
 
   if (get_sym(a) == TY_F24 && get_typ(b) == TY_U24) return new_f24((f32) get_u24(b));
   if (get_sym(a) == TY_F24 && get_typ(b) == TY_I24) return new_f24((f32) get_i24(b));

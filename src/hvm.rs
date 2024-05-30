@@ -288,11 +288,11 @@ impl Numb {
     match (a.get_sym(), b.get_typ()) {
       (TY_U24, TY_U24) => b,
       (TY_U24, TY_I24) => Self::new_u24(b.get_i24() as u32),
-      (TY_U24, TY_F24) => Self::new_u24(b.get_f24() as u32),
+      (TY_U24, TY_F24) => Self::new_u24(b.get_f24().clamp(0.0, 16777215.0) as u32),
 
       (TY_I24, TY_U24) => Self::new_i24(b.get_u24() as i32),
       (TY_I24, TY_I24) => b,
-      (TY_I24, TY_F24) => Self::new_i24(b.get_f24() as i32),
+      (TY_I24, TY_F24) => Self::new_i24(b.get_f24().clamp(-8388608.0, 8388607.0) as i32),
 
       (TY_F24, TY_U24) => Self::new_f24(b.get_u24() as f32),
       (TY_F24, TY_I24) => Self::new_f24(b.get_i24() as f32),
