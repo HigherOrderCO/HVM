@@ -1235,7 +1235,7 @@ Port expand(Net* net, Book* book, Port port) {
 
 // Reads back a λ-Encoded constructor from device to host.
 // Encoding: λt ((((t TAG) arg0) arg1) ...)
-Ctr port_to_ctr(Net* net, Book* book, Port port) {
+Ctr readback_ctr(Net* net, Book* book, Port port) {
   Ctr ctr;
   ctr.tag = -1;
   ctr.args_len = 0;
@@ -1273,7 +1273,7 @@ Ctr port_to_ctr(Net* net, Book* book, Port port) {
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Str port_to_str(Net* net, Book* book, Port port) {
+Str readback_str(Net* net, Book* book, Port port) {
   // Result
   Str str;
   str.text_len = 0;
@@ -1286,7 +1286,7 @@ Str port_to_str(Net* net, Book* book, Port port) {
     //printf("reading str %s\n", show_port(peek(net, port)).x);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = port_to_ctr(net, book, peek(net, port));
+    Ctr ctr = readback_ctr(net, book, peek(net, port));
 
     //printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
 
@@ -1315,9 +1315,9 @@ Str port_to_str(Net* net, Book* book, Port port) {
 }
 
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
-/// Should only be called within `str_to_port`, as a previous call
+/// Should only be called within `inject_str`, as a previous call
 /// to `get_resources` is expected.
-Port nil_port(Net* net) {
+Port inject_nil(Net* net) {
   u32 v1 = tm[0]->vloc[0];
 
   u32 n1 = tm[0]->nloc[0];
@@ -1333,12 +1333,12 @@ Port nil_port(Net* net) {
 }
 
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
-/// Should only be called within `str_to_port`, as a previous call
+/// Should only be called within `inject_str`, as a previous call
 /// to `get_resources` is expected.
 /// The `char_idx` parameter is used to offset the vloc and nloc
 /// allocations, otherwise they would conflict with each other on
 /// subsequent calls.
-Port cons_port(Net* net, Port head, Port tail, u32 char_idx) {
+Port inject_cons(Net* net, Port head, Port tail, u32 char_idx) {
   u32 v1 = tm[0]->vloc[1 + char_idx];
 
   u32 n1 = tm[0]->nloc[2 + char_idx * 4 + 0];
@@ -1363,21 +1363,21 @@ Port cons_port(Net* net, Port head, Port tail, u32 char_idx) {
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Port str_to_port(Net* net, Str *str) {
+Port inject_str(Net* net, Str *str) {
   // Allocate all resources up front:
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
   u32 len = str->text_len;
   if (!get_resources(net, tm[0], 0, 2 + 4 * len, 1 + len)) {
-    printf("str_to_port: failed to get resources\n");
+    printf("inject_str: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
-  Port port = nil_port(net);
+  Port port = inject_nil(net);
 
   for (u32 i = 0; i < len; i++) {
     Port chr = new_port(NUM, new_u24(str->text_buf[len - i - 1]));
-    port = cons_port(net, chr, port, i);
+    port = inject_cons(net, chr, port, i);
   }
 
   return port;
@@ -1445,7 +1445,7 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
 static FILE* FILE_POINTERS[256];
 
 // Converts a NUM port (file descriptor) to file pointer.
-FILE* port_to_file(Port port) {
+FILE* readback_file(Port port) {
   if (get_tag(port) != NUM) {
     fprintf(stderr, "non-num where file descriptor was expected: %i\n", get_tag(port));
     return NULL;
@@ -1468,7 +1468,7 @@ FILE* port_to_file(Port port) {
 
 // Reads a single char from `argm`.
 Port io_read_char(Net* net, Book* book, Port argm) {
-  FILE* fp = port_to_file(peek(net, argm));
+  FILE* fp = readback_file(peek(net, argm));
   if (fp == NULL) {
     return new_port(ERA, 0);
   }
@@ -1480,12 +1480,12 @@ Port io_read_char(Net* net, Book* book, Port argm) {
   str.text_buf[1] = 0;
   str.text_len = 1;
 
-  return str_to_port(net, &str);
+  return inject_str(net, &str);
 }
 
 // Reads from `argm` at most 255 characters or until a newline is seen.
 Port io_read_line(Net* net, Book* book, Port argm) {
-  FILE* fp = port_to_file(peek(net, argm));
+  FILE* fp = readback_file(peek(net, argm));
   if (fp == NULL) {
     fprintf(stderr, "io_read_line: invalid file descriptor\n");
     return new_port(ERA, 0);
@@ -1506,7 +1506,7 @@ Port io_read_line(Net* net, Book* book, Port argm) {
   }
 
   // Convert it to a port.
-  return str_to_port(net, &str);
+  return inject_str(net, &str);
 }
 
 // Opens a file with the provided mode.
@@ -1519,8 +1519,8 @@ Port io_open_file(Net* net, Book* book, Port argm) {
   }
 
   Pair args = node_load(net, get_val(argm));
-  Str name = port_to_str(net, book, get_fst(args));
-  Str mode = port_to_str(net, book, get_snd(args));
+  Str name = readback_str(net, book, get_fst(args));
+  Str mode = readback_str(net, book, get_snd(args));
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
@@ -1536,7 +1536,7 @@ Port io_open_file(Net* net, Book* book, Port argm) {
 
 // Closes a file, reclaiming the file descriptor.
 Port io_close_file(Net* net, Book* book, Port argm) {
-  FILE* fp = port_to_file(peek(net, argm));
+  FILE* fp = readback_file(peek(net, argm));
   if (fp == NULL) {
     fprintf(stderr, "io_close_file: failed to close\n");
     return new_port(ERA, 0);
@@ -1563,8 +1563,8 @@ Port io_write(Net* net, Book* book, Port argm) {
   }
 
   Pair args = node_load(net, get_val(argm));
-  FILE* fp = port_to_file(peek(net, get_fst(args)));
-  Str str = port_to_str(net, book, get_snd(args));
+  FILE* fp = readback_file(peek(net, get_fst(args)));
+  Str str = readback_str(net, book, get_snd(args));
 
   if (fp == NULL) {
     fprintf(stderr, "io_write: invalid file descriptor\n");
@@ -1734,7 +1734,7 @@ void do_run_io(Net* net, Book* book, Port port) {
     normalize(net, book);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = port_to_ctr(net, book, peek(net, port));
+    Ctr ctr = readback_ctr(net, book, peek(net, port));
 
     // Checks if IO Magic Number is a CON
     if (get_tag(ctr.args_buf[0]) != CON) {
@@ -1750,7 +1750,7 @@ void do_run_io(Net* net, Book* book, Port port) {
 
     switch (ctr.tag) {
       case IO_CALL: {
-        Str  func = port_to_str(net, book, ctr.args_buf[1]);
+        Str  func = readback_str(net, book, ctr.args_buf[1]);
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
         u32  lps  = 0;

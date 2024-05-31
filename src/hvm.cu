@@ -1446,7 +1446,7 @@ __global__ void boot_redex(GNet* gnet, Pair redex) {
 }
 
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
-/// Should only be called within `str_to_port`, as a previous call
+/// Should only be called within `inject_str`, as a previous call
 /// to `get_resources` is expected.
 __device__ Port nil_port(Net* net, TM* tm) {
   u32 v1 = tm->vloc[0];
@@ -1464,7 +1464,7 @@ __device__ Port nil_port(Net* net, TM* tm) {
 }
 
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
-/// Should only be called within `str_to_port`, as a previous call
+/// Should only be called within `inject_str`, as a previous call
 /// to `get_resources` is expected.
 /// The `char_idx` parameter is used to offset the vloc and nloc
 /// allocations, otherwise they would conflict with each other on
@@ -1494,13 +1494,13 @@ __device__ Port cons_port(Net* net, TM* tm, Port head, Port tail, u32 char_idx) 
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-__device__ Port str_to_port(Net* net, TM* tm, Str *str) {
+__device__ Port inject_str(Net* net, TM* tm, Str *str) {
   // Allocate all resources up front:
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
   u32 len = str->text_len;
   if (!get_resources(net, tm, 0, 2 + 4 * len, 1 + len)) {
-    printf("str_to_port: failed to get resources\n");
+    printf("inject_str: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
@@ -1518,7 +1518,7 @@ __global__ void make_str_port(GNet* gnet, Str *str, Port* ret) {
   if (GID() == 0) {
     TM tm;
     Net net = vnet_new(gnet, NULL, gnet->turn);
-    *ret = str_to_port(&net, &tm, str);
+    *ret = inject_str(&net, &tm, str);
   }
 }
 
@@ -1917,7 +1917,7 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
 
 // Reads back a λ-Encoded constructor from device to host.
 // Encoding: λt ((((t TAG) arg0) arg1) ...)
-Ctr gnet_port_to_ctr(GNet* gnet, Port port) {
+Ctr gnet_readback_ctr(GNet* gnet, Port port) {
   Ctr ctr;
   ctr.tag = -1;
   ctr.args_len = 0;
@@ -1955,7 +1955,7 @@ Ctr gnet_port_to_ctr(GNet* gnet, Port port) {
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Str gnet_port_to_str(GNet* gnet, Port port) {
+Str gnet_inject_str(GNet* gnet, Port port) {
   // Result
   Str str;
   str.text_len = 0;
@@ -1966,7 +1966,7 @@ Str gnet_port_to_str(GNet* gnet, Port port) {
     gnet_normalize(gnet);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_port_to_ctr(gnet, gnet_peek(gnet, port));
+    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
 
     // Reads string layer
     switch (ctr.tag) {
@@ -2027,7 +2027,7 @@ Port gnet_make_str(GNet* gnet, Str *str) {
 static FILE* FILE_POINTERS[256];
 
 // Converts a NUM port (file descriptor) to file pointer.
-FILE* port_to_file(Port port) {
+FILE* readback_file(Port port) {
   if (get_tag(port) != NUM) {
     fprintf(stderr, "non-num where file descriptor was expected: %i\n", get_tag(port));
     return NULL;
@@ -2050,7 +2050,7 @@ FILE* port_to_file(Port port) {
 
 // Reads a single char from `argm`.
 Port io_read_char(GNet* gnet, Port argm) {
-  FILE* fp = port_to_file(gnet_peek(gnet, argm));
+  FILE* fp = readback_file(gnet_peek(gnet, argm));
   if (fp == NULL) {
     return new_port(ERA, 0);
   }
@@ -2067,7 +2067,7 @@ Port io_read_char(GNet* gnet, Port argm) {
 
 // Reads from `argm` at most 255 characters or until a newline is seen.
 Port io_read_line(GNet* gnet, Port argm) {
-  FILE* fp = port_to_file(gnet_peek(gnet, argm));
+  FILE* fp = readback_file(gnet_peek(gnet, argm));
   if (fp == NULL) {
     fprintf(stderr, "io_read_line: invalid file descriptor\n");
     return new_port(ERA, 0);
@@ -2101,8 +2101,8 @@ Port io_open_file(GNet* gnet, Port argm) {
   }
 
   Pair args = gnet_node_load(gnet, get_val(argm));
-  Str name = gnet_port_to_str(gnet, get_fst(args));
-  Str mode = gnet_port_to_str(gnet, get_snd(args));
+  Str name = gnet_inject_str(gnet, get_fst(args));
+  Str mode = gnet_inject_str(gnet, get_snd(args));
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
@@ -2118,7 +2118,7 @@ Port io_open_file(GNet* gnet, Port argm) {
 
 // Closes a file, reclaiming the file descriptor.
 Port io_close_file(GNet* gnet, Port argm) {
-  FILE* fp = port_to_file(gnet_peek(gnet, argm));
+  FILE* fp = readback_file(gnet_peek(gnet, argm));
   if (fp == NULL) {
     fprintf(stderr, "io_close_file: failed to close\n");
     return new_port(ERA, 0);
@@ -2145,8 +2145,8 @@ Port io_write(GNet* gnet, Port argm) {
   }
 
   Pair args = gnet_node_load(gnet, get_val(argm));
-  FILE* fp = port_to_file(gnet_peek(gnet, get_fst(args)));
-  Str str = gnet_port_to_str(gnet, get_snd(args));
+  FILE* fp = readback_file(gnet_peek(gnet, get_fst(args)));
+  Str str = gnet_inject_str(gnet, get_snd(args));
 
   if (fp == NULL) {
     fprintf(stderr, "io_write: invalid file descriptor\n");
@@ -2203,7 +2203,7 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
     gnet_normalize(gnet);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_port_to_ctr(gnet, gnet_peek(gnet, port));
+    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
 
     // Checks if IO Magic Number is a CON
     if (get_tag(ctr.args_buf[0]) != CON) {
@@ -2219,7 +2219,7 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
 
     switch (ctr.tag) {
       case IO_CALL: {
-        Str  func = gnet_port_to_str(gnet, ctr.args_buf[1]);
+        Str  func = gnet_inject_str(gnet, ctr.args_buf[1]);
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search
         for (u32 fid = 0; fid < book->ffns_len; ++fid) {
