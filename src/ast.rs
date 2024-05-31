@@ -45,6 +45,10 @@ impl<'i> CoreParser<'i> {
 
     // Parses the symbol
     let op = hvm::Numb::new_sym(match () {
+      _ if self.try_consume("SYM") => hvm::TY_SYM,
+      _ if self.try_consume("U24") => hvm::TY_U24,
+      _ if self.try_consume("I24") => hvm::TY_I24,
+      _ if self.try_consume("F24") => hvm::TY_F24,
       _ if self.try_consume("+")   => hvm::OP_ADD,
       _ if self.try_consume("-")   => hvm::OP_SUB,
       _ if self.try_consume(":-")  => hvm::FP_SUB,
@@ -224,6 +228,10 @@ impl Numb {
     let numb = hvm::Numb(self.0);
     match numb.get_typ() {
       hvm::TY_SYM => match numb.get_sym() as hvm::Tag {
+        hvm::TY_SYM => "[SYM]".to_string(),
+        hvm::TY_U24 => "[U24]".to_string(),
+        hvm::TY_I24 => "[I24]".to_string(),
+        hvm::TY_F24 => "[F24]".to_string(),
         hvm::OP_ADD => "[+]".to_string(),
         hvm::OP_SUB => "[-]".to_string(),
         hvm::FP_SUB => "[:-]".to_string(),
