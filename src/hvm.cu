@@ -4,6 +4,7 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 // Integers
 // --------
@@ -704,8 +705,8 @@ __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   Net net;
   net.l_node_dif   = 0;
   net.l_vars_dif   = 0;
-  net.l_node_buf   = ((LNet*)smem)->node_buf;
-  net.l_vars_buf   = ((LNet*)smem)->vars_buf;
+  net.l_node_buf   = smem == NULL ? net.l_node_buf : ((LNet*)smem)->node_buf;
+  net.l_vars_buf   = smem == NULL ? net.l_vars_buf : ((LNet*)smem)->vars_buf;
   net.g_rbag_use_A = turn % 2 == 0 ? &gnet->rbag_use_A : &gnet->rbag_use_B;
   net.g_rbag_use_B = turn % 2 == 0 ? &gnet->rbag_use_B : &gnet->rbag_use_A;
   net.g_rbag_buf_A = turn % 2 == 0 ? gnet->rbag_buf_A : gnet->rbag_buf_B;
@@ -1444,6 +1445,83 @@ __global__ void boot_redex(GNet* gnet, Pair redex) {
   }
 }
 
+/// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
+/// Should only be called within `inject_str`, as a previous call
+/// to `get_resources` is expected.
+__device__ Port nil_port(Net* net, TM* tm) {
+  u32 v1 = tm->vloc[0];
+
+  u32 n1 = tm->nloc[0];
+  u32 n2 = tm->nloc[1];
+
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
+
+  node_create(net, n1, new_pair(new_port(NUM, new_u24(LIST_NIL)), var));
+  node_create(net, n2, new_pair(new_port(CON, n1), var));
+
+  return new_port(CON, n2);
+}
+
+/// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
+/// Should only be called within `inject_str`, as a previous call
+/// to `get_resources` is expected.
+/// The `char_idx` parameter is used to offset the vloc and nloc
+/// allocations, otherwise they would conflict with each other on
+/// subsequent calls.
+__device__ Port cons_port(Net* net, TM* tm, Port head, Port tail, u32 char_idx) {
+  u32 v1 = tm->vloc[1 + char_idx];
+
+  u32 n1 = tm->nloc[2 + char_idx * 4 + 0];
+  u32 n2 = tm->nloc[2 + char_idx * 4 + 1];
+  u32 n3 = tm->nloc[2 + char_idx * 4 + 2];
+  u32 n4 = tm->nloc[2 + char_idx * 4 + 3];
+
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
+
+  node_create(net, n1, new_pair(tail, var));
+  node_create(net, n2, new_pair(head, new_port(CON, n1)));
+  node_create(net, n3, new_pair(new_port(NUM, new_u24(LIST_CONS)), new_port(CON, n2)));
+  node_create(net, n4, new_pair(new_port(CON, n3), var));
+
+  return new_port(CON, n4);
+}
+
+// Converts a UTF-32 (truncated to 24 bits) string to a Port.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+__device__ Port inject_str(Net* net, TM* tm, Str *str) {
+  // Allocate all resources up front:
+  // - NIL needs  2 nodes & 1 var
+  // - CONS needs 4 nodes & 1 var
+  u32 len = str->text_len;
+  if (!get_resources(net, tm, 0, 2 + 4 * len, 1 + len)) {
+    printf("inject_str: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
+  Port port = nil_port(net, tm);
+
+  for (u32 i = 0; i < len; i++) {
+    Port chr = new_port(NUM, new_u24(str->text_buf[len - i - 1]));
+    port = cons_port(net, tm, chr, port, i);
+  }
+
+  return port;
+}
+
+__global__ void make_str_port(GNet* gnet, Str *str, Port* ret) {
+  if (GID() == 0) {
+    TM tm;
+    Net net = vnet_new(gnet, NULL, gnet->turn);
+    *ret = inject_str(&net, &tm, str);
+  }
+}
+
 // Creates a node.
 __global__ void make_node(GNet* gnet, Tag tag, Port fst, Port snd, Port* ret) {
   if (GID() == 0) {
@@ -1839,7 +1917,7 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
 
 // Reads back a λ-Encoded constructor from device to host.
 // Encoding: λt ((((t TAG) arg0) arg1) ...)
-Ctr gnet_read_ctr(GNet* gnet, Port port) {
+Ctr gnet_readback_ctr(GNet* gnet, Port port) {
   Ctr ctr;
   ctr.tag = -1;
   ctr.args_len = 0;
@@ -1877,7 +1955,7 @@ Ctr gnet_read_ctr(GNet* gnet, Port port) {
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Str gnet_read_str(GNet* gnet, Port port) {
+Str gnet_inject_str(GNet* gnet, Port port) {
   // Result
   Str str;
   str.text_len = 0;
@@ -1888,7 +1966,7 @@ Str gnet_read_str(GNet* gnet, Port port) {
     gnet_normalize(gnet);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
+    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
 
     // Reads string layer
     switch (ctr.tag) {
@@ -1914,38 +1992,176 @@ Str gnet_read_str(GNet* gnet, Port port) {
   return str;
 }
 
+// Converts a UTF-32 (truncated to 24 bits) string to a Port.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Port gnet_make_str(GNet* gnet, Str *str) {
+  Port* d_ret;
+  cudaMalloc(&d_ret, sizeof(Port));
+
+  Str* cu_str;
+  cudaMalloc(&cu_str, sizeof(Str));
+  cudaMemcpy(cu_str, str, sizeof(Str), cudaMemcpyHostToDevice);
+
+  make_str_port<<<1,1>>>(gnet, cu_str, d_ret);
+
+  Port ret;
+  cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
+  cudaFree(d_ret);
+
+  return ret;
+}
+
 // Primitive IO Fns
 // -----------------
 
-// IO: GetText
-Port io_get_text(GNet* gnet, Port argm) {
-  printf("TODO\n");
+// Open file pointers. Indices into this array
+// are used as "file descriptors".
+// Indices 0 1 and 2 are reserved.
+// - 0 -> stdin
+// - 1 -> stdout
+// - 2 -> stderr
+static FILE* FILE_POINTERS[256];
+
+// Converts a NUM port (file descriptor) to file pointer.
+FILE* readback_file(Port port) {
+  if (get_tag(port) != NUM) {
+    fprintf(stderr, "non-num where file descriptor was expected: %i\n", get_tag(port));
+    return NULL;
+  }
+
+  u32 idx = get_u24(get_val(port));
+
+  if (idx == 0) return stdin;
+  if (idx == 1) return stdout;
+  if (idx == 2) return stderr;
+
+  FILE* fp = FILE_POINTERS[idx];
+  if (fp == NULL) {
+    fprintf(stderr, "invalid file descriptor\n");
+    return NULL;
+  }
+
+  return fp;
+}
+
+// Reads a single char from `argm`.
+Port io_read_char(GNet* gnet, Port argm) {
+  FILE* fp = readback_file(gnet_peek(gnet, argm));
+  if (fp == NULL) {
+    return new_port(ERA, 0);
+  }
+
+  /// Read a string.
+  Str str;
+
+  str.text_buf[0] = fgetc(fp);
+  str.text_buf[1] = 0;
+  str.text_len = 1;
+
+  return gnet_make_str(gnet, &str);
+}
+
+// Reads from `argm` at most 255 characters or until a newline is seen.
+Port io_read_line(GNet* gnet, Port argm) {
+  FILE* fp = readback_file(gnet_peek(gnet, argm));
+  if (fp == NULL) {
+    fprintf(stderr, "io_read_line: invalid file descriptor\n");
+    return new_port(ERA, 0);
+  }
+
+  /// Read a string.
+  Str str;
+
+  if (fgets(str.text_buf, sizeof(str.text_buf), fp) == NULL) {
+    fprintf(stderr, "io_read_line: failed to read\n");
+  }
+  str.text_len = strlen(str.text_buf);
+
+  // Strip any trailing newline.
+  if (str.text_len > 0 && str.text_buf[str.text_len - 1] == '\n') {
+    str.text_buf[str.text_len] = 0;
+    str.text_len--;
+  }
+
+  // Convert it to a port.
+  return gnet_make_str(gnet, &str);
+}
+
+// Opens a file with the provided mode.
+// `argm` is a tuple (CON node) of the
+// file name and mode as strings.
+Port io_open_file(GNet* gnet, Port argm) {
+  if (get_tag(gnet_peek(gnet, argm)) != CON) {
+    fprintf(stderr, "io_open_file: expected tuple\n");
+    return new_port(ERA, 0);
+  }
+
+  Pair args = gnet_node_load(gnet, get_val(argm));
+  Str name = gnet_inject_str(gnet, get_fst(args));
+  Str mode = gnet_inject_str(gnet, get_snd(args));
+
+  for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
+    if (FILE_POINTERS[fd] == NULL) {
+      FILE_POINTERS[fd] = fopen(name.text_buf, mode.text_buf);
+      return new_port(NUM, new_u24(fd));
+    }
+  }
+
+  fprintf(stderr, "io_open_file: too many open files\n");
+
   return new_port(ERA, 0);
 }
 
-// IO: PutText
-Port io_put_text(GNet* gnet, Port argm) {
-  // Converts argument to C string
-  Str str = gnet_read_str(gnet, argm);
-  // Prints it
-  printf("%s", str.text_buf);
-  // Returns result (in this case, just an eraser)
+// Closes a file, reclaiming the file descriptor.
+Port io_close_file(GNet* gnet, Port argm) {
+  FILE* fp = readback_file(gnet_peek(gnet, argm));
+  if (fp == NULL) {
+    fprintf(stderr, "io_close_file: failed to close\n");
+    return new_port(ERA, 0);
+  }
+
+  int err = fclose(fp) != 0;
+  if (err != 0) {
+    fprintf(stderr, "io_close_file: failed to close: %i\n", err);
+    return new_port(ERA, 0);
+  }
+
+  FILE_POINTERS[get_u24(get_val(argm))] = NULL;
+
   return new_port(ERA, 0);
 }
 
-// IO: GetFile
-Port io_get_file(GNet* gnet, Port argm) {
-  printf("TODO\n");
+// Writes a string to a file.
+// `argm` is a tuple (CON node) of the
+// file descriptor and string to write.
+Port io_write(GNet* gnet, Port argm) {
+  if (get_tag(gnet_peek(gnet, argm)) != CON) {
+    fprintf(stderr, "io_write: expected tuple, but got %u", get_tag(gnet_peek(gnet, argm)));
+    return new_port(ERA, 0);
+  }
+
+  Pair args = gnet_node_load(gnet, get_val(argm));
+  FILE* fp = readback_file(gnet_peek(gnet, get_fst(args)));
+  Str str = gnet_inject_str(gnet, get_snd(args));
+
+  if (fp == NULL) {
+    fprintf(stderr, "io_write: invalid file descriptor\n");
+    return new_port(ERA, 0);
+  }
+
+  if (fputs(str.text_buf, fp) == EOF) {
+    fprintf(stderr, "io_write: failed to write\n");
+  }
+
   return new_port(ERA, 0);
 }
 
-// IO: PutFile
-Port io_put_file(GNet* gnet, Port argm) {
-  printf("TODO\n");
-  return new_port(ERA, 0);
-}
-
-// IO: GetTime
+// Returns the current time as a tuple of the high
+// and low 24 bits of a 48-bit nanosecond timestamp.
 Port io_get_time(GNet* gnet, Port argm) {
   // Get the current time in nanoseconds
   u64 time_ns = time64();
@@ -1956,9 +2172,10 @@ Port io_get_time(GNet* gnet, Port argm) {
   return gnet_make_node(gnet, CON, new_port(NUM, new_u24(time_hi)), new_port(NUM, new_u24(time_lo)));
 }
 
-// IO: PutTime
-// NOTE: changing this name will corrupt the timeline. You've been warned.
-Port io_put_time(GNet* gnet, Port argm) {
+// Sleeps.
+// `argm` is a tuple (CON node) of the high and low
+// 24 bits for a 48-bit duration in nanoseconds.
+Port io_sleep(GNet* gnet, Port argm) {
   // Get the sleep duration node
   Pair dur_node = gnet_node_load(gnet, get_val(argm));
   // Get the high and low 24-bit parts of the duration
@@ -1986,7 +2203,7 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
     gnet_normalize(gnet);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_read_ctr(gnet, gnet_peek(gnet, port));
+    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
 
     // Checks if IO Magic Number is a CON
     if (get_tag(ctr.args_buf[0]) != CON) {
@@ -2002,7 +2219,7 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
 
     switch (ctr.tag) {
       case IO_CALL: {
-        Str  func = gnet_read_str(gnet, ctr.args_buf[1]);
+        Str  func = gnet_inject_str(gnet, ctr.args_buf[1]);
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search
         for (u32 fid = 0; fid < book->ffns_len; ++fid) {
@@ -2039,13 +2256,14 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
 
 // TODO: initialize ffns_len with the builtin ffns
 void book_init(Book* book) {
-  book->ffns_len = 6;
-  book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
-  book->ffns_buf[0] = (FFn){"PUT_TEXT", io_put_text};
-  book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
-  book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
-  book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
-  book->ffns_buf[5] = (FFn){"PUT_TIME", io_put_time};
+  book->ffns_len = 7;
+  book->ffns_buf[0] = (FFn){"READ_CHAR", io_read_char};
+  book->ffns_buf[1] = (FFn){"READ_LINE", io_read_line};
+  book->ffns_buf[2] = (FFn){"OPEN_FILE", io_open_file};
+  book->ffns_buf[3] = (FFn){"CLOSE_FILE", io_close_file};
+  book->ffns_buf[4] = (FFn){"WRITE", io_write};
+  book->ffns_buf[5] = (FFn){"GET_TIME", io_get_time};
+  book->ffns_buf[6] = (FFn){"SLEEP", io_sleep};
 }
 
 void book_load(Book* book, u32* buf) {

@@ -599,7 +599,7 @@ static inline void node_create(Net* net, u32 loc, Pair val) {
   atomic_store_explicit(&net->node_buf[loc], val, memory_order_relaxed);
 }
 
-// Stores a var on global. Returns old.
+// Stores a var on global.
 static inline void vars_create(Net* net, u32 var, Port val) {
   atomic_store_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
@@ -617,11 +617,6 @@ static inline Port vars_load(Net* net, u32 var) {
 // Stores a node on global.
 static inline void node_store(Net* net, u32 loc, Pair val) {
   atomic_store_explicit(&net->node_buf[loc], val, memory_order_relaxed);
-}
-
-// Stores a var on global. Returns old.
-static inline void vars_store(Net* net, u32 var, Port val) {
-  atomic_store_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
 
 // Exchanges a node on global by a value. Returns old.
@@ -1231,7 +1226,7 @@ Port expand(Net* net, Book* book, Port port) {
     normalize(net, book);
     got = peek(net, vars_load(net, get_val(ROOT)));
   }
-  vars_store(net, get_val(ROOT), old);
+  vars_create(net, get_val(ROOT), old);
   return got;
 }
 
@@ -1240,7 +1235,7 @@ Port expand(Net* net, Book* book, Port port) {
 
 // Reads back a λ-Encoded constructor from device to host.
 // Encoding: λt ((((t TAG) arg0) arg1) ...)
-Ctr read_ctr(Net* net, Book* book, Port port) {
+Ctr readback_ctr(Net* net, Book* book, Port port) {
   Ctr ctr;
   ctr.tag = -1;
   ctr.args_len = 0;
@@ -1272,13 +1267,13 @@ Ctr read_ctr(Net* net, Book* book, Port port) {
   return ctr;
 }
 
-// Reads back a UTF-32 (truncated to 24 bits) string.
+// Converts a UTF-32 (truncated to 24 bits) string to a Port.
 // Since unicode scalars can fit in 21 bits, HVM's u24
 // integers can contain any unicode scalar value.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Str read_str(Net* net, Book* book, Port port) {
+Str readback_str(Net* net, Book* book, Port port) {
   // Result
   Str str;
   str.text_len = 0;
@@ -1291,7 +1286,7 @@ Str read_str(Net* net, Book* book, Port port) {
     //printf("reading str %s\n", show_port(peek(net, port)).x);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = read_ctr(net, book, peek(net, port));
+    Ctr ctr = readback_ctr(net, book, peek(net, port));
 
     //printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
 
@@ -1317,6 +1312,75 @@ Str read_str(Net* net, Book* book, Port port) {
   str.text_buf[str.text_len] = '\0';
 
   return str;
+}
+
+/// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
+/// Should only be called within `inject_str`, as a previous call
+/// to `get_resources` is expected.
+Port inject_nil(Net* net) {
+  u32 v1 = tm[0]->vloc[0];
+
+  u32 n1 = tm[0]->nloc[0];
+  u32 n2 = tm[0]->nloc[1];
+
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
+
+  node_create(net, n1, new_pair(new_port(NUM, new_u24(LIST_NIL)), var));
+  node_create(net, n2, new_pair(new_port(CON, n1), var));
+
+  return new_port(CON, n2);
+}
+
+/// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
+/// Should only be called within `inject_str`, as a previous call
+/// to `get_resources` is expected.
+/// The `char_idx` parameter is used to offset the vloc and nloc
+/// allocations, otherwise they would conflict with each other on
+/// subsequent calls.
+Port inject_cons(Net* net, Port head, Port tail, u32 char_idx) {
+  u32 v1 = tm[0]->vloc[1 + char_idx];
+
+  u32 n1 = tm[0]->nloc[2 + char_idx * 4 + 0];
+  u32 n2 = tm[0]->nloc[2 + char_idx * 4 + 1];
+  u32 n3 = tm[0]->nloc[2 + char_idx * 4 + 2];
+  u32 n4 = tm[0]->nloc[2 + char_idx * 4 + 3];
+
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
+
+  node_create(net, n1, new_pair(tail, var));
+  node_create(net, n2, new_pair(head, new_port(CON, n1)));
+  node_create(net, n3, new_pair(new_port(NUM, new_u24(LIST_CONS)), new_port(CON, n2)));
+  node_create(net, n4, new_pair(new_port(CON, n3), var));
+
+  return new_port(CON, n4);
+}
+
+// Converts a UTF-32 (truncated to 24 bits) string to a Port.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Port inject_str(Net* net, Str *str) {
+  // Allocate all resources up front:
+  // - NIL needs  2 nodes & 1 var
+  // - CONS needs 4 nodes & 1 var
+  u32 len = str->text_len;
+  if (!get_resources(net, tm[0], 0, 2 + 4 * len, 1 + len)) {
+    printf("inject_str: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
+  Port port = inject_nil(net);
+
+  for (u32 i = 0; i < len; i++) {
+    Port chr = new_port(NUM, new_u24(str->text_buf[len - i - 1]));
+    port = inject_cons(net, chr, port, i);
+  }
+
+  return port;
 }
 
 // Reads back an image.
@@ -1372,35 +1436,150 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
 // Primitive IO Fns
 // -----------------
 
-// IO: GetText
-Port io_get_text(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
+// Open file pointers. Indices into this array
+// are used as "file descriptors".
+// Indices 0 1 and 2 are reserved.
+// - 0 -> stdin
+// - 1 -> stdout
+// - 2 -> stderr
+static FILE* FILE_POINTERS[256];
+
+// Converts a NUM port (file descriptor) to file pointer.
+FILE* readback_file(Port port) {
+  if (get_tag(port) != NUM) {
+    fprintf(stderr, "non-num where file descriptor was expected: %i\n", get_tag(port));
+    return NULL;
+  }
+
+  u32 idx = get_u24(get_val(port));
+
+  if (idx == 0) return stdin;
+  if (idx == 1) return stdout;
+  if (idx == 2) return stderr;
+
+  FILE* fp = FILE_POINTERS[idx];
+  if (fp == NULL) {
+    fprintf(stderr, "invalid file descriptor\n");
+    return NULL;
+  }
+
+  return fp;
+}
+
+// Reads a single char from `argm`.
+Port io_read_char(Net* net, Book* book, Port argm) {
+  FILE* fp = readback_file(peek(net, argm));
+  if (fp == NULL) {
+    return new_port(ERA, 0);
+  }
+
+  /// Read a string.
+  Str str;
+
+  str.text_buf[0] = fgetc(fp);
+  str.text_buf[1] = 0;
+  str.text_len = 1;
+
+  return inject_str(net, &str);
+}
+
+// Reads from `argm` at most 255 characters or until a newline is seen.
+Port io_read_line(Net* net, Book* book, Port argm) {
+  FILE* fp = readback_file(peek(net, argm));
+  if (fp == NULL) {
+    fprintf(stderr, "io_read_line: invalid file descriptor\n");
+    return new_port(ERA, 0);
+  }
+
+  /// Read a string.
+  Str str;
+
+  if (fgets(str.text_buf, sizeof(str.text_buf), fp) == NULL) {
+    fprintf(stderr, "io_read_line: failed to read\n");
+  }
+  str.text_len = strlen(str.text_buf);
+
+  // Strip any trailing newline.
+  if (str.text_len > 0 && str.text_buf[str.text_len - 1] == '\n') {
+    str.text_buf[str.text_len] = 0;
+    str.text_len--;
+  }
+
+  // Convert it to a port.
+  return inject_str(net, &str);
+}
+
+// Opens a file with the provided mode.
+// `argm` is a tuple (CON node) of the
+// file name and mode as strings.
+Port io_open_file(Net* net, Book* book, Port argm) {
+  if (get_tag(peek(net, argm)) != CON) {
+    fprintf(stderr, "io_open_file: expected tuple\n");
+    return new_port(ERA, 0);
+  }
+
+  Pair args = node_load(net, get_val(argm));
+  Str name = readback_str(net, book, get_fst(args));
+  Str mode = readback_str(net, book, get_snd(args));
+
+  for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
+    if (FILE_POINTERS[fd] == NULL) {
+      FILE_POINTERS[fd] = fopen(name.text_buf, mode.text_buf);
+      return new_port(NUM, new_u24(fd));
+    }
+  }
+
+  fprintf(stderr, "io_open_file: too many open files\n");
+
   return new_port(ERA, 0);
 }
 
-// IO: PutText
-Port io_put_text(Net* net, Book* book, Port argm) {
-  // Converts argument to C string
-  Str str = read_str(net, book, argm);
-  // Prints it
-  printf("%s", str.text_buf);
-  // Returns result (in this case, just an eraser)
+// Closes a file, reclaiming the file descriptor.
+Port io_close_file(Net* net, Book* book, Port argm) {
+  FILE* fp = readback_file(peek(net, argm));
+  if (fp == NULL) {
+    fprintf(stderr, "io_close_file: failed to close\n");
+    return new_port(ERA, 0);
+  }
+
+  int err = fclose(fp) != 0;
+  if (err != 0) {
+    fprintf(stderr, "io_close_file: failed to close: %i\n", err);
+    return new_port(ERA, 0);
+  }
+
+  FILE_POINTERS[get_u24(get_val(argm))] = NULL;
+
   return new_port(ERA, 0);
 }
 
-// IO: GetFile
-Port io_get_file(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
+// Writes a string to a file.
+// `argm` is a tuple (CON node) of the
+// file descriptor and string to write.
+Port io_write(Net* net, Book* book, Port argm) {
+  if (get_tag(peek(net, argm)) != CON) {
+    fprintf(stderr, "io_write: expected tuple, but got %u\n", get_tag(peek(net, argm)));
+    return new_port(ERA, 0);
+  }
+
+  Pair args = node_load(net, get_val(argm));
+  FILE* fp = readback_file(peek(net, get_fst(args)));
+  Str str = readback_str(net, book, get_snd(args));
+
+  if (fp == NULL) {
+    fprintf(stderr, "io_write: invalid file descriptor\n");
+    return new_port(ERA, 0);
+  }
+
+  if (fputs(str.text_buf, fp) == EOF) {
+    fprintf(stderr, "io_write: failed to write\n");
+  }
+
   return new_port(ERA, 0);
 }
 
-// IO: PutFile
-Port io_put_file(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
-  return new_port(ERA, 0);
-}
-
-// IO: GetTime
+// Returns the current time as a tuple of the high
+// and low 24 bits of a 48-bit nanosecond timestamp.
 Port io_get_time(Net* net, Book* book, Port argm) {
   // Get the current time in nanoseconds
   u64 time_ns = time64();
@@ -1415,9 +1594,10 @@ Port io_get_time(Net* net, Book* book, Port argm) {
   return new_port(CON, loc);
 }
 
-// IO: PutTime
-// NOTE: changing this name will corrupt the timeline. You've been warned.
-Port io_put_time(Net* net, Book* book, Port argm) {
+// Sleeps.
+// `argm` is a tuple (CON node) of the high and low
+// 24 bits for a 48-bit duration in nanoseconds.
+Port io_sleep(Net* net, Book* book, Port argm) {
   // Get the sleep duration node
   Pair dur_node = node_load(net, get_val(argm));
   // Get the high and low 24-bit parts of the duration
@@ -1554,7 +1734,7 @@ void do_run_io(Net* net, Book* book, Port port) {
     normalize(net, book);
 
     // Reads the λ-Encoded Ctr
-    Ctr ctr = read_ctr(net, book, peek(net, port));
+    Ctr ctr = readback_ctr(net, book, peek(net, port));
 
     // Checks if IO Magic Number is a CON
     if (get_tag(ctr.args_buf[0]) != CON) {
@@ -1570,7 +1750,7 @@ void do_run_io(Net* net, Book* book, Port port) {
 
     switch (ctr.tag) {
       case IO_CALL: {
-        Str  func = read_str(net, book, ctr.args_buf[1]);
+        Str  func = readback_str(net, book, ctr.args_buf[1]);
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
         u32  lps  = 0;
@@ -1607,13 +1787,14 @@ void do_run_io(Net* net, Book* book, Port port) {
 
 // TODO: initialize ffns_len with the builtin ffns
 void book_init(Book* book) {
-  book->ffns_len = 6;
-  book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
-  book->ffns_buf[1] = (FFn){"PUT_TEXT", io_put_text};
-  book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
-  book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
-  book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
-  book->ffns_buf[5] = (FFn){"PUT_TIME", io_put_time};
+  book->ffns_len = 7;
+  book->ffns_buf[0] = (FFn){"READ_CHAR", io_read_char};
+  book->ffns_buf[1] = (FFn){"READ_LINE", io_read_line};
+  book->ffns_buf[2] = (FFn){"OPEN_FILE", io_open_file};
+  book->ffns_buf[3] = (FFn){"CLOSE_FILE", io_close_file};
+  book->ffns_buf[4] = (FFn){"WRITE", io_write};
+  book->ffns_buf[5] = (FFn){"GET_TIME", io_get_time};
+  book->ffns_buf[6] = (FFn){"SLEEP", io_sleep};
 }
 
 void book_load(Book* book, u32* buf) {
