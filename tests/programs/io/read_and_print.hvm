@@ -1,0 +1,117 @@
+@IO_T/Call = (a (b (c (d ((1 (a (b (c (d e))))) e)))))
+
+@IO_T/Done = (a (b ((0 (a (b c))) c)))
+
+@IO_T/MAGIC = (13683217 16719857)
+
+@IO_T/bind = ((@IO_T/bind__C2 a) a)
+
+@IO_T/bind__C0 = (* (a ((a b) b)))
+
+@IO_T/bind__C1 = (* (* (a (b ((c d) (e g))))))
+  & @IO_T/Call ~ (@IO_T/MAGIC (a (b ((c f) g))))
+  & @IO_T/bind ~ (d (e f))
+
+@IO_T/bind__C2 = (?((@IO_T/bind__C0 @IO_T/bind__C1) a) a)
+
+@IO_T/wrap = a
+  & @IO_T/Done ~ (@IO_T/MAGIC a)
+
+@String/Cons = (a (b ((1 (a (b c))) c)))
+
+@String/Nil = ((0 a) a)
+
+@call_io = (a (b c))
+  & @IO_T/Call ~ (@IO_T/MAGIC (a (b (@call_io__C0 c))))
+
+@call_io__C0 = a
+  & @IO_T/Done ~ (@IO_T/MAGIC a)
+
+@main = a
+  & @IO_T/bind ~ (@main__C7 (@main__C6 a))
+
+@main__C0 = i
+  & @call_io ~ (e ((1 h) i))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+  & @String/Cons ~ (39 (g h))
+  & @String/Cons ~ (33 (f g))
+  & @String/Cons ~ (10 (@String/Nil f))
+
+@main__C1 = e
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@main__C2 = (* a)
+  & @IO_T/bind ~ (@main__C0 ((* 42) a))
+
+@main__C3 = n
+  & @call_io ~ (e ((1 m) n))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+  & @String/Cons ~ (72 (l m))
+  & @String/Cons ~ (101 (k l))
+  & @String/Cons ~ (108 (j k))
+  & @String/Cons ~ (108 (i j))
+  & @String/Cons ~ (111 (h i))
+  & @String/Cons ~ (44 (g h))
+  & @String/Cons ~ (32 (f g))
+  & @String/Cons ~ (39 (@String/Nil f))
+
+@main__C4 = (a d)
+  & @IO_T/bind ~ (@main__C3 ((* c) d))
+  & @IO_T/bind ~ (b (@main__C2 c))
+  & @call_io ~ (@main__C1 ((1 a) b))
+
+@main__C5 = j
+  & @call_io ~ (i (0 j))
+  & @String/Cons ~ (82 (h i))
+  & @String/Cons ~ (69 (g h))
+  & @String/Cons ~ (65 (f g))
+  & @String/Cons ~ (68 (e f))
+  & @String/Cons ~ (95 (d e))
+  & @String/Cons ~ (76 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (78 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@main__C6 = (* a)
+  & @IO_T/bind ~ (@main__C5 (@main__C4 a))
+
+@main__C7 = y
+  & @call_io ~ (e ((1 x) y))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+  & @String/Cons ~ (87 (w x))
+  & @String/Cons ~ (104 (v w))
+  & @String/Cons ~ (97 (u v))
+  & @String/Cons ~ (116 (t u))
+  & @String/Cons ~ (32 (s t))
+  & @String/Cons ~ (105 (r s))
+  & @String/Cons ~ (115 (q r))
+  & @String/Cons ~ (32 (p q))
+  & @String/Cons ~ (121 (o p))
+  & @String/Cons ~ (111 (n o))
+  & @String/Cons ~ (117 (m n))
+  & @String/Cons ~ (114 (l m))
+  & @String/Cons ~ (32 (k l))
+  & @String/Cons ~ (110 (j k))
+  & @String/Cons ~ (97 (i j))
+  & @String/Cons ~ (109 (h i))
+  & @String/Cons ~ (101 (g h))
+  & @String/Cons ~ (63 (f g))
+  & @String/Cons ~ (10 (@String/Nil f))
+
+@test-io = 1

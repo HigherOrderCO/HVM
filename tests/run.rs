@@ -1,10 +1,16 @@
+use std::{
+  collections::HashMap,
+  error::Error,
+  ffi::OsStr,
+  fs,
+  io::{Read, Write},
+  path::{Path, PathBuf},
+  process::{Command, Stdio},
+};
 
 use hvm::ast::Tree;
 use insta::assert_snapshot;
 use TSPL::Parser;
-use std::{
-  collections::HashMap, error::Error, ffi::OsStr, fs, io::Read, path::{Path, PathBuf}, process::{Command, Stdio}
-};
 
 #[test]
 fn test_run_programs() {
@@ -25,33 +31,65 @@ fn manifest_relative(sub: &str) -> PathBuf {
 }
 
 fn test_file(path: &Path) {
-  if fs::read_to_string(path).unwrap().contains("@test-skip = 1") {
+  let contents = fs::read_to_string(path).unwrap();
+  if contents.contains("@test-skip = 1") {
     println!("skipping {path:?}");
     return;
   }
+  if contents.contains("@test-io = 1") {
+    test_io_file(path);
+    return;
+  }
+
   println!("testing {path:?}...");
-  let rust_output = execute_hvm(&["run".as_ref(), path.as_os_str()]).unwrap();
+  let rust_output = execute_hvm(&["run".as_ref(), path.as_os_str()], false).unwrap();
   assert_snapshot!(rust_output);
+
   println!("  testing {path:?}, C...");
-  let c_output = execute_hvm(&["run-c".as_ref(), path.as_os_str()]).unwrap();
+  let c_output = execute_hvm(&["run-c".as_ref(), path.as_os_str()], false).unwrap();
   assert_eq!(c_output, rust_output, "{path:?}: C output does not match rust output");
+
   if cfg!(feature = "cuda") {
     println!("  testing {path:?}, CUDA...");
-    let cuda_output = execute_hvm(&["run-cu".as_ref(), path.as_os_str()]).unwrap();
-    assert_eq!(cuda_output, rust_output, "{path:?}: CUDA output does not match rust output");
+    let cuda_output = execute_hvm(&["run-cu".as_ref(), path.as_os_str()], false).unwrap();
+    assert_eq!(
+      cuda_output, rust_output,
+      "{path:?}: CUDA output does not match rust output"
+    );
   }
 }
 
-fn execute_hvm(args: &[&OsStr]) -> Result<String, Box<dyn Error>> {
+fn test_io_file(path: &Path) {
+  println!("  testing (io) {path:?}, C...");
+  let c_output = execute_hvm(&["run-c".as_ref(), path.as_os_str()], true).unwrap();
+  assert_snapshot!(c_output);
+
+  if cfg!(feature = "cuda") {
+    println!("  testing (io) {path:?}, CUDA...");
+    let cuda_output = execute_hvm(&["run-cu".as_ref(), path.as_os_str()], true).unwrap();
+    assert_eq!(cuda_output, c_output, "{path:?}: CUDA output does not match C output");
+  }
+}
+
+fn execute_hvm(args: &[&OsStr], send_io: bool) -> Result<String, Box<dyn Error>> {
   // Spawn the command
-  let mut child =
-    Command::new(env!("CARGO_BIN_EXE_hvm")).args(args).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+  let mut child = Command::new(env!("CARGO_BIN_EXE_hvm"))
+    .args(args)
+    .stdin(Stdio::piped())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()?;
 
   // Capture the output of the command
   let mut stdout = child.stdout.take().ok_or("Couldn't capture stdout!")?;
   let mut stderr = child.stderr.take().ok_or("Couldn't capture stderr!")?;
 
   // Wait for the command to finish and get the exit status
+  if send_io {
+    let mut stdin = child.stdin.take().ok_or("Couldn't capture stdin!")?;
+    stdin.write_all(b"io from the tests\n")?;
+    drop(stdin);
+  }
   let status = child.wait()?;
 
   // Read the output
@@ -62,22 +100,27 @@ fn execute_hvm(args: &[&OsStr]) -> Result<String, Box<dyn Error>> {
   Ok(if !status.success() {
     format!("exited with code {status}:\n{output}")
   } else {
-    parse_output(&output).unwrap_or_else(|err| {
-      panic!("error parsing output:\n{err}\n\n{output}")
-    })
+    parse_output(&output).unwrap_or_else(|err| panic!("error parsing output:\n{err}\n\n{output}"))
   })
 }
 
 fn parse_output(output: &str) -> Result<String, String> {
-  let mut parser = hvm::ast::CoreParser::new(output);
-  parser.consume("Result:")?;
-  let mut tree = parser.parse_tree()?;
-  normalize_vars(&mut tree, &mut HashMap::new());
-  // TODO: include iteration count in snapshot once consistent
-  // parser.consume("- ITRS:")?;
-  // let itrs = parser.parse_u64()?;
-  // Ok(format!("Result: {}\n- ITRS: {}", tree.show(), itrs))
-  Ok(format!("Result: {}", tree.show()))
+  let mut lines = Vec::new();
+
+  for line in output.lines() {
+    if line.starts_with("Result:") {
+      let mut parser = hvm::ast::CoreParser::new(line);
+      parser.consume("Result:")?;
+      let mut tree = parser.parse_tree()?;
+      normalize_vars(&mut tree, &mut HashMap::new());
+      lines.push(format!("Result: {}", tree.show()));
+    } else if !line.starts_with("- ITRS:") && !line.starts_with("- TIME:") && !line.starts_with("- MIPS:") {
+      // TODO: include iteration count in snapshot once consistent
+      lines.push(line.to_string())
+    }
+  }
+
+  Ok(lines.join("\n"))
 }
 
 fn normalize_vars(tree: &mut Tree, vars: &mut HashMap<String, usize>) {
@@ -85,7 +128,7 @@ fn normalize_vars(tree: &mut Tree, vars: &mut HashMap<String, usize>) {
     Tree::Var { nam } => {
       let next_var = vars.len();
       *nam = format!("x{}", vars.entry(std::mem::take(nam)).or_insert(next_var));
-    },
+    }
     Tree::Era | Tree::Ref { .. } | Tree::Num { .. } => {}
     Tree::Con { fst, snd } | Tree::Dup { fst, snd } | Tree::Opr { fst, snd } | Tree::Swi { fst, snd } => {
       normalize_vars(fst, vars);
