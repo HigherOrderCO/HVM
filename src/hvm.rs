@@ -25,6 +25,10 @@ pub struct APair(pub AtomicU64);
 
 // Number
 pub struct Numb(pub Val);
+const U24_MAX : u32 = 1 << 24 - 1;
+const U24_MIN : u32 = 0;
+const I24_MAX : i32 = 1 << 23 - 1;
+const I24_MIN : i32 = -1 << 23;
 
 // Tags
 pub const VAR : Tag = 0x0; // variable
@@ -295,11 +299,11 @@ impl Numb {
     match (a.get_sym(), b.get_typ()) {
       (TY_U24, TY_U24) => b,
       (TY_U24, TY_I24) => Self::new_u24(b.get_i24() as u32),
-      (TY_U24, TY_F24) => Self::new_u24(b.get_f24().clamp(0.0, 16777215.0) as u32),
+      (TY_U24, TY_F24) => Self::new_u24((b.get_f24() as u32).clamp(U24_MIN, U24_MAX)),
 
       (TY_I24, TY_U24) => Self::new_i24(b.get_u24() as i32),
       (TY_I24, TY_I24) => b,
-      (TY_I24, TY_F24) => Self::new_i24(b.get_f24().clamp(-8388608.0, 8388607.0) as i32),
+      (TY_I24, TY_F24) => Self::new_i24((b.get_f24() as i32).clamp(I24_MIN, I24_MAX)),
 
       (TY_F24, TY_U24) => Self::new_f24(b.get_u24() as f32),
       (TY_F24, TY_I24) => Self::new_f24(b.get_i24() as f32),

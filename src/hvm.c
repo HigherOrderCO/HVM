@@ -77,6 +77,10 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 #define SWIT 0x7
 
 // Numbers
+static const f32 U24_MAX = (f32) (1 << 24) - 1;
+static const f32 U24_MIN = 0.0;
+static const f32 I24_MAX = (f32) (1 << 23) - 1;
+static const f32 I24_MIN = (f32) (i32) ((-1u) << 23);
 #define TY_SYM 0x00
 #define TY_U24 0x01
 #define TY_I24 0x02
@@ -469,7 +473,7 @@ static inline Numb cast(Numb a, Numb b) {
     if (isnan(val)) {
       return new_u24(0);
     }
-    return new_u24((u32) clamp(val, 0.0, 16777215));
+    return new_u24((u32) clamp(val, U24_MIN, U24_MAX));
   }
 
   if (get_sym(a) == TY_I24 && get_typ(b) == TY_U24) {
@@ -483,7 +487,7 @@ static inline Numb cast(Numb a, Numb b) {
     if (isnan(val)) {
       return new_i24(0);
     }
-    return new_i24((i32) clamp(val, -8388608.0, 8388607.0));
+    return new_i24((i32) clamp(val, I24_MIN, I24_MAX));
   }
 
   if (get_sym(a) == TY_F24 && get_typ(b) == TY_U24) return new_f24((f32) get_u24(b));
