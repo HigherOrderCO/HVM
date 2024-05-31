@@ -1062,15 +1062,8 @@ __device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 n
   u32 got_node;
   u32 got_vars;
   if (tm->mode != WORK) {
-    // printf("get resources (not work): %u %u %u", need_rbag, need_node, need_vars);
-
     got_node = g_node_alloc(net, tm, need_node);
-
-    // printf("got node");
-
     got_vars = g_vars_alloc(net, tm, need_vars);
-
-    // printf("got vars");
   } else {
     got_node = l_node_alloc(net, tm, need_node);
     got_vars = l_vars_alloc(net, tm, need_vars);
