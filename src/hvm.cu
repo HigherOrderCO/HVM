@@ -705,8 +705,8 @@ __device__ Net vnet_new(GNet* gnet, void* smem, u32 turn) {
   Net net;
   net.l_node_dif   = 0;
   net.l_vars_dif   = 0;
-  net.l_node_buf   = ((LNet*)smem)->node_buf;
-  net.l_vars_buf   = ((LNet*)smem)->vars_buf;
+  net.l_node_buf   = smem == NULL ? net.l_node_buf : ((LNet*)smem)->node_buf;
+  net.l_vars_buf   = smem == NULL ? net.l_vars_buf : ((LNet*)smem)->vars_buf;
   net.g_rbag_use_A = turn % 2 == 0 ? &gnet->rbag_use_A : &gnet->rbag_use_B;
   net.g_rbag_use_B = turn % 2 == 0 ? &gnet->rbag_use_B : &gnet->rbag_use_A;
   net.g_rbag_buf_A = turn % 2 == 0 ? gnet->rbag_buf_A : gnet->rbag_buf_B;
@@ -1058,10 +1058,6 @@ __device__ void link_pair(Net* net, TM* tm, Pair AB) {
 
 // Gets the necessary resources for an interaction.
 __device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
-  // printf("get resources %u %u %u", need_rbag, need_node, need_vars);
-  // printf("tm: %p", tm);
-  // printf("", tm->page);
-
   u32 got_rbag = min(RLEN - tm->rbag.lo_end, RLEN - tm->rbag.hi_end);
   u32 got_node;
   u32 got_vars;
@@ -1457,36 +1453,46 @@ __global__ void boot_redex(GNet* gnet, Pair redex) {
 }
 
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
+/// Should only be called within `str_to_port`, as a previous call
+/// to `get_resources` is expected.
 __device__ Port nil_port(Net* net, TM* tm) {
-  if (!get_resources(net, tm, 0, 2, 1)) {
-    printf("nil_port: failed to get resources\n");
-    return new_port(ERA, 0);
-  }
+  u32 v1 = tm->vloc[0];
 
-  vars_create(net, tm->vloc[0], NONE);
-  Port var = new_port(VAR, tm->vloc[0]);
+  u32 n1 = tm->nloc[0];
+  u32 n2 = tm->nloc[1];
 
-  node_create(net, tm->nloc[0], new_pair(new_port(NUM, new_u24(LIST_NIL)), var));
-  node_create(net, tm->nloc[1], new_pair(new_port(CON, tm->nloc[0]), var));
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
 
-  return new_port(CON, tm->nloc[1]);
+  node_create(net, n1, new_pair(new_port(NUM, new_u24(LIST_NIL)), var));
+  node_create(net, n2, new_pair(new_port(CON, n1), var));
+
+  return new_port(CON, n2);
 }
 
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
-__device__ Port cons_port(Net* net, TM* tm, Port head, Port tail) {
-  if (!get_resources(net, tm, 0, 4, 1)) {
-    return new_port(ERA, 0);
-  }
+/// Should only be called within `str_to_port`, as a previous call
+/// to `get_resources` is expected.
+/// The `char_idx` parameter is used to offset the vloc and nloc
+/// allocations, otherwise they would conflict with each other on
+/// subsequent calls.
+__device__ Port cons_port(Net* net, TM* tm, Port head, Port tail, u32 char_idx) {
+  u32 v1 = tm->vloc[1 + char_idx];
 
-  vars_create(net, tm->vloc[0], NONE);
-  Port var = new_port(VAR, tm->vloc[0]);
+  u32 n1 = tm->nloc[2 + char_idx * 4 + 0];
+  u32 n2 = tm->nloc[2 + char_idx * 4 + 1];
+  u32 n3 = tm->nloc[2 + char_idx * 4 + 2];
+  u32 n4 = tm->nloc[2 + char_idx * 4 + 3];
 
-  node_create(net, tm->nloc[0], new_pair(tail, var));
-  node_create(net, tm->nloc[1], new_pair(head, new_port(CON, tm->nloc[0])));
-  node_create(net, tm->nloc[2], new_pair(new_port(NUM, new_u24(LIST_CONS)), new_port(CON, tm->nloc[1])));
-  node_create(net, tm->nloc[3], new_pair(new_port(CON, tm->nloc[2]), var));
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
 
-  return new_port(CON, tm->nloc[3]);
+  node_create(net, n1, new_pair(tail, var));
+  node_create(net, n2, new_pair(head, new_port(CON, n1)));
+  node_create(net, n3, new_pair(new_port(NUM, new_u24(LIST_CONS)), new_port(CON, n2)));
+  node_create(net, n4, new_pair(new_port(CON, n3), var));
+
+  return new_port(CON, n4);
 }
 
 // Converts a UTF-32 (truncated to 24 bits) string to a Port.
@@ -1496,12 +1502,20 @@ __device__ Port cons_port(Net* net, TM* tm, Port head, Port tail) {
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
 __device__ Port str_to_port(Net* net, TM* tm, Str *str) {
+  // Allocate all resources up front:
+  // - NIL needs  2 nodes & 1 var
+  // - CONS needs 4 nodes & 1 var
+  u32 len = str->text_len;
+  if (!get_resources(net, tm, 0, 2 + 4 * len, 1 + len)) {
+    printf("str_to_port: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
   Port port = nil_port(net, tm);
 
-  u32 len = str->text_len;
   for (u32 i = 0; i < len; i++) {
     Port chr = new_port(NUM, new_u24(str->text_buf[len - i - 1]));
-    port = cons_port(net, tm, chr, port);
+    port = cons_port(net, tm, chr, port, i);
   }
 
   return port;
@@ -2079,8 +2093,6 @@ Port io_read_line(GNet* gnet, Port argm) {
     str.text_buf[str.text_len] = 0;
     str.text_len--;
   }
-
-  printf("read this string: '%s'\n", str.text_buf);
 
   // Convert it to a port.
   return gnet_make_str(gnet, &str);

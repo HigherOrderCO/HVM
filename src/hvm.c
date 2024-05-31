@@ -1315,37 +1315,46 @@ Str port_to_str(Net* net, Book* book, Port port) {
 }
 
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
+/// Should only be called within `str_to_port`, as a previous call
+/// to `get_resources` is expected.
 Port nil_port(Net* net) {
-  if (!get_resources(net, tm[0], 0, 2, 1)) {
-    fprintf(stderr, "nil_port: failed to get resources\n");
-    return new_port(ERA, 0);
-  }
+  u32 v1 = tm[0]->vloc[0];
 
-  vars_create(net, tm[0]->vloc[0], NONE);
-  Port var = new_port(VAR, tm[0]->vloc[0]);
+  u32 n1 = tm[0]->nloc[0];
+  u32 n2 = tm[0]->nloc[1];
 
-  node_create(net, tm[0]->nloc[0], new_pair(new_port(NUM, new_u24(LIST_NIL)), var));
-  node_create(net, tm[0]->nloc[1], new_pair(new_port(CON, tm[0]->nloc[0]), var));
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
 
-  return new_port(CON, tm[0]->nloc[1]);
+  node_create(net, n1, new_pair(new_port(NUM, new_u24(LIST_NIL)), var));
+  node_create(net, n2, new_pair(new_port(CON, n1), var));
+
+  return new_port(CON, n2);
 }
 
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
-Port cons_port(Net* net, Port head, Port tail) {
-  if (!get_resources(net, tm[0], 0, 4, 1)) {
-    fprintf(stderr, "cons_port: failed to get resources\n");
-    return new_port(ERA, 0);
-  }
+/// Should only be called within `str_to_port`, as a previous call
+/// to `get_resources` is expected.
+/// The `char_idx` parameter is used to offset the vloc and nloc
+/// allocations, otherwise they would conflict with each other on
+/// subsequent calls.
+Port cons_port(Net* net, Port head, Port tail, u32 char_idx) {
+  u32 v1 = tm[0]->vloc[1 + char_idx];
 
-  vars_create(net, tm[0]->vloc[0], NONE);
-  Port var = new_port(VAR, tm[0]->vloc[0]);
+  u32 n1 = tm[0]->nloc[2 + char_idx * 4 + 0];
+  u32 n2 = tm[0]->nloc[2 + char_idx * 4 + 1];
+  u32 n3 = tm[0]->nloc[2 + char_idx * 4 + 2];
+  u32 n4 = tm[0]->nloc[2 + char_idx * 4 + 3];
 
-  node_create(net, tm[0]->nloc[0], new_pair(tail, var));
-  node_create(net, tm[0]->nloc[1], new_pair(head, new_port(CON, tm[0]->nloc[0])));
-  node_create(net, tm[0]->nloc[2], new_pair(new_port(NUM, new_u24(LIST_CONS)), new_port(CON, tm[0]->nloc[1])));
-  node_create(net, tm[0]->nloc[3], new_pair(new_port(CON, tm[0]->nloc[2]), var));
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
 
-  return new_port(CON, tm[0]->nloc[3]);
+  node_create(net, n1, new_pair(tail, var));
+  node_create(net, n2, new_pair(head, new_port(CON, n1)));
+  node_create(net, n3, new_pair(new_port(NUM, new_u24(LIST_CONS)), new_port(CON, n2)));
+  node_create(net, n4, new_pair(new_port(CON, n3), var));
+
+  return new_port(CON, n4);
 }
 
 // Converts a UTF-32 (truncated to 24 bits) string to a Port.
@@ -1355,12 +1364,20 @@ Port cons_port(Net* net, Port head, Port tail) {
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
 Port str_to_port(Net* net, Str *str) {
+  // Allocate all resources up front:
+  // - NIL needs  2 nodes & 1 var
+  // - CONS needs 4 nodes & 1 var
+  u32 len = str->text_len;
+  if (!get_resources(net, tm[0], 0, 2 + 4 * len, 1 + len)) {
+    printf("str_to_port: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
   Port port = nil_port(net);
 
-  u32 len = str->text_len;
   for (u32 i = 0; i < len; i++) {
     Port chr = new_port(NUM, new_u24(str->text_buf[len - i - 1]));
-    port = cons_port(net, chr, port);
+    port = cons_port(net, chr, port, i);
   }
 
   return port;
