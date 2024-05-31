@@ -1,0 +1,16 @@
+name: Delete Cancelled Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        type: string
+        description: "" 
+
+jobs:
+  delete:
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh api "repos/higherorderco/hvm-core/actions/runs/${{ inputs.run_id }}" -X DELETE
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
