@@ -25,10 +25,10 @@ pub struct APair(pub AtomicU64);
 
 // Number
 pub struct Numb(pub Val);
-const U24_MAX : u32 = 1 << 24 - 1;
+const U24_MAX : u32 = (1 << 24) - 1;
 const U24_MIN : u32 = 0;
-const I24_MAX : i32 = 1 << 23 - 1;
-const I24_MIN : i32 = -1 << 23;
+const I24_MAX : i32 = (1 << 23) - 1;
+const I24_MIN : i32 = (-1) << 23;
 
 // Tags
 pub const VAR : Tag = 0x0; // variable
