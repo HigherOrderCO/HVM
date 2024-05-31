@@ -114,7 +114,11 @@ fn parse_output(output: &str) -> Result<String, String> {
       let mut tree = parser.parse_tree()?;
       normalize_vars(&mut tree, &mut HashMap::new());
       lines.push(format!("Result: {}", tree.show()));
-    } else if !line.starts_with("- ITRS:") && !line.starts_with("- TIME:") && !line.starts_with("- MIPS:") {
+    } else if !line.starts_with("- ITRS:")
+      && !line.starts_with("- TIME:")
+      && !line.starts_with("- MIPS:")
+      && !line.starts_with("- LEAK:")
+    {
       // TODO: include iteration count in snapshot once consistent
       lines.push(line.to_string())
     }
