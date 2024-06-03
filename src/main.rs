@@ -72,7 +72,6 @@ fn main() {
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       hvm::GNet::run(&book, before_running, after_running);
-      // run(&book);
     }
     Some(("run-c", sub_matches)) => {
       let file = sub_matches.get_one::<String>("file").expect("required");

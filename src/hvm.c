@@ -1786,6 +1786,10 @@ void hvm_c(u32* book_buffer, Net* net_buffer) {
 
   #ifdef IO
   do_run_io(net, book, ROOT);
+  // IO actions into `stdout` and `stderr` may appear
+  // after Rust `print`s if we don't flush
+  fflush(stdout);
+  fflush(stderr);
   #else
   normalize(net, book);
   #endif
