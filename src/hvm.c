@@ -1790,19 +1790,21 @@ void hvm_c(u32* book_buffer, Net* net_buffer) {
   normalize(net, book);
   #endif
 
-  // Prints the result
-  printf("Result: ");
-  pretty_print_port(net, book, enter(net, ROOT));
-  printf("\n");
-
   // Stops the timer
   double duration = (time64() - start) / 1000000000.0; // seconds
 
-  // Prints interactions and time
-  u64 itrs = atomic_load(&net->itrs);
-  printf("- ITRS: %" PRIu64 "\n", itrs);
-  printf("- TIME: %.2fs\n", duration);
-  printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
+  if (!net_buffer) {
+    // Prints the result
+    printf("Result: ");
+    pretty_print_port(net, book, enter(net, ROOT));
+    printf("\n");
+  
+    // Prints interactions and time
+    u64 itrs = atomic_load(&net->itrs);
+    printf("- ITRS: %" PRIu64 "\n", itrs);
+    printf("- TIME: %.2fs\n", duration);
+    printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
+  }
 
   // Frees everything
   free_static_tms();
