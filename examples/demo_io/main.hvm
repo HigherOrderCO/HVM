@@ -1,12 +1,17 @@
-@IO_T/Call = (a (b (c (d ((1 (a (b (c (d e))))) e)))))
+@IO_T/Call = (a (b (c (d ((@IO_T/Call/tag (a (b (c (d e))))) e)))))
 
-@IO_T/Done = (a (b ((0 (a (b c))) c)))
+@IO_T/Call/tag = 1
+
+@IO_T/Done = (a (b ((@IO_T/Done/tag (a (b c))) c)))
+
+@IO_T/Done/tag = 0
 
 @IO_T/MAGIC = (13683217 16719857)
 
 @IO_T/bind = ((@IO_T/bind__C2 a) a)
 
-@IO_T/bind__C0 = (* (a ((a b) b)))
+@IO_T/bind__C0 = (* (b (a c)))
+  & @undefer ~ (a (b c))
 
 @IO_T/bind__C1 = (* (* (a (b ((c d) (e g))))))
   & @IO_T/Call ~ (@IO_T/MAGIC (a (b ((c f) g))))
@@ -14,12 +19,13 @@
 
 @IO_T/bind__C2 = (?((@IO_T/bind__C0 @IO_T/bind__C1) a) a)
 
-@IO_T/wrap = a
-  & @IO_T/Done ~ (@IO_T/MAGIC a)
+@String/Cons = (a (b ((@String/Cons/tag (a (b c))) c)))
 
-@String/Cons = (a (b ((1 (a (b c))) c)))
+@String/Cons/tag = 1
 
-@String/Nil = ((0 a) a)
+@String/Nil = ((@String/Nil/tag a) a)
+
+@String/Nil/tag = 0
 
 @call_io = (a (b c))
   & @IO_T/Call ~ (@IO_T/MAGIC (a (b (@call_io__C0 c))))
@@ -28,9 +34,11 @@
   & @IO_T/Done ~ (@IO_T/MAGIC a)
 
 @main = a
-  & @IO_T/bind ~ (@main__C7 (@main__C6 a))
+  & @IO_T/bind ~ (@main__C12 (@main__C11 a))
 
-@main__C0 = i
+@main__C0 = (((* 42) a) a)
+
+@main__C1 = i
   & @call_io ~ (e ((1 h) i))
   & @String/Cons ~ (87 (d e))
   & @String/Cons ~ (82 (c d))
@@ -41,65 +49,27 @@
   & @String/Cons ~ (33 (f g))
   & @String/Cons ~ (10 (@String/Nil f))
 
-@main__C1 = e
+@main__C10 = (* a)
+  & @IO_T/bind ~ (@main__C9 (@main__C8 a))
+
+@main__C11 = ((@main__C10 a) a)
+
+@main__C12 = bb
+  & @call_io ~ (e ((1 ab) bb))
   & @String/Cons ~ (87 (d e))
   & @String/Cons ~ (82 (c d))
   & @String/Cons ~ (73 (b c))
   & @String/Cons ~ (84 (a b))
   & @String/Cons ~ (69 (@String/Nil a))
-
-@main__C2 = (* a)
-  & @IO_T/bind ~ (@main__C0 ((* 42) a))
-
-@main__C3 = n
-  & @call_io ~ (e ((1 m) n))
-  & @String/Cons ~ (87 (d e))
-  & @String/Cons ~ (82 (c d))
-  & @String/Cons ~ (73 (b c))
-  & @String/Cons ~ (84 (a b))
-  & @String/Cons ~ (69 (@String/Nil a))
-  & @String/Cons ~ (72 (l m))
-  & @String/Cons ~ (101 (k l))
-  & @String/Cons ~ (108 (j k))
-  & @String/Cons ~ (108 (i j))
-  & @String/Cons ~ (111 (h i))
-  & @String/Cons ~ (44 (g h))
-  & @String/Cons ~ (32 (f g))
-  & @String/Cons ~ (39 (@String/Nil f))
-
-@main__C4 = (a d)
-  & @IO_T/bind ~ (@main__C3 ((* c) d))
-  & @IO_T/bind ~ (b (@main__C2 c))
-  & @call_io ~ (@main__C1 ((1 a) b))
-
-@main__C5 = j
-  & @call_io ~ (i (0 j))
-  & @String/Cons ~ (82 (h i))
-  & @String/Cons ~ (69 (g h))
-  & @String/Cons ~ (65 (f g))
-  & @String/Cons ~ (68 (e f))
-  & @String/Cons ~ (95 (d e))
-  & @String/Cons ~ (76 (c d))
-  & @String/Cons ~ (73 (b c))
-  & @String/Cons ~ (78 (a b))
-  & @String/Cons ~ (69 (@String/Nil a))
-
-@main__C6 = (* a)
-  & @IO_T/bind ~ (@main__C5 (@main__C4 a))
-
-@main__C7 = y
-  & @call_io ~ (e ((1 x) y))
-  & @String/Cons ~ (87 (d e))
-  & @String/Cons ~ (82 (c d))
-  & @String/Cons ~ (73 (b c))
-  & @String/Cons ~ (84 (a b))
-  & @String/Cons ~ (69 (@String/Nil a))
-  & @String/Cons ~ (87 (w x))
-  & @String/Cons ~ (104 (v w))
-  & @String/Cons ~ (97 (u v))
-  & @String/Cons ~ (116 (t u))
-  & @String/Cons ~ (32 (s t))
-  & @String/Cons ~ (105 (r s))
+  & @String/Cons ~ (72 (z ab))
+  & @String/Cons ~ (105 (y z))
+  & @String/Cons ~ (33 (x y))
+  & @String/Cons ~ (32 (w x))
+  & @String/Cons ~ (87 (v w))
+  & @String/Cons ~ (104 (u v))
+  & @String/Cons ~ (97 (t u))
+  & @String/Cons ~ (116 (s t))
+  & @String/Cons ~ (39 (r s))
   & @String/Cons ~ (115 (q r))
   & @String/Cons ~ (32 (p q))
   & @String/Cons ~ (121 (o p))
@@ -114,6 +84,63 @@
   & @String/Cons ~ (63 (f g))
   & @String/Cons ~ (10 (@String/Nil f))
 
-@test-skip = 1
+@main__C2 = (* a)
+  & @IO_T/bind ~ (@main__C1 (@main__C0 a))
+
+@main__C3 = e
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@main__C4 = ((@main__C2 a) a)
+
+@main__C5 = (a (* c))
+  & @IO_T/bind ~ (b (@main__C4 c))
+  & @call_io ~ (@main__C3 ((1 a) b))
+
+@main__C6 = t
+  & @call_io ~ (e ((1 s) t))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+  & @String/Cons ~ (89 (r s))
+  & @String/Cons ~ (111 (q r))
+  & @String/Cons ~ (117 (p q))
+  & @String/Cons ~ (114 (o p))
+  & @String/Cons ~ (32 (n o))
+  & @String/Cons ~ (110 (m n))
+  & @String/Cons ~ (97 (l m))
+  & @String/Cons ~ (109 (k l))
+  & @String/Cons ~ (101 (j k))
+  & @String/Cons ~ (32 (i j))
+  & @String/Cons ~ (105 (h i))
+  & @String/Cons ~ (115 (g h))
+  & @String/Cons ~ (32 (f g))
+  & @String/Cons ~ (39 (@String/Nil f))
+
+@main__C7 = (a c)
+  & @IO_T/bind ~ (@main__C6 (((@main__C5 (a b)) b) c))
+
+@main__C8 = ((@main__C7 a) a)
+
+@main__C9 = j
+  & @call_io ~ (i (0 j))
+  & @String/Cons ~ (82 (h i))
+  & @String/Cons ~ (69 (g h))
+  & @String/Cons ~ (65 (f g))
+  & @String/Cons ~ (68 (e f))
+  & @String/Cons ~ (95 (d e))
+  & @String/Cons ~ (76 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (78 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@test-io = 1
+
+@undefer = (((a a) b) b)
 
 

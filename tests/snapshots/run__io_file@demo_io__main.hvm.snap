@@ -1,0 +1,8 @@
+---
+source: tests/run.rs
+expression: c_output
+input_file: examples/demo_io/main.hvm
+---
+Hi! What's your name?
+Your name is 'io from the tests'!
+Result: 42
