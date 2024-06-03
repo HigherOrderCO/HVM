@@ -2537,7 +2537,7 @@ __device__ void pretty_print_port(Net* net, Port port) {
     }
     case REF: {
       u32  fid = get_val(port) & 0xFFFFFFF;
-      Def* def = &Book.defs_buf[fid];
+      Def* def = &BOOK.defs_buf[fid];
       printf("@%s", def->name);
       return;
     }
