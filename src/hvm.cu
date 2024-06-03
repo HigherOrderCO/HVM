@@ -2481,9 +2481,9 @@ __device__ void pretty_print_port(Net* net, Port port) {
     case CON: {
       Pair node = node_load(net, get_val(port));
       printf("(");
-      pretty_print_port(net, book, get_fst(node));
+      pretty_print_port(net, get_fst(node));
       printf(" ");
-      pretty_print_port(net, book, get_snd(node));
+      pretty_print_port(net, get_snd(node));
       printf(")");
       return;
     }
@@ -2498,7 +2498,7 @@ __device__ void pretty_print_port(Net* net, Port port) {
     case VAR: {
       Port val = vars_load(net, get_val(port));
       if (val != NONE) {
-        pretty_print_port(net, book, val);
+        pretty_print_port(net, val);
       } else {
         printf("x%x", get_val(port));
       }
@@ -2511,33 +2511,33 @@ __device__ void pretty_print_port(Net* net, Port port) {
     case DUP: {
       Pair node = node_load(net, get_val(port));
       printf("{");
-      pretty_print_port(net, book, get_fst(node));
+      pretty_print_port(net, get_fst(node));
       printf(" ");
-      pretty_print_port(net, book, get_snd(node));
+      pretty_print_port(net, get_snd(node));
       printf("}");
       return;
     }
     case OPR: {
       Pair node = node_load(net, get_val(port));
       printf("$(");
-      pretty_print_port(net, book, get_fst(node));
+      pretty_print_port(net, get_fst(node));
       printf(" ");
-      pretty_print_port(net, book, get_snd(node));
+      pretty_print_port(net, get_snd(node));
       printf(")");
       return;
     }
     case SWI: {
       Pair node = node_load(net, get_val(port));
       printf("?(");
-      pretty_print_port(net, book, get_fst(node));
+      pretty_print_port(net, get_fst(node));
       printf(" ");
-      pretty_print_port(net, book, get_snd(node));
+      pretty_print_port(net, get_snd(node));
       printf(")");
       return;
     }
     case REF: {
       u32  fid = get_val(port) & 0xFFFFFFF;
-      Def* def = &book->defs_buf[fid];
+      Def* def = &Book.defs_buf[fid];
       printf("@%s", def->name);
       return;
     }
