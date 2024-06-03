@@ -2248,6 +2248,11 @@ __device__ void pretty_print_numb(Numb word) {
   switch (get_typ(word)) {
     case TY_SYM: {
       switch (get_sym(word)) {
+        // types
+        case TY_U24: printf("[u24]"); break;
+        case TY_I24: printf("[i24]"); break;
+        case TY_F24: printf("[f24]"); break;
+        // operations
         case OP_ADD: printf("[+]"); break;
         case OP_SUB: printf("[-]"); break;
         case FP_SUB: printf("[:-]"); break;

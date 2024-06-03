@@ -45,9 +45,9 @@ impl<'i> CoreParser<'i> {
 
     // numeric casts
     if let Some(cast) = match () {
-      _ if self.try_consume("to_u24") => Some(hvm::TY_U24),
-      _ if self.try_consume("to_i24") => Some(hvm::TY_I24),
-      _ if self.try_consume("to_f24") => Some(hvm::TY_F24),
+      _ if self.try_consume("u24") => Some(hvm::TY_U24),
+      _ if self.try_consume("i24") => Some(hvm::TY_I24),
+      _ if self.try_consume("f24") => Some(hvm::TY_F24),
       _ => None
     } {
       // Casts can't be partially applied, so nothing should follow.
@@ -239,9 +239,9 @@ impl Numb {
     match numb.get_typ() {
       hvm::TY_SYM => match numb.get_sym() as hvm::Tag {
         // casts
-        hvm::TY_U24 => "[to_u24]".to_string(),
-        hvm::TY_I24 => "[to_i24]".to_string(),
-        hvm::TY_F24 => "[to_f24]".to_string(),
+        hvm::TY_U24 => "[u24]".to_string(),
+        hvm::TY_I24 => "[i24]".to_string(),
+        hvm::TY_F24 => "[f24]".to_string(),
         // operations
         hvm::OP_ADD => "[+]".to_string(),
         hvm::OP_SUB => "[-]".to_string(),
