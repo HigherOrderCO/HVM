@@ -25,6 +25,10 @@ pub struct APair(pub AtomicU64);
 
 // Number
 pub struct Numb(pub Val);
+const U24_MAX : u32 = (1 << 24) - 1;
+const U24_MIN : u32 = 0;
+const I24_MAX : i32 = (1 << 23) - 1;
+const I24_MIN : i32 = (-1) << 23;
 
 // Tags
 pub const VAR : Tag = 0x0; // variable
@@ -266,16 +270,47 @@ impl Numb {
   }
 
   // Gets the numeric type.
-
   pub fn get_typ(&self) -> Tag {
-    return (self.0 & 0x1F) as Tag;
+    (self.0 & 0x1F) as Tag
   }
 
-  // Flip flag.
+  pub fn is_num(&self) -> bool {
+    self.get_typ() >= TY_U24 && self.get_typ() <= TY_F24
+  }
+
+  pub fn is_cast(&self) -> bool {
+    self.get_typ() == TY_SYM && self.get_sym() >= TY_U24 && self.get_sym() <= TY_F24
+  }
 
   // Partial application.
   pub fn partial(a: Self, b: Self) -> Self {
-    return Numb((b.0 & !0x1F) | a.get_sym() as u32);
+    Numb((b.0 & !0x1F) | a.get_sym() as u32)
+  }
+
+  // Cast a number to another type.
+  // The semantics are meant to spiritually resemble rust's numeric casts:
+  // - i24 <-> u24: is just reinterpretation of bits
+  // - f24  -> i24,
+  //   f24  -> u24: casts to the "closest" integer representing this float,
+  //                saturating if out of range and 0 if NaN
+  // - i24  -> f24,
+  //   u24  -> f24: casts to the "closest" float representing this integer.
+  pub fn cast(a: Self, b: Self) -> Self {
+    match (a.get_sym(), b.get_typ()) {
+      (TY_U24, TY_U24) => b,
+      (TY_U24, TY_I24) => Self::new_u24(b.get_i24() as u32),
+      (TY_U24, TY_F24) => Self::new_u24((b.get_f24() as u32).clamp(U24_MIN, U24_MAX)),
+
+      (TY_I24, TY_U24) => Self::new_i24(b.get_u24() as i32),
+      (TY_I24, TY_I24) => b,
+      (TY_I24, TY_F24) => Self::new_i24((b.get_f24() as i32).clamp(I24_MIN, I24_MAX)),
+
+      (TY_F24, TY_U24) => Self::new_f24(b.get_u24() as f32),
+      (TY_F24, TY_I24) => Self::new_f24(b.get_i24() as f32),
+      (TY_F24, TY_F24) => b,
+      // invalid cast
+      (_, _) => Self::new_u24(0),
+    }
   }
 
   pub fn operate(a: Self, b: Self) -> Self {
@@ -284,6 +319,12 @@ impl Numb {
     let bt = b.get_typ();
     if at == TY_SYM && bt == TY_SYM {
       return Numb::new_u24(0);
+    }
+    if a.is_cast() && b.is_num() {
+      return Numb::cast(a, b);
+    }
+    if b.is_cast() && a.is_num() {
+      return Numb::cast(b, a);
     }
     if at == TY_SYM && bt != TY_SYM {
       return Numb::partial(a, b);
