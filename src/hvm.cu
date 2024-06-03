@@ -262,6 +262,11 @@ __global__ void print_heatmap(GNet* gnet, u32 turn);
 // Utils
 // -----
 
+__device__ __host__ f32 clamp(f32 x, f32 min, f32 max) {
+  const f32 t = x < min ? min : x;
+  return (t > max) ? max : t;
+}
+
 // TODO: write a time64() function that returns the time as fast as possible as a u64
 static inline u64 time64() {
   struct timespec ts;
@@ -541,6 +546,58 @@ __device__ __host__ inline Tag get_typ(Numb word) {
   return word & 0x1F;
 }
 
+__device__ __host__ inline bool is_num(Numb word) {
+  return get_typ(word) >= TY_U24 && get_typ(word) <= TY_F24;
+}
+
+__device__ __host__ inline bool is_cast(Numb word) {
+  return get_typ(word) == TY_SYM && get_sym(word) >= TY_U24 && get_sym(word) <= TY_F24;
+}
+
+// Cast a number to another type.
+// The semantics are meant to spiritually resemble rust's numeric casts:
+// - i24 <-> u24: is just reinterpretation of bits
+// - f24  -> i24,
+//   f24  -> u24: casts to the "closest" integer representing this float,
+//                saturating if out of range and 0 if NaN
+// - i24  -> f24,
+//   u24  -> f24: casts to the "closest" float representing this integer.
+__device__ __host__ inline Numb cast(Numb a, Numb b) {
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_U24) return b;
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_I24) {
+    // reinterpret bits
+    i32 val = get_i24(b);
+    return new_u24(*(u32*) &val);
+  }
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_F24) {
+    f32 val = get_f24(b);
+    if (isnan(val)) {
+      return new_u24(0);
+    }
+    return new_u24((u32) clamp(val, 0.0, 16777215));
+  }
+
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_U24) {
+    // reinterpret bits
+    u32 val = get_u24(b);
+    return new_i24(*(i32*) &val);
+  }
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_I24) return b;
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_F24) {
+    f32 val = get_f24(b);
+    if (isnan(val)) {
+      return new_i24(0);
+    }
+    return new_i24((i32) clamp(val, -8388608.0, 8388607.0));
+  }
+
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_U24) return new_f24((f32) get_u24(b));
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_I24) return new_f24((f32) get_i24(b));
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_F24) return b;
+
+  return new_u24(0);
+}
+
 // Partial application
 __device__ __host__ inline Numb partial(Numb a, Numb b) {
   return (b & ~0x1F) | get_sym(a);
@@ -552,6 +609,12 @@ __device__ __host__ inline Numb operate(Numb a, Numb b) {
   Tag bt = get_typ(b);
   if (at == TY_SYM && bt == TY_SYM) {
     return new_u24(0);
+  }
+  if (is_cast(a) && is_num(b)) {
+    return cast(a, b);
+  }
+  if (is_cast(b) && is_num(a)) {
+    return cast(b, a);
   }
   if (at == TY_SYM && bt != TY_SYM) {
     return partial(a, b);
@@ -2403,6 +2466,11 @@ __device__ void pretty_print_numb(Numb word) {
   switch (get_typ(word)) {
     case TY_SYM: {
       switch (get_sym(word)) {
+        // types
+        case TY_U24: printf("[u24]"); break;
+        case TY_I24: printf("[i24]"); break;
+        case TY_F24: printf("[f24]"); break;
+        // operations
         case OP_ADD: printf("[+]"); break;
         case OP_SUB: printf("[-]"); break;
         case FP_SUB: printf("[:-]"); break;
@@ -2444,7 +2512,7 @@ __device__ void pretty_print_numb(Numb word) {
       } else if (isnan(get_f24(word))) {
         printf("+NaN");
       } else {
-        printf("%f", get_f24(word));
+        printf("%.7e", get_f24(word));
       }
       break;
     }
