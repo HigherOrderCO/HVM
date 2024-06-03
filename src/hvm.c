@@ -1991,84 +1991,69 @@ void pretty_print_numb(Numb word) {
 }
 
 void pretty_print_port(Net* net, Book* book, Port port) {
-  Port stack[256];
-  stack[0] = port;
-  u32 len = 1;
-  u32 num = 0;
-  while (len > 0) {
-    Port cur = stack[--len];
-    switch (get_tag(cur)) {
-      case CON: {
-        Pair node = node_load(net,get_val(cur));
-        Port p2   = get_snd(node);
-        Port p1   = get_fst(node);
-        printf("(");
-        stack[len++] = new_port(ERA, (u32)(')'));
-        stack[len++] = p2;
-        stack[len++] = new_port(ERA, (u32)(' '));
-        stack[len++] = p1;
-        break;
+  switch (get_tag(port)) {
+    case CON: {
+      Pair node = node_load(net, get_val(port));
+      printf("(");
+      pretty_print_port(net, book, get_fst(node));
+      printf(" ");
+      pretty_print_port(net, book, get_snd(node));
+      printf(")");
+      return;
+    }
+    case ERA: {
+      if (get_val(port) != 0) {
+        printf("%c", (char) get_val(port));
+      } else {
+        printf("*");
       }
-      case ERA: {
-        if (get_val(cur) != 0) {
-          printf("%c", (char)get_val(cur));
-        } else {
-          printf("*");
-        }
-        break;
+      return;
+    }
+    case VAR: {
+      Port val = vars_load(net, get_val(port));
+      if (val != NONE) {
+        pretty_print_port(net, book, val);
+      } else {
+        printf("x%x", get_val(port));
       }
-      case VAR: {
-        Port got = vars_load(net, get_val(cur));
-        if (got != NONE) {
-          stack[len++] = got;
-        } else {
-          printf("x%x", get_val(cur));
-        }
-        break;
-      }
-      case NUM: {
-        pretty_print_numb(get_val(cur));
-        break;
-      }
-      case DUP: {
-        Pair node = node_load(net,get_val(cur));
-        Port p2   = get_snd(node);
-        Port p1   = get_fst(node);
-        printf("{");
-        stack[len++] = new_port(ERA, (u32)('}'));
-        stack[len++] = p2;
-        stack[len++] = new_port(ERA, (u32)(' '));
-        stack[len++] = p1;
-        break;
-      }
-      case OPR: {
-        Pair node = node_load(net,get_val(cur));
-        Port p2   = get_snd(node);
-        Port p1   = get_fst(node);
-        printf("$(");
-        stack[len++] = new_port(ERA, (u32)(')'));
-        stack[len++] = p2;
-        stack[len++] = new_port(ERA, (u32)(' '));
-        stack[len++] = p1;
-        break;
-      }
-      case SWI: {
-        Pair node = node_load(net,get_val(cur));
-        Port p2   = get_snd(node);
-        Port p1   = get_fst(node);
-        printf("?(");
-        stack[len++] = new_port(ERA, (u32)(')'));
-        stack[len++] = p2;
-        stack[len++] = new_port(ERA, (u32)(' '));
-        stack[len++] = p1;
-        break;
-      }
-      case REF: {
-        u32  fid = get_val(cur) & 0xFFFFFFF;
-        Def* def = &book->defs_buf[fid];
-        printf("@%s", def->name);
-        break;
-      }
+      return;
+    }
+    case NUM: {
+      pretty_print_numb(get_val(port));
+      return;
+    }
+    case DUP: {
+      Pair node = node_load(net, get_val(port));
+      printf("{");
+      pretty_print_port(net, book, get_fst(node));
+      printf(" ");
+      pretty_print_port(net, book, get_snd(node));
+      printf("}");
+      return;
+    }
+    case OPR: {
+      Pair node = node_load(net, get_val(port));
+      printf("$(");
+      pretty_print_port(net, book, get_fst(node));
+      printf(" ");
+      pretty_print_port(net, book, get_snd(node));
+      printf(")");
+      return;
+    }
+    case SWI: {
+      Pair node = node_load(net, get_val(port));
+      printf("?(");
+      pretty_print_port(net, book, get_fst(node));
+      printf(" ");
+      pretty_print_port(net, book, get_snd(node));
+      printf(")");
+      return;
+    }
+    case REF: {
+      u32  fid = get_val(port) & 0xFFFFFFF;
+      Def* def = &book->defs_buf[fid];
+      printf("@%s", def->name);
+      return;
     }
   }
 }
