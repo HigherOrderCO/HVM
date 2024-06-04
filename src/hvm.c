@@ -284,11 +284,11 @@ static inline void swap(Port *a, Port *b) {
   Port x = *a; *a = *b; *b = x;
 }
 
-inline u32 min(u32 a, u32 b) {
+static inline u32 min(u32 a, u32 b) {
   return (a < b) ? a : b;
 }
 
-inline f32 clamp(f32 x, f32 min, f32 max) {
+static inline f32 clamp(f32 x, f32 min, f32 max) {
   const f32 t = x < min ? min : x;
   return (t > max) ? max : t;
 }
