@@ -2545,7 +2545,7 @@ __device__ void pretty_print_numb(Numb word) {
 }
 
 __device__ void pretty_print_port(Net* net, Port port) {
-  Port stack[256];
+  Port stack[4096];
   stack[0] = port;
   u32 len = 1;
   while (len > 0) {
