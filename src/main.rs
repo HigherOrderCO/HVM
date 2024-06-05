@@ -144,17 +144,14 @@ fn main() {
       //let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &cmp::compile_book(cmp::Target::CUDA, &book));
       //let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
       
-      // Compile with interpreted book:
-      let hvm_c = include_str!("hvm.cu");
-      let hvm_c = hvm_c.replace("//COMPILED_BOOK_BUF//", &bookb);
-      let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
-      let runio = sub_matches.get_flag("io");
-      let hvm_c = if runio {
-        hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
-      } else {
-        hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
-      };
-      println!("{}", hvm_c);
+      // Generates the Cuda file
+      let hvm_cu = include_str!("hvm.cu");
+      let hvm_cu = format!("#define IO\n\n{hvm_cu}");
+      let hvm_cu = hvm_cu.replace("//COMPILED_BOOK_BUF//", &bookb);
+      let hvm_cu = hvm_cu.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
+      let hvm_cu = format!("{hvm_cu}\n\n{}", include_str!("io.cu"));
+      let hvm_cu = hvm_cu.replace(r#"#include "hvm.cu""#, "");
+      println!("{}", hvm_cu);
     }
     _ => unreachable!(),
   }
