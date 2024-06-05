@@ -4,6 +4,7 @@ fn main() {
 
   println!("cargo:rerun-if-changed=src/io.c");
   println!("cargo:rerun-if-changed=src/hvm.c");
+  println!("cargo:rerun-if-changed=src/io.cu");
   println!("cargo:rerun-if-changed=src/hvm.cu");
 
   match cc::Build::new()
