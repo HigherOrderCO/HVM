@@ -121,7 +121,7 @@ fn main() {
       let hvm_c = hvm_c.replace("//COMPILED_BOOK_BUF//", &bookb);
       let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
       let hvm_c = hvm_c.replace("#define TPC_L2 0", &format!("#define TPC_L2 {} // {} cores", tpcl2, cores));
-      let hvm_c = format!("{hvm_c}\n\n{}", include_str!("io.c"));
+      let hvm_c = format!("{hvm_c}\n\n{}", include_str!("run.c"));
       let hvm_c = hvm_c.replace(r#"#include "hvm.c""#, "");
       println!("{}", hvm_c);
     }
@@ -149,7 +149,7 @@ fn main() {
       let hvm_cu = format!("#define IO\n\n{hvm_cu}");
       let hvm_cu = hvm_cu.replace("//COMPILED_BOOK_BUF//", &bookb);
       let hvm_cu = hvm_cu.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
-      let hvm_cu = format!("{hvm_cu}\n\n{}", include_str!("io.cu"));
+      let hvm_cu = format!("{hvm_cu}\n\n{}", include_str!("run.cu"));
       let hvm_cu = hvm_cu.replace(r#"#include "hvm.cu""#, "");
       println!("{}", hvm_cu);
     }
