@@ -11,6 +11,10 @@
 #define INTERPRETED
 #define WITHOUT_MAIN
 
+// Booleans
+#define TRUE  1
+#define FALSE 0
+
 // Integers
 // --------
 
@@ -1431,8 +1435,6 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
 // Book Loader
 // -----------
 
-void book_init(Book* book);
-
 void book_load(Book* book, u32* buf) {
   // Reads defs_len
   book->defs_len = *buf++;
@@ -1749,10 +1751,9 @@ void pretty_print_port(Net* net, Book* book, Port port) {
 
 //COMPILED_BOOK_BUF//
 
-// Monadic IO Evaluator
-// ---------------------
-
+#ifdef IO
 void do_run_io(Net* net, Book* book, Port port);
+#endif
 
 // Main
 // ----
@@ -1765,7 +1766,6 @@ void hvm_c(u32* book_buffer) {
   Book* book = NULL;
   if (book_buffer) {
     book = (Book*)malloc(sizeof(Book));
-    book_init(book);
     book_load(book, book_buffer);
   }
 
@@ -1779,8 +1779,11 @@ void hvm_c(u32* book_buffer) {
   // Creates an initial redex that calls main
   boot_redex(net, new_pair(new_port(REF, 0), ROOT));
 
-  // Normalizes and runs IO
+  #ifdef IO
   do_run_io(net, book, ROOT);
+  #else
+  normalize(net, book);
+  #endif
 
   // Prints the result
   printf("Result: ");

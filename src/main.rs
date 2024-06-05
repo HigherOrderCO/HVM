@@ -11,12 +11,12 @@ use std::process::Command as SysCommand;
 
 #[cfg(feature = "c")]
 extern "C" {
-  fn hvm_c(book_buffer: *const u32, run_io: bool);
+  fn hvm_c(book_buffer: *const u32);
 }
 
 #[cfg(feature = "cuda")]
 extern "C" {
-  fn hvm_cu(book_buffer: *const u32, run_io: bool);
+  fn hvm_cu(book_buffer: *const u32);
 }
 
 fn main() {
@@ -77,11 +77,9 @@ fn main() {
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
-      //println!("{:?}", data);
-      let run_io = sub_matches.get_flag("io");
       #[cfg(feature = "c")]
       unsafe {
-        hvm_c(data.as_mut_ptr() as *mut u32, run_io);
+        hvm_c(data.as_mut_ptr() as *mut u32);
       }
       #[cfg(not(feature = "c"))]
       println!("C runtime not available!\n");
@@ -92,10 +90,9 @@ fn main() {
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
-      let run_io = sub_matches.get_flag("io");
       #[cfg(feature = "cuda")]
       unsafe {
-        hvm_cu(data.as_mut_ptr() as *mut u32, run_io);
+        hvm_cu(data.as_mut_ptr() as *mut u32);
       }
       #[cfg(not(feature = "cuda"))]
       println!("CUDA runtime not available!\n If you've installed CUDA and nvcc after HVM, please reinstall HVM.");

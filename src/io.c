@@ -27,10 +27,6 @@ typedef struct Str {
 #define LIST_NIL  0
 #define LIST_CONS 1
 
-// Booleans
-#define TRUE  1
-#define FALSE 0
-
 // Readback
 // --------
 
@@ -369,14 +365,13 @@ Port io_sleep(Net* net, Book* book, Port argm) {
 // -----------
 
 void book_init(Book* book) {
-  book->ffns_len = 7;
-  book->ffns_buf[0] = (FFn){"READ_CHAR", io_read_char};
-  book->ffns_buf[1] = (FFn){"READ_LINE", io_read_line};
-  book->ffns_buf[2] = (FFn){"OPEN_FILE", io_open_file};
-  book->ffns_buf[3] = (FFn){"CLOSE_FILE", io_close_file};
-  book->ffns_buf[4] = (FFn){"WRITE", io_write};
-  book->ffns_buf[5] = (FFn){"GET_TIME", io_get_time};
-  book->ffns_buf[6] = (FFn){"SLEEP", io_sleep};
+  book->ffns_buf[book->ffns_len++] = (FFn){"READ_CHAR", io_read_char};
+  book->ffns_buf[book->ffns_len++] = (FFn){"READ_LINE", io_read_line};
+  book->ffns_buf[book->ffns_len++] = (FFn){"OPEN_FILE", io_open_file};
+  book->ffns_buf[book->ffns_len++] = (FFn){"CLOSE_FILE", io_close_file};
+  book->ffns_buf[book->ffns_len++] = (FFn){"WRITE", io_write};
+  book->ffns_buf[book->ffns_len++] = (FFn){"GET_TIME", io_get_time};
+  book->ffns_buf[book->ffns_len++] = (FFn){"SLEEP", io_sleep};
 }
 
 // Monadic IO Evaluator
@@ -384,6 +379,8 @@ void book_init(Book* book) {
 
 // Runs an IO computation.
 void do_run_io(Net* net, Book* book, Port port) {
+   book_init(book);
+
   // IO loop
   while (TRUE) {
     // Normalizes the net

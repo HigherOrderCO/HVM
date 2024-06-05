@@ -11,6 +11,7 @@ fn main() {
       .opt_level(3)
       .warnings(false)
       .define("TPC_L2", &*tpcl2.to_string())
+      .define("IO", None)
       .try_compile("hvm-c") {
     Ok(_) => println!("cargo:rustc-cfg=feature=\"c\""),
     Err(e) => {
