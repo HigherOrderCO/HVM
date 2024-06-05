@@ -31,6 +31,7 @@ fn main() {
     cc::Build::new()
       .cuda(true)
       .file("src/hvm.cu")
+      .define("IO", None)
       .flag("-diag-suppress=177") // variable was declared but never referenced
       .flag("-diag-suppress=550") // variable was set but never used
       .flag("-diag-suppress=20039") // a __host__ function redeclared with __device__, hence treated as a __host__ __device__ function
