@@ -24,7 +24,7 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
   code.push_str(&format!("  u32 fid = get_val(a) & 0xFFFFFFF;\n"));
   code.push_str(&format!("  switch (fid) {{\n"));
   for (fid, def) in book.defs.iter().enumerate() {
-    code.push_str(&format!("    case {}: return interact_call_{}(net, tm, a, b);\n", fid, &def.name.replace("/","_").replace(".","_")));
+    code.push_str(&format!("    case {}: return interact_call_{}(net, tm, a, b);\n", fid, &def.name.replace("/","_").replace(".","_").replace("-","_")));
   }
   code.push_str(&format!("    default: return FALSE;\n"));
   code.push_str(&format!("  }}\n"));
@@ -36,7 +36,7 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
 // Compiles a single Def.
 pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize, fid: hvm::Val) {
   let def = &book.defs[fid as usize];
-  let fun = &def.name.replace("/","_").replace(".","_");
+  let fun = &def.name.replace("/","_").replace(".","_").replace("-","_");
 
   // Initializes context
   let neo = &mut 0;

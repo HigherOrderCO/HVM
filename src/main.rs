@@ -115,17 +115,14 @@ fn main() {
 
       // Generates the C file
       let hvm_c = include_str!("hvm.c");
+      let hvm_c = format!("#define IO\n\n{hvm_c}");
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &cmp::compile_book(cmp::Target::C, &book));
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
       let hvm_c = hvm_c.replace("//COMPILED_BOOK_BUF//", &bookb);
       let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
       let hvm_c = hvm_c.replace("#define TPC_L2 0", &format!("#define TPC_L2 {} // {} cores", tpcl2, cores));
-      let runio = sub_matches.get_flag("io");
-      let hvm_c = if runio {
-        hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
-      } else {
-        hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
-      };
+      let hvm_c = format!("{hvm_c}\n\n{}", include_str!("io.c"));
+      let hvm_c = hvm_c.replace(r#"#include "hvm.c""#, "");
       println!("{}", hvm_c);
     }
     Some(("gen-cu", sub_matches)) => {
