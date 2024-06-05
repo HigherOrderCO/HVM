@@ -2,19 +2,20 @@ fn main() {
   let cores = num_cpus::get();
   let tpcl2 = (cores as f64).log2().floor() as u32;
 
+  println!("cargo:rerun-if-changed=src/io.c");
   println!("cargo:rerun-if-changed=src/hvm.c");
   println!("cargo:rerun-if-changed=src/hvm.cu");
 
   match cc::Build::new()
-      .file("src/hvm.c")
+      .file("src/io.c")
       .opt_level(3)
       .warnings(false)
       .define("TPC_L2", &*tpcl2.to_string())
       .try_compile("hvm-c") {
     Ok(_) => println!("cargo:rustc-cfg=feature=\"c\""),
     Err(e) => {
-      println!("cargo:warning=\x1b[1m\x1b[31mWARNING: Failed to compile hvm.c:\x1b[0m {}", e);
-      println!("cargo:warning=Ignoring hvm.c and proceeding with build. \x1b[1mThe C runtime will not be available.\x1b[0m");
+      println!("cargo:warning=\x1b[1m\x1b[31mWARNING: Failed to compile/io.c:\x1b[0m {}", e);
+      println!("cargo:warning=Ignoring/io.c and proceeding with build. \x1b[1mThe C runtime will not be available.\x1b[0m");
     }
   }
 
