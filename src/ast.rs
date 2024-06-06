@@ -555,9 +555,10 @@ impl Book {
     return (book, lookup);
   }
 
+  /// Propagate unsafe definitions to those that reference them.
+  ///
   /// When calling this function, it is expected that definitions that are directly
-  /// unsafe already know so. We then propagate the unsafety to all definitions that
-  /// have references to unsafe definitions.
+  /// unsafe are already marked as such in the `compiled_book`.
   fn propagate_safety(&self, compiled_book: &mut hvm::Book, lookup: &BTreeMap<String, usize>) {
     let rev_dependencies = self.direct_dependencies_reversed();
     let mut visited: BTreeSet<&str> = BTreeSet::new();
@@ -586,10 +587,14 @@ impl Book {
   }
 
   /// Calculates the dependencies of each definition but stores them reversed,
-  /// that is, if definition `A` requires `B`, `B: A` is in the return set.
-  /// This is used to propagate unsafe definitions to others that depend on it.
+  /// that is, if definition `A` requires `B`, `B: A` is in the return map.
+  /// This is used to propagate unsafe definitions to others that depend on them.
   /// 
-  /// TODO: Verify
+  /// This solution has linear complexity on the number of definitions in the
+  /// book and the number of direct references in each definition, but it also
+  /// traverses each definition's trees entirely once. Assuming the tree traversals
+  /// are O(h), which they're not with `BTreeSet`s, we have:
+  ///
   /// Complexity: O(n*h + m)
   /// - `n` is the number of definitions in the book
   /// - `m` is the number of direct references in each definition
@@ -600,7 +605,7 @@ impl Book {
       result.insert(name.as_str(), BTreeSet::new());
     }
 
-    let process = |tree: &'name Tree, name: &'name str, result: &mut BTreeMap<&'name str, BTreeSet<&'name str>>| {
+    let mut process = |tree: &'name Tree, name: &'name str| {
       for dependency in tree.direct_dependencies() {
         match result.entry(dependency) {
           Entry::Vacant(_) => panic!("global definition depends on undeclared reference"),
@@ -613,13 +618,12 @@ impl Book {
     };
 
     for (name, net) in self.defs.iter() {
-      process(&net.root, name, &mut result);
+      process(&net.root, name);
       for (_, r1, r2) in net.rbag.iter() {
-        process(r1, name, &mut result);
-        process(r2, name, &mut result);
+        process(r1, name);
+        process(r2, name);
       }
     }
-
     result
   }
 }
