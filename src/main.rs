@@ -11,12 +11,12 @@ use std::process::Command as SysCommand;
 
 #[cfg(feature = "c")]
 extern "C" {
-  fn hvm_c(book_buffer: *const u32, run_io: bool);
+  fn hvm_c(book_buffer: *const u32);
 }
 
 #[cfg(feature = "cuda")]
 extern "C" {
-  fn hvm_cu(book_buffer: *const u32, run_io: bool);
+  fn hvm_cu(book_buffer: *const u32);
 }
 
 fn main() {
@@ -77,11 +77,9 @@ fn main() {
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build().0;
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
-      //println!("{:?}", data);
-      let run_io = sub_matches.get_flag("io");
       #[cfg(feature = "c")]
       unsafe {
-        hvm_c(data.as_mut_ptr() as *mut u32, run_io);
+        hvm_c(data.as_mut_ptr() as *mut u32);
       }
       #[cfg(not(feature = "c"))]
       println!("C runtime not available!\n");
@@ -92,10 +90,9 @@ fn main() {
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build().0;
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
-      let run_io = sub_matches.get_flag("io");
       #[cfg(feature = "cuda")]
       unsafe {
-        hvm_cu(data.as_mut_ptr() as *mut u32, run_io);
+        hvm_cu(data.as_mut_ptr() as *mut u32);
       }
       #[cfg(not(feature = "cuda"))]
       println!("CUDA runtime not available!\n If you've installed CUDA and nvcc after HVM, please reinstall HVM.");
@@ -118,17 +115,14 @@ fn main() {
 
       // Generates the C file
       let hvm_c = include_str!("hvm.c");
+      let hvm_c = format!("#define IO\n\n{hvm_c}");
       let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &cmp::compile_book(cmp::Target::C, &book));
       let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
       let hvm_c = hvm_c.replace("//COMPILED_BOOK_BUF//", &bookb);
       let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
       let hvm_c = hvm_c.replace("#define TPC_L2 0", &format!("#define TPC_L2 {} // {} cores", tpcl2, cores));
-      let runio = sub_matches.get_flag("io");
-      let hvm_c = if runio {
-        hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
-      } else {
-        hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
-      };
+      let hvm_c = format!("{hvm_c}\n\n{}", include_str!("run.c"));
+      let hvm_c = hvm_c.replace(r#"#include "hvm.c""#, "");
       println!("{}", hvm_c);
     }
     Some(("gen-cu", sub_matches)) => {
@@ -150,17 +144,14 @@ fn main() {
       //let hvm_c = hvm_c.replace("///COMPILED_INTERACT_CALL///", &cmp::compile_book(cmp::Target::CUDA, &book));
       //let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
       
-      // Compile with interpreted book:
-      let hvm_c = include_str!("hvm.cu");
-      let hvm_c = hvm_c.replace("//COMPILED_BOOK_BUF//", &bookb);
-      let hvm_c = hvm_c.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
-      let runio = sub_matches.get_flag("io");
-      let hvm_c = if runio {
-        hvm_c.replace("#define DONT_RUN_IO", "#define RUN_IO")
-      } else {
-        hvm_c.replace("#define RUN_IO", "#define DONT_RUN_IO")
-      };
-      println!("{}", hvm_c);
+      // Generates the Cuda file
+      let hvm_cu = include_str!("hvm.cu");
+      let hvm_cu = format!("#define IO\n\n{hvm_cu}");
+      let hvm_cu = hvm_cu.replace("//COMPILED_BOOK_BUF//", &bookb);
+      let hvm_cu = hvm_cu.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
+      let hvm_cu = format!("{hvm_cu}\n\n{}", include_str!("run.cu"));
+      let hvm_cu = hvm_cu.replace(r#"#include "hvm.cu""#, "");
+      println!("{}", hvm_cu);
     }
     _ => unreachable!(),
   }
