@@ -1,7 +1,7 @@
 use TSPL::{new_parser, Parser};
 use highlight_error::highlight_error;
 use crate::hvm;
-use std::{collections::BTreeMap, fmt::{Debug, Display}};
+use std::{collections::{btree_map::Entry, BTreeMap, BTreeSet}, fmt::{Debug, Display}};
 
 // Types
 // -----
@@ -488,6 +488,19 @@ impl Tree {
       },
     }
   }
+
+  pub fn direct_dependencies<'name>(&'name self) -> BTreeSet<&'name str> {
+    match self {
+      Tree::Ref { nam } => BTreeSet::from([nam.as_str()]),
+      Tree::Con { fst, snd } => &fst.direct_dependencies() | &snd.direct_dependencies(),
+      Tree::Dup { fst, snd } => &fst.direct_dependencies() | &snd.direct_dependencies(),
+      Tree::Opr { fst, snd } => &fst.direct_dependencies() | &snd.direct_dependencies(),
+      Tree::Swi { fst, snd } => &fst.direct_dependencies() | &snd.direct_dependencies(),
+      Tree::Num { val } => BTreeSet::new(),
+      Tree::Var { nam } => BTreeSet::new(),
+      Tree::Era => BTreeSet::new(),
+    }
+  }
 }
 
 impl Net {
@@ -511,7 +524,7 @@ impl Book {
     CoreParser::new(code).parse_book()
   }
 
-  pub fn build(&self) -> hvm::Book {
+  pub fn build(&self) -> (hvm::Book, BTreeMap<String, usize>) {
     let mut name_to_fid = BTreeMap::new();
     let mut fid_to_name = BTreeMap::new();
     fid_to_name.insert(0, "main".to_string());
@@ -523,6 +536,7 @@ impl Book {
       }
     }
     let mut book = hvm::Book { defs: Vec::new() };
+    let mut lookup = BTreeMap::new();
     for (fid, name) in &fid_to_name {
       let ast_def = self.defs.get(name).expect("missing `@main` definition");
       let mut def = hvm::Def {
@@ -535,7 +549,77 @@ impl Book {
       };
       ast_def.build(&mut def, &name_to_fid, &mut BTreeMap::new());
       book.defs.push(def);
+      lookup.insert(name.clone(), book.defs.len() - 1);
     }
-    return book;
+    self.propagate_safety(&mut book, &lookup);
+    return (book, lookup);
+  }
+
+  /// When calling this function, it is expected that definitions that are directly
+  /// unsafe already know so. We then propagate the unsafety to all definitions that
+  /// have references to unsafe definitions.
+  fn propagate_safety(&self, compiled_book: &mut hvm::Book, lookup: &BTreeMap<String, usize>) {
+    let rev_dependencies = self.direct_dependencies_reversed();
+    let mut visited: BTreeSet<&str> = BTreeSet::new();
+    let mut stack: Vec<&str> = Vec::new();
+
+    for (name, _) in self.defs.iter() {
+      let def = &compiled_book.defs[lookup[name]];
+      if !def.safe {
+        stack.push(&name);
+      }
+    }
+
+    while let Some(curr) = stack.pop() {
+      if visited.contains(curr) {
+        continue;
+      }
+      visited.insert(curr);
+
+      let def = &mut compiled_book.defs[lookup[curr]];
+      def.safe = false;
+
+      for &next in rev_dependencies[curr].iter() {
+        stack.push(next);
+      }
+    }
+  }
+
+  /// Calculates the dependencies of each definition but stores them reversed,
+  /// that is, if definition `A` requires `B`, `B: A` is in the return set.
+  /// This is used to propagate unsafe definitions to others that depend on it.
+  /// 
+  /// TODO: Verify
+  /// Complexity: O(n*h + m)
+  /// - `n` is the number of definitions in the book
+  /// - `m` is the number of direct references in each definition
+  /// - `h` is the accumulated height of each net's trees
+  fn direct_dependencies_reversed<'name>(&'name self) -> BTreeMap<&'name str, BTreeSet<&'name str>> {
+    let mut result = BTreeMap::new();
+    for (name, _) in self.defs.iter() {
+      result.insert(name.as_str(), BTreeSet::new());
+    }
+
+    let process = |tree: &'name Tree, name: &'name str, result: &mut BTreeMap<&'name str, BTreeSet<&'name str>>| {
+      for dependency in tree.direct_dependencies() {
+        match result.entry(dependency) {
+          Entry::Vacant(_) => panic!("global definition depends on undeclared reference"),
+          Entry::Occupied(mut entry) => {
+            // dependency => name
+            entry.get_mut().insert(name);
+          },
+        }
+      }
+    };
+
+    for (name, net) in self.defs.iter() {
+      process(&net.root, name, &mut result);
+      for (_, r1, r2) in net.rbag.iter() {
+        process(r1, name, &mut result);
+        process(r2, name, &mut result);
+      }
+    }
+
+    result
   }
 }
