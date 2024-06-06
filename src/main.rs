@@ -68,13 +68,13 @@ fn main() {
     Some(("run", sub_matches)) => {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
-      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build().0;
+      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       run(&book);
     }
     Some(("run-c", sub_matches)) => {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
-      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build().0;
+      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
       #[cfg(feature = "c")]
@@ -87,7 +87,7 @@ fn main() {
     Some(("run-cu", sub_matches)) => {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
-      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build().0;
+      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
       #[cfg(feature = "cuda")]
@@ -101,7 +101,7 @@ fn main() {
       // Reads book from file
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
-      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build().0;
+      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
 
       // Gets optimal core count
       let cores = num_cpus::get();
@@ -129,7 +129,7 @@ fn main() {
       // Reads book from file
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
-      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build().0;
+      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
 
       // Generates the interpreted book
       let mut book_buf : Vec<u8> = Vec::new();

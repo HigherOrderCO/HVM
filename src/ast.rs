@@ -524,7 +524,7 @@ impl Book {
     CoreParser::new(code).parse_book()
   }
 
-  pub fn build(&self) -> (hvm::Book, BTreeMap<String, usize>) {
+  pub fn build(&self) -> hvm::Book {
     let mut name_to_fid = BTreeMap::new();
     let mut fid_to_name = BTreeMap::new();
     fid_to_name.insert(0, "main".to_string());
@@ -552,7 +552,7 @@ impl Book {
       lookup.insert(name.clone(), book.defs.len() - 1);
     }
     self.propagate_safety(&mut book, &lookup);
-    return (book, lookup);
+    return book;
   }
 
   /// Propagate unsafe definitions to those that reference them.
