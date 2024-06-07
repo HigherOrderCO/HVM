@@ -1,7 +1,8 @@
 use TSPL::{new_parser, Parser};
 use highlight_error::highlight_error;
 use crate::hvm;
-use std::{collections::{btree_map::Entry, BTreeMap, BTreeSet}, fmt::{Debug, Display}};
+use std::fmt::{Debug, Display};
+use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
 
 // Types
 // -----
@@ -559,6 +560,12 @@ impl Book {
   ///
   /// When calling this function, it is expected that definitions that are directly
   /// unsafe are already marked as such in the `compiled_book`.
+  /// 
+  /// This does not completely solve the cloning safety in HVM. It only stops invalid
+  /// **global** definitions from being cloned, but local unsafe code can still be
+  /// cloned and can generate seemingly unexpected results, such as placing eraser
+  /// nodes in weird places. See HVM issue [#362](https://github.com/HigherOrderCO/HVM/issues/362)
+  /// for an example.
   fn propagate_safety(&self, compiled_book: &mut hvm::Book, lookup: &BTreeMap<String, usize>) {
     let rev_dependencies = self.direct_dependencies_reversed();
     let mut visited: BTreeSet<&str> = BTreeSet::new();
@@ -592,13 +599,12 @@ impl Book {
   /// 
   /// This solution has linear complexity on the number of definitions in the
   /// book and the number of direct references in each definition, but it also
-  /// traverses each definition's trees entirely once. Assuming the tree traversals
-  /// are O(h), which they're not with `BTreeSet`s, we have:
+  /// traverses each definition's trees entirely once.
   ///
-  /// Complexity: O(n*h + m)
-  /// - `n` is the number of definitions in the book
-  /// - `m` is the number of direct references in each definition
-  /// - `h` is the accumulated height of each net's trees
+  /// Complexity: O(d*t + r)
+  /// - `d` is the number of definitions in the book
+  /// - `r` is the number of direct references in each definition
+  /// - `t` is the number of nodes in each tree
   fn direct_dependencies_reversed<'name>(&'name self) -> BTreeMap<&'name str, BTreeSet<&'name str>> {
     let mut result = BTreeMap::new();
     for (name, _) in self.defs.iter() {
