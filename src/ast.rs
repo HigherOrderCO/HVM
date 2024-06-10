@@ -571,7 +571,7 @@ impl Book {
   /// nodes in weird places. See HVM issue [#362](https://github.com/HigherOrderCO/HVM/issues/362)
   /// for an example.
   fn propagate_safety(&self, compiled_book: &mut hvm::Book, lookup: &BTreeMap<String, u32>) {
-    let rev_dependencies = self.direct_dependencies_reversed();
+    let rev_dependencies = self.direct_dependents();
     let mut stack: Vec<&str> = Vec::new();
 
     for (name, _) in self.defs.iter() {
@@ -598,9 +598,9 @@ impl Book {
     }
   }
 
-  /// Calculates the dependencies of each definition but stores them reversed,
-  /// that is, if definition `A` requires `B`, `B: A` is in the return map.
-  /// This is used to propagate unsafe definitions to others that depend on them.
+  /// Calculates the dependents of each definition, that is, if definition `A`
+  /// requires `B`, `B: A` is in the return map. This is used to propagate unsafe
+  /// definitions to others that depend on them.
   /// 
   /// This solution has linear complexity on the number of definitions in the
   /// book and the number of direct references in each definition, but it also
@@ -610,7 +610,7 @@ impl Book {
   /// - `d` is the number of definitions in the book
   /// - `r` is the number of direct references in each definition
   /// - `t` is the number of nodes in each tree
-  fn direct_dependencies_reversed<'name>(&'name self) -> BTreeMap<&'name str, BTreeSet<&'name str>> {
+  fn direct_dependents<'name>(&'name self) -> BTreeMap<&'name str, BTreeSet<&'name str>> {
     let mut result = BTreeMap::new();
     for (name, _) in self.defs.iter() {
       result.insert(name.as_str(), BTreeSet::new());
