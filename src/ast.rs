@@ -577,9 +577,9 @@ impl Book {
     for (name, _) in self.defs.iter() {
       let def = &mut compiled_book.defs[lookup[name] as usize];
       if !def.safe {
-        stack.push(&name);
-        // Temporarily set as safe so we won't need a separate "visited" set
-        def.safe = true;
+        for next in rev_dependencies[name.as_str()].iter() {
+          stack.push(next);
+        }
       }
     }
 
