@@ -12,15 +12,19 @@ pub type Val  = u32; // Val  ::= 29-bit (rounded up to u32)
 pub type Rule = u8;  // Rule ::= 8-bit (fits a u8)
 
 // Port
+#[repr(C)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Hash)]
 pub struct Port(pub Val);
 
 // Pair
+#[repr(C)]
 pub struct Pair(pub u64);
 
 // Atomics
 pub type AVal = AtomicU32;
+#[repr(C)]
 pub struct APort(pub AVal);
+#[repr(C)]
 pub struct APair(pub AtomicU64);
 
 // Number

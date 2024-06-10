@@ -3,15 +3,16 @@
 #![allow(unused_variables)]
 
 use clap::{Arg, ArgAction, Command};
-use ::hvm::{ast, cmp, hvm};
+use ::hvm::{ast, cmp, hvm, interop};
 use std::fs;
+use std::alloc;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Command as SysCommand;
 
 #[cfg(feature = "c")]
 extern "C" {
-  fn hvm_c(book_buffer: *const u32);
+  fn hvm_c(book_buffer: *const u32, net_buffer: *const interop::NetC);
 }
 
 #[cfg(feature = "cuda")]
@@ -79,7 +80,11 @@ fn main() {
       book.to_buffer(&mut data);
       #[cfg(feature = "c")]
       unsafe {
-        hvm_c(data.as_mut_ptr() as *mut u32);
+        let layout = alloc::Layout::new::<interop::NetC>();
+        let net_ptr = alloc::alloc(layout) as *mut interop::NetC;
+        hvm_c(data.as_mut_ptr() as *mut u32, net_ptr);
+        // hvm_c(data.as_mut_ptr() as *mut u32, std::ptr::null());
+        alloc::dealloc(net_ptr as *mut u8, layout);
       }
       #[cfg(not(feature = "c"))]
       println!("C runtime not available!\n");

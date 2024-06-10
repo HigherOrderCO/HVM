@@ -1757,8 +1757,7 @@ void do_run_io(Net* net, Book* book, Port port);
 
 // Main
 // ----
-
-void hvm_c(u32* book_buffer) {
+void hvm_c(u32* book_buffer, Net* net_buffer) {
   // Creates static TMs
   alloc_static_tms();
 
@@ -1773,7 +1772,13 @@ void hvm_c(u32* book_buffer) {
   u64 start = time64();
 
   // GMem
-  Net *net = malloc(sizeof(Net));
+  Net *net;
+  if (net_buffer) {
+    // A buffer for the net has been allocated externally
+    net = net_buffer;
+  } else {
+    net = malloc(sizeof(Net));
+  }
   net_init(net);
 
   // Creates an initial redex that calls main
@@ -1801,13 +1806,13 @@ void hvm_c(u32* book_buffer) {
 
   // Frees everything
   free_static_tms();
-  free(net);
+  if (!net_buffer) { free(net); }
   free(book);
 }
 
 #ifdef WITH_MAIN
 int main() {
-  hvm_c((u32*)BOOK_BUF);
+  hvm_c((u32*)BOOK_BUF, NULL);
   return 0;
 }
 #endif
