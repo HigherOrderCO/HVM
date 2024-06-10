@@ -571,13 +571,13 @@ impl Book {
   /// nodes in weird places. See HVM issue [#362](https://github.com/HigherOrderCO/HVM/issues/362)
   /// for an example.
   fn propagate_safety(&self, compiled_book: &mut hvm::Book, lookup: &BTreeMap<String, u32>) {
-    let rev_dependencies = self.direct_dependents();
+    let dependents = self.direct_dependents();
     let mut stack: Vec<&str> = Vec::new();
 
     for (name, _) in self.defs.iter() {
       let def = &mut compiled_book.defs[lookup[name] as usize];
       if !def.safe {
-        for next in rev_dependencies[name.as_str()].iter() {
+        for next in dependents[name.as_str()].iter() {
           stack.push(next);
         }
       }
@@ -592,7 +592,7 @@ impl Book {
 
       def.safe = false;
 
-      for &next in rev_dependencies[curr].iter() {
+      for &next in dependents[curr].iter() {
         stack.push(next);
       }
     }
