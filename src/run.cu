@@ -15,6 +15,14 @@ struct Str {
   char text_buf[256];
 };
 
+// Readback: λ-Encoded list of bytes
+typedef struct Bytes {
+  u32  len;
+  char *buf;
+} Bytes;
+
+#define MAX_BYTES 256
+
 // IO Magic Number
 #define IO_MAGIC_0 0xD0CA11
 #define IO_MAGIC_1 0xFF1FF1
@@ -91,7 +99,7 @@ Str gnet_readback_str(GNet* gnet, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.text_len >= 256) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
+        if (str.text_len > 256) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
 
         str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
         gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
@@ -107,8 +115,50 @@ Str gnet_readback_str(GNet* gnet, Port port) {
   return str;
 }
 
+// Converts a Port into a list of bytes.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Bytes gnet_readback_bytes(GNet* gnet, Port port) {
+  // Result
+  Bytes bytes;
+  bytes.buf = (char*) malloc(sizeof(char) * MAX_BYTES);
+  bytes.len = 0;
+
+  // Readback loop
+  while (TRUE) {
+    // Normalizes the net
+    gnet_normalize(gnet);
+
+    // Reads the λ-Encoded Ctr
+    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
+
+    // Reads string layer
+    switch (ctr.tag) {
+      case LIST_NIL: {
+        break;
+      }
+      case LIST_CONS: {
+        if (ctr.args_len != 2) break;
+        if (get_tag(ctr.args_buf[0]) != NUM) break;
+        if (bytes.len >= MAX_BYTES) { printf("ERROR: for now, HVM can only readback list of bytes of length <%u.", MAX_BYTES); break; }
+
+        bytes.buf[bytes.len++] = get_u24(get_val(ctr.args_buf[0]));
+        gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
+        port = ROOT;
+        continue;
+      }
+    }
+    break;
+  }
+
+  bytes.buf[bytes.len] = '\0';
+
+  return bytes;
+}
+
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
-/// Should only be called within `inject_str`, as a previous call
+/// Should only be called within `inject_bytes`, as a previous call
 /// to `get_resources` is expected.
 __device__ Port inject_nil(Net* net, TM* tm) {
   u32 v1 = tm->vloc[0];
@@ -126,7 +176,7 @@ __device__ Port inject_nil(Net* net, TM* tm) {
 }
 
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
-/// Should only be called within `inject_str`, as a previous call
+/// Should only be called within `inject_bytes`, as a previous call
 /// to `get_resources` is expected.
 /// The `char_idx` parameter is used to offset the vloc and nloc
 /// allocations, otherwise they would conflict with each other on
@@ -150,19 +200,17 @@ __device__ Port inject_cons(Net* net, TM* tm, Port head, Port tail, u32 char_idx
   return new_port(CON, n4);
 }
 
-// Converts a UTF-32 (truncated to 24 bits) string to a Port.
-// Since unicode scalars can fit in 21 bits, HVM's u24
-// integers can contain any unicode scalar value.
+// Converts a list of bytes to a Port.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-__device__ Port inject_str(Net* net, TM* tm, Str *str) {
+__device__ Port inject_bytes(Net* net, TM* tm, Str *str) {
   // Allocate all resources up front:
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
   u32 len = str->text_len;
   if (!get_resources(net, tm, 0, 2 + 4 * len, 1 + len)) {
-    printf("inject_str: failed to get resources\n");
+    printf("inject_bytes: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
@@ -176,29 +224,51 @@ __device__ Port inject_str(Net* net, TM* tm, Str *str) {
   return port;
 }
 
-__global__ void make_str_port(GNet* gnet, Str *str, Port* ret) {
-  if (GID() == 0) {
-    TM tm;
-    Net net = vnet_new(gnet, NULL, gnet->turn);
-    *ret = inject_str(&net, &tm, str);
-  }
-}
-
-// Converts a UTF-32 (truncated to 24 bits) string to a Port.
-// Since unicode scalars can fit in 21 bits, HVM's u24
-// integers can contain any unicode scalar value.
+// Converts a list of bytes to a Port.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Port gnet_inject_str(GNet* gnet, Str *str) {
+__device__ Port inject_bytes(Net* net, TM* tm, Bytes *bytes) {
+  // Allocate all resources up front:
+  // - NIL needs  2 nodes & 1 var
+  // - CONS needs 4 nodes & 1 var
+  u32 len = bytes->len;
+  if (!get_resources(net, tm, 0, 2 + 4 * len, 1 + len)) {
+    printf("inject_bytes: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
+  Port port = inject_nil(net, tm);
+
+  for (u32 i = 0; i < len; i++) {
+    Port byte = new_port(NUM, new_u24(bytes->buf[len - i - 1]));
+    port = inject_cons(net, tm, byte, port, i);
+  }
+
+  return port;
+}
+
+__global__ void make_bytes_port(GNet* gnet, Bytes *bytes, Port* ret) {
+  if (GID() == 0) {
+    TM tm;
+    Net net = vnet_new(gnet, NULL, gnet->turn);
+    *ret = inject_bytes(&net, &tm, bytes);
+  }
+}
+
+// Converts a list of bytes to a Port.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Port gnet_inject_bytes(GNet* gnet, Bytes *bytes) {
   Port* d_ret;
   cudaMalloc(&d_ret, sizeof(Port));
 
-  Str* cu_str;
-  cudaMalloc(&cu_str, sizeof(Str));
-  cudaMemcpy(cu_str, str, sizeof(Str), cudaMemcpyHostToDevice);
+  Bytes* cu_bytes;
+  cudaMalloc(&cu_bytes, sizeof(Str));
+  cudaMemcpy(cu_bytes, bytes, sizeof(Str), cudaMemcpyHostToDevice);
 
-  make_str_port<<<1,1>>>(gnet, cu_str, d_ret);
+  make_bytes_port<<<1,1>>>(gnet, cu_bytes, d_ret);
 
   Port ret;
   cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
@@ -240,61 +310,54 @@ FILE* readback_file(Port port) {
   return fp;
 }
 
-// Reads a single char from `argm`.
-Port io_read_char(GNet* gnet, Port argm) {
-  FILE* fp = readback_file(gnet_peek(gnet, argm));
-  if (fp == NULL) {
+// Reads from a file a specified number of bytes.
+// `argm` is a tuple of (file_descriptor, num_bytes).
+Port io_read(GNet* gnet, Port argm) {
+  if (get_tag(gnet_peek(gnet, argm)) != CON) {
+    fprintf(stderr, "io_read: expected tuple, but got %u\n", get_tag(gnet_peek(gnet, argm)));
     return new_port(ERA, 0);
   }
 
-  /// Read a string.
-  Str str;
+  Pair args = gnet_node_load(gnet, get_val(argm));
 
-  str.text_buf[0] = fgetc(fp);
-  str.text_buf[1] = 0;
-  str.text_len = 1;
-
-  return gnet_inject_str(gnet, &str);
-}
-
-// Reads from `argm` at most 255 characters or until a newline is seen.
-Port io_read_line(GNet* gnet, Port argm) {
   FILE* fp = readback_file(gnet_peek(gnet, argm));
   if (fp == NULL) {
     fprintf(stderr, "io_read_line: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
 
+  u32 num_bytes = get_u24(get_val(gnet_peek(gnet, get_snd(args))));
+
   /// Read a string.
-  Str str;
+  Bytes bytes;
+  bytes.buf = (char*) malloc(sizeof(char) * num_bytes);
+  bytes.len = fread(bytes.buf, sizeof(char), num_bytes, fp);
 
-  if (fgets(str.text_buf, sizeof(str.text_buf), fp) == NULL) {
-    fprintf(stderr, "io_read_line: failed to read\n");
-  }
-  str.text_len = strlen(str.text_buf);
-
-  // Strip any trailing newline.
-  if (str.text_len > 0 && str.text_buf[str.text_len - 1] == '\n') {
-    str.text_buf[str.text_len] = 0;
-    str.text_len--;
+  if ((bytes.len != num_bytes) && ferror(fp)) {
+    fprintf(stderr, "io_read: failed to read\n");
   }
 
   // Convert it to a port.
-  return gnet_inject_str(gnet, &str);
+  Port ret = gnet_inject_bytes(gnet, &bytes);
+  free(bytes.buf);
+
+  return ret;
 }
 
 // Opens a file with the provided mode.
 // `argm` is a tuple (CON node) of the
 // file name and mode as strings.
-Port io_open_file(GNet* gnet, Port argm) {
+Port io_open(GNet* gnet, Port argm) {
   if (get_tag(gnet_peek(gnet, argm)) != CON) {
-    fprintf(stderr, "io_open_file: expected tuple\n");
+    fprintf(stderr, "io_open: expected tuple\n");
     return new_port(ERA, 0);
   }
 
   Pair args = gnet_node_load(gnet, get_val(argm));
   Str name = gnet_readback_str(gnet, get_fst(args));
   Str mode = gnet_readback_str(gnet, get_snd(args));
+
+  printf("opening file '%s' with mode '%s'\n", name.text_buf, mode.text_buf);
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
@@ -303,22 +366,22 @@ Port io_open_file(GNet* gnet, Port argm) {
     }
   }
 
-  fprintf(stderr, "io_open_file: too many open files\n");
+  fprintf(stderr, "io_open: too many open files\n");
 
   return new_port(ERA, 0);
 }
 
 // Closes a file, reclaiming the file descriptor.
-Port io_close_file(GNet* gnet, Port argm) {
+Port io_close(GNet* gnet, Port argm) {
   FILE* fp = readback_file(gnet_peek(gnet, argm));
   if (fp == NULL) {
-    fprintf(stderr, "io_close_file: failed to close\n");
+    fprintf(stderr, "io_close: failed to close\n");
     return new_port(ERA, 0);
   }
 
   int err = fclose(fp) != 0;
   if (err != 0) {
-    fprintf(stderr, "io_close_file: failed to close: %i\n", err);
+    fprintf(stderr, "io_close: failed to close: %i\n", err);
     return new_port(ERA, 0);
   }
 
@@ -327,9 +390,9 @@ Port io_close_file(GNet* gnet, Port argm) {
   return new_port(ERA, 0);
 }
 
-// Writes a string to a file.
+// Writes a list of bytes to a file.
 // `argm` is a tuple (CON node) of the
-// file descriptor and string to write.
+// file descriptor and list of bytes to write.
 Port io_write(GNet* gnet, Port argm) {
   if (get_tag(gnet_peek(gnet, argm)) != CON) {
     fprintf(stderr, "io_write: expected tuple, but got %u", get_tag(gnet_peek(gnet, argm)));
@@ -338,15 +401,67 @@ Port io_write(GNet* gnet, Port argm) {
 
   Pair args = gnet_node_load(gnet, get_val(argm));
   FILE* fp = readback_file(gnet_peek(gnet, get_fst(args)));
-  Str str = gnet_readback_str(gnet, get_snd(args));
+  Bytes bytes = gnet_readback_bytes(gnet, get_snd(args));
 
+  if (fp == NULL) {
+    fprintf(stderr, "io_write: invalid file descriptor\n");
+    free(bytes.buf);
+
+    return new_port(ERA, 0);
+  }
+
+  if (fwrite(bytes.buf, sizeof(char), bytes.len, fp) != bytes.len) {
+    fprintf(stderr, "io_write: failed to write\n");
+  }
+
+  free(bytes.buf);
+
+  return new_port(ERA, 0);
+}
+
+// Seeks to a position in a file.
+// `argm` is a 3-tuple (CON fd (CON offset whence)), where
+// - fd is a file descriptor
+// - offset is a signed byte offset
+// - whence is what that offset is relative to:
+//    - 0 (SEEK_SET): beginning of file
+//    - 1 (SEEK_CUR): current position of the file pointer
+//    - 2 (SEEK_END): end of the file
+Port io_seek(GNet* gnet, Port argm) {
+  if (get_tag(gnet_peek(gnet, argm)) != CON) {
+    fprintf(stderr, "io_seek: expected first tuple, but got %u\n", get_tag(gnet_peek(gnet, argm)));
+    return new_port(ERA, 0);
+  }
+
+  Pair args1 = gnet_node_load(gnet, get_val(argm));
+  if (get_tag(gnet_peek(gnet, get_snd(args1))) != CON) {
+    fprintf(stderr, "io_seek: expected second tuple, but got %u\n", get_tag(gnet_peek(gnet, get_snd(args1))));
+    return new_port(ERA, 0);
+  }
+
+  Pair args2 = gnet_node_load(gnet, get_val(gnet_peek(gnet, get_snd(args1))));
+
+  FILE* fp = readback_file(gnet_peek(gnet, get_fst(args1)));
   if (fp == NULL) {
     fprintf(stderr, "io_write: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
 
-  if (fputs(str.text_buf, fp) == EOF) {
-    fprintf(stderr, "io_write: failed to write\n");
+  i32 offset = get_i24(get_val(gnet_peek(gnet, get_fst(args2))));
+  u32 whence = get_i24(get_val(gnet_peek(gnet, get_snd(args2))));
+
+  int cwhence;
+  switch (whence) {
+    case 0: cwhence = SEEK_SET; break;
+    case 1: cwhence = SEEK_CUR; break;
+    case 2: cwhence = SEEK_END; break;
+    default:
+      fprintf(stderr, "io_seek: invalid whence\n");
+      return new_port(ERA, 0);
+  }
+
+  if (fseek(fp, offset, cwhence) != 0) {
+    fprintf(stderr, "io_seek: failed to seek\n");
   }
 
   return new_port(ERA, 0);
@@ -385,11 +500,11 @@ Port io_sleep(GNet* gnet, Port argm) {
 }
 
 void book_init(Book* book) {
-  book->ffns_buf[book->ffns_len++] = (FFn){"READ_CHAR", io_read_char};
-  book->ffns_buf[book->ffns_len++] = (FFn){"READ_LINE", io_read_line};
-  book->ffns_buf[book->ffns_len++] = (FFn){"OPEN_FILE", io_open_file};
-  book->ffns_buf[book->ffns_len++] = (FFn){"CLOSE_FILE", io_close_file};
+  book->ffns_buf[book->ffns_len++] = (FFn){"READ", io_read};
+  book->ffns_buf[book->ffns_len++] = (FFn){"OPEN", io_open};
+  book->ffns_buf[book->ffns_len++] = (FFn){"CLOSE", io_close};
   book->ffns_buf[book->ffns_len++] = (FFn){"WRITE", io_write};
+  book->ffns_buf[book->ffns_len++] = (FFn){"SEEK", io_seek};
   book->ffns_buf[book->ffns_len++] = (FFn){"GET_TIME", io_get_time};
   book->ffns_buf[book->ffns_len++] = (FFn){"SLEEP", io_sleep};
 
