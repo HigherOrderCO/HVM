@@ -2,7 +2,7 @@ use TSPL::{new_parser, Parser};
 use highlight_error::highlight_error;
 use crate::hvm;
 use std::fmt::{Debug, Display};
-use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 // Types
 // -----
@@ -491,16 +491,22 @@ impl Tree {
   }
 
   pub fn direct_dependencies<'name>(&'name self) -> BTreeSet<&'name str> {
-    match self {
-      Tree::Ref { nam } => BTreeSet::from([nam.as_str()]),
-      Tree::Con { fst, snd } => &fst.direct_dependencies() | &snd.direct_dependencies(),
-      Tree::Dup { fst, snd } => &fst.direct_dependencies() | &snd.direct_dependencies(),
-      Tree::Opr { fst, snd } => &fst.direct_dependencies() | &snd.direct_dependencies(),
-      Tree::Swi { fst, snd } => &fst.direct_dependencies() | &snd.direct_dependencies(),
-      Tree::Num { val } => BTreeSet::new(),
-      Tree::Var { nam } => BTreeSet::new(),
-      Tree::Era => BTreeSet::new(),
+    let mut stack: Vec<&Tree> = vec![self];
+    let mut acc: BTreeSet<&'name str> = BTreeSet::new();
+    
+    while let Some(curr) = stack.pop() {
+      match curr {
+        Tree::Ref { nam } => { acc.insert(nam); },
+        Tree::Con { fst, snd } => { stack.push(fst); stack.push(snd); },
+        Tree::Dup { fst, snd } => { stack.push(fst); stack.push(snd); },
+        Tree::Opr { fst, snd } => { stack.push(fst); stack.push(snd); },
+        Tree::Swi { fst, snd } => { stack.push(fst); stack.push(snd); },
+        Tree::Num { val } => {},
+        Tree::Var { nam } => {},
+        Tree::Era => {},
+      };
     }
+    acc
   }
 }
 
@@ -537,7 +543,6 @@ impl Book {
       }
     }
     let mut book = hvm::Book { defs: Vec::new() };
-    let mut lookup = BTreeMap::new();
     for (fid, name) in &fid_to_name {
       let ast_def = self.defs.get(name).expect("missing `@main` definition");
       let mut def = hvm::Def {
@@ -550,9 +555,8 @@ impl Book {
       };
       ast_def.build(&mut def, &name_to_fid, &mut BTreeMap::new());
       book.defs.push(def);
-      lookup.insert(name.clone(), book.defs.len() - 1);
     }
-    self.propagate_safety(&mut book, &lookup);
+    self.propagate_safety(&mut book, &name_to_fid);
     return book;
   }
 
@@ -566,25 +570,26 @@ impl Book {
   /// cloned and can generate seemingly unexpected results, such as placing eraser
   /// nodes in weird places. See HVM issue [#362](https://github.com/HigherOrderCO/HVM/issues/362)
   /// for an example.
-  fn propagate_safety(&self, compiled_book: &mut hvm::Book, lookup: &BTreeMap<String, usize>) {
+  fn propagate_safety(&self, compiled_book: &mut hvm::Book, lookup: &BTreeMap<String, u32>) {
     let rev_dependencies = self.direct_dependencies_reversed();
-    let mut visited: BTreeSet<&str> = BTreeSet::new();
     let mut stack: Vec<&str> = Vec::new();
 
     for (name, _) in self.defs.iter() {
-      let def = &compiled_book.defs[lookup[name]];
+      let def = &mut compiled_book.defs[lookup[name] as usize];
       if !def.safe {
         stack.push(&name);
+        // Temporarily set as safe so we won't need a separate "visited" set
+        def.safe = true;
       }
     }
 
     while let Some(curr) = stack.pop() {
-      if visited.contains(curr) {
+      let def = &mut compiled_book.defs[lookup[curr] as usize];
+      if !def.safe {
+        // Already visited, skip this
         continue;
       }
-      visited.insert(curr);
 
-      let def = &mut compiled_book.defs[lookup[curr]];
       def.safe = false;
 
       for &next in rev_dependencies[curr].iter() {
@@ -613,13 +618,10 @@ impl Book {
 
     let mut process = |tree: &'name Tree, name: &'name str| {
       for dependency in tree.direct_dependencies() {
-        match result.entry(dependency) {
-          Entry::Vacant(_) => panic!("global definition depends on undeclared reference"),
-          Entry::Occupied(mut entry) => {
-            // dependency => name
-            entry.get_mut().insert(name);
-          },
-        }
+        result
+          .get_mut(dependency)
+          .expect("global definition depends on undeclared reference")
+          .insert(name);
       }
     };
 
