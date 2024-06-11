@@ -1,4 +1,3 @@
-# run io on tests
 test-io = 1
 
 type IO_T:
@@ -18,12 +17,35 @@ def IO_T/bind(a, b):
 def call_io(func, argm):
   return IO_T/Call(IO_T/MAGIC, func, argm, lambda x: IO_T/Done(IO_T/MAGIC, x))
 
-def main:
+def read_input():
   with IO_T:
-    * <- call_io("WRITE", (1, "Hi! What's your name?\n"))
-    name <- call_io("READ_LINE", 0)
-    * <- call_io("WRITE", (1, "Your name is '"))
-    * <- call_io("WRITE", (1, name))
-    * <- call_io("WRITE", (1, "'!\n"))
+    * <- call_io("WRITE", (1, "What is your name?\n"))
+    return call_io("READ", (0, 10))
+
+def write_to_file():
+  with IO_T:
+    fp <- call_io("OPEN", ("testing.txt", "w"))
+    input <- read_input()
+    * <- call_io("WRITE", (fp, input))
+    * <- call_io("WRITE", (fp, "\n"))
+
+    return call_io("CLOSE", fp)
+
+def read_from_file():
+  with IO_T:
+    fp <- call_io("OPEN", ("testing.txt", "r"))
+    bytes <- call_io("READ", (fp, 5))
+    * <- call_io("WRITE", (1, bytes))
+    * <- call_io("SEEK", (fp, 2, 0))
+    bytes <- call_io("READ", (fp, 5))
+    * <- call_io("WRITE", (1, bytes))
+
+    return call_io("CLOSE", fp)
+
+def main():
+  with IO_T:
+    * <- write_to_file()
+    * <- read_from_file()
+    * <- call_io("WRITE", (1, "\n"))
 
     return 42

@@ -1,12 +1,17 @@
-@IO_T/Call = (a (b (c (d ((1 (a (b (c (d e))))) e)))))
+@IO_T/Call = (a (b (c (d ((@IO_T/Call/tag (a (b (c (d e))))) e)))))
 
-@IO_T/Done = (a (b ((0 (a (b c))) c)))
+@IO_T/Call/tag = 1
+
+@IO_T/Done = (a (b ((@IO_T/Done/tag (a (b c))) c)))
+
+@IO_T/Done/tag = 0
 
 @IO_T/MAGIC = (13683217 16719857)
 
 @IO_T/bind = ((@IO_T/bind__C2 a) a)
 
-@IO_T/bind__C0 = (* (a ((a b) b)))
+@IO_T/bind__C0 = (* (b (a c)))
+  & @undefer ~ (a (b c))
 
 @IO_T/bind__C1 = (* (* (a (b ((c d) (e g))))))
   & @IO_T/Call ~ (@IO_T/MAGIC (a (b ((c f) g))))
@@ -14,12 +19,13 @@
 
 @IO_T/bind__C2 = (?((@IO_T/bind__C0 @IO_T/bind__C1) a) a)
 
-@IO_T/wrap = a
-  & @IO_T/Done ~ (@IO_T/MAGIC a)
+@String/Cons = (a (b ((@String/Cons/tag (a (b c))) c)))
 
-@String/Cons = (a (b ((1 (a (b c))) c)))
+@String/Cons/tag = 1
 
-@String/Nil = ((0 a) a)
+@String/Nil = ((@String/Nil/tag a) a)
+
+@String/Nil/tag = 0
 
 @call_io = (a (b c))
   & @IO_T/Call ~ (@IO_T/MAGIC (a (b (@call_io__C0 c))))
@@ -27,67 +33,113 @@
 @call_io__C0 = a
   & @IO_T/Done ~ (@IO_T/MAGIC a)
 
-@main = a
-  & @IO_T/bind ~ (@main__C7 (@main__C6 a))
-
-@main__C0 = i
-  & @call_io ~ (e ((1 h) i))
+@main = m
+  & @IO_T/bind ~ (@write_to_file ((((* k) l) l) m))
+  & @IO_T/bind ~ (@read_from_file ((((* i) j) j) k))
+  & @IO_T/bind ~ (g ((((* 42) h) h) i))
+  & @call_io ~ (e ((1 f) g))
   & @String/Cons ~ (87 (d e))
   & @String/Cons ~ (82 (c d))
   & @String/Cons ~ (73 (b c))
   & @String/Cons ~ (84 (a b))
   & @String/Cons ~ (69 (@String/Nil a))
-  & @String/Cons ~ (39 (g h))
-  & @String/Cons ~ (33 (f g))
   & @String/Cons ~ (10 (@String/Nil f))
 
-@main__C1 = e
-  & @String/Cons ~ (87 (d e))
-  & @String/Cons ~ (82 (c d))
-  & @String/Cons ~ (73 (b c))
-  & @String/Cons ~ (84 (a b))
-  & @String/Cons ~ (69 (@String/Nil a))
+@read_from_file = a
+  & @IO_T/bind ~ (@read_from_file__C11 (@read_from_file__C10 a))
 
-@main__C2 = (* a)
-  & @IO_T/bind ~ (@main__C0 ((* 42) a))
-
-@main__C3 = n
-  & @call_io ~ (e ((1 m) n))
-  & @String/Cons ~ (87 (d e))
-  & @String/Cons ~ (82 (c d))
-  & @String/Cons ~ (73 (b c))
-  & @String/Cons ~ (84 (a b))
-  & @String/Cons ~ (69 (@String/Nil a))
-  & @String/Cons ~ (72 (l m))
-  & @String/Cons ~ (101 (k l))
-  & @String/Cons ~ (108 (j k))
-  & @String/Cons ~ (108 (i j))
-  & @String/Cons ~ (111 (h i))
-  & @String/Cons ~ (44 (g h))
-  & @String/Cons ~ (32 (f g))
-  & @String/Cons ~ (39 (@String/Nil f))
-
-@main__C4 = (a d)
-  & @IO_T/bind ~ (@main__C3 ((* c) d))
-  & @IO_T/bind ~ (b (@main__C2 c))
-  & @call_io ~ (@main__C1 ((1 a) b))
-
-@main__C5 = j
-  & @call_io ~ (i (0 j))
-  & @String/Cons ~ (82 (h i))
-  & @String/Cons ~ (69 (g h))
-  & @String/Cons ~ (65 (f g))
-  & @String/Cons ~ (68 (e f))
-  & @String/Cons ~ (95 (d e))
+@read_from_file__C0 = (f (* g))
+  & @call_io ~ (e (f g))
+  & @String/Cons ~ (67 (d e))
   & @String/Cons ~ (76 (c d))
-  & @String/Cons ~ (73 (b c))
-  & @String/Cons ~ (78 (a b))
+  & @String/Cons ~ (79 (b c))
+  & @String/Cons ~ (83 (a b))
   & @String/Cons ~ (69 (@String/Nil a))
 
-@main__C6 = (* a)
-  & @IO_T/bind ~ (@main__C5 (@main__C4 a))
+@read_from_file__C1 = e
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
 
-@main__C7 = y
+@read_from_file__C10 = ((@read_from_file__C9 a) a)
+
+@read_from_file__C11 = q
+  & @call_io ~ (d ((o p) q))
+  & @String/Cons ~ (79 (c d))
+  & @String/Cons ~ (80 (b c))
+  & @String/Cons ~ (69 (a b))
+  & @String/Cons ~ (78 (@String/Nil a))
+  & @String/Cons ~ (116 (n o))
+  & @String/Cons ~ (101 (m n))
+  & @String/Cons ~ (115 (l m))
+  & @String/Cons ~ (116 (k l))
+  & @String/Cons ~ (105 (j k))
+  & @String/Cons ~ (110 (i j))
+  & @String/Cons ~ (103 (h i))
+  & @String/Cons ~ (46 (g h))
+  & @String/Cons ~ (116 (f g))
+  & @String/Cons ~ (120 (e f))
+  & @String/Cons ~ (116 (@String/Nil e))
+  & @String/Cons ~ (114 (@String/Nil p))
+
+@read_from_file__C2 = (c (a e))
+  & @IO_T/bind ~ (b (((@read_from_file__C0 (c d)) d) e))
+  & @call_io ~ (@read_from_file__C1 ((1 a) b))
+
+@read_from_file__C3 = d
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (69 (b c))
+  & @String/Cons ~ (65 (a b))
+  & @String/Cons ~ (68 (@String/Nil a))
+
+@read_from_file__C4 = ({a c} (* e))
+  & @IO_T/bind ~ (b (((@read_from_file__C2 (c d)) d) e))
+  & @call_io ~ (@read_from_file__C3 ((a 5) b))
+
+@read_from_file__C5 = d
+  & @String/Cons ~ (83 (c d))
+  & @String/Cons ~ (69 (b c))
+  & @String/Cons ~ (69 (a b))
+  & @String/Cons ~ (75 (@String/Nil a))
+
+@read_from_file__C6 = ({a c} (* e))
+  & @IO_T/bind ~ (b (((@read_from_file__C4 (c d)) d) e))
+  & @call_io ~ (@read_from_file__C5 ((a (2 0)) b))
+
+@read_from_file__C7 = e
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@read_from_file__C8 = (c (a e))
+  & @IO_T/bind ~ (b (((@read_from_file__C6 (c d)) d) e))
+  & @call_io ~ (@read_from_file__C7 ((1 a) b))
+
+@read_from_file__C9 = ({e g} i)
+  & @IO_T/bind ~ (f (((@read_from_file__C8 (g h)) h) i))
+  & @call_io ~ (d ((e 5) f))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (69 (b c))
+  & @String/Cons ~ (65 (a b))
+  & @String/Cons ~ (68 (@String/Nil a))
+
+@read_input = a
+  & @IO_T/bind ~ (@read_input__C2 (@read_input__C1 a))
+
+@read_input__C0 = (* e)
+  & @call_io ~ (d ((0 10) e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (69 (b c))
+  & @String/Cons ~ (65 (a b))
+  & @String/Cons ~ (68 (@String/Nil a))
+
+@read_input__C1 = ((@read_input__C0 a) a)
+
+@read_input__C2 = y
   & @call_io ~ (e ((1 x) y))
   & @String/Cons ~ (87 (d e))
   & @String/Cons ~ (82 (c d))
@@ -115,3 +167,67 @@
   & @String/Cons ~ (10 (@String/Nil f))
 
 @test-io = 1
+
+@undefer = (((a a) b) b)
+
+@write_to_file = a
+  & @IO_T/bind ~ (@write_to_file__C8 (@write_to_file__C7 a))
+
+@write_to_file__C0 = (f (* g))
+  & @call_io ~ (e (f g))
+  & @String/Cons ~ (67 (d e))
+  & @String/Cons ~ (76 (c d))
+  & @String/Cons ~ (79 (b c))
+  & @String/Cons ~ (83 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@write_to_file__C1 = a
+  & @String/Cons ~ (10 (@String/Nil a))
+
+@write_to_file__C2 = e
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@write_to_file__C3 = ({a c} (* e))
+  & @IO_T/bind ~ (b (((@write_to_file__C0 (c d)) d) e))
+  & @call_io ~ (@write_to_file__C2 ((a @write_to_file__C1) b))
+
+@write_to_file__C4 = e
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@write_to_file__C5 = ({a d} (b f))
+  & @IO_T/bind ~ (c (((@write_to_file__C3 (d e)) e) f))
+  & @call_io ~ (@write_to_file__C4 ((a b) c))
+
+@write_to_file__C6 = (a c)
+  & @IO_T/bind ~ (@read_input (((@write_to_file__C5 (a b)) b) c))
+
+@write_to_file__C7 = ((@write_to_file__C6 a) a)
+
+@write_to_file__C8 = q
+  & @call_io ~ (d ((o p) q))
+  & @String/Cons ~ (79 (c d))
+  & @String/Cons ~ (80 (b c))
+  & @String/Cons ~ (69 (a b))
+  & @String/Cons ~ (78 (@String/Nil a))
+  & @String/Cons ~ (116 (n o))
+  & @String/Cons ~ (101 (m n))
+  & @String/Cons ~ (115 (l m))
+  & @String/Cons ~ (116 (k l))
+  & @String/Cons ~ (105 (j k))
+  & @String/Cons ~ (110 (i j))
+  & @String/Cons ~ (103 (h i))
+  & @String/Cons ~ (46 (g h))
+  & @String/Cons ~ (116 (f g))
+  & @String/Cons ~ (120 (e f))
+  & @String/Cons ~ (116 (@String/Nil e))
+  & @String/Cons ~ (119 (@String/Nil p))
+
+
