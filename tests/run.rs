@@ -45,6 +45,11 @@ fn test_file(path: &Path) {
   let rust_output = execute_hvm(&["run".as_ref(), path.as_os_str()], false).unwrap();
   assert_snapshot!(rust_output);
 
+  if contents.contains("@test-rust-only = 1") {
+    println!("only testing rust implementation for {path:?}");
+    return;
+  }
+
   println!("  testing {path:?}, C...");
   let c_output = execute_hvm(&["run-c".as_ref(), path.as_os_str()], false).unwrap();
   assert_eq!(c_output, rust_output, "{path:?}: C output does not match rust output");
