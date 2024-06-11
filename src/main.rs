@@ -71,15 +71,14 @@ fn main() {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-      hvm::GNet::run(&book, before_running, after_running);
+      run::<hvm::GNet>(&book);
     }
     Some(("run-c", sub_matches)) => {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-      let run_io = sub_matches.get_flag("io");
       #[cfg(feature = "c")]
-      interop::NetC::run(&book, before_running, after_running);
+      run::<interop::NetC>(&book);
       #[cfg(not(feature = "c"))]
       println!("C runtime not available!\n");
     }
@@ -156,18 +155,20 @@ fn main() {
   }
 }
 
-pub fn before_running() -> Instant {
-  Instant::now()
-}
+pub fn run<N: NetReadback>(book: &hvm::Book) {
+  // Start timer
+  let timer = Instant::now();
 
-pub fn after_running(net: &impl interop::NetReadback, book: &hvm::Book, timer: Instant) {
+  // Run net
+  let net = N::run(book);
+  
   // Stops the timer
   let duration = timer.elapsed();
 
   //println!("{}", net.show());
 
   // Prints the result
-  if let Some(tree) = ast::Net::readback(net, book) {
+  if let Some(tree) = ast::Net::readback(&net, book) {
     println!("Result: {}", tree.show());
   } else {
     println!("Readback failed. Printing GNet memdump...\n");
@@ -180,83 +181,3 @@ pub fn after_running(net: &impl interop::NetReadback, book: &hvm::Book, timer: I
   println!("- TIME: {:.2}s", duration.as_secs_f64());
   println!("- MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
 }
-
-// pub fn run(book: &hvm::Book) {
-//   // Initializes the global net
-//   let net = hvm::GNet::new(1 << 29, 1 << 29);
-
-//   // Initializes threads
-//   let mut tm = hvm::TMem::new(0, 1);
-
-//   // Creates an initial redex that calls main
-//   let main_id = book.defs.iter().position(|def| def.name == "main").unwrap();
-//   tm.rbag.push_redex(hvm::Pair::new(hvm::Port::new(hvm::REF, main_id as u32), hvm::ROOT));
-//   net.vars_create(hvm::ROOT.get_val() as usize, hvm::NONE);
-
-//   // Starts the timer
-//   let start = std::time::Instant::now();
-
-//   // Evaluates
-//   tm.evaluator(&net, &book);
-  
-//   // Stops the timer
-//   let duration = start.elapsed();
-
-//   //println!("{}", net.show());
-
-//   // Prints the result
-//   if let Some(tree) = ast::Net::readback(&net, book) {
-//     println!("Result: {}", tree.show());
-//   } else {
-//     println!("Readback failed. Printing GNet memdump...\n");
-//     println!("{}", net.show());
-//   }
-
-//   // Prints interactions and time
-//   let itrs = net.itrs.load(std::sync::atomic::Ordering::Relaxed);
-//   println!("- ITRS: {}", itrs);
-//   println!("- TIME: {:.2}s", duration.as_secs_f64());
-//   println!("- MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
-// }
-
-// #[cfg(feature = "c")]
-// pub fn run_c(book: &hvm::Book) {
-//   // Serialize book
-//   let mut data : Vec<u8> = Vec::new();
-//   book.to_buffer(&mut data);
-//   //println!("{:?}", data);
-//   let book_buffer = data.as_mut_ptr() as *mut u32;
-
-//   let layout = alloc::Layout::new::<interop::NetC>();
-//   let net_ptr = unsafe { alloc::alloc(layout) as *mut interop::NetC };
-
-//   // Starts the timer
-//   let start = std::time::Instant::now();
-
-//   unsafe {
-//     hvm_c(data.as_mut_ptr() as *mut u32, net_ptr, true);
-//   }
-
-//   // Stops the timer
-//   let duration = start.elapsed();
- 
-//   // Converts the raw pointer to a reference
-//   let net_ref = unsafe { &mut *net_ptr };
- 
-//   // Prints the result
-//   if let Some(tree) = ast::Net::readback(net_ref, book) {
-//     println!("Result: {}", tree.show());
-//   } else {
-//     println!("Readback failed. Can't print GNet memdump from C.\n");
-//     // println!("{}", net_ref.show());
-//   }
- 
-//   // Prints interactions and time
-//   let itrs = net_ref.itrs.load(std::sync::atomic::Ordering::Relaxed);
-//   println!("- ITRS: {}", itrs);
-//   println!("- TIME: {:.2}s", duration.as_secs_f64());
-//   println!("- MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
- 
-//   // Deallocate network's memory
-//   unsafe { alloc::dealloc(net_ptr as *mut u8, layout) };
-// }

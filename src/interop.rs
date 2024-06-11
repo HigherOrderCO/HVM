@@ -5,12 +5,12 @@ use crate::hvm::*;
 
 #[cfg(feature = "c")]
 extern "C" {
-  fn hvm_c(book_buffer: *const u32, net_buffer: *const NetC, run_io: bool);
+  fn hvm_c(book_buffer: *const u32, net_buffer: *const RawNetC);
 }
 
 #[cfg(feature = "cuda")]
 extern "C" {
-  fn hvm_cu(book_buffer: *const u32, run_io: bool);
+  fn hvm_cu(book_buffer: *const u32);
 }
 
 // Abstract Global Net
@@ -18,14 +18,14 @@ extern "C" {
 // -------------
 
 pub trait NetReadback {
-  fn run<T>(book: &Book, before: impl FnOnce() -> T, after: impl FnOnce(&Self, &Book, T) -> ());
+  fn run(book: &Book) -> Self;
   fn enter(&self, var: Port) -> Port;
   fn node_load(&self, loc: usize) -> Pair;
   fn itrs(&self) -> u64;
 }
 
 impl<'a> NetReadback for GNet<'a> {
-  fn run<T>(book: &Book, before: impl FnOnce() -> T, after: impl FnOnce(&Self, &Book, T) -> ()) {
+  fn run(book: &Book) -> Self {
     // Initializes the global net
     let net = GNet::new(1 << 29, 1 << 29);
 
@@ -37,12 +37,10 @@ impl<'a> NetReadback for GNet<'a> {
     tm.rbag.push_redex(Pair::new(Port::new(REF, main_id as u32), ROOT));
     net.vars_create(ROOT.get_val() as usize, NONE);
 
-    let initial_state = before();
-
     // Evaluates
     tm.evaluator(&net, &book);
 
-    after(&net, book, initial_state);
+    net
   }
   fn enter(&self, var: Port) -> Port { self.enter(var) }
   fn node_load(&self, loc: usize) -> Pair { self.node_load(loc) }
@@ -57,6 +55,12 @@ impl<'a> NetReadback for GNet<'a> {
 #[cfg(feature = "c")]
 #[repr(C)]
 pub struct NetC {
+  raw: *mut RawNetC
+}
+
+#[cfg(feature = "c")]
+#[repr(C)]
+pub struct RawNetC {
   pub node: [APair; NetC::G_NODE_LEN], // global node buffer
   pub vars: [APort; NetC::G_VARS_LEN], // global vars buffer
   pub rbag: [APair; NetC::G_RBAG_LEN], // global rbag buffer
@@ -78,16 +82,53 @@ impl NetC {
   pub const G_VARS_LEN: usize = 1 << 29; // max 536m vars
   pub const G_RBAG_LEN: usize = NetC::TPC * NetC::RLEN;
 
-  pub fn vars_exchange(&self, var: usize, val: Port) -> Port {
-    Port(self.vars[var].0.swap(val.0, Ordering::Relaxed) as u32)
+  pub fn net(&self) -> &RawNetC {
+    unsafe { &*self.raw }
+  }
+
+  pub fn net_mut(&mut self) -> &mut RawNetC {
+    unsafe { &mut *self.raw }
+  }
+
+  fn vars_exchange(&self, var: usize, val: Port) -> Port {
+    Port(self.net().vars[var].0.swap(val.0, Ordering::Relaxed) as u32)
   }
 
   pub fn vars_take(&self, var: usize) -> Port {
     self.vars_exchange(var, Port(0))
   }
+}
+
+#[cfg(feature = "c")]
+impl Drop for NetC {
+  fn drop(&mut self) {
+    // Deallocate network's memory
+    let layout = alloc::Layout::new::<RawNetC>();
+    unsafe { alloc::dealloc(self.raw as *mut u8, layout) };
+  }
+}
+
+#[cfg(feature = "c")]
+impl NetReadback for NetC {
+  fn run(book: &Book) -> Self {
+    // Serialize book
+    let mut data : Vec<u8> = Vec::new();
+    book.to_buffer(&mut data);
+    //println!("{:?}", data);
+    let book_buffer = data.as_mut_ptr() as *mut u32;
+
+    let layout = alloc::Layout::new::<RawNetC>();
+    let net_ptr = unsafe { alloc::alloc(layout) as *mut RawNetC };
+
+    unsafe {
+      hvm_c(data.as_mut_ptr() as *mut u32, net_ptr);
+    }
+
+    NetC { raw: net_ptr }
+  }
 
   fn node_load(&self, loc:usize) -> Pair {
-    Pair(self.node[loc].0.load(Ordering::Relaxed))
+    Pair(self.net().node[loc].0.load(Ordering::Relaxed))
   }
 
   fn enter(&self, mut var: Port) -> Port {
@@ -105,37 +146,10 @@ impl NetC {
     }
     return var;
   }
-}
 
-#[cfg(feature = "c")]
-impl NetReadback for NetC {
-  fn run<T>(book: &Book, before: impl FnOnce() -> T, after: impl FnOnce(&Self, &Book, T) -> ()) {
-    // Serialize book
-    let mut data : Vec<u8> = Vec::new();
-    book.to_buffer(&mut data);
-    //println!("{:?}", data);
-    let book_buffer = data.as_mut_ptr() as *mut u32;
-
-    let layout = alloc::Layout::new::<NetC>();
-    let net_ptr = unsafe { alloc::alloc(layout) as *mut NetC };
-
-    let initial_state = before();
-
-    unsafe {
-      hvm_c(data.as_mut_ptr() as *mut u32, net_ptr, true);
-    }
-
-    // Converts the raw pointer to a reference
-    let net_ref = unsafe { &mut *net_ptr };
-
-    after(net_ref, book, initial_state);
-
-    // Deallocate network's memory
-    unsafe { alloc::dealloc(net_ptr as *mut u8, layout) };
+  fn itrs(&self) -> u64 {
+    self.net().itrs.load(Ordering::Relaxed)
   }
-  fn node_load(&self, loc:usize) -> Pair { self.node_load(loc) }
-  fn enter(&self, var: Port) -> Port { self.enter(var) } 
-  fn itrs(&self) -> u64 { self.itrs.load(Ordering::Relaxed) }
 }
 
 // Global Net equivalent to the CUDA implementation.
