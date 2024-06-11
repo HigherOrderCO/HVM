@@ -206,7 +206,7 @@ Port inject_bytes(Net* net, Bytes *bytes) {
   // - CONS needs 4 nodes & 1 var
   u32 len = bytes->len;
   if (!get_resources(net, tm[0], 0, 2 + 4 * len, 1 + len)) {
-    printf("inject_bytes: failed to get resources\n");
+    fprintf(stderr, "inject_bytes: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
@@ -278,12 +278,13 @@ Port io_read(Net* net, Book* book, Port argm) {
 
   if ((bytes.len != num_bytes) && ferror(fp)) {
     fprintf(stderr, "io_read: failed to read\n");
+    free(bytes.buf);
+    return new_port(ERA, 0);
   }
 
   // Convert it to a port.
   Port ret = inject_bytes(net, &bytes);
   free(bytes.buf);
-
   return ret;
 }
 
@@ -300,8 +301,6 @@ Port io_open(Net* net, Book* book, Port argm) {
   Str name = readback_str(net, book, get_fst(args));
   Str mode = readback_str(net, book, get_snd(args));
 
-  printf("opening file '%s' with mode '%s'\n", name.text_buf, mode.text_buf);
-
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
       FILE_POINTERS[fd] = fopen(name.text_buf, mode.text_buf);
@@ -310,7 +309,6 @@ Port io_open(Net* net, Book* book, Port argm) {
   }
 
   fprintf(stderr, "io_open: too many open files\n");
-
   return new_port(ERA, 0);
 }
 
@@ -329,7 +327,6 @@ Port io_close(Net* net, Book* book, Port argm) {
   }
 
   FILE_POINTERS[get_u24(get_val(argm))] = NULL;
-
   return new_port(ERA, 0);
 }
 
@@ -349,16 +346,15 @@ Port io_write(Net* net, Book* book, Port argm) {
   if (fp == NULL) {
     fprintf(stderr, "io_write: invalid file descriptor\n");
     free(bytes.buf);
-
     return new_port(ERA, 0);
   }
+
 
   if (fwrite(bytes.buf, sizeof(char), bytes.len, fp) != bytes.len) {
     fprintf(stderr, "io_write: failed to write\n");
   }
 
   free(bytes.buf);
-
   return new_port(ERA, 0);
 }
 
@@ -489,11 +485,6 @@ void do_run_io(Net* net, Book* book, Port port) {
     switch (ctr.tag) {
       case IO_CALL: {
         Str  func = readback_str(net, book, ctr.args_buf[1]);
-        Port argm = ctr.args_buf[2];
-        Port cont = ctr.args_buf[3];
-        u32  lps  = 0;
-        u32  loc  = node_alloc_1(net, tm[0], &lps);
-        Port ret  = new_port(ERA, 0);
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search
         for (u32 fid = 0; fid < book->ffns_len; ++fid) {
@@ -503,16 +494,22 @@ void do_run_io(Net* net, Book* book, Port port) {
           }
         }
         if (ffn == NULL) {
+          fprintf(stderr, "Unknown IO func '%s'\n", func.text_buf);
           break;
         }
-        ret = ffn->func(net, book, argm);
+
+        Port argm = ctr.args_buf[2];
+        Port cont = ctr.args_buf[3];
+        Port ret = ffn->func(net, book, argm);
+
+        u32 lps = 0;
+        u32 loc = node_alloc_1(net, tm[0], &lps);
         node_create(net, loc, new_pair(ret, ROOT));
         boot_redex(net, new_pair(new_port(CON, loc), cont));
         port = ROOT;
         continue;
       }
       case IO_DONE: {
-        printf("DONE\n");
         break;
       }
     }

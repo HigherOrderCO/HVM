@@ -204,30 +204,6 @@ __device__ Port inject_cons(Net* net, TM* tm, Port head, Port tail, u32 char_idx
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-__device__ Port inject_bytes(Net* net, TM* tm, Str *str) {
-  // Allocate all resources up front:
-  // - NIL needs  2 nodes & 1 var
-  // - CONS needs 4 nodes & 1 var
-  u32 len = str->text_len;
-  if (!get_resources(net, tm, 0, 2 + 4 * len, 1 + len)) {
-    printf("inject_bytes: failed to get resources\n");
-    return new_port(ERA, 0);
-  }
-
-  Port port = inject_nil(net, tm);
-
-  for (u32 i = 0; i < len; i++) {
-    Port chr = new_port(NUM, new_u24(str->text_buf[len - i - 1]));
-    port = inject_cons(net, tm, chr, port, i);
-  }
-
-  return port;
-}
-
-// Converts a list of bytes to a Port.
-// Encoding:
-// - λt (t NIL)
-// - λt (((t CONS) head) tail)
 __device__ Port inject_bytes(Net* net, TM* tm, Bytes *bytes) {
   // Allocate all resources up front:
   // - NIL needs  2 nodes & 1 var
@@ -248,11 +224,11 @@ __device__ Port inject_bytes(Net* net, TM* tm, Bytes *bytes) {
   return port;
 }
 
-__global__ void make_bytes_port(GNet* gnet, Bytes *bytes, Port* ret) {
+__global__ void make_bytes_port(GNet* gnet, Bytes bytes, Port* ret) {
   if (GID() == 0) {
     TM tm;
     Net net = vnet_new(gnet, NULL, gnet->turn);
-    *ret = inject_bytes(&net, &tm, bytes);
+    *ret = inject_bytes(&net, &tm, &bytes);
   }
 }
 
@@ -264,15 +240,18 @@ Port gnet_inject_bytes(GNet* gnet, Bytes *bytes) {
   Port* d_ret;
   cudaMalloc(&d_ret, sizeof(Port));
 
-  Bytes* cu_bytes;
-  cudaMalloc(&cu_bytes, sizeof(Str));
-  cudaMemcpy(cu_bytes, bytes, sizeof(Str), cudaMemcpyHostToDevice);
+  Bytes cu_bytes;
+  cu_bytes.len = bytes->len;
+
+  cudaMalloc(&cu_bytes.buf, sizeof(char) * cu_bytes.len);
+  cudaMemcpy(cu_bytes.buf, bytes->buf, sizeof(char) * cu_bytes.len, cudaMemcpyHostToDevice);
 
   make_bytes_port<<<1,1>>>(gnet, cu_bytes, d_ret);
 
   Port ret;
   cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
   cudaFree(d_ret);
+  cudaFree(cu_bytes.buf);
 
   return ret;
 }
@@ -291,7 +270,7 @@ static FILE* FILE_POINTERS[256];
 // Converts a NUM port (file descriptor) to file pointer.
 FILE* readback_file(Port port) {
   if (get_tag(port) != NUM) {
-    fprintf(stderr, "non-num where file descriptor was expected: %i\n", get_tag(port));
+    fprintf(stderr, "non-num where file descriptor was expected: %s\n", show_port(port).x);
     return NULL;
   }
 
@@ -320,9 +299,9 @@ Port io_read(GNet* gnet, Port argm) {
 
   Pair args = gnet_node_load(gnet, get_val(argm));
 
-  FILE* fp = readback_file(gnet_peek(gnet, argm));
+  FILE* fp = readback_file(gnet_peek(gnet, get_fst(args)));
   if (fp == NULL) {
-    fprintf(stderr, "io_read_line: invalid file descriptor\n");
+    fprintf(stderr, "io_read: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
 
@@ -335,12 +314,13 @@ Port io_read(GNet* gnet, Port argm) {
 
   if ((bytes.len != num_bytes) && ferror(fp)) {
     fprintf(stderr, "io_read: failed to read\n");
+    free(bytes.buf);
+    return new_port(ERA, 0);
   }
 
   // Convert it to a port.
   Port ret = gnet_inject_bytes(gnet, &bytes);
   free(bytes.buf);
-
   return ret;
 }
 
@@ -357,8 +337,6 @@ Port io_open(GNet* gnet, Port argm) {
   Str name = gnet_readback_str(gnet, get_fst(args));
   Str mode = gnet_readback_str(gnet, get_snd(args));
 
-  printf("opening file '%s' with mode '%s'\n", name.text_buf, mode.text_buf);
-
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
       FILE_POINTERS[fd] = fopen(name.text_buf, mode.text_buf);
@@ -367,7 +345,6 @@ Port io_open(GNet* gnet, Port argm) {
   }
 
   fprintf(stderr, "io_open: too many open files\n");
-
   return new_port(ERA, 0);
 }
 
@@ -406,7 +383,6 @@ Port io_write(GNet* gnet, Port argm) {
   if (fp == NULL) {
     fprintf(stderr, "io_write: invalid file descriptor\n");
     free(bytes.buf);
-
     return new_port(ERA, 0);
   }
 
@@ -415,7 +391,6 @@ Port io_write(GNet* gnet, Port argm) {
   }
 
   free(bytes.buf);
-
   return new_port(ERA, 0);
 }
 
@@ -550,7 +525,7 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
           }
         }
         if (ffn == NULL) {
-          printf("FOUND NOTHING when looking for %s\n", func.text_buf);
+          fprintf(stderr, "Unknown IO func '%s'\n", func.text_buf);
           break;
         }
 
@@ -564,7 +539,6 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
         continue;
       }
       case IO_DONE: {
-        printf("DONE\n");
         break;
       }
     }
