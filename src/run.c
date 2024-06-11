@@ -429,8 +429,8 @@ Port io_sleep(Net* net, Book* book, Port argm) {
   // Get the sleep duration node
   Pair dur_node = node_load(net, get_val(argm));
   // Get the high and low 24-bit parts of the duration
-  u32 dur_hi = get_u24(get_val(get_fst(dur_node)));
-  u32 dur_lo = get_u24(get_val(get_snd(dur_node)));
+  u32 dur_hi = get_u24(get_val(peek(net, get_fst(dur_node))));
+  u32 dur_lo = get_u24(get_val(peek(net, get_snd(dur_node))));
   // Combine into a 48-bit duration in nanoseconds
   u64 dur_ns = (((u64)dur_hi) << 24) | dur_lo;
   // Sleep for the specified duration
