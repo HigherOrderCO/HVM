@@ -2265,6 +2265,16 @@ __global__ void print_result(GNet* gnet) {
   }
 }
 
+__global__ void compact(GNet* gnet, Pair* node_out, Port* vars_out) {
+  // Ideia: percorrer os nós de forma semelhante a `pretty_print_port`,
+  // colocando eles nos buffers em questão usando uma stack.
+
+  // ???
+  // if (threadIdx.x == 0 && blockIdx.x == 0) {
+  //   Port r = vars_take(gnet, ROOT);
+  // }
+}
+
 // Demos
 // -----
 
@@ -2286,7 +2296,7 @@ __global__ void print_result(GNet* gnet) {
 void do_run_io(GNet* gnet, Book* book, Port port);
 #endif
 
-extern "C" void hvm_cu(u32* book_buffer) {
+extern "C" void hvm_cu(u32* book_buffer, GNet* output) {
   // Start the timer
   clock_t start = clock();
 
@@ -2319,7 +2329,10 @@ extern "C" void hvm_cu(u32* book_buffer) {
   double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
 
   // Prints the result
-  print_result<<<1,1>>>(gnet);
+  // If `output` is set, the Rust implementation will print the net
+  if (!output) {
+    print_result<<<1,1>>>(gnet);
+  }
 
   // Reports errors
   cudaError_t err = cudaGetLastError();
@@ -2329,6 +2342,11 @@ extern "C" void hvm_cu(u32* book_buffer) {
       fprintf(stderr, "Note: for now, HVM-CUDA requires a GPU with at least 128 KB of L1 cache per SM.\n");
     }
     exit(EXIT_FAILURE);
+  }
+
+  // If `output` is set, copy the memory from the net into the Rust implementation
+  if (output) {
+    cudaMemcpy(output, gnet, sizeof(GNet), cudaMemcpyDeviceToHost);
   }
 
   // Prints entire memdump
@@ -2355,15 +2373,18 @@ extern "C" void hvm_cu(u32* book_buffer) {
   //cudaMemcpy(&itrs, &gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
 
   // Prints interactions, time and MIPS
-  printf("- ITRS: %llu\n", gnet_get_itrs(gnet));
-  printf("- LEAK: %llu\n", gnet_get_leak(gnet));
-  printf("- TIME: %.2fs\n", duration);
-  printf("- MIPS: %.2f\n", (double)gnet_get_itrs(gnet) / duration / 1000000.0);
+  // If `output` is set, the Rust implementation will print the net
+  if (!output) {
+    printf("- ITRS: %llu\n", gnet_get_itrs(gnet));
+    printf("- LEAK: %llu\n", gnet_get_leak(gnet));
+    printf("- TIME: %.2fs\n", duration);
+    printf("- MIPS: %.2f\n", (double)gnet_get_itrs(gnet) / duration / 1000000.0);
+  }
 }
 
 #ifdef WITH_MAIN
 int main() {
-  hvm_cu((u32*)BOOK_BUF);
+  hvm_cu((u32*)BOOK_BUF, NULL);
   return 0;
 }
 #endif

@@ -11,16 +11,6 @@ use std::path::PathBuf;
 use std::time::Instant;
 use std::process::Command as SysCommand;
 
-#[cfg(feature = "c")]
-extern "C" {
-  fn hvm_c(book_buffer: *const u32, net_buffer: *const interop::NetC);
-}
-
-#[cfg(feature = "cuda")]
-extern "C" {
-  fn hvm_cu(book_buffer: *const u32);
-}
-
 fn main() {
   let matches = Command::new("hvm")
     .about("HVM2: Higher-order Virtual Machine 2 (32-bit Version)")
@@ -90,7 +80,7 @@ fn main() {
       book.to_buffer(&mut data);
       #[cfg(feature = "cuda")]
       unsafe {
-        hvm_cu(data.as_mut_ptr() as *mut u32);
+        interop::hvm_cu(data.as_mut_ptr() as *mut u32, std::ptr::null());
       }
       #[cfg(not(feature = "cuda"))]
       println!("CUDA runtime not available!\n If you've installed CUDA and nvcc after HVM, please reinstall HVM.");
@@ -159,7 +149,7 @@ pub fn run<N: NetReadback>(book: &hvm::Book) {
   // Start timer
   let timer = Instant::now();
 
-  // Run net
+  // Normalize net
   let net = N::run(book);
   
   // Stops the timer
