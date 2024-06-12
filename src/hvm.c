@@ -1755,9 +1755,24 @@ void pretty_print_port(Net* net, Book* book, Port port) {
 void do_run_io(Net* net, Book* book, Port port);
 #endif
 
+// Output Net
+// Used by other languages calling `hvm_c`
+// ----
+typedef struct OutputNet {
+  void *original;
+  APair *node_buf;
+  APort *vars_buf;
+  a64 itrs;
+} OutputNet;
+
+void free_output_net(OutputNet* net) {
+  free((Net*)net->original);
+  free(net);
+}
+
 // Main
 // ----
-void hvm_c(u32* book_buffer, Net* net_buffer) {
+OutputNet* hvm_c(u32* book_buffer, bool return_output) {
   // Creates static TMs
   alloc_static_tms();
 
@@ -1772,13 +1787,7 @@ void hvm_c(u32* book_buffer, Net* net_buffer) {
   u64 start = time64();
 
   // GMem
-  Net *net;
-  if (net_buffer) {
-    // A buffer for the net has been allocated externally
-    net = net_buffer;
-  } else {
-    net = malloc(sizeof(Net));
-  }
+  Net *net = malloc(sizeof(Net));
   net_init(net);
 
   // Creates an initial redex that calls main
@@ -1797,7 +1806,7 @@ void hvm_c(u32* book_buffer, Net* net_buffer) {
   // Stops the timer
   double duration = (time64() - start) / 1000000000.0; // seconds
 
-  if (!net_buffer) {
+  if (!return_output) {
     // Prints the result
     printf("Result: ");
     pretty_print_port(net, book, enter(net, ROOT));
@@ -1812,8 +1821,19 @@ void hvm_c(u32* book_buffer, Net* net_buffer) {
 
   // Frees everything
   free_static_tms();
-  if (!net_buffer) { free(net); }
   free(book);
+
+  if (return_output) {
+    OutputNet *output = malloc(sizeof(OutputNet));
+    output->original = (void*)net;
+    output->node_buf = &net->node_buf[0];
+    output->vars_buf = &net->vars_buf[0];
+    output->itrs = atomic_load(&net->itrs);
+    return output;
+  }
+
+  free(net);
+  return NULL;
 }
 
 #ifdef WITH_MAIN

@@ -150,7 +150,7 @@ pub fn run<N: NetReadback>(book: &hvm::Book) {
   let timer = Instant::now();
 
   // Normalize net
-  let net = N::run(book);
+  let mut net = N::run(book);
   
   // Stops the timer
   let duration = timer.elapsed();
@@ -158,7 +158,7 @@ pub fn run<N: NetReadback>(book: &hvm::Book) {
   //println!("{}", net.show());
 
   // Prints the result
-  if let Some(tree) = ast::Net::readback(&net, book) {
+  if let Some(tree) = ast::Net::readback(&mut net, book) {
     println!("Result: {}", tree.show());
   } else {
     println!("Readback failed. Printing GNet memdump...\n");

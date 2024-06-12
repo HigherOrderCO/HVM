@@ -364,7 +364,7 @@ impl Book {
 // --------
 
 impl Tree {
-  pub fn readback<N: interop::NetReadback>(net: &N, port: hvm::Port, fids: &BTreeMap<hvm::Val, String>) -> Option<Tree> {
+  pub fn readback<N: interop::NetReadback>(net: &mut N, port: hvm::Port, fids: &BTreeMap<hvm::Val, String>) -> Option<Tree> {
     //println!("reading {}", port.show());
     match port.get_tag() {
       hvm::VAR => {
@@ -416,7 +416,7 @@ impl Tree {
 }
 
 impl Net {
-  pub fn readback<N: interop::NetReadback>(net: &N, book: &hvm::Book) -> Option<Net> {
+  pub fn readback<N: interop::NetReadback>(net: &mut N, book: &hvm::Book) -> Option<Net> {
     let mut fids = BTreeMap::new();
     for (fid, def) in book.defs.iter().enumerate() {
       fids.insert(fid as hvm::Val, def.name.clone());

@@ -5,12 +5,13 @@ use crate::hvm::*;
 
 #[cfg(feature = "c")]
 extern "C" {
-  pub fn hvm_c(book_buffer: *const u32, net_buffer: *const RawNetC);
+  pub fn hvm_c(book_buffer: *const u32, return_output: u8) -> *mut OutputNetC;
+  pub fn free_output_net(net: *mut OutputNetC);
 }
 
 #[cfg(feature = "cuda")]
 extern "C" {
-  pub fn hvm_cu(book_buffer: *const u32, net_buffer: *const RawNetCuda);
+  pub fn hvm_cu(book_buffer: *const u32, return_output: bool);
 }
 
 // Abstract Global Net
@@ -19,9 +20,29 @@ extern "C" {
 
 pub trait NetReadback {
   fn run(book: &Book) -> Self;
-  fn enter(&self, var: Port) -> Port;
   fn node_load(&self, loc: usize) -> Pair;
+  fn vars_exchange(&mut self, var: usize, val: Port) -> Port;
   fn itrs(&self) -> u64;
+
+  fn vars_take(&mut self, var: usize) -> Port {
+    self.vars_exchange(var, Port(0))
+  }
+
+  fn enter(&mut self, mut var: Port) -> Port {
+    // While `B` is VAR: extend it (as an optimization)
+    while var.get_tag() == VAR {
+      // Takes the current `B` substitution as `B'`
+      let val = self.vars_exchange(var.get_val() as usize, NONE);
+      // If there was no `B'`, stop, as there is no extension
+      if val == NONE || val == Port(0) {
+        break;
+      }
+      // Otherwise, delete `B` (we own both) and continue as `A ~> B'`
+      self.vars_take(var.get_val() as usize);
+      var = val;
+    }
+    return var;
+  }
 }
 
 impl<'a> NetReadback for GNet<'a> {
@@ -42,8 +63,8 @@ impl<'a> NetReadback for GNet<'a> {
 
     net
   }
-  fn enter(&self, var: Port) -> Port { self.enter(var) }
   fn node_load(&self, loc: usize) -> Pair { self.node_load(loc) }
+  fn vars_exchange(&mut self, var: usize, val: Port) -> Port { GNet::vars_exchange(self, var, val) }
   fn itrs(&self) -> u64 { self.itrs.load(Ordering::Relaxed) }
 }
 
@@ -55,47 +76,26 @@ impl<'a> NetReadback for GNet<'a> {
 #[cfg(feature = "c")]
 #[repr(C)]
 pub struct NetC {
-  raw: *mut RawNetC
+  raw: *mut OutputNetC
 }
 
 #[cfg(feature = "c")]
 #[repr(C)]
-pub struct RawNetC {
-  pub node: [APair; NetC::G_NODE_LEN], // global node buffer
-  pub vars: [APort; NetC::G_VARS_LEN], // global vars buffer
-  pub rbag: [APair; NetC::G_RBAG_LEN], // global rbag buffer
+pub struct OutputNetC {
+  pub original: *mut std::ffi::c_void,
+  pub node_buf: *mut APair, // global node buffer
+  pub vars_buf: *mut APort, // global vars buffer
   pub itrs: AtomicU64, // interaction count
-  pub idle: AtomicU32, // idle thread counter
 }
 
 #[cfg(feature = "c")]
 impl NetC {
-  // Constants relevant in the C implementation
-  // NOTE: If any of these constants are changed in C, they have to be changed here as well.
-  pub const TPC_L2: usize = 3;
-  pub const TPC: usize = 1 << NetC::TPC_L2;
-  pub const CACHE_PAD: usize = 64; // Cache padding
-
-  pub const HLEN: usize = 1 << 16; // max 16k high-priority redexes
-  pub const RLEN: usize = 1 << 24; // max 16m low-priority redexes
-  pub const G_NODE_LEN: usize = 1 << 29; // max 536m nodes
-  pub const G_VARS_LEN: usize = 1 << 29; // max 536m vars
-  pub const G_RBAG_LEN: usize = NetC::TPC * NetC::RLEN;
-
-  pub fn net(&self) -> &RawNetC {
+  pub fn net<'a>(&'a self) -> &'a OutputNetC {
     unsafe { &*self.raw }
   }
 
-  pub fn net_mut(&mut self) -> &mut RawNetC {
+  pub fn net_mut<'a>(&'a mut self) -> &'a mut OutputNetC {
     unsafe { &mut *self.raw }
-  }
-
-  fn vars_exchange(&self, var: usize, val: Port) -> Port {
-    Port(self.net().vars[var].0.swap(val.0, Ordering::Relaxed) as u32)
-  }
-
-  pub fn vars_take(&self, var: usize) -> Port {
-    self.vars_exchange(var, Port(0))
   }
 }
 
@@ -103,8 +103,7 @@ impl NetC {
 impl Drop for NetC {
   fn drop(&mut self) {
     // Deallocate network's memory
-    let layout = alloc::Layout::new::<RawNetC>();
-    unsafe { alloc::dealloc(self.raw as *mut u8, layout) };
+    unsafe { free_output_net(self.raw); }
   }
 }
 
@@ -117,34 +116,22 @@ impl NetReadback for NetC {
     //println!("{:?}", data);
     let book_buffer = data.as_mut_ptr() as *mut u32;
 
-    let layout = alloc::Layout::new::<RawNetC>();
-    let net_ptr = unsafe { alloc::alloc(layout) as *mut RawNetC };
+    // Run net
+    let raw = unsafe { hvm_c(data.as_mut_ptr() as *mut u32, 1) };
 
-    unsafe {
-      hvm_c(data.as_mut_ptr() as *mut u32, net_ptr);
-    }
-
-    NetC { raw: net_ptr }
+    NetC { raw }
   }
 
   fn node_load(&self, loc:usize) -> Pair {
-    Pair(self.net().node[loc].0.load(Ordering::Relaxed))
+    unsafe {
+      Pair((*self.net().node_buf.add(loc)).0.load(Ordering::Relaxed))
+    }
   }
 
-  fn enter(&self, mut var: Port) -> Port {
-    // While `B` is VAR: extend it (as an optimization)
-    while var.get_tag() == VAR {
-      // Takes the current `B` substitution as `B'`
-      let val = self.vars_exchange(var.get_val() as usize, NONE);
-      // If there was no `B'`, stop, as there is no extension
-      if val == NONE || val == Port(0) {
-        break;
-      }
-      // Otherwise, delete `B` (we own both) and continue as `A ~> B'`
-      self.vars_take(var.get_val() as usize);
-      var = val;
+  fn vars_exchange(&mut self, var: usize, val: Port) -> Port {
+    unsafe {
+      Port((*self.net().vars_buf.add(var)).0.swap(val.0, Ordering::Relaxed) as u32)
     }
-    return var;
   }
 
   fn itrs(&self) -> u64 {
@@ -220,9 +207,5 @@ impl NetCuda {
     let old = net.vars_buf[var];
     net.vars_buf[var] = val;
     old
-  }
-
-  pub fn vars_take(&mut self, var: usize) -> Port {
-    self.vars_exchange(var, Port(0))
   }
 }

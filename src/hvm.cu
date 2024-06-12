@@ -2296,7 +2296,7 @@ __global__ void compact(GNet* gnet, Pair* node_out, Port* vars_out) {
 void do_run_io(GNet* gnet, Book* book, Port port);
 #endif
 
-extern "C" void hvm_cu(u32* book_buffer, GNet* output) {
+extern "C" void hvm_cu(u32* book_buffer, bool return_output) {
   // Start the timer
   clock_t start = clock();
 
@@ -2330,7 +2330,7 @@ extern "C" void hvm_cu(u32* book_buffer, GNet* output) {
 
   // Prints the result
   // If `output` is set, the Rust implementation will print the net
-  if (!output) {
+  if (!return_output) {
     print_result<<<1,1>>>(gnet);
   }
 
@@ -2345,8 +2345,8 @@ extern "C" void hvm_cu(u32* book_buffer, GNet* output) {
   }
 
   // If `output` is set, copy the memory from the net into the Rust implementation
-  if (output) {
-    cudaMemcpy(output, gnet, sizeof(GNet), cudaMemcpyDeviceToHost);
+  if (return_output) {
+    // cudaMemcpy(output, gnet, sizeof(GNet), cudaMemcpyDeviceToHost);
   }
 
   // Prints entire memdump
@@ -2374,7 +2374,7 @@ extern "C" void hvm_cu(u32* book_buffer, GNet* output) {
 
   // Prints interactions, time and MIPS
   // If `output` is set, the Rust implementation will print the net
-  if (!output) {
+  if (!return_output) {
     printf("- ITRS: %llu\n", gnet_get_itrs(gnet));
     printf("- LEAK: %llu\n", gnet_get_leak(gnet));
     printf("- TIME: %.2fs\n", duration);
