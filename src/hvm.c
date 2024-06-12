@@ -1765,7 +1765,7 @@ typedef struct OutputNet {
   a64 itrs;
 } OutputNet;
 
-void free_output_net(OutputNet* net) {
+void free_output_net_c(OutputNet* net) {
   free((Net*)net->original);
   free(net);
 }

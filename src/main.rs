@@ -79,9 +79,7 @@ fn main() {
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
       #[cfg(feature = "cuda")]
-      unsafe {
-        interop::hvm_cu(data.as_mut_ptr() as *mut u32, std::ptr::null());
-      }
+      run::<interop::NetCuda>(&book);
       #[cfg(not(feature = "cuda"))]
       println!("CUDA runtime not available!\n If you've installed CUDA and nvcc after HVM, please reinstall HVM.");
     }

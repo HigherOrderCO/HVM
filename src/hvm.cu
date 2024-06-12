@@ -2265,16 +2265,6 @@ __global__ void print_result(GNet* gnet) {
   }
 }
 
-__global__ void compact(GNet* gnet, Pair* node_out, Port* vars_out) {
-  // Ideia: percorrer os nós de forma semelhante a `pretty_print_port`,
-  // colocando eles nos buffers em questão usando uma stack.
-
-  // ???
-  // if (threadIdx.x == 0 && blockIdx.x == 0) {
-  //   Port r = vars_take(gnet, ROOT);
-  // }
-}
-
 // Demos
 // -----
 
@@ -2289,6 +2279,37 @@ __global__ void compact(GNet* gnet, Pair* node_out, Port* vars_out) {
 
 //COMPILED_BOOK_BUF//
 
+// Output Net
+// Used by other languages calling `hvm_cu`
+// ----
+struct OutputNet {
+  void *original;
+  Pair *node_buf;
+  Port *vars_buf;
+  u64 itrs;
+};
+
+OutputNet* create_output_net(GNet* gnet) {
+  OutputNet* output = (OutputNet*)malloc(sizeof(OutputNet));
+
+  // Allocate host memory for the net
+  GNet* h_gnet = (GNet*)malloc(sizeof(GNet));
+
+  // Copy the net from device to host
+  cudaMemcpy(h_gnet, gnet, sizeof(GNet), cudaMemcpyDeviceToHost);
+
+  output->original = (void*)h_gnet;
+  output->node_buf = h_gnet->node_buf;
+  output->vars_buf = h_gnet->vars_buf;
+  output->itrs = h_gnet->itrs;
+  return output;
+}
+
+extern "C" void free_output_net_cuda(OutputNet* net) {
+  free((GNet*)net->original);
+  free(net);
+}
+
 // Main
 // ----
 
@@ -2296,7 +2317,7 @@ __global__ void compact(GNet* gnet, Pair* node_out, Port* vars_out) {
 void do_run_io(GNet* gnet, Book* book, Port port);
 #endif
 
-extern "C" void hvm_cu(u32* book_buffer, bool return_output) {
+extern "C" OutputNet* hvm_cu(u32* book_buffer, bool return_output) {
   // Start the timer
   clock_t start = clock();
 
@@ -2318,6 +2339,10 @@ extern "C" void hvm_cu(u32* book_buffer, bool return_output) {
 
   #ifdef IO
   do_run_io(gnet, book, ROOT);
+  // IO actions into `stdout` and `stderr` may appear
+  // after Rust `print`s if we don't flush
+  fflush(stdout);
+  fflush(stderr);
   #else
   gnet_normalize(gnet);
   #endif
@@ -2342,11 +2367,6 @@ extern "C" void hvm_cu(u32* book_buffer, bool return_output) {
       fprintf(stderr, "Note: for now, HVM-CUDA requires a GPU with at least 128 KB of L1 cache per SM.\n");
     }
     exit(EXIT_FAILURE);
-  }
-
-  // If `output` is set, copy the memory from the net into the Rust implementation
-  if (return_output) {
-    // cudaMemcpy(output, gnet, sizeof(GNet), cudaMemcpyDeviceToHost);
   }
 
   // Prints entire memdump
@@ -2374,17 +2394,20 @@ extern "C" void hvm_cu(u32* book_buffer, bool return_output) {
 
   // Prints interactions, time and MIPS
   // If `output` is set, the Rust implementation will print the net
-  if (!return_output) {
-    printf("- ITRS: %llu\n", gnet_get_itrs(gnet));
-    printf("- LEAK: %llu\n", gnet_get_leak(gnet));
-    printf("- TIME: %.2fs\n", duration);
-    printf("- MIPS: %.2f\n", (double)gnet_get_itrs(gnet) / duration / 1000000.0);
+  if (return_output) {
+    return create_output_net(gnet);
   }
+
+  printf("- ITRS: %llu\n", gnet_get_itrs(gnet));
+  printf("- LEAK: %llu\n", gnet_get_leak(gnet));
+  printf("- TIME: %.2fs\n", duration);
+  printf("- MIPS: %.2f\n", (double)gnet_get_itrs(gnet) / duration / 1000000.0);
+  return NULL;
 }
 
 #ifdef WITH_MAIN
 int main() {
-  hvm_cu((u32*)BOOK_BUF, NULL);
+  hvm_cu((u32*)BOOK_BUF, false);
   return 0;
 }
 #endif

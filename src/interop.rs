@@ -6,12 +6,13 @@ use crate::hvm::*;
 #[cfg(feature = "c")]
 extern "C" {
   pub fn hvm_c(book_buffer: *const u32, return_output: u8) -> *mut OutputNetC;
-  pub fn free_output_net(net: *mut OutputNetC);
+  pub fn free_output_net_c(net: *mut OutputNetC);
 }
 
 #[cfg(feature = "cuda")]
 extern "C" {
-  pub fn hvm_cu(book_buffer: *const u32, return_output: bool);
+  pub fn hvm_cu(book_buffer: *const u32, return_output: bool) -> *mut OutputNetCuda;
+  pub fn free_output_net_cuda(net: *mut OutputNetCuda);
 }
 
 // Abstract Global Net
@@ -103,7 +104,7 @@ impl NetC {
 impl Drop for NetC {
   fn drop(&mut self) {
     // Deallocate network's memory
-    unsafe { free_output_net(self.raw); }
+    unsafe { free_output_net_c(self.raw); }
   }
 }
 
@@ -147,65 +148,71 @@ impl NetReadback for NetC {
 // Problem: CUDA's `GNet` is allocated using `cudaMalloc`
 // Solution: Write a CUDA kernel to compact GPU memory and then `memcpy` it to RAM
 
-// #[cfg(feature = "cuda")]
+#[cfg(feature = "cuda")]
 #[repr(C)]
 pub struct NetCuda {
-  raw: *mut RawNetCuda
+  raw: *mut OutputNetCuda
 }
 
-// #[cfg(feature = "cuda")]
+#[cfg(feature = "cuda")]
 #[repr(C)]
-pub struct RawNetCuda {
-  pub rbag_use_a: u32, // total rbag redex count (buffer A)
-  pub rbag_use_b: u32, // total rbag redex count (buffer B)
-  pub rbag_buf_a: [Pair; NetCuda::G_RBAG_LEN], // global redex bag (buffer A)
-  pub rbag_buf_b: [Pair; NetCuda::G_RBAG_LEN], // global redex bag (buffer B)
-  pub node_buf: [Pair; NetCuda::G_NODE_LEN], // global node buffer
-  pub vars_buf: [Port; NetCuda::G_VARS_LEN], // global vars buffer
-  pub node_put: [u32; NetCuda::TPB * NetCuda::BPG],
-  pub vars_put: [u32; NetCuda::TPB * NetCuda::BPG],
-  pub rbag_put: [u32; NetCuda::TPB * NetCuda::BPG],
-  pub mode: u8, // evaluation mode (curr)
+pub struct OutputNetCuda {
+  pub original: *mut std::ffi::c_void,
+  pub node_buf: *mut Pair, // global node buffer
+  pub vars_buf: *mut Port, // global vars buffer
   pub itrs: u64, // interaction count
-  pub iadd: u64, // interaction count adder
-  pub leak: u64, // leak count
-  pub turn: u32, // turn count
-  pub down: u8, // are we recursing down?
-  pub rdec: u8, // decrease rpos by 1?
 }
 
-// #[cfg(feature = "cuda")]
+#[cfg(feature = "cuda")]
 impl NetCuda {
-  // Constants relevant in the CUDA implementation
-  // NOTE: If any of these constants are changed in CUDA, they have to be changed here as well.
-  
-  // Threads per Block
-  pub const TPB_L2: usize = 7;
-  pub const TPB: usize    = 1 << NetCuda::TPB_L2;
-  
-  // Blocks per GPU
-  pub const BPG_L2: usize = 7;
-  pub const BPG: usize    = 1 << NetCuda::BPG_L2;
-
-  // Thread Redex Bag Length
-  pub const RLEN: usize   = 256;
-
-  pub const G_NODE_LEN: usize = 1 << 29; // max 536m nodes
-  pub const G_VARS_LEN: usize = 1 << 29; // max 536m vars
-  pub const G_RBAG_LEN: usize = NetCuda::TPB * NetCuda::BPG * NetCuda::RLEN * 3;
-
-  pub fn net(&self) -> &RawNetCuda {
+  pub fn net(&self) -> &OutputNetCuda {
     unsafe { &*self.raw }
   }
 
-  pub fn net_mut(&mut self) -> &mut RawNetCuda {
+  pub fn net_mut(&mut self) -> &mut OutputNetCuda {
     unsafe { &mut *self.raw }
+  }
+}
+
+#[cfg(feature = "cuda")]
+impl Drop for NetCuda {
+  fn drop(&mut self) {
+    // Deallocate network's memory
+    unsafe { free_output_net_cuda(self.raw); }
+  }
+}
+
+#[cfg(feature = "cuda")]
+impl NetReadback for NetCuda {
+  fn run(book: &Book) -> Self {
+    // Serialize book
+    let mut data : Vec<u8> = Vec::new();
+    book.to_buffer(&mut data);
+    //println!("{:?}", data);
+    let book_buffer = data.as_mut_ptr() as *mut u32;
+
+    // Run net
+    let raw = unsafe { hvm_cu(data.as_mut_ptr() as *mut u32, true) };
+
+    NetCuda { raw }
+  }
+
+  fn node_load(&self, loc:usize) -> Pair {
+    unsafe {
+      Pair((*self.net().node_buf.add(loc)).0)
+    }
   }
 
   fn vars_exchange(&mut self, var: usize, val: Port) -> Port {
-    let net = self.net_mut();
-    let old = net.vars_buf[var];
-    net.vars_buf[var] = val;
-    old
+    unsafe {
+      let net = self.net_mut();
+      let old = *net.vars_buf.add(var);
+      *net.vars_buf.add(var) = val;
+      old
+    }
+  }
+
+  fn itrs(&self) -> u64 {
+    self.net().itrs
   }
 }
