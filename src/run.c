@@ -349,7 +349,6 @@ Port io_write(Net* net, Book* book, Port argm) {
     return new_port(ERA, 0);
   }
 
-
   if (fwrite(bytes.buf, sizeof(char), bytes.len, fp) != bytes.len) {
     fprintf(stderr, "io_write: failed to write\n");
   }
@@ -375,7 +374,7 @@ Port io_seek(Net* net, Book* book, Port argm) {
   Pair args1 = node_load(net, get_val(argm));
   Port argm2 = expand(net, book, get_snd(args1));
   if (get_tag(argm2) != CON) {
-    fprintf(stderr, "io_seek: expected second tuple, but got %u\n", get_tag(peek(net, get_snd(args1))));
+    fprintf(stderr, "io_seek: expected second tuple, but got %u\n", get_tag(argm2));
     return new_port(ERA, 0);
   }
   Pair args2 = node_load(net, get_val(argm2));

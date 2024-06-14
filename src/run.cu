@@ -292,20 +292,20 @@ FILE* readback_file(Port port) {
 // Reads from a file a specified number of bytes.
 // `argm` is a tuple of (file_descriptor, num_bytes).
 Port io_read(GNet* gnet, Port argm) {
-  if (get_tag(gnet_peek(gnet, argm)) != CON) {
-    fprintf(stderr, "io_read: expected tuple, but got %u\n", get_tag(gnet_peek(gnet, argm)));
+  if (get_tag(argm) != CON) {
+    fprintf(stderr, "io_read: expected tuple, but got %u\n", get_tag(argm));
     return new_port(ERA, 0);
   }
 
   Pair args = gnet_node_load(gnet, get_val(argm));
+  Port file = gnet_expand(gnet, get_fst(args));
+  u32 num_bytes = get_u24(get_val(gnet_expand(gnet, get_snd(args))));
 
-  FILE* fp = readback_file(gnet_peek(gnet, get_fst(args)));
+  FILE* fp = readback_file(file);
   if (fp == NULL) {
     fprintf(stderr, "io_read: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
-
-  u32 num_bytes = get_u24(get_val(gnet_peek(gnet, get_snd(args))));
 
   /// Read a string.
   Bytes bytes;
@@ -328,14 +328,14 @@ Port io_read(GNet* gnet, Port argm) {
 // `argm` is a tuple (CON node) of the
 // file name and mode as strings.
 Port io_open(GNet* gnet, Port argm) {
-  if (get_tag(gnet_peek(gnet, argm)) != CON) {
+  if (get_tag(argm) != CON) {
     fprintf(stderr, "io_open: expected tuple\n");
     return new_port(ERA, 0);
   }
 
   Pair args = gnet_node_load(gnet, get_val(argm));
-  Str name = gnet_readback_str(gnet, get_fst(args));
-  Str mode = gnet_readback_str(gnet, get_snd(args));
+  Str name = gnet_readback_str(gnet, gnet_expand(gnet, get_fst(args)));
+  Str mode = gnet_readback_str(gnet, gnet_expand(gnet, get_snd(args)));
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
@@ -350,7 +350,7 @@ Port io_open(GNet* gnet, Port argm) {
 
 // Closes a file, reclaiming the file descriptor.
 Port io_close(GNet* gnet, Port argm) {
-  FILE* fp = readback_file(gnet_peek(gnet, argm));
+  FILE* fp = readback_file(argm);
   if (fp == NULL) {
     fprintf(stderr, "io_close: failed to close\n");
     return new_port(ERA, 0);
@@ -363,7 +363,6 @@ Port io_close(GNet* gnet, Port argm) {
   }
 
   FILE_POINTERS[get_u24(get_val(argm))] = NULL;
-
   return new_port(ERA, 0);
 }
 
@@ -371,13 +370,13 @@ Port io_close(GNet* gnet, Port argm) {
 // `argm` is a tuple (CON node) of the
 // file descriptor and list of bytes to write.
 Port io_write(GNet* gnet, Port argm) {
-  if (get_tag(gnet_peek(gnet, argm)) != CON) {
-    fprintf(stderr, "io_write: expected tuple, but got %u", get_tag(gnet_peek(gnet, argm)));
+  if (get_tag(argm) != CON) {
+    fprintf(stderr, "io_write: expected tuple, but got %u\n", get_tag(argm));
     return new_port(ERA, 0);
   }
 
   Pair args = gnet_node_load(gnet, get_val(argm));
-  FILE* fp = readback_file(gnet_peek(gnet, get_fst(args)));
+  FILE* fp = readback_file(gnet_expand(gnet, get_fst(args)));
   Bytes bytes = gnet_readback_bytes(gnet, get_snd(args));
 
   if (fp == NULL) {
@@ -403,27 +402,27 @@ Port io_write(GNet* gnet, Port argm) {
 //    - 1 (SEEK_CUR): current position of the file pointer
 //    - 2 (SEEK_END): end of the file
 Port io_seek(GNet* gnet, Port argm) {
-  if (get_tag(gnet_peek(gnet, argm)) != CON) {
-    fprintf(stderr, "io_seek: expected first tuple, but got %u\n", get_tag(gnet_peek(gnet, argm)));
+  if (get_tag(argm) != CON) {
+    fprintf(stderr, "io_seek: expected first tuple, but got %u\n", get_tag(argm));
     return new_port(ERA, 0);
   }
 
   Pair args1 = gnet_node_load(gnet, get_val(argm));
-  if (get_tag(gnet_peek(gnet, get_snd(args1))) != CON) {
-    fprintf(stderr, "io_seek: expected second tuple, but got %u\n", get_tag(gnet_peek(gnet, get_snd(args1))));
+  Port argm2 = gnet_expand(gnet, get_snd(args1));
+  if (get_tag(argm2) != CON) {
+    fprintf(stderr, "io_seek: expected second tuple, but got %u\n", get_tag(argm2));
     return new_port(ERA, 0);
   }
+  Pair args2 = gnet_node_load(gnet, get_val(argm2));
 
-  Pair args2 = gnet_node_load(gnet, get_val(gnet_peek(gnet, get_snd(args1))));
+  FILE* fp = readback_file(gnet_expand(gnet, get_fst(args1)));
+  i32 offset = get_i24(get_val(gnet_expand(gnet, get_fst(args2))));
+  u32 whence = get_i24(get_val(gnet_expand(gnet, get_snd(args2))));
 
-  FILE* fp = readback_file(gnet_peek(gnet, get_fst(args1)));
   if (fp == NULL) {
     fprintf(stderr, "io_write: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
-
-  i32 offset = get_i24(get_val(gnet_peek(gnet, get_fst(args2))));
-  u32 whence = get_i24(get_val(gnet_peek(gnet, get_snd(args2))));
 
   int cwhence;
   switch (whence) {
@@ -461,8 +460,8 @@ Port io_sleep(GNet* gnet, Port argm) {
   // Get the sleep duration node
   Pair dur_node = gnet_node_load(gnet, get_val(argm));
   // Get the high and low 24-bit parts of the duration
-  u32 dur_hi = get_u24(get_val(get_fst(dur_node)));
-  u32 dur_lo = get_u24(get_val(get_snd(dur_node)));
+  u32 dur_hi = get_u24(get_val(gnet_expand(gnet, get_fst(dur_node))));
+  u32 dur_lo = get_u24(get_val(gnet_expand(gnet, get_snd(dur_node))));
   // Combine into a 48-bit duration in nanoseconds
   u64 dur_ns = (((u64)dur_hi) << 24) | dur_lo;
   // Sleep for the specified duration
