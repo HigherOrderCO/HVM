@@ -256,20 +256,20 @@ FILE* readback_file(Port port) {
 // Reads from a file a specified number of bytes.
 // `argm` is a tuple of (file_descriptor, num_bytes).
 Port io_read(Net* net, Book* book, Port argm) {
-  if (get_tag(peek(net, argm)) != CON) {
-    fprintf(stderr, "io_read: expected tuple, but got %u\n", get_tag(peek(net, argm)));
+  if (get_tag(argm) != CON) {
+    fprintf(stderr, "io_read: expected tuple, but got %u\n", get_tag(argm));
     return new_port(ERA, 0);
   }
 
   Pair args = node_load(net, get_val(argm));
+  Port file = expand(net, book, get_fst(args));
+  u32 num_bytes = get_u24(get_val(expand(net, book, get_snd(args))));
 
-  FILE* fp = readback_file(peek(net, get_fst(args)));
+  FILE* fp = readback_file(file);
   if (fp == NULL) {
     fprintf(stderr, "io_read: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
-
-  u32 num_bytes = get_u24(get_val(peek(net, get_snd(args))));
 
   /// Read a string.
   Bytes bytes;
@@ -292,14 +292,14 @@ Port io_read(Net* net, Book* book, Port argm) {
 // `argm` is a tuple (CON node) of the
 // file name and mode as strings.
 Port io_open(Net* net, Book* book, Port argm) {
-  if (get_tag(peek(net, argm)) != CON) {
-    fprintf(stderr, "io_open: expected tuple\n");
+  if (get_tag(argm) != CON) {
+    fprintf(stderr, "io_open: expected tuple, but got %u\n", get_tag(argm));
     return new_port(ERA, 0);
   }
 
   Pair args = node_load(net, get_val(argm));
-  Str name = readback_str(net, book, get_fst(args));
-  Str mode = readback_str(net, book, get_snd(args));
+  Str name = readback_str(net, book, expand(net, book, get_fst(args)));
+  Str mode = readback_str(net, book, expand(net, book, get_snd(args)));
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
@@ -314,7 +314,7 @@ Port io_open(Net* net, Book* book, Port argm) {
 
 // Closes a file, reclaiming the file descriptor.
 Port io_close(Net* net, Book* book, Port argm) {
-  FILE* fp = readback_file(peek(net, argm));
+  FILE* fp = readback_file(argm);
   if (fp == NULL) {
     fprintf(stderr, "io_close: failed to close\n");
     return new_port(ERA, 0);
@@ -334,13 +334,13 @@ Port io_close(Net* net, Book* book, Port argm) {
 // `argm` is a tuple (CON node) of the
 // file descriptor and list of bytes to write.
 Port io_write(Net* net, Book* book, Port argm) {
-  if (get_tag(peek(net, argm)) != CON) {
-    fprintf(stderr, "io_write: expected tuple, but got %u\n", get_tag(peek(net, argm)));
+  if (get_tag(argm) != CON) {
+    fprintf(stderr, "io_write: expected tuple, but got %u\n", get_tag(argm));
     return new_port(ERA, 0);
   }
 
   Pair args = node_load(net, get_val(argm));
-  FILE* fp = readback_file(peek(net, get_fst(args)));
+  FILE* fp = readback_file(expand(net, book, get_fst(args)));
   Bytes bytes = readback_bytes(net, book, get_snd(args));
 
   if (fp == NULL) {
@@ -367,27 +367,27 @@ Port io_write(Net* net, Book* book, Port argm) {
 //    - 1 (SEEK_CUR): current position of the file pointer
 //    - 2 (SEEK_END): end of the file
 Port io_seek(Net* net, Book* book, Port argm) {
-  if (get_tag(peek(net, argm)) != CON) {
-    fprintf(stderr, "io_seek: expected first tuple, but got %u\n", get_tag(peek(net, argm)));
+  if (get_tag(argm) != CON) {
+    fprintf(stderr, "io_seek: expected first tuple, but got %u\n", get_tag(argm));
     return new_port(ERA, 0);
   }
 
   Pair args1 = node_load(net, get_val(argm));
-  if (get_tag(peek(net, get_snd(args1))) != CON) {
+  Port argm2 = expand(net, book, get_snd(args1));
+  if (get_tag(argm2) != CON) {
     fprintf(stderr, "io_seek: expected second tuple, but got %u\n", get_tag(peek(net, get_snd(args1))));
     return new_port(ERA, 0);
   }
+  Pair args2 = node_load(net, get_val(argm2));
 
-  Pair args2 = node_load(net, get_val(peek(net, get_snd(args1))));
+  FILE* fp = readback_file(expand(net, book, get_fst(args1)));
+  i32 offset = get_i24(get_val(expand(net, book, get_fst(args2))));
+  u32 whence = get_i24(get_val(expand(net, book, get_snd(args2))));
 
-  FILE* fp = readback_file(peek(net, get_fst(args1)));
   if (fp == NULL) {
     fprintf(stderr, "io_write: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
-
-  i32 offset = get_i24(get_val(peek(net, get_fst(args2))));
-  u32 whence = get_i24(get_val(peek(net, get_snd(args2))));
 
   int cwhence;
   switch (whence) {
@@ -429,8 +429,8 @@ Port io_sleep(Net* net, Book* book, Port argm) {
   // Get the sleep duration node
   Pair dur_node = node_load(net, get_val(argm));
   // Get the high and low 24-bit parts of the duration
-  u32 dur_hi = get_u24(get_val(peek(net, get_fst(dur_node))));
-  u32 dur_lo = get_u24(get_val(peek(net, get_snd(dur_node))));
+  u32 dur_hi = get_u24(get_val(expand(net, book, get_fst(dur_node))));
+  u32 dur_lo = get_u24(get_val(expand(net, book, get_snd(dur_node))));
   // Combine into a 48-bit duration in nanoseconds
   u64 dur_ns = (((u64)dur_hi) << 24) | dur_lo;
   // Sleep for the specified duration

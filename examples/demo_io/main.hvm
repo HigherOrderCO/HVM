@@ -33,17 +33,18 @@
 @call_io__C0 = a
   & @IO_T/Done ~ (@IO_T/MAGIC a)
 
-@main = m
-  & @IO_T/bind ~ (@write_to_file ((((* k) l) l) m))
-  & @IO_T/bind ~ (@read_from_file ((((* i) j) j) k))
-  & @IO_T/bind ~ (g ((((* 42) h) h) i))
-  & @call_io ~ (e ((1 f) g))
-  & @String/Cons ~ (87 (d e))
-  & @String/Cons ~ (82 (c d))
-  & @String/Cons ~ (73 (b c))
-  & @String/Cons ~ (84 (a b))
-  & @String/Cons ~ (69 (@String/Nil a))
-  & @String/Cons ~ (10 (@String/Nil f))
+@main = g
+  & @IO_T/bind ~ (@write_to_file ((((* e) f) f) g))
+  & @IO_T/bind ~ (@read_from_file ((((* c) d) d) e))
+  & @IO_T/bind ~ (a ((((* 42) b) b) c))
+  & @call_io ~ (@write (@one_newline_pair a))
+
+@newline = a
+  & @String/Cons ~ (10 (@String/Nil a))
+
+@one = 1
+
+@one_newline_pair = (@one @newline)
 
 @read_from_file = a
   & @IO_T/bind ~ (@read_from_file__C11 (@read_from_file__C10 a))
@@ -169,6 +170,13 @@
 @test-io = 1
 
 @undefer = (((a a) b) b)
+
+@write = e
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
 
 @write_to_file = a
   & @IO_T/bind ~ (@write_to_file__C8 (@write_to_file__C7 a))

@@ -42,10 +42,22 @@ def read_from_file():
 
     return call_io("CLOSE", fp)
 
+def write:
+  return "WRITE"
+
+def one:
+  return 1
+
+def newline:
+  return "\n"
+
+def one_newline_pair:
+  return (one, newline)
+
 def main():
   with IO_T:
     * <- write_to_file()
     * <- read_from_file()
-    * <- call_io("WRITE", (1, "\n"))
+    * <- call_io(write, one_newline_pair)
 
     return 42
