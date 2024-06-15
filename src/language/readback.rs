@@ -140,11 +140,12 @@ pub fn as_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::syntax::
           stacks.push(col, old);
           got
         } else {
+          let dupf = format!("{}", if col >= 0x8000000 { col - 0x8000000 } else { 0 });
           let val0 = runtime::load_arg(&ctx.heap, term, 0);
           let val1 = runtime::load_arg(&ctx.heap, term, 1);
           let val0 = readback(heap, prog, ctx, stacks, val0, depth + 1);
           let val1 = readback(heap, prog, ctx, stacks, val1, depth + 1);
-          return Box::new(language::syntax::Term::Sup { val0, val1 });
+          return Box::new(language::syntax::Term::Sup { dupf, val0, val1 });
         }
       }
       runtime::DP0 => {
@@ -312,11 +313,12 @@ pub fn as_linear_term(heap: &Heap, prog: &Program, host: u64) -> Box<language::s
         let name = names.get(&pos).unwrap_or(&what);
         let nam0 = if runtime::load_ptr(heap, pos + 0) == runtime::Era() { String::from("*") } else { format!("a{}", name) };
         let nam1 = if runtime::load_ptr(heap, pos + 1) == runtime::Era() { String::from("*") } else { format!("b{}", name) };
+        let dupf = format!("{}", kinds.get(&pos).unwrap_or(&0));
         let expr = expr(heap, prog, runtime::load_ptr(heap, pos + 2), &names);
         if i == 0 {
-          output = language::syntax::Term::Dup { nam0, nam1, expr: Box::new(expr), body: Box::new(cont.clone()) };
+          output = language::syntax::Term::Dup { dupf, nam0, nam1, expr: Box::new(expr), body: Box::new(cont.clone()) };
         } else {
-          output = language::syntax::Term::Dup { nam0, nam1, expr: Box::new(expr), body: Box::new(output) };
+          output = language::syntax::Term::Dup { dupf, nam0, nam1, expr: Box::new(expr), body: Box::new(output) };
         }
       }
       output

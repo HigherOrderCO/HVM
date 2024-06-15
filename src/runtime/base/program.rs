@@ -8,8 +8,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 pub enum Core {
   Var { bidx: u64 },
   Glo { glob: u64, misc: u64 },
-  Dup { eras: (bool, bool), glob: u64, expr: Box<Core>, body: Box<Core> },
-  Sup { val0: Box<Core>, val1: Box<Core> },
+  Dup { dupf: u64, eras: (bool, bool), glob: u64, expr: Box<Core>, body: Box<Core> },
+  Sup { dupf: u64, val0: Box<Core>, val1: Box<Core> },
   Let { expr: Box<Core>, body: Box<Core> },
   Lam { eras: bool, glob: u64, body: Box<Core> },
   App { func: Box<Core>, argm: Box<Core> },
@@ -157,7 +157,7 @@ pub fn alloc_body(heap: &Heap, prog: &Program, tid: usize, term: Ptr, vars: &[Ru
         RuleBodyCell::Ptr { value, targ, slot } => {
           let mut val = value + *aloc.get_unchecked(*targ as usize).as_ptr() + slot;
           // should be changed if the pointer format changes
-          if get_tag(*value) <= DP1 {
+          if get_tag(*value) <= DP1 && get_ext(*value) < 0x8000000 {
             val += (*lvar.dups.as_ptr() & 0xFFF_FFFF) * EXT;
           }
           val
@@ -168,12 +168,13 @@ pub fn alloc_body(heap: &Heap, prog: &Program, tid: usize, term: Ptr, vars: &[Ru
   // FIXME: verify the use of get_unchecked
   unsafe {
     let (cell, nodes, dupk) = body;
+    //println!("ALLOC_BODY {}", *dupk);
     let aloc = &heap.aloc[tid];
     let lvar = &heap.lvar[tid];
     for i in 0 .. nodes.len() {
       *aloc.get_unchecked(i).as_ptr() = alloc(heap, tid, (*nodes.get_unchecked(i)).len() as u64);
     };
-    if *lvar.dups.as_ptr() + dupk >= (1 << 28) {
+    if *lvar.dups.as_ptr() + dupk >= (1 << 27) {
       *lvar.dups.as_ptr() = 0;
     }
     for i in 0 .. nodes.len() {
@@ -339,21 +340,23 @@ pub fn term_to_core(book: &language::rulebook::RuleBook, term: &language::syntax
           }
         }
       }
-      language::syntax::Term::Dup { nam0, nam1, expr, body } => {
+      language::syntax::Term::Dup { dupf, nam0, nam1, expr, body } => {
         let eras = (nam0 == "*", nam1 == "*");
         let glob = if get_global_name_misc(nam0).is_some() { hash(&nam0[2..].to_string()) } else { 0 };
+        let dupf = 0x8000000 | dupf.parse::<u64>().unwrap_or(0xFFFFFFF);
         let expr = Box::new(convert_term(expr, book, depth + 0, vars));
         vars.push(nam0.clone());
         vars.push(nam1.clone());
         let body = Box::new(convert_term(body, book, depth + 2, vars));
         vars.pop();
         vars.pop();
-        Core::Dup { eras, glob, expr, body }
+        Core::Dup { dupf, eras, glob, expr, body }
       }
-      language::syntax::Term::Sup { val0, val1 } => {
+      language::syntax::Term::Sup { dupf, val0, val1 } => {
+        let dupf = 0x8000000 | dupf.parse::<u64>().unwrap_or(0xFFFFFFF);
         let val0 = Box::new(convert_term(val0, book, depth + 0, vars));
         let val1 = Box::new(convert_term(val1, book, depth + 0, vars));
-        Core::Sup { val0, val1 }
+        Core::Sup { dupf, val0, val1 }
       }
       language::syntax::Term::Lam { name, body } => {
         let glob = if get_global_name_misc(name).is_some() { hash(name) } else { 0 };
@@ -422,13 +425,13 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
       return targ;
     }
   }
-  fn alloc_dup(dups: &mut HashMap<u64, (u64,u64)>, nodes: &mut Vec<RuleBodyNode>, links: &mut Vec<(u64, u64, RuleBodyCell)>, dupk: &mut u64, glob: u64) -> (u64, u64) {
+  fn alloc_dup(dups: &mut HashMap<u64, (u64,u64)>, nodes: &mut Vec<RuleBodyNode>, links: &mut Vec<(u64, u64, RuleBodyCell)>, dupf: u64, dupk: &mut u64, glob: u64) -> (u64, u64) {
     if let Some(got) = dups.get(&glob) {
       return got.clone();
     } else {
-      let dupc = *dupk;
       let targ = nodes.len() as u64;
-      *dupk += 1;
+      let dupc = if dupf != 0xFFFFFFF { dupf } else { *dupk += 1; *dupk - 1 };
+      //println!("DUP COL IS {:7x} | {:7x}", dupc, dupf);
       nodes.push(vec![RuleBodyCell::Val { value: 0 }; 3]);
       links.push((targ, 0, RuleBodyCell::Val { value: Era() }));
       links.push((targ, 1, RuleBodyCell::Val { value: Era() }));
@@ -462,11 +465,11 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
             return RuleBodyCell::Ptr { value: Var(0), targ, slot: 0 };
           }
           DP0 => {
-            let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
+            let (targ, dupc) = alloc_dup(dups, nodes, links, 0, dupk, *glob);
             return RuleBodyCell::Ptr { value: Dp0(dupc, 0), targ, slot: 0 };
           }
           DP1 => {
-            let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
+            let (targ, dupc) = alloc_dup(dups, nodes, links, 0, dupk, *glob);
             return RuleBodyCell::Ptr { value: Dp1(dupc, 0), targ, slot: 0 };
           }
           _ => {
@@ -474,11 +477,10 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
           }
         }
       }
-      Core::Dup { eras: _, glob, expr, body } => {
-        let (targ, dupc) = alloc_dup(dups, nodes, links, dupk, *glob);
+      Core::Dup { dupf, eras: _, glob, expr, body } => {
+        let (targ, dupc) = alloc_dup(dups, nodes, links, *dupf, dupk, *glob);
         let expr = gen_elems(expr, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 2, expr));
-        //let dupc = 0; // FIXME remove
         vars.push(RuleBodyCell::Ptr { value: Dp0(dupc, 0), targ, slot: 0 });
         vars.push(RuleBodyCell::Ptr { value: Dp1(dupc, 0), targ, slot: 0 });
         let body = gen_elems(body, dupk, vars, lams, dups, nodes, links);
@@ -486,16 +488,15 @@ pub fn build_body(term: &Core, free_vars: u64) -> RuleBody {
         vars.pop();
         body
       }
-      Core::Sup { val0, val1 } => {
-        let dupc = *dupk;
+      Core::Sup { dupf, val0, val1 } => {
         let targ = nodes.len() as u64;
-        *dupk += 1;
+        let dupc = if *dupf != 0xFFFFFFF { *dupf } else { *dupk += 1; *dupk - 1 };
+        //println!("SUP COL IS {:7x} | {:7x}", dupc, *dupf);
         nodes.push(vec![RuleBodyCell::Val { value: 0 }; 2]);
         let val0 = gen_elems(val0, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 0, val0));
         let val1 = gen_elems(val1, dupk, vars, lams, dups, nodes, links);
         links.push((targ, 1, val1));
-        //let dupc = 0; // FIXME remove
         RuleBodyCell::Ptr { value: Sup(dupc, 0), targ, slot: 0 }
       }
       Core::Let { expr, body } => {

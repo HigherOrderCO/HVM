@@ -52,7 +52,7 @@ pub fn add_group(book: &mut RuleBook, name: &str, group: &RuleGroup) {
         register(book, expr, false);
         register(book, body, false);
       }
-      language::syntax::Term::Sup { val0, val1 } => {
+      language::syntax::Term::Sup { dupf: _, val0, val1 } => {
         register(book, val0, false);
         register(book, val1, false);
       }
@@ -295,7 +295,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
           }
         }
       }
-      language::syntax::Term::Dup { expr, body, nam0, nam1 } => {
+      language::syntax::Term::Dup { dupf, expr, body, nam0, nam1 } => {
         let is_global_0 = runtime::get_global_name_misc(nam0).is_some();
         let is_global_1 = runtime::get_global_name_misc(nam1).is_some();
         if is_global_0 && runtime::get_global_name_misc(nam0) != Some(runtime::DP0) {
@@ -334,15 +334,17 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
         if let Some(x) = got_nam1 {
           tbl.insert(nam1.clone(), x);
         }
+        let dupf = dupf.clone();
         let nam0 = format!("{}{}", new_nam0, if !is_global_0 { ".0" } else { "" });
         let nam1 = format!("{}{}", new_nam1, if !is_global_0 { ".0" } else { "" });
-        let term = language::syntax::Term::Dup { nam0, nam1, expr, body };
+        let term = language::syntax::Term::Dup { dupf, nam0, nam1, expr, body };
         Box::new(term)
       }
-      language::syntax::Term::Sup { val0, val1 } => {
+      language::syntax::Term::Sup { dupf, val0, val1 } => {
+        let dupf = dupf.clone();
         let val0 = sanitize_term(val0, lhs, tbl, ctx)?;
         let val1 = sanitize_term(val1, lhs, tbl, ctx)?;
-        let term = language::syntax::Term::Sup { val0, val1 };
+        let term = language::syntax::Term::Sup { dupf, val0, val1 };
         Box::new(term)
       }
       language::syntax::Term::Let { name, expr, body } => {
@@ -459,6 +461,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
 
             // use aux variables to duplicate the variable
             let dup = language::syntax::Term::Dup {
+              dupf: "".to_string(),
               nam0: vars.pop().unwrap(),
               nam1: vars.pop().unwrap(),
               expr,
@@ -487,6 +490,7 @@ pub fn sanitize_rule(rule: &language::syntax::Rule) -> Result<language::syntax::
       let nam1 = vars.pop().unwrap();
       let exp0 = Box::new(language::syntax::Term::Var { name: format!("c.{}", i - 1) });
       Box::new(language::syntax::Term::Dup {
+        dupf: "".to_string(),
         nam0,
         nam1,
         expr: exp0,
@@ -667,13 +671,13 @@ pub fn subst(term: &mut language::syntax::Term, sub_name: &str, value: &language
         *term = value.clone();
       }
     }
-    language::syntax::Term::Dup { nam0, nam1, expr, body } => {
+    language::syntax::Term::Dup { dupf: _, nam0, nam1, expr, body } => {
       subst(&mut *expr, sub_name, value);
       if nam0 != sub_name && nam1 != sub_name {
         subst(&mut *body, sub_name, value);
       }
     }
-    language::syntax::Term::Sup { val0, val1 } => {
+    language::syntax::Term::Sup { dupf: _, val0, val1 } => {
       subst(&mut *val0, sub_name, value);
       subst(&mut *val1, sub_name, value);
     }

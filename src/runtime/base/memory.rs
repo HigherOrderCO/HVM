@@ -335,7 +335,7 @@ pub fn inc_cost(heap: &Heap, tid: usize) {
 }
 
 pub fn gen_dup(heap: &Heap, tid: usize) -> u64 {
-  return unsafe { heap.lvar.get_unchecked(tid) }.dups.fetch_add(1, Ordering::Relaxed) & 0xFFF_FFFF;
+  return unsafe { heap.lvar.get_unchecked(tid) }.dups.fetch_add(1, Ordering::Relaxed) & 0x7FF_FFFF;
 }
 
 pub fn arity_of(arit: &ArityMap, lnk: Ptr) -> u64 {

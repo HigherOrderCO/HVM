@@ -48,6 +48,8 @@ pub fn visit(ctx: ReduceCtx, sidxs: &[u64]) -> bool {
 
 #[inline(always)]
 pub fn apply(ctx: ReduceCtx, fid: u64, visit: &VisitObj, apply: &ApplyObj) -> bool {
+  //println!("APPLY {}", fid);
+  
   // Reduces function superpositions
   for (n, is_strict) in visit.strict_map.iter().enumerate() {
     let n = n as u64;

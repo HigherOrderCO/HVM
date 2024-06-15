@@ -394,14 +394,19 @@ pub fn build_function_rule_rhs(
     free : &mut Vec<Option<(String,u64)>>,
     nams : &mut u64,
     dups : &mut HashMap<u64, (String,String)>,
+    dupf : u64,
     glob : u64,
   ) -> (String, String) {
     if let Some(got) = dups.get(&glob) {
       return got.clone();
     } else {
-      let coln = fresh(nams, "col");
       let name = fresh(nams, "dup");
-      line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
+      let coln = fresh(nams, "col");
+      if dupf != 0xFFFFFFF {
+        line(code, tab + 1, &format!("let {} = {};", coln, dupf));
+      } else {
+        line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
+      }
       line(code, tab + 1, &format!("let {} = {};", name, alloc_node(free, 3)));
       line(code, tab, &format!("link(ctx.heap, {} + 0, Era());", name)); // FIXME: remove when possible (same as above)
       line(code, tab, &format!("link(ctx.heap, {} + 1, Era());", name)); // FIXME: remove when possible (same as above)
@@ -457,11 +462,11 @@ pub fn build_function_rule_rhs(
             return format!("Var({})", alloc_lam(code, tab, free, nams, lams, *glob));
           }
           runtime::DP0 => {
-            let (coln, name) = alloc_dup(code, tab, free, nams, dups, *glob);
+            let (coln, name) = alloc_dup(code, tab, free, nams, dups, 0, *glob);
             return format!("Dp0({}, {})", coln, name);
           }
           runtime::DP1 => {
-            let (coln, name) = alloc_dup(code, tab, free, nams, dups, *glob);
+            let (coln, name) = alloc_dup(code, tab, free, nams, dups, 0, *glob);
             return format!("Dp1({}, {})", coln, name);
           }
           _ => {
@@ -469,7 +474,7 @@ pub fn build_function_rule_rhs(
           }
         }
       }
-      runtime::Core::Dup { eras, glob, expr, body } => {
+      runtime::Core::Dup { dupf, eras, glob, expr, body } => {
         let copy = fresh(nams, "cpy");
         let dup0 = fresh(nams, "dp0");
         let dup1 = fresh(nams, "dp1");
@@ -484,7 +489,7 @@ pub fn build_function_rule_rhs(
           line(code, tab + 1, &format!("{} = {};", dup1, copy));
           line(code, tab + 0, "} else {");
         }
-        let (coln, name) = alloc_dup(code, tab, &mut vec![], nams, dups, *glob);
+        let (coln, name) = alloc_dup(code, tab, &mut vec![], nams, dups, *dupf, *glob);
         if eras.0 {
           line(code, tab + 1, &format!("link(ctx.heap, {} + 0, Era());", name));
         }
@@ -504,12 +509,16 @@ pub fn build_function_rule_rhs(
         vars.pop();
         body
       }
-      runtime::Core::Sup { val0, val1 } => {
+      runtime::Core::Sup { dupf, val0, val1 } => {
         let name = fresh(nams, "sup");
         let val0 = build_term(book, code, tab, free, vars, nams, lams, dups, val0);
         let val1 = build_term(book, code, tab, free, vars, nams, lams, dups, val1);
         let coln = fresh(nams, "col");
-        line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
+        if *dupf != 0xFFFFFFF {
+          line(code, tab + 1, &format!("let {} = {};", coln, dupf));
+        } else {
+          line(code, tab + 1, &format!("let {} = gen_dup(ctx.heap, ctx.tid);", coln));
+        }
         line(code, tab, &format!("let {} = {};", name, alloc_node(free, 2)));
         line(code, tab, &format!("link(ctx.heap, {} + 0, {});", name, val0));
         line(code, tab, &format!("link(ctx.heap, {} + 1, {});", name, val1));
