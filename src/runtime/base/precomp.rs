@@ -1,3 +1,5 @@
+//./memory.rs//
+
 use crate::runtime::{*};
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -46,6 +48,8 @@ pub const HVM_PRINT : u64 = 26;
 pub const HVM_SLEEP : u64 = 27;
 pub const HVM_SAVE : u64 = 28;
 pub const HVM_LOAD : u64 = 29;
+pub const HVM_SUP : u64 = 30;
+pub const HVM_DUP : u64 = 31;
 //[[CODEGEN:PRECOMP-IDS]]//
 
 pub const PRECOMP : &[Precomp] = &[
@@ -253,12 +257,30 @@ pub const PRECOMP : &[Precomp] = &[
       apply: hvm_load_apply,
     }),
   },
+  Precomp {
+    id: HVM_SUP,
+    name: "HVM.SUP",
+    smap: &[true, false, false],
+    funs: Some(PrecompFuns {
+      visit: hvm_sup_visit,
+      apply: hvm_sup_apply,
+    }),
+  },
+  Precomp {
+    id: HVM_DUP,
+    name: "HVM.DUP",
+    smap: &[true, false, false],
+    funs: Some(PrecompFuns {
+      visit: hvm_dup_visit,
+      apply: hvm_dup_apply,
+    }),
+  },
 //[[CODEGEN:PRECOMP-ELS]]//
 ];
 
 pub const PRECOMP_COUNT : u64 = PRECOMP.len() as u64;
 
-// Ul0.if (cond: Term) (if_t: Term) (if_f: Term)
+// U60.if (cond: Term) (if_t: Term) (if_f: Term)
 // ---------------------------------------------
 
 #[inline(always)]
@@ -477,6 +499,83 @@ fn hvm_load_apply(ctx: ReduceCtx) -> bool {
   }
   println!("Runtime failure on: {}", show_at(ctx.heap, ctx.prog, *ctx.host, &[]));
   std::process::exit(0);
+}
+
+// HVM.sup (lab: Term) (fst: Term) (snd: Term) = #lab{fst snd}
+// -----------------------------------------------------------
+// Creates a SUP with a dynamic label.
+
+fn hvm_sup_visit(ctx: ReduceCtx) -> bool {
+  if is_whnf(load_arg(ctx.heap, ctx.term, 0)) {
+    return false;
+  } else {
+    let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
+    *ctx.cont = goup;
+    *ctx.host = get_loc(ctx.term, 0);
+    return true;
+  }
+}
+
+fn hvm_sup_apply(ctx: ReduceCtx) -> bool {
+  let arg0 = load_arg(ctx.heap, ctx.term, 0);
+  let arg1 = load_arg(ctx.heap, ctx.term, 1);
+  let arg2 = load_arg(ctx.heap, ctx.term, 2);
+  if get_tag(arg0) == SUP {
+    fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
+  }
+  if get_tag(arg0) == U60 {
+    inc_cost(ctx.heap, ctx.tid);
+    let sup_0 = alloc(ctx.heap, ctx.tid, 2);
+    link(ctx.heap, sup_0 + 0, arg1);
+    link(ctx.heap, sup_0 + 1, arg2);
+    let done = Sup(get_val(arg0) | 0x8000000, sup_0);
+    link(ctx.heap, *ctx.host, done);
+    free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
+    return true;
+  }
+  return false;
+}
+
+// HVM.dup (lab: Term) (val: Term) (bod: Term -> Term -> Term) = dup #lab{a b} = val; ((bod a) b)
+// ----------------------------------------------------------------------------------------------
+// Creates a DUP with a dynamic label. 
+
+fn hvm_dup_visit(ctx: ReduceCtx) -> bool {
+  if is_whnf(load_arg(ctx.heap, ctx.term, 0)) {
+    return false;
+  } else {
+    let goup = ctx.redex.insert(ctx.tid, new_redex(*ctx.host, *ctx.cont, 1));
+    *ctx.cont = goup;
+    *ctx.host = get_loc(ctx.term, 0);
+    return true;
+  }
+}
+
+fn hvm_dup_apply(ctx: ReduceCtx) -> bool {
+  let arg0 = load_arg(ctx.heap, ctx.term, 0);
+  let arg1 = load_arg(ctx.heap, ctx.term, 1);
+  let arg2 = load_arg(ctx.heap, ctx.term, 2);
+  if get_tag(arg0) == SUP {
+    fun::superpose(ctx.heap, &ctx.prog.aris, ctx.tid, *ctx.host, ctx.term, arg0, 0);
+  }
+  if get_tag(arg0) == U60 {
+    inc_cost(ctx.heap, ctx.tid);
+    let dup_0 = alloc(ctx.heap, ctx.tid, 3);
+    let app_0 = alloc(ctx.heap, ctx.tid, 2);
+    let app_1 = alloc(ctx.heap, ctx.tid, 2);
+    link(ctx.heap, dup_0 + 0, Era());
+    link(ctx.heap, dup_0 + 1, Era());
+    link(ctx.heap, dup_0 + 2, arg1);
+    link(ctx.heap, app_0 + 0, arg2);
+    link(ctx.heap, app_0 + 1, Dp0(get_val(arg0) | 0x8000000, dup_0));
+    link(ctx.heap, app_1 + 0, App(app_0));
+    link(ctx.heap, app_1 + 1, Dp1(get_val(arg0) | 0x8000000, dup_0));
+    let done = App(app_1);
+    link(ctx.heap, *ctx.host, done);
+    free(ctx.heap, ctx.tid, get_loc(ctx.term, 0), 3);
+    return true;
+  }
+  return false;
 }
 
 //[[CODEGEN:PRECOMP-FNS]]//
