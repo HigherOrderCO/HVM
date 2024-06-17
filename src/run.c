@@ -365,7 +365,7 @@ Port io_write(Net* net, Book* book, Port argm) {
     return new_port(ERA, 0);
   }
 
-  FILE* fp = readback_file(expand(net, book, tup.elem_buf[0]));
+  FILE* fp = readback_file(tup.elem_buf[0]);
   Bytes bytes = readback_bytes(net, book, tup.elem_buf[1]);
 
   if (fp == NULL) {
