@@ -445,7 +445,7 @@ Port io_get_time(Net* net, Book* book, Port argm) {
 Port io_sleep(Net* net, Book* book, Port argm) {
   Tup tup = readback_tup(net, book, argm, 2);
   if (tup.elem_len != 2) {
-    fprintf(stderr, "io_sleep: expected 3-tuple\n");
+    fprintf(stderr, "io_sleep: expected 2-tuple\n");
     return new_port(ERA, 0);
   }
 
