@@ -106,7 +106,7 @@ graphically represents a net like,
 
 where $omega$ is a wiring. Thus, HVM2 Nets contain only a single free main port. Wirings are possible between trees through pairs of `VAR` nodes with the same names. Note, however, that a variable can only occur twice. This aligns with Interaction Nets in that a wire can only connect two ports.
 
-Lastly, an Book consists of a list of top-level definitions, or, "named" Nets:
+Lastly, a Book consists of a list of top-level definitions, or, "named" Nets:
 
 #align(center)[
   ```
@@ -364,7 +364,7 @@ Since there are eight node types, there is a total of 64 possible pairwise node 
   | A\B |  VAR |  REF |  ERA |  NUM |  CON |  DUP |  OPR |  SWI |
   |-----|------|------|------|------|------|------|------|------|
   | VAR | LINK | LINK | LINK | LINK | LINK | LINK | LINK | LINK |
-  | REF | LNIK | VOID | VOID | VOID | CALL | ERAS | CALL | CALL |
+  | REF | LINK | VOID | VOID | VOID | CALL | ERAS | CALL | CALL |
   | ERA | LINK | VOID | VOID | VOID | ERAS | ERAS | ERAS | ERAS |
   | NUM | LINK | VOID | VOID | VOID | ERAS | ERAS | OPER | SWIT |
   | CON | LINK | CALL | ERAS | ERAS | ANNI | COMM | COMM | COMM |
@@ -732,7 +732,7 @@ Note that `op` is a symmetric function (since the order of the operands is deter
 
 = The 32-bit Architecture <architecture>
 
-The initial version of HVM2, as implemented in this paper, is based on a 32-bit architecture. In this section, we'll use snippets of the Rust reference implementation of the interpreter, available at the #link("https://github.com/HigherOrderCO/hvm2")[HVM2 repo], to document this architecture.
+The initial version of HVM2, as implemented in this paper, is based on a 32-bit architecture. In this section, we'll use snippets of the Rust reference implementation of the interpreter, available at the #link("https://github.com/HigherOrderCO/HVM")[HVM2 repo], to document this architecture.
 
 == Memory Layout <memory>
 
@@ -787,7 +787,7 @@ pub struct Book {
 
 Notice that, like variables, names are simply indexes into the global `Book`.
 
-This concludes HVM2's memory layout. For more details, check the reference Rust implementation in the #link("https://github.com/HigherOrderCO/hvm2")[HVM2 repo].
+This concludes HVM2's memory layout. For more details, check the reference Rust implementation in the #link("https://github.com/HigherOrderCO/HVM")[HVM2 repo].
 
 == Example Interaction Net Layout
 
