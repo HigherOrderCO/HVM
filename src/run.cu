@@ -126,7 +126,7 @@ Str gnet_readback_str(GNet* gnet, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.text_len > 256) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
+        if (str.text_len >= 255) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
 
         str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
         gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
