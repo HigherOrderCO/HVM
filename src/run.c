@@ -7,6 +7,12 @@ typedef struct Ctr {
   Port args_buf[16];
 } Ctr;
 
+// Readback: Tuples
+typedef struct Tup {
+  u32  elem_len;
+  Port elem_buf[8];
+} Tup;
+
 // Readback: λ-Encoded Str (UTF-32)
 // FIXME: this is actually ASCII :|
 // FIXME: remove len limit
@@ -14,6 +20,14 @@ typedef struct Str {
   u32  text_len;
   char text_buf[256];
 } Str;
+
+// Readback: λ-Encoded list of bytes
+typedef struct Bytes {
+  u32  len;
+  char *buf;
+} Bytes;
+
+#define MAX_BYTES 256
 
 // IO Magic Number
 #define IO_MAGIC_0 0xD0CA11
@@ -64,7 +78,27 @@ Ctr readback_ctr(Net* net, Book* book, Port port) {
   return ctr;
 }
 
-// Converts a UTF-32 (truncated to 24 bits) string to a Port.
+// Reads back a tuple of at most `size` elements. Tuples are
+// (right-nested con nodes) (CON 1 (CON 2 (CON 3 (...))))
+// The provided `port` should be `expanded` before calling.
+Tup readback_tup(Net* net, Book* book, Port port, u32 size) {
+  Tup tup;
+  tup.elem_len = 0;
+
+  // Loads remaining arguments
+  while (get_tag(port) == CON && (tup.elem_len + 1 < size)) {
+    Pair node = node_load(net, get_val(port));
+    tup.elem_buf[tup.elem_len++] = expand(net, book, get_fst(node));
+
+    port = expand(net, book, get_snd(node));
+  }
+
+  tup.elem_buf[tup.elem_len++] = port;
+
+  return tup;
+}
+
+// Converts a Port into a UTF-32 (truncated to 24 bits) string.
 // Since unicode scalars can fit in 21 bits, HVM's u24
 // integers can contain any unicode scalar value.
 // Encoding:
@@ -80,12 +114,8 @@ Str readback_str(Net* net, Book* book, Port port) {
     // Normalizes the net
     normalize(net, book);
 
-    //printf("reading str %s\n", show_port(peek(net, port)).x);
-
     // Reads the λ-Encoded Ctr
     Ctr ctr = readback_ctr(net, book, peek(net, port));
-
-    //printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
 
     // Reads string layer
     switch (ctr.tag) {
@@ -96,7 +126,6 @@ Str readback_str(Net* net, Book* book, Port port) {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
         if (str.text_len >= 256) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
-        //printf("reading chr %d\n", get_u24(get_val(ctr.args_buf[0])));
         str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
         boot_redex(net, new_pair(ctr.args_buf[1], ROOT));
         port = ROOT;
@@ -111,8 +140,47 @@ Str readback_str(Net* net, Book* book, Port port) {
   return str;
 }
 
+// Converts a Port into a list of bytes.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Bytes readback_bytes(Net* net, Book* book, Port port) {
+  // Result
+  Bytes bytes;
+  bytes.buf = (char*) malloc(sizeof(char) * MAX_BYTES);
+  bytes.len = 0;
+
+  // Readback loop
+  while (TRUE) {
+    // Normalizes the net
+    normalize(net, book);
+
+    // Reads the λ-Encoded Ctr
+    Ctr ctr = readback_ctr(net, book, peek(net, port));
+
+    // Reads string layer
+    switch (ctr.tag) {
+      case LIST_NIL: {
+        break;
+      }
+      case LIST_CONS: {
+        if (ctr.args_len != 2) break;
+        if (get_tag(ctr.args_buf[0]) != NUM) break;
+        if (bytes.len >= MAX_BYTES) { printf("ERROR: for now, HVM can only readback list of bytes of length <%u.", MAX_BYTES); break; }
+        bytes.buf[bytes.len++] = get_u24(get_val(ctr.args_buf[0]));
+        boot_redex(net, new_pair(ctr.args_buf[1], ROOT));
+        port = ROOT;
+        continue;
+      }
+    }
+    break;
+  }
+
+  return bytes;
+}
+
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
-/// Should only be called within `inject_str`, as a previous call
+/// Should only be called within `inject_bytes`, as a previous call
 /// to `get_resources` is expected.
 Port inject_nil(Net* net) {
   u32 v1 = tm[0]->vloc[0];
@@ -130,7 +198,7 @@ Port inject_nil(Net* net) {
 }
 
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
-/// Should only be called within `inject_str`, as a previous call
+/// Should only be called within `inject_bytes`, as a previous call
 /// to `get_resources` is expected.
 /// The `char_idx` parameter is used to offset the vloc and nloc
 /// allocations, otherwise they would conflict with each other on
@@ -154,27 +222,25 @@ Port inject_cons(Net* net, Port head, Port tail, u32 char_idx) {
   return new_port(CON, n4);
 }
 
-// Converts a UTF-32 (truncated to 24 bits) string to a Port.
-// Since unicode scalars can fit in 21 bits, HVM's u24
-// integers can contain any unicode scalar value.
+// Converts a list of bytes to a Port.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Port inject_str(Net* net, Str *str) {
+Port inject_bytes(Net* net, Bytes *bytes) {
   // Allocate all resources up front:
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
-  u32 len = str->text_len;
+  u32 len = bytes->len;
   if (!get_resources(net, tm[0], 0, 2 + 4 * len, 1 + len)) {
-    printf("inject_str: failed to get resources\n");
+    fprintf(stderr, "inject_bytes: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
   Port port = inject_nil(net);
 
   for (u32 i = 0; i < len; i++) {
-    Port chr = new_port(NUM, new_u24(str->text_buf[len - i - 1]));
-    port = inject_cons(net, chr, port, i);
+    Port byte = new_port(NUM, new_u24(bytes->buf[len - i - 1]));
+    port = inject_cons(net, byte, port, i);
   }
 
   return port;
@@ -213,61 +279,52 @@ FILE* readback_file(Port port) {
   return fp;
 }
 
-// Reads a single char from `argm`.
-Port io_read_char(Net* net, Book* book, Port argm) {
-  FILE* fp = readback_file(peek(net, argm));
+// Reads from a file a specified number of bytes.
+// `argm` is a tuple of (file_descriptor, num_bytes).
+Port io_read(Net* net, Book* book, Port argm) {
+  Tup tup = readback_tup(net, book, argm, 2);
+  if (tup.elem_len != 2) {
+    fprintf(stderr, "io_read: expected 2-tuple\n");
+    return new_port(ERA, 0);
+  }
+
+  FILE* fp = readback_file(tup.elem_buf[0]);
+  u32 num_bytes = get_u24(get_val(tup.elem_buf[1]));
+
   if (fp == NULL) {
+    fprintf(stderr, "io_read: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
 
   /// Read a string.
-  Str str;
+  Bytes bytes;
+  bytes.buf = (char*) malloc(sizeof(char) * num_bytes);
+  bytes.len = fread(bytes.buf, sizeof(char), num_bytes, fp);
 
-  str.text_buf[0] = fgetc(fp);
-  str.text_buf[1] = 0;
-  str.text_len = 1;
-
-  return inject_str(net, &str);
-}
-
-// Reads from `argm` at most 255 characters or until a newline is seen.
-Port io_read_line(Net* net, Book* book, Port argm) {
-  FILE* fp = readback_file(peek(net, argm));
-  if (fp == NULL) {
-    fprintf(stderr, "io_read_line: invalid file descriptor\n");
+  if ((bytes.len != num_bytes) && ferror(fp)) {
+    fprintf(stderr, "io_read: failed to read\n");
+    free(bytes.buf);
     return new_port(ERA, 0);
-  }
-
-  /// Read a string.
-  Str str;
-
-  if (fgets(str.text_buf, sizeof(str.text_buf), fp) == NULL) {
-    fprintf(stderr, "io_read_line: failed to read\n");
-  }
-  str.text_len = strlen(str.text_buf);
-
-  // Strip any trailing newline.
-  if (str.text_len > 0 && str.text_buf[str.text_len - 1] == '\n') {
-    str.text_buf[str.text_len] = 0;
-    str.text_len--;
   }
 
   // Convert it to a port.
-  return inject_str(net, &str);
+  Port ret = inject_bytes(net, &bytes);
+  free(bytes.buf);
+  return ret;
 }
 
 // Opens a file with the provided mode.
 // `argm` is a tuple (CON node) of the
 // file name and mode as strings.
-Port io_open_file(Net* net, Book* book, Port argm) {
-  if (get_tag(peek(net, argm)) != CON) {
-    fprintf(stderr, "io_open_file: expected tuple\n");
+Port io_open(Net* net, Book* book, Port argm) {
+  Tup tup = readback_tup(net, book, argm, 2);
+  if (tup.elem_len != 2) {
+    fprintf(stderr, "io_open: expected 2-tuple\n");
     return new_port(ERA, 0);
   }
 
-  Pair args = node_load(net, get_val(argm));
-  Str name = readback_str(net, book, get_fst(args));
-  Str mode = readback_str(net, book, get_snd(args));
+  Str name = readback_str(net, book, tup.elem_buf[0]);
+  Str mode = readback_str(net, book, tup.elem_buf[1]);
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
@@ -276,50 +333,91 @@ Port io_open_file(Net* net, Book* book, Port argm) {
     }
   }
 
-  fprintf(stderr, "io_open_file: too many open files\n");
-
+  fprintf(stderr, "io_open: too many open files\n");
   return new_port(ERA, 0);
 }
 
 // Closes a file, reclaiming the file descriptor.
-Port io_close_file(Net* net, Book* book, Port argm) {
-  FILE* fp = readback_file(peek(net, argm));
+Port io_close(Net* net, Book* book, Port argm) {
+  FILE* fp = readback_file(argm);
   if (fp == NULL) {
-    fprintf(stderr, "io_close_file: failed to close\n");
+    fprintf(stderr, "io_close: failed to close\n");
     return new_port(ERA, 0);
   }
 
   int err = fclose(fp) != 0;
   if (err != 0) {
-    fprintf(stderr, "io_close_file: failed to close: %i\n", err);
+    fprintf(stderr, "io_close: failed to close: %i\n", err);
     return new_port(ERA, 0);
   }
 
   FILE_POINTERS[get_u24(get_val(argm))] = NULL;
-
   return new_port(ERA, 0);
 }
 
-// Writes a string to a file.
+// Writes a list of bytes to a file.
 // `argm` is a tuple (CON node) of the
-// file descriptor and string to write.
+// file descriptor and list of bytes to write.
 Port io_write(Net* net, Book* book, Port argm) {
-  if (get_tag(peek(net, argm)) != CON) {
-    fprintf(stderr, "io_write: expected tuple, but got %u\n", get_tag(peek(net, argm)));
+  Tup tup = readback_tup(net, book, argm, 2);
+  if (tup.elem_len != 2) {
+    fprintf(stderr, "io_write: expected 2-tuple\n");
     return new_port(ERA, 0);
   }
 
-  Pair args = node_load(net, get_val(argm));
-  FILE* fp = readback_file(peek(net, get_fst(args)));
-  Str str = readback_str(net, book, get_snd(args));
+  FILE* fp = readback_file(tup.elem_buf[0]);
+  Bytes bytes = readback_bytes(net, book, tup.elem_buf[1]);
+
+  if (fp == NULL) {
+    fprintf(stderr, "io_write: invalid file descriptor\n");
+    free(bytes.buf);
+    return new_port(ERA, 0);
+  }
+
+  if (fwrite(bytes.buf, sizeof(char), bytes.len, fp) != bytes.len) {
+    fprintf(stderr, "io_write: failed to write\n");
+  }
+
+  free(bytes.buf);
+  return new_port(ERA, 0);
+}
+
+// Seeks to a position in a file.
+// `argm` is a 3-tuple (CON fd (CON offset whence)), where
+// - fd is a file descriptor
+// - offset is a signed byte offset
+// - whence is what that offset is relative to:
+//    - 0 (SEEK_SET): beginning of file
+//    - 1 (SEEK_CUR): current position of the file pointer
+//    - 2 (SEEK_END): end of the file
+Port io_seek(Net* net, Book* book, Port argm) {
+  Tup tup = readback_tup(net, book, argm, 3);
+  if (tup.elem_len != 3) {
+    fprintf(stderr, "io_seek: expected 3-tuple\n");
+    return new_port(ERA, 0);
+  }
+
+  FILE* fp = readback_file(tup.elem_buf[0]);
+  i32 offset = get_i24(get_val(tup.elem_buf[1]));
+  u32 whence = get_i24(get_val(tup.elem_buf[2]));
 
   if (fp == NULL) {
     fprintf(stderr, "io_write: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
 
-  if (fputs(str.text_buf, fp) == EOF) {
-    fprintf(stderr, "io_write: failed to write\n");
+  int cwhence;
+  switch (whence) {
+    case 0: cwhence = SEEK_SET; break;
+    case 1: cwhence = SEEK_CUR; break;
+    case 2: cwhence = SEEK_END; break;
+    default:
+      fprintf(stderr, "io_seek: invalid whence\n");
+      return new_port(ERA, 0);
+  }
+
+  if (fseek(fp, offset, cwhence) != 0) {
+    fprintf(stderr, "io_seek: failed to seek\n");
   }
 
   return new_port(ERA, 0);
@@ -345,11 +443,17 @@ Port io_get_time(Net* net, Book* book, Port argm) {
 // `argm` is a tuple (CON node) of the high and low
 // 24 bits for a 48-bit duration in nanoseconds.
 Port io_sleep(Net* net, Book* book, Port argm) {
+  Tup tup = readback_tup(net, book, argm, 2);
+  if (tup.elem_len != 2) {
+    fprintf(stderr, "io_sleep: expected 2-tuple\n");
+    return new_port(ERA, 0);
+  }
+
   // Get the sleep duration node
   Pair dur_node = node_load(net, get_val(argm));
   // Get the high and low 24-bit parts of the duration
-  u32 dur_hi = get_u24(get_val(get_fst(dur_node)));
-  u32 dur_lo = get_u24(get_val(get_snd(dur_node)));
+  u32 dur_hi = get_u24(get_val(tup.elem_buf[0]));
+  u32 dur_lo = get_u24(get_val(tup.elem_buf[1]));
   // Combine into a 48-bit duration in nanoseconds
   u64 dur_ns = (((u64)dur_hi) << 24) | dur_lo;
   // Sleep for the specified duration
@@ -365,11 +469,11 @@ Port io_sleep(Net* net, Book* book, Port argm) {
 // -----------
 
 void book_init(Book* book) {
-  book->ffns_buf[book->ffns_len++] = (FFn){"READ_CHAR", io_read_char};
-  book->ffns_buf[book->ffns_len++] = (FFn){"READ_LINE", io_read_line};
-  book->ffns_buf[book->ffns_len++] = (FFn){"OPEN_FILE", io_open_file};
-  book->ffns_buf[book->ffns_len++] = (FFn){"CLOSE_FILE", io_close_file};
+  book->ffns_buf[book->ffns_len++] = (FFn){"READ", io_read};
+  book->ffns_buf[book->ffns_len++] = (FFn){"OPEN", io_open};
+  book->ffns_buf[book->ffns_len++] = (FFn){"CLOSE", io_close};
   book->ffns_buf[book->ffns_len++] = (FFn){"WRITE", io_write};
+  book->ffns_buf[book->ffns_len++] = (FFn){"SEEK", io_seek};
   book->ffns_buf[book->ffns_len++] = (FFn){"GET_TIME", io_get_time};
   book->ffns_buf[book->ffns_len++] = (FFn){"SLEEP", io_sleep};
 }
@@ -404,11 +508,6 @@ void do_run_io(Net* net, Book* book, Port port) {
     switch (ctr.tag) {
       case IO_CALL: {
         Str  func = readback_str(net, book, ctr.args_buf[1]);
-        Port argm = ctr.args_buf[2];
-        Port cont = ctr.args_buf[3];
-        u32  lps  = 0;
-        u32  loc  = node_alloc_1(net, tm[0], &lps);
-        Port ret  = new_port(ERA, 0);
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search
         for (u32 fid = 0; fid < book->ffns_len; ++fid) {
@@ -418,16 +517,22 @@ void do_run_io(Net* net, Book* book, Port port) {
           }
         }
         if (ffn == NULL) {
+          fprintf(stderr, "Unknown IO func '%s'\n", func.text_buf);
           break;
         }
-        ret = ffn->func(net, book, argm);
+
+        Port argm = ctr.args_buf[2];
+        Port cont = ctr.args_buf[3];
+        Port ret = ffn->func(net, book, argm);
+
+        u32 lps = 0;
+        u32 loc = node_alloc_1(net, tm[0], &lps);
         node_create(net, loc, new_pair(ret, ROOT));
         boot_redex(net, new_pair(new_port(CON, loc), cont));
         port = ROOT;
         continue;
       }
       case IO_DONE: {
-        printf("DONE\n");
         break;
       }
     }

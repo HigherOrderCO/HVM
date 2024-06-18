@@ -4,5 +4,5 @@ expression: c_output
 input_file: tests/programs/io/read_and_print.hvm
 ---
 What is your name?
-Hello, 'io from the tests'!
+io fr from
 Result: 42
