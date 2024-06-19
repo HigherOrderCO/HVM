@@ -79,8 +79,6 @@ impl<'i> CoreParser<'i> {
       _ if self.try_consume("&")   => hvm::OP_AND,
       _ if self.try_consume("|")   => hvm::OP_OR,
       _ if self.try_consume("^")   => hvm::OP_XOR,
-      _ if self.try_consume("sin") => hvm::OP_SHL,
-      _ if self.try_consume("tan") => hvm::OP_SHR,
       _ => self.expected("operator symbol")?,
     });
 
