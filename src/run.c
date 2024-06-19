@@ -82,7 +82,7 @@ Ctr readback_ctr(Net* net, Book* book, Port port) {
 // Reads back a tuple of at most `size` elements. Tuples are
 // (right-nested con nodes) (CON 1 (CON 2 (CON 3 (...))))
 // The provided `port` should be `expanded` before calling.
-Tup readback_tup(Net* net, Book* book, Port port, u32 size) {
+extern Tup readback_tup(Net* net, Book* book, Port port, u32 size) {
   Tup tup;
   tup.elem_len = 0;
 
@@ -261,7 +261,7 @@ static FILE* FILE_POINTERS[256];
 
 // Open dylibs handles. Indices into this array
 // are used as opaque loadedd object "handles".
-static FILE* DYLIBS[256];
+static void* DYLIBS[256];
 
 // Converts a NUM port (file descriptor) to file pointer.
 FILE* readback_file(Port port) {
@@ -520,6 +520,7 @@ Port io_dl_open(Net* net, Book* book, Port argm) {
   for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
     if (DYLIBS[dl] == NULL) {
       DYLIBS[dl] = dlopen(str.text_buf, flags);
+
       return new_port(NUM, new_u24(dl));
     }
   }
