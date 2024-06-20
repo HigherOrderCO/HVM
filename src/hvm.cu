@@ -1095,7 +1095,7 @@ __device__ void link_pair(Net* net, TM* tm, Pair AB) {
 // ---------
 
 // Gets the necessary resources for an interaction.
-__device__ bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
+__device__ bool get_resources(Net* net, TM* tm, u32 need_rbag, u32 need_node, u32 need_vars) {
   u32 got_rbag = min(RLEN - tm->rbag.lo_end, RLEN - tm->rbag.hi_end);
   u32 got_node;
   u32 got_vars;
