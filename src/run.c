@@ -125,7 +125,8 @@ Str readback_str(Net* net, Book* book, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.text_len >= 256) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
+        if (str.text_len >= 255) { printf("ERROR: for now, HVM can only readback strings of length <=255."); break; }
+
         str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
         boot_redex(net, new_pair(ctr.args_buf[1], ROOT));
         port = ROOT;
@@ -341,7 +342,7 @@ Port io_open(Net* net, Book* book, Port argm) {
 Port io_close(Net* net, Book* book, Port argm) {
   FILE* fp = readback_file(argm);
   if (fp == NULL) {
-    fprintf(stderr, "io_close: failed to close\n");
+    fprintf(stderr, "io_close: invalid file descriptor\n");
     return new_port(ERA, 0);
   }
 
@@ -379,6 +380,23 @@ Port io_write(Net* net, Book* book, Port argm) {
   }
 
   free(bytes.buf);
+  return new_port(ERA, 0);
+}
+
+// Flushes an output stream.
+Port io_flush(Net* net, Book* book, Port argm) {
+  FILE* fp = readback_file(argm);
+  if (fp == NULL) {
+    fprintf(stderr, "io_flush: invalid file descriptor\n");
+    return new_port(ERA, 0);
+  }
+
+  int err = fflush(fp) != 0;
+  if (err != 0) {
+    fprintf(stderr, "io_flush: failed to flush: %i\n", err);
+    return new_port(ERA, 0);
+  }
+
   return new_port(ERA, 0);
 }
 
@@ -472,6 +490,7 @@ void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"READ", io_read};
   book->ffns_buf[book->ffns_len++] = (FFn){"OPEN", io_open};
   book->ffns_buf[book->ffns_len++] = (FFn){"CLOSE", io_close};
+  book->ffns_buf[book->ffns_len++] = (FFn){"FLUSH", io_flush};
   book->ffns_buf[book->ffns_len++] = (FFn){"WRITE", io_write};
   book->ffns_buf[book->ffns_len++] = (FFn){"SEEK", io_seek};
   book->ffns_buf[book->ffns_len++] = (FFn){"GET_TIME", io_get_time};
@@ -483,7 +502,10 @@ void book_init(Book* book) {
 
 // Runs an IO computation.
 void do_run_io(Net* net, Book* book, Port port) {
-   book_init(book);
+  book_init(book);
+
+  setlinebuf(stdout);
+  setlinebuf(stderr);
 
   // IO loop
   while (TRUE) {
