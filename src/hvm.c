@@ -570,6 +570,8 @@ static inline Numb operate(Numb a, Numb b) {
         case OP_AND: return new_f24(atan2f(av, bv));
         case OP_OR:  return new_f24(logf(bv) / logf(av));
         case OP_XOR: return new_f24(powf(av, bv));
+        case OP_SHL: return new_f24(sin(av + bv));
+        case OP_SHR: return new_f24(tan(av + bv));
         default:     return new_f24(0);
       }
     }
