@@ -756,7 +756,7 @@ u32 vars_alloc(Net* net, TM* tm, u32 num) {
 }
 
 // Gets the necessary resources for an interaction. Returns success.
-static inline bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
+static inline bool get_resources(Net* net, TM* tm, u32 need_rbag, u32 need_node, u32 need_vars) {
   u32 got_rbag = 0xFF; // FIXME: implement
   u32 got_node = node_alloc(net, tm, need_node);
   u32 got_vars = vars_alloc(net, tm, need_vars);
