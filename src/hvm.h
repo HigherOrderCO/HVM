@@ -4,45 +4,23 @@
 #include <math.h>
 #include <stdint.h>
 
-// Booleans
-#define TRUE  1
-#define FALSE 0
-
-// Integers
-// --------
-
 typedef uint8_t bool;
+// Types
+// -----
 
 typedef  uint8_t  u8;
 typedef uint16_t u16;
-typedef  int32_t i32;
 typedef uint32_t u32;
+typedef  int32_t i32;
 typedef uint64_t u64;
 typedef    float f32;
 typedef   double f64;
-
-typedef _Atomic(u8) a8;
-typedef _Atomic(u16) a16;
-typedef _Atomic(u32) a32;
-typedef _Atomic(u64) a64;
-
-// Configuration
-// -------------
-
-// Types
-// -----
 
 // Local Types
 typedef u8  Tag;  // Tag  ::= 3-bit (rounded up to u8)
 typedef u32 Val;  // Val  ::= 29-bit (rounded up to u32)
 typedef u32 Port; // Port ::= Tag + Val (fits a u32)
 typedef u64 Pair; // Pair ::= Port + Port (fits a u64)
-
-typedef a32 APort; // atomic Port
-typedef a64 APair; // atomic Pair
-
-// Rules
-typedef u8 Rule; // Rule ::= 3-bit (rounded up to 8)
 
 // Numbs
 typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
@@ -86,13 +64,7 @@ static const f32 I24_MIN = (f32) (i32) ((-1u) << 23);
 #define OP_SHR 0x15
 #define FP_SHR 0x16
 
-// Constants
-#define FREE 0x00000000
-#define ROOT 0xFFFFFFF8
-#define NONE 0xFFFFFFFF
-
 typedef struct Net Net;
-typedef struct Def Def;
 typedef struct Book Book;
 
 // Debugger
@@ -104,7 +76,6 @@ typedef struct {
 
 void put_u16(char* B, u16 val);
 Show show_port(Port port);
-Show show_rule(Rule rule);
 void print_net(Net* net);
 void pretty_print_numb(Numb word);
 void pretty_print_port(Net* net, Book* book, Port port);
