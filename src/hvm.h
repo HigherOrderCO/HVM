@@ -32,12 +32,6 @@ typedef _Atomic(u64) a64;
 // Configuration
 // -------------
 
-// Threads per CPU
-#ifndef TPC_L2
-#define TPC_L2 0
-#endif
-#define TPC (1ul << TPC_L2)
-
 // Types
 // -----
 
@@ -65,16 +59,6 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 #define DUP 0x5 // duplicator
 #define OPR 0x6 // operator
 #define SWI 0x7 // switch
-
-// Interaction Rule Values
-#define LINK 0x0
-#define CALL 0x1
-#define VOID 0x2
-#define ERAS 0x3
-#define ANNI 0x4
-#define COMM 0x5
-#define OPER 0x6
-#define SWIT 0x7
 
 // Numbers
 static const f32 U24_MAX = (f32) (1 << 24) - 1;
@@ -110,65 +94,9 @@ static const f32 I24_MIN = (f32) (i32) ((-1u) << 23);
 #define ROOT 0xFFFFFFF8
 #define NONE 0xFFFFFFFF
 
-// Cache Padding
-#define CACHE_PAD 64
-
-// Global Net
-#define HLEN (1ul << 16) // max 16k high-priority redexes
-#define RLEN (1ul << 24) // max 16m low-priority redexes
-#define G_NODE_LEN (1ul << 29) // max 536m nodes
-#define G_VARS_LEN (1ul << 29) // max 536m vars
-#define G_RBAG_LEN (TPC * RLEN)
-
-typedef struct Net {
-  APair node_buf[G_NODE_LEN]; // global node buffer
-  APort vars_buf[G_VARS_LEN]; // global vars buffer
-  APair rbag_buf[G_RBAG_LEN]; // global rbag buffer
-  a64 itrs; // interaction count
-  a32 idle; // idle thread counter
-} Net;
-
-// Top-Level Definition
-typedef struct Def {
-  char name[256];
-  bool safe;
-  u32  rbag_len;
-  u32  node_len;
-  u32  vars_len;
-  Port root;
-  Pair rbag_buf[0xFFF];
-  Pair node_buf[0xFFF];
-} Def;
-
+typedef struct Net Net;
+typedef struct Def Def;
 typedef struct Book Book;
-
-// A Foreign Function
-typedef struct {
-  char name[256];
-  Port (*func)(Net*, Book*, Port);
-} FFn;
-
-// Book of Definitions
-typedef struct Book {
-  u32 defs_len;
-  Def defs_buf[0x4000];
-  u32 ffns_len;
-  FFn ffns_buf[0x4000];
-} Book;
-
-// Local Thread Memory
-typedef struct TM {
-  u32  tid; // thread id
-  u32  itrs; // interaction count
-  u32  nput; // next node allocation attempt index
-  u32  vput; // next vars allocation attempt index
-  u32  hput; // next hbag push index
-  u32  rput; // next rbag push index
-  u32  sidx; // steal index
-  u32  nloc[0xFFF]; // node allocation indices
-  u32  vloc[0xFFF]; // vars allocation indices
-  Pair hbag_buf[HLEN]; // high-priority redexes
-} TM;
 
 // Debugger
 // --------
@@ -180,11 +108,9 @@ typedef struct {
 void put_u16(char* B, u16 val);
 Show show_port(Port port);
 Show show_rule(Rule rule);
-//void print_rbag(RBag* rbag);
 void print_net(Net* net);
 void pretty_print_numb(Numb word);
 void pretty_print_port(Net* net, Book* book, Port port);
-//void pretty_print_rbag(Net* net, RBag* rbag);
 
 // Port: Constructor and Getters
 // -----------------------------
@@ -231,46 +157,6 @@ static inline u32 min(u32 a, u32 b) {
 static inline f32 clamp(f32 x, f32 min, f32 max) {
   const f32 t = x < min ? min : x;
   return (t > max) ? max : t;
-}
-
-// Ports / Pairs / Rules
-// ---------------------
-
-// True if this port has a pointer to a node.
-static inline bool is_nod(Port a) {
-  return get_tag(a) >= CON;
-}
-
-// True if this port is a variable.
-static inline bool is_var(Port a) {
-  return get_tag(a) == VAR;
-}
-
-
-// Should we swap ports A and B before reducing this rule?
-static inline bool should_swap(Port A, Port B) {
-  return get_tag(B) < get_tag(A);
-}
-
-// Gets a rule's priority
-static inline bool is_high_priority(Rule rule) {
-  return (bool)((0b00011101 >> rule) & 1);
-}
-
-// Adjusts a newly allocated port.
-static inline Port adjust_port(Net* net, TM* tm, Port port) {
-  Tag tag = get_tag(port);
-  Val val = get_val(port);
-  if (is_nod(port)) return new_port(tag, tm->nloc[val]);
-  if (is_var(port)) return new_port(tag, tm->vloc[val]);
-  return new_port(tag, val);
-}
-
-// Adjusts a newly allocated pair.
-static inline Pair adjust_pair(Net* net, TM* tm, Pair pair) {
-  Port p1 = adjust_port(net, tm, get_fst(pair));
-  Port p2 = adjust_port(net, tm, get_snd(pair));
-  return new_pair(p1, p2);
 }
 
 // Numbs
@@ -320,7 +206,6 @@ static inline float get_f24(Numb word) {
   return *(float*)&bits;
 }
 
-// Flip flag
 static inline Tag get_typ(Numb word) {
   return word & 0x1F;
 }
@@ -347,6 +232,9 @@ typedef struct Tup {
   Port elem_buf[8];
 } Tup;
 
+// Reads a tuple of `size` elements from `port`.
+// Tuples are con nodes nested to the right auxilliary port,
+// For example, `(CON a (CON b (CON c)))` is a 3-tuple (a, b, c).
 extern Tup readback_tup(Net* net, Book* book, Port port, u32 size);
 
 typedef struct Str {
@@ -354,6 +242,8 @@ typedef struct Str {
   char text_buf[256];
 } Str;
 
+// Reads a constructor-encoded string (of length at most 255 characters),
+// into a null-terminated `Str`.
 extern Str readback_str(Net* net, Book* book, Port port);
 
 typedef struct Bytes {
@@ -361,8 +251,13 @@ typedef struct Bytes {
   char *buf;
 } Bytes;
 
+// Reads a constructor-encoded string (of length at most 256 characters),
+// into a `Bytes`. The returned `Bytes` is not null terminated.
 extern Bytes readback_bytes(Net* net, Book* book, Port port);
 
+// Creates a construtor-encoded string of arbitrary length from the
+// provided `bytes`. This string can be consumed on the HVM-side. This
+// will return an `ERA` if nodes cannot be allocated.
 extern Port inject_bytes(Net* net, Bytes *bytes);
 
 #endif // hvm_h_INCLUDED

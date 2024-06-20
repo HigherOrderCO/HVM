@@ -520,6 +520,11 @@ Port io_dl_open(Net* net, Book* book, Port argm) {
   for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
     if (DYLIBS[dl] == NULL) {
       DYLIBS[dl] = dlopen(str.text_buf, flags);
+      if (DYLIBS[dl] == NULL) {
+        fprintf(stderr, "failed to open dylib '%s': %s\n", str.text_buf, dlerror());
+
+        return new_port(ERA, 0);
+      }
 
       return new_port(NUM, new_u24(dl));
     }
