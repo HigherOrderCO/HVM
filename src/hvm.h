@@ -1,11 +1,8 @@
 #ifndef hvm_h_INCLUDED
 #define hvm_h_INCLUDED
 
-#include <inttypes.h>
 #include <math.h>
-#include <stdatomic.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 // Booleans
 #define TRUE  1
