@@ -286,7 +286,7 @@ FILE* readback_file(Port port) {
 }
 
 // Converts a NUM port (dylib handle) to an opaque dylib object.
-FILE* readback_dylib(Port port) {
+void* readback_dylib(Port port) {
   if (get_tag(port) != NUM) {
     fprintf(stderr, "non-num where dylib handle was expected: %i\n", get_tag(port));
     return NULL;
@@ -294,7 +294,7 @@ FILE* readback_dylib(Port port) {
 
   u32 idx = get_u24(get_val(port));
 
-  FILE* dl = DYLIBS[idx];
+  void* dl = DYLIBS[idx];
   if (dl == NULL) {
     fprintf(stderr, "invalid dylib handle\n");
     return NULL;
@@ -556,7 +556,7 @@ Port io_dl_call(Net* net, Book* book, Port argm) {
 
 // Closes a loaded dylib, reclaiming the handle.
 Port io_dl_close(Net* net, Book* book, Port argm) {
-  FILE* dl = readback_dylib(argm);
+  void* dl = readback_dylib(argm);
   if (dl == NULL) {
     fprintf(stderr, "io_dl_close: invalid handle\n");
     return new_port(ERA, 0);

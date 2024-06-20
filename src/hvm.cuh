@@ -1,12 +1,13 @@
 #ifndef hvm_cuh_INCLUDED
 #define hvm_cuh_INCLUDED
 
+#include <math.h>
 #include <stdint.h>
-#include <stdlib.h>
 
 // Types
 // -----
 
+typedef uint8_t bool;
 typedef  uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -191,7 +192,7 @@ typedef struct Tup {
 // Reads a tuple of `size` elements from `port`.
 // Tuples are con nodes nested to the right auxilliary port,
 // For example, `(CON a (CON b (CON c)))` is a 3-tuple (a, b, c).
-extern Tup gnet_readback_tup(Net* net, Port port, u32 size);
+extern Tup gnet_readback_tup(GNet* gnet, Port port, u32 size);
 
 typedef struct Str {
   u32  text_len;
@@ -200,7 +201,7 @@ typedef struct Str {
 
 // Reads a constructor-encoded string (of length at most 255 characters),
 // into a null-terminated `Str`.
-extern Str gnet_readback_str(GNet* net, Port port);
+extern Str gnet_readback_str(GNet* gnet, Port port);
 
 typedef struct Bytes {
   u32  len;
