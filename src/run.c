@@ -549,7 +549,12 @@ Port io_dl_call(Net* net, Book* book, Port argm) {
   void* dl = readback_dylib(tup.elem_buf[0]);
   Str symbol = readback_str(net, book, tup.elem_buf[1]);
 
+  dlerror();
   Port (*func)(Net*, Book*, Port) = dlsym(dl, symbol.text_buf);
+  char* error = dlerror();
+  if (error != NULL) {
+    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.text_buf, error);
+  }
 
   return func(net, book, tup.elem_buf[2]);
 }
