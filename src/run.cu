@@ -122,12 +122,10 @@ Bytes gnet_readback_bytes(GNet* gnet, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
+
         if (bytes.len == capacity - 1) {
           capacity *= 2;
-          char* new_buf = (char*)malloc(sizeof(char) * capacity);
-          memcpy(new_buf, bytes.buf, bytes.len);
-          free(bytes.buf);
-          bytes.buf = new_buf;
+          bytes.buf = (char*) realloc(bytes.buf, capacity);
         }
 
         bytes.buf[bytes.len++] = get_u24(get_val(ctr.args_buf[0]));

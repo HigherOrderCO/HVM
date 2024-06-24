@@ -124,10 +124,7 @@ Bytes readback_bytes(Net* net, Book* book, Port port) {
 
         if (bytes.len == capacity - 1) {
           capacity *= 2;
-          char* new_buf = malloc(sizeof(char) * capacity);
-          memcpy(new_buf, bytes.buf, bytes.len);
-          free(bytes.buf);
-          bytes.buf = new_buf;
+          bytes.buf = realloc(bytes.buf, capacity);
         }
 
         bytes.buf[bytes.len++] = get_u24(get_val(ctr.args_buf[0]));
