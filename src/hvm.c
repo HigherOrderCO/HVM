@@ -703,14 +703,13 @@ static inline Port vars_take(Net* net, u32 var) {
 // ---
 
 // Initializes a net.
-static inline void net_init(Net* net) {
-  // is that needed?
+static inline Net* net_new() {
+  Net* net = calloc(1, sizeof(Net));
+
   atomic_store(&net->itrs, 0);
   atomic_store(&net->idle, 0);
 
-  memset(net->node_buf, 0, G_NODE_LEN);
-  memset(net->vars_buf, 0, G_VARS_LEN);
-  memset(net->rbag_buf, 0, G_RBAG_LEN);
+  return net;
 }
 
 // Allocator
@@ -1762,8 +1761,7 @@ void hvm_c(u32* book_buffer) {
   }
 
   // GMem
-  Net *net = malloc(sizeof(Net));
-  net_init(net);
+  Net *net = net_new();
 
   // Starts the timer
   u64 start = time64();
