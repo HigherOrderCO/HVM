@@ -242,17 +242,17 @@ __device__ Port inject_bytes(Net* net, TM* tm, Bytes *bytes) {
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
   u32 len = bytes->len;
+
   if (!get_resources(net, tm, 0, 2, 1)) {
-    printf("inject_bytes: failed to get resources\n");
     return new_port(ERA, 0);
   }
   Port port = inject_nil(net, tm);
 
   for (u32 i = 0; i < len; i++) {
     if (!get_resources(net, tm, 0, 4, 1)) {
-      printf("inject_bytes: failed to get resources\n");
       return new_port(ERA, 0);
     }
+
     Port byte = new_port(NUM, new_u24(bytes->buf[len - i - 1]));
     port = inject_cons(net, tm, byte, port);
   }
@@ -262,7 +262,7 @@ __device__ Port inject_bytes(Net* net, TM* tm, Bytes *bytes) {
 
 __global__ void make_bytes_port(GNet* gnet, Bytes bytes, Port* ret) {
   if (GID() == 0) {
-    TM tm;
+    TM tm = tmem_new();
     Net net = vnet_new(gnet, NULL, gnet->turn);
     *ret = inject_bytes(&net, &tm, &bytes);
   }
@@ -578,10 +578,13 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
             break;
           }
         }
+
         if (ffn == NULL) {
           fprintf(stderr, "Unknown IO func '%s'\n", func.text_buf);
           break;
         }
+
+        debug("running io func '%s'\n", func.text_buf);
 
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
