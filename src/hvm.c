@@ -1757,10 +1757,24 @@ void pretty_print_port(Net* net, Book* book, Port port) {
 void do_run_io(Net* net, Book* book, Port port);
 #endif
 
+// Output Net
+// Used by other languages calling `hvm_c`
+// ----
+typedef struct OutputNet {
+  void *original;
+  APair *node_buf;
+  APort *vars_buf;
+  a64 itrs;
+} OutputNet;
+
+void free_output_net_c(OutputNet* net) {
+  free((Net*)net->original);
+  free(net);
+}
+
 // Main
 // ----
-
-void hvm_c(u32* book_buffer) {
+OutputNet* hvm_c(u32* book_buffer, bool return_output) {
   // Creates static TMs
   alloc_static_tms();
 
@@ -1783,33 +1797,50 @@ void hvm_c(u32* book_buffer) {
 
   #ifdef IO
   do_run_io(net, book, ROOT);
+  // IO actions into `stdout` and `stderr` may appear
+  // after Rust `print`s if we don't flush
+  fflush(stdout);
+  fflush(stderr);
   #else
   normalize(net, book);
   #endif
 
-  // Prints the result
-  printf("Result: ");
-  pretty_print_port(net, book, enter(net, ROOT));
-  printf("\n");
-
   // Stops the timer
   double duration = (time64() - start) / 1000000000.0; // seconds
 
-  // Prints interactions and time
-  u64 itrs = atomic_load(&net->itrs);
-  printf("- ITRS: %" PRIu64 "\n", itrs);
-  printf("- TIME: %.2fs\n", duration);
-  printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
+  if (!return_output) {
+    // Prints the result
+    printf("Result: ");
+    pretty_print_port(net, book, enter(net, ROOT));
+    printf("\n");
+  
+    // Prints interactions and time
+    u64 itrs = atomic_load(&net->itrs);
+    printf("- ITRS: %" PRIu64 "\n", itrs);
+    printf("- TIME: %.2fs\n", duration);
+    printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
+  }
 
   // Frees everything
   free_static_tms();
-  free(net);
   free(book);
+
+  if (return_output) {
+    OutputNet *output = malloc(sizeof(OutputNet));
+    output->original = (void*)net;
+    output->node_buf = &net->node_buf[0];
+    output->vars_buf = &net->vars_buf[0];
+    output->itrs = atomic_load(&net->itrs);
+    return output;
+  }
+
+  free(net);
+  return NULL;
 }
 
 #ifdef WITH_MAIN
 int main() {
-  hvm_c((u32*)BOOK_BUF);
+  hvm_c((u32*)BOOK_BUF, NULL);
   return 0;
 }
 #endif

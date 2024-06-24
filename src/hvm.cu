@@ -2281,6 +2281,37 @@ __global__ void print_result(GNet* gnet) {
 
 //COMPILED_BOOK_BUF//
 
+// Output Net
+// Used by other languages calling `hvm_cu`
+// ----
+struct OutputNet {
+  void *original;
+  Pair *node_buf;
+  Port *vars_buf;
+  u64 itrs;
+};
+
+OutputNet* create_output_net(GNet* gnet) {
+  OutputNet* output = (OutputNet*)malloc(sizeof(OutputNet));
+
+  // Allocate host memory for the net
+  GNet* h_gnet = (GNet*)malloc(sizeof(GNet));
+
+  // Copy the net from device to host
+  cudaMemcpy(h_gnet, gnet, sizeof(GNet), cudaMemcpyDeviceToHost);
+
+  output->original = (void*)h_gnet;
+  output->node_buf = h_gnet->node_buf;
+  output->vars_buf = h_gnet->vars_buf;
+  output->itrs = h_gnet->itrs;
+  return output;
+}
+
+extern "C" void free_output_net_cuda(OutputNet* net) {
+  free((GNet*)net->original);
+  free(net);
+}
+
 // Main
 // ----
 
@@ -2288,7 +2319,7 @@ __global__ void print_result(GNet* gnet) {
 void do_run_io(GNet* gnet, Book* book, Port port);
 #endif
 
-extern "C" void hvm_cu(u32* book_buffer) {
+extern "C" OutputNet* hvm_cu(u32* book_buffer, bool return_output) {
   // Start the timer
   clock_t start = clock();
 
@@ -2310,6 +2341,10 @@ extern "C" void hvm_cu(u32* book_buffer) {
 
   #ifdef IO
   do_run_io(gnet, book, ROOT);
+  // IO actions into `stdout` and `stderr` may appear
+  // after Rust `print`s if we don't flush
+  fflush(stdout);
+  fflush(stderr);
   #else
   gnet_normalize(gnet);
   #endif
@@ -2321,7 +2356,10 @@ extern "C" void hvm_cu(u32* book_buffer) {
   double duration = ((double)(end - start)) / CLOCKS_PER_SEC;
 
   // Prints the result
-  print_result<<<1,1>>>(gnet);
+  // If `output` is set, the Rust implementation will print the net
+  if (!return_output) {
+    print_result<<<1,1>>>(gnet);
+  }
 
   // Reports errors
   cudaError_t err = cudaGetLastError();
@@ -2357,15 +2395,21 @@ extern "C" void hvm_cu(u32* book_buffer) {
   //cudaMemcpy(&itrs, &gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
 
   // Prints interactions, time and MIPS
+  // If `output` is set, the Rust implementation will print the net
+  if (return_output) {
+    return create_output_net(gnet);
+  }
+
   printf("- ITRS: %llu\n", gnet_get_itrs(gnet));
   printf("- LEAK: %llu\n", gnet_get_leak(gnet));
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)gnet_get_itrs(gnet) / duration / 1000000.0);
+  return NULL;
 }
 
 #ifdef WITH_MAIN
 int main() {
-  hvm_cu((u32*)BOOK_BUF);
+  hvm_cu((u32*)BOOK_BUF, false);
   return 0;
 }
 #endif

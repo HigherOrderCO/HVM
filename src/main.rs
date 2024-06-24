@@ -3,21 +3,13 @@
 #![allow(unused_variables)]
 
 use clap::{Arg, ArgAction, Command};
-use ::hvm::{ast, cmp, hvm};
+use ::hvm::{ast, cmp, hvm, interop, interop::NetReadback};
 use std::fs;
+use std::alloc;
 use std::io::Write;
 use std::path::PathBuf;
+use std::time::Instant;
 use std::process::Command as SysCommand;
-
-#[cfg(feature = "c")]
-extern "C" {
-  fn hvm_c(book_buffer: *const u32);
-}
-
-#[cfg(feature = "cuda")]
-extern "C" {
-  fn hvm_cu(book_buffer: *const u32);
-}
 
 fn main() {
   let matches = Command::new("hvm")
@@ -69,18 +61,14 @@ fn main() {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-      run(&book);
+      run::<hvm::GNet>(&book);
     }
     Some(("run-c", sub_matches)) => {
       let file = sub_matches.get_one::<String>("file").expect("required");
       let code = fs::read_to_string(file).expect("Unable to read file");
       let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
-      let mut data : Vec<u8> = Vec::new();
-      book.to_buffer(&mut data);
       #[cfg(feature = "c")]
-      unsafe {
-        hvm_c(data.as_mut_ptr() as *mut u32);
-      }
+      run::<interop::NetC>(&book);
       #[cfg(not(feature = "c"))]
       println!("C runtime not available!\n");
     }
@@ -91,9 +79,7 @@ fn main() {
       let mut data : Vec<u8> = Vec::new();
       book.to_buffer(&mut data);
       #[cfg(feature = "cuda")]
-      unsafe {
-        hvm_cu(data.as_mut_ptr() as *mut u32);
-      }
+      run::<interop::NetCuda>(&book);
       #[cfg(not(feature = "cuda"))]
       println!("CUDA runtime not available!\n If you've installed CUDA and nvcc after HVM, please reinstall HVM.");
     }
@@ -157,39 +143,28 @@ fn main() {
   }
 }
 
-pub fn run(book: &hvm::Book) {
-  // Initializes the global net
-  let net = hvm::GNet::new(1 << 29, 1 << 29);
+pub fn run<N: NetReadback>(book: &hvm::Book) {
+  // Start timer
+  let timer = Instant::now();
 
-  // Initializes threads
-  let mut tm = hvm::TMem::new(0, 1);
-
-  // Creates an initial redex that calls main
-  let main_id = book.defs.iter().position(|def| def.name == "main").unwrap();
-  tm.rbag.push_redex(hvm::Pair::new(hvm::Port::new(hvm::REF, main_id as u32), hvm::ROOT));
-  net.vars_create(hvm::ROOT.get_val() as usize, hvm::NONE);
-
-  // Starts the timer
-  let start = std::time::Instant::now();
-
-  // Evaluates
-  tm.evaluator(&net, &book);
+  // Normalize net
+  let mut net = N::run(book);
   
   // Stops the timer
-  let duration = start.elapsed();
+  let duration = timer.elapsed();
 
   //println!("{}", net.show());
 
   // Prints the result
-  if let Some(tree) = ast::Net::readback(&net, book) {
+  if let Some(tree) = ast::Net::readback(&mut net, book) {
     println!("Result: {}", tree.show());
   } else {
     println!("Readback failed. Printing GNet memdump...\n");
-    println!("{}", net.show());
+    // println!("{}", net.show());
   }
 
   // Prints interactions and time
-  let itrs = net.itrs.load(std::sync::atomic::Ordering::Relaxed);
+  let itrs = net.itrs();
   println!("- ITRS: {}", itrs);
   println!("- TIME: {:.2}s", duration.as_secs_f64());
   println!("- MIPS: {:.2}", itrs as f64 / duration.as_secs_f64() / 1_000_000.0);
