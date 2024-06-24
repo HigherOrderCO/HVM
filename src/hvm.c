@@ -10,7 +10,7 @@
 #ifdef DEBUG
   #define debug(...) fprintf(stderr, __VA_ARGS__)
 #else
-  #define debug(x)
+  #define debug(...)
 #endif
 
 #define INTERPRETED
@@ -596,7 +596,7 @@ static inline void push_redex(Net* net, TM* tm, Pair redex) {
   bool free_local = tm->hput < HLEN;
   bool free_global = tm->rput < RLEN;
   if (!free_global || !free_local) {
-    debugln("push_redex: limited resources, maybe corrupting memory\n");
+    debug("push_redex: limited resources, maybe corrupting memory\n");
   }
   #endif
 
