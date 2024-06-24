@@ -1,4 +1,3 @@
-//#include <dlfcn.h>
 #include <inttypes.h>
 #include <math.h>
 #include <pthread.h>
@@ -8,6 +7,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef DEBUG
+  #define debug(...) fprintf(stderr, __VA_ARGS__)
+#else
+  #define debug(x)
+#endif
+
 #define INTERPRETED
 #define WITHOUT_MAIN
 
@@ -15,20 +20,20 @@
 #define TRUE  1
 #define FALSE 0
 
-// Integers
+// Types
 // --------
 
 typedef uint8_t bool;
 
 typedef  uint8_t  u8;
 typedef uint16_t u16;
-typedef  int32_t i32;
 typedef uint32_t u32;
 typedef uint64_t u64;
+typedef  int32_t i32;
 typedef    float f32;
 typedef   double f64;
 
-typedef _Atomic(u8) a8;
+typedef  _Atomic(u8)  a8;
 typedef _Atomic(u16) a16;
 typedef _Atomic(u32) a32;
 typedef _Atomic(u64) a64;
@@ -132,6 +137,9 @@ typedef struct Net {
   a32 idle; // idle thread counter
 } Net;
 
+#define DEF_RBAG_LEN 0xFFF
+#define DEF_NODE_LEN 0xFFF
+
 // Top-Level Definition
 typedef struct Def {
   char name[256];
@@ -140,8 +148,8 @@ typedef struct Def {
   u32  node_len;
   u32  vars_len;
   Port root;
-  Pair rbag_buf[0xFFF];
-  Pair node_buf[0xFFF];
+  Pair node_buf[DEF_NODE_LEN];
+  Pair rbag_buf[DEF_RBAG_LEN];
 } Def;
 
 typedef struct Book Book;
@@ -169,8 +177,8 @@ typedef struct TM {
   u32  hput; // next hbag push index
   u32  rput; // next rbag push index
   u32  sidx; // steal index
-  u32  nloc[0xFFF]; // node allocation indices
-  u32  vloc[0xFFF]; // vars allocation indices
+  u32  nloc[0xFFF]; // global node allocation indices
+  u32  vloc[0xFFF]; // global vars allocation indices
   Pair hbag_buf[HLEN]; // high-priority redexes
 } TM;
 
@@ -184,11 +192,9 @@ typedef struct {
 void put_u16(char* B, u16 val);
 Show show_port(Port port);
 Show show_rule(Rule rule);
-//void print_rbag(RBag* rbag);
 void print_net(Net* net);
 void pretty_print_numb(Numb word);
 void pretty_print_port(Net* net, Book* book, Port port);
-//void pretty_print_rbag(Net* net, RBag* rbag);
 
 // Port: Constructor and Getters
 // -----------------------------
@@ -342,6 +348,7 @@ static inline bool should_swap(Port A, Port B) {
 
 // Gets a rule's priority
 static inline bool is_high_priority(Rule rule) {
+  // TODO: this needs to be more readable
   return (bool)((0b00011101 >> rule) & 1);
 }
 
@@ -585,6 +592,14 @@ static inline Numb operate(Numb a, Numb b) {
 // FIXME: what about some bound checks?
 
 static inline void push_redex(Net* net, TM* tm, Pair redex) {
+  #ifdef DEBUG
+  bool free_local = tm->hput < HLEN;
+  bool free_global = tm->rput < RLEN;
+  if (!free_global || !free_local) {
+    debugln("push_redex: limited resources, maybe corrupting memory\n");
+  }
+  #endif
+
   if (is_high_priority(get_pair_rule(redex))) {
     tm->hbag_buf[tm->hput++] = redex;
   } else {
@@ -692,6 +707,10 @@ static inline void net_init(Net* net) {
   // is that needed?
   atomic_store(&net->itrs, 0);
   atomic_store(&net->idle, 0);
+
+  memset(net->node_buf, 0, G_NODE_LEN);
+  memset(net->vars_buf, 0, G_VARS_LEN);
+  memset(net->rbag_buf, 0, G_RBAG_LEN);
 }
 
 // Allocator
@@ -757,9 +776,10 @@ u32 vars_alloc(Net* net, TM* tm, u32 num) {
 
 // Gets the necessary resources for an interaction. Returns success.
 static inline bool get_resources(Net* net, TM* tm, u32 need_rbag, u32 need_node, u32 need_vars) {
-  u32 got_rbag = 0xFF; // FIXME: implement
+  u32 got_rbag = min(RLEN - tm->rput, HLEN - tm->hput);
   u32 got_node = node_alloc(net, tm, need_node);
   u32 got_vars = vars_alloc(net, tm, need_vars);
+
   return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
 }
 
@@ -796,8 +816,6 @@ static inline Port enter(Net* net, Port var) {
 
 // Atomically Links `A ~ B`.
 static inline void link(Net* net, TM* tm, Port A, Port B) {
-  //printf("LINK %s ~> %s\n", show_port(A).x, show_port(B).x);
-
   // Attempts to directionally point `A ~> B`
   while (TRUE) {
     // If `A` is NODE: swap `A` and `B`, and continue
@@ -815,24 +833,21 @@ static inline void link(Net* net, TM* tm, Port A, Port B) {
     B = enter(net, B);
 
     // Since `A` is VAR: point `A ~> B`.
-    if (TRUE) {
-      // Stores `A -> B`, taking the current `A` subst as `A'`
-      Port A_ = vars_exchange(net, get_val(A), B);
-      // If there was no `A'`, stop, as we lost B's ownership
-      if (A_ == NONE) {
-        break;
-      }
-      //if (A_ == 0) { ? } // FIXME: must handle on the move-to-global algo
-      // Otherwise, delete `A` (we own both) and link `A' ~ B`
-      vars_take(net, get_val(A));
-      A = A_;
+    // Stores `A -> B`, taking the current `A` subst as `A'`
+    Port A_ = vars_exchange(net, get_val(A), B);
+    // If there was no `A'`, stop, as we lost B's ownership
+    if (A_ == NONE) {
+      break;
     }
+    //if (A_ == 0) { ? } // FIXME: must handle on the move-to-global algo
+    // Otherwise, delete `A` (we own both) and link `A' ~ B`
+    vars_take(net, get_val(A));
+    A = A_;
   }
 }
 
 // Links `A ~ B` (as a pair).
 static inline void link_pair(Net* net, TM* tm, Pair AB) {
-  //printf("link_pair %016llx\n", AB);
   link(net, tm, get_fst(AB), get_snd(AB));
 }
 
@@ -843,6 +858,7 @@ static inline void link_pair(Net* net, TM* tm, Pair AB) {
 static inline bool interact_link(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 0, 0)) {
+    debug("interact_link: get_resources failed\n");
     return FALSE;
   }
 
@@ -871,19 +887,18 @@ static inline bool interact_call(Net* net, TM* tm, Port a, Port b, Book* book) {
 
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, def->rbag_len + 1, def->node_len, def->vars_len)) {
+    debug("interact_call: get_resources failed\n");
     return FALSE;
   }
 
   // Stores new vars.
   for (u32 i = 0; i < def->vars_len; ++i) {
     vars_create(net, tm->vloc[i], NONE);
-    //printf("vars_create vloc[%04x] %04x\n", i, tm->vloc[i]);
   }
 
   // Stores new nodes.
   for (u32 i = 0; i < def->node_len; ++i) {
     node_create(net, tm->nloc[i], adjust_pair(net, tm, def->node_buf[i]));
-    //printf("node_create nloc[%04x] %08llx\n", i-1, def->node_buf[i]);
   }
 
   // Links.
@@ -905,12 +920,12 @@ static inline bool interact_void(Net* net, TM* tm, Port a, Port b) {
 static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
+    debug("interact_eras: get_resources failed\n");
     return FALSE;
   }
 
   // Checks availability
   if (node_load(net, get_val(b)) == 0) {
-    //printf("[%04x] unavailable0: %s\n", tid, show_port(b).x);
     return FALSE;
   }
 
@@ -918,8 +933,6 @@ static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_exchange(net, get_val(b), 0);
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-
-  //if (B == 0) printf("[%04x] ERROR2: %s\n", tid, show_port(b).x);
 
   // Links.
   link_pair(net, tm, new_pair(a, B1));
@@ -932,13 +945,12 @@ static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
 static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
+    debug("interact_anni: get_resources failed\n");
     return FALSE;
   }
 
   // Checks availability
   if (node_load(net, get_val(a)) == 0 || node_load(net, get_val(b)) == 0) {
-    //printf("[%04x] unavailable1: %s | %s\n", tid, show_port(a).x, show_port(b).x);
-    //printf("BBB\n");
     return FALSE;
   }
 
@@ -949,9 +961,6 @@ static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-
-  //if (A == 0) printf("[%04x] ERROR3: %s\n", tid, show_port(a).x);
-  //if (B == 0) printf("[%04x] ERROR4: %s\n", tid, show_port(b).x);
 
   // Links.
   link_pair(net, tm, new_pair(A1, B1));
@@ -964,12 +973,12 @@ static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
 static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 4, 4, 4)) {
+    debug("interact_comm: get_resources failed\n");
     return FALSE;
   }
 
   // Checks availability
   if (node_load(net, get_val(a)) == 0 || node_load(net, get_val(b)) == 0) {
-    //printf("[%04x] unavailable2: %s | %s\n", tid, show_port(a).x, show_port(b).x);
     return FALSE;
   }
 
@@ -980,9 +989,6 @@ static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
   Port B2 = get_snd(B);
-
-  //if (A == 0) printf("[%04x] ERROR5: %s\n", tid, show_port(a).x);
-  //if (B == 0) printf("[%04x] ERROR6: %s\n", tid, show_port(b).x);
 
   // Stores new vars.
   vars_create(net, tm->vloc[0], NONE);
@@ -1007,10 +1013,9 @@ static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
 
 // The Oper Interaction.
 static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
-  //printf("OPER %08x %08x\n", a, b);
-
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 1, 0)) {
+    debug("interact_oper: get_resources failed\n");
     return FALSE;
   }
 
@@ -1042,6 +1047,7 @@ static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
 static inline bool interact_swit(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 2, 0)) {
+    debug("interact_swit: get_resources failed\n");
     return FALSE;
   }
 
@@ -1091,8 +1097,6 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
       swap(&a, &b);
     }
 
-    //printf("[%04x] REDUCE %s ~ %s | %s\n", tm->tid, show_port(a).x, show_port(b).x, show_rule(rule).x);
-
     // Dispatches interaction rule.
     bool success;
     switch (rule) {
@@ -1126,18 +1130,6 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
 // Evaluator
 // ---------
 
-//void evaluator(Net* net, TM* tm, Book* book) {
-  //u32 turn = 0;
-  //while (rbag_len(&tm->rbag) > 0 && ++turn < 0x10000000) {
-    //interact(net, tm, book);
-    //while (rbag_has_highs(&tm->rbag)) {
-      //if (!interact(net, tm, book)) break;
-    //}
-  //}
-  //atomic_fetch_add(&net->itrs, tm->itrs);
-  //tm->itrs = 0;
-//}
-
 void evaluator(Net* net, TM* tm, Book* book) {
   // Initializes the global idle counter
   atomic_store_explicit(&net->idle, TPC - 1, memory_order_relaxed);
@@ -1149,15 +1141,18 @@ void evaluator(Net* net, TM* tm, Book* book) {
   while (TRUE) {
     tick += 1;
 
-    //if (tm->tid == 1) printf("think %d\n", rbag_len(net, tm));
-
     // If we have redexes...
     if (rbag_len(net, tm) > 0) {
       // Update global idle counter
       if (!busy) atomic_fetch_sub_explicit(&net->idle, 1, memory_order_relaxed);
       busy = TRUE;
+
       // Perform an interaction
+      #ifdef DEBUG
+      if (!interact(net, tm, book)) debug("interaction failed\n");
+      #else
       interact(net, tm, book);
+      #endif
     // If we have no redexes...
     } else {
       // Update global idle counter
@@ -1165,37 +1160,16 @@ void evaluator(Net* net, TM* tm, Book* book) {
       busy = FALSE;
 
       //// Peeks a redex from target
-      u32  sid = (tm->tid - 1) % TPC;
-      u32  idx = sid*(G_RBAG_LEN/TPC) + (tm->sidx++);
-
-      // Steal Parallel: this will only steal parallel redexes
-
-      //Pair trg = atomic_load_explicit(&net->rbag_buf[idx], memory_order_relaxed);
-      //// If we're ahead of target, reset
-      //if (trg == 0) {
-        //tm->sidx = 0;
-      //// If the redex is parallel, attempt to steal it
-      //} else if (get_par_flag(trg)) {
-        //bool stolen = atomic_compare_exchange_weak_explicit(&net->rbag_buf[idx], &trg, 0, memory_order_relaxed, memory_order_relaxed);
-        //if (stolen) {
-          //push_redex(net, tm, trg);
-        //} else {
-          //// do nothing: will sched_yield
-        //}
-      //// If we see a non-stealable redex, try the next one
-      //} else {
-        //continue;
-      //}
+      u32 sid = (tm->tid - 1) % TPC;
+      u32 idx = sid*(G_RBAG_LEN/TPC) + (tm->sidx++);
 
       // Stealing Everything: this will steal all redexes
 
       Pair got = atomic_exchange_explicit(&net->rbag_buf[idx], 0, memory_order_relaxed);
       if (got != 0) {
-        //printf("[%04x] stolen one task from %04x | itrs=%d idle=%d | %s ~ %s\n", tm->tid, sid, tm->itrs, atomic_load_explicit(&net->idle, memory_order_relaxed),show_port(get_fst(got)).x, show_port(get_snd(got)).x);
         push_redex(net, tm, got);
         continue;
       } else {
-        //printf("[%04x] failed to steal from %04x | itrs=%d idle=%d |\n", tm->tid, sid, tm->itrs, atomic_load_explicit(&net->idle, memory_order_relaxed));
         tm->sidx = 0;
       }
 
@@ -1437,7 +1411,7 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
 // Book Loader
 // -----------
 
-void book_load(Book* book, u32* buf) {
+bool book_load(Book* book, u32* buf) {
   // Reads defs_len
   book->defs_len = *buf++;
 
@@ -1461,6 +1435,16 @@ void book_load(Book* book, u32* buf) {
     def->node_len = *buf++;
     def->vars_len = *buf++;
 
+    if (def->rbag_len >= DEF_RBAG_LEN) {
+      fprintf(stderr, "def '%s' has too many redexes: %u\n", def->name, def->rbag_len);
+      return FALSE;
+    }
+
+    if (def->node_len >= DEF_NODE_LEN) {
+      fprintf(stderr, "def '%s' has too many nodes: %u\n", def->name, def->node_len);
+      return FALSE;
+    }
+
     // Reads root
     def->root = *buf++;
 
@@ -1472,6 +1456,8 @@ void book_load(Book* book, u32* buf) {
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
   }
+
+  return TRUE;
 }
 
 // Debug Printing
@@ -1768,15 +1754,19 @@ void hvm_c(u32* book_buffer) {
   Book* book = NULL;
   if (book_buffer) {
     book = (Book*)malloc(sizeof(Book));
-    book_load(book, book_buffer);
-  }
+    if (!book_load(book, book_buffer)) {
+      fprintf(stderr, "failed to load book, quitting\n");
 
-  // Starts the timer
-  u64 start = time64();
+      return;
+    }
+  }
 
   // GMem
   Net *net = malloc(sizeof(Net));
   net_init(net);
+
+  // Starts the timer
+  u64 start = time64();
 
   // Creates an initial redex that calls main
   boot_redex(net, new_pair(new_port(REF, 0), ROOT));
