@@ -1,7 +1,8 @@
 use TSPL::{new_parser, Parser};
 use highlight_error::highlight_error;
 use crate::hvm;
-use std::{collections::BTreeMap, fmt::{Debug, Display}};
+use std::fmt::{Debug, Display};
+use std::collections::{BTreeMap, BTreeSet};
 
 // Types
 // -----
@@ -43,8 +44,22 @@ impl<'i> CoreParser<'i> {
   pub fn parse_numb_sym(&mut self) -> Result<Numb, String> {
     self.consume("[")?;
 
+    // numeric casts
+    if let Some(cast) = match () {
+      _ if self.try_consume("u24") => Some(hvm::TY_U24),
+      _ if self.try_consume("i24") => Some(hvm::TY_I24),
+      _ if self.try_consume("f24") => Some(hvm::TY_F24),
+      _ => None
+    } {
+      // Casts can't be partially applied, so nothing should follow.
+      self.consume("]")?;
+
+      return Ok(Numb(hvm::Numb::new_sym(cast).0));
+    }
+
     // Parses the symbol
     let op = hvm::Numb::new_sym(match () {
+      // numeric operations
       _ if self.try_consume("+")   => hvm::OP_ADD,
       _ if self.try_consume("-")   => hvm::OP_SUB,
       _ if self.try_consume(":-")  => hvm::FP_SUB,
@@ -107,7 +122,7 @@ impl<'i> CoreParser<'i> {
       input.parse::<u64>().map_err(|err| format!("{err:?}"))
     }
   }
-  
+
   pub fn parse_numb(&mut self) -> Result<Numb, String> {
     self.skip_trivia();
 
@@ -194,7 +209,7 @@ impl<'i> CoreParser<'i> {
     }
     Ok(Net { root, rbag })
   }
-  
+
   pub fn parse_book(&mut self) -> Result<Book, String> {
     let mut defs = BTreeMap::new();
     while !self.is_eof() {
@@ -224,6 +239,11 @@ impl Numb {
     let numb = hvm::Numb(self.0);
     match numb.get_typ() {
       hvm::TY_SYM => match numb.get_sym() as hvm::Tag {
+        // casts
+        hvm::TY_U24 => "[u24]".to_string(),
+        hvm::TY_I24 => "[i24]".to_string(),
+        hvm::TY_F24 => "[f24]".to_string(),
+        // operations
         hvm::OP_ADD => "[+]".to_string(),
         hvm::OP_SUB => "[-]".to_string(),
         hvm::FP_SUB => "[:-]".to_string(),
@@ -270,9 +290,9 @@ impl Numb {
       _ => {
         let typ = numb.get_typ();
         let val = numb.get_u24();
-        format!("[{}{:07X}]", match typ {
+        format!("[{}0x{:07X}]", match typ {
           hvm::OP_ADD => "+",
-          hvm::OP_SUB => "-", 
+          hvm::OP_SUB => "-",
           hvm::FP_SUB => ":-",
           hvm::OP_MUL => "*",
           hvm::OP_DIV => "/",
@@ -362,7 +382,7 @@ impl Tree {
         return Some(Tree::Era);
       }
       hvm::NUM => {
-        return Some(Tree::Num { val: Numb(port.get_val()) });  
+        return Some(Tree::Num { val: Numb(port.get_val()) });
       }
       hvm::CON => {
         let pair = net.node_load(port.get_val() as usize);
@@ -386,7 +406,7 @@ impl Tree {
         let pair = net.node_load(port.get_val() as usize);
         let fst = Tree::readback(net, pair.get_fst(), fids)?;
         let snd = Tree::readback(net, pair.get_snd(), fids)?;
-        return Some(Tree::Swi { fst: Box::new(fst), snd: Box::new(snd) }); 
+        return Some(Tree::Swi { fst: Box::new(fst), snd: Box::new(snd) });
       }
       _ => {
         unreachable!()
@@ -469,6 +489,25 @@ impl Tree {
       },
     }
   }
+
+  pub fn direct_dependencies<'name>(&'name self) -> BTreeSet<&'name str> {
+    let mut stack: Vec<&Tree> = vec![self];
+    let mut acc: BTreeSet<&'name str> = BTreeSet::new();
+    
+    while let Some(curr) = stack.pop() {
+      match curr {
+        Tree::Ref { nam } => { acc.insert(nam); },
+        Tree::Con { fst, snd } => { stack.push(fst); stack.push(snd); },
+        Tree::Dup { fst, snd } => { stack.push(fst); stack.push(snd); },
+        Tree::Opr { fst, snd } => { stack.push(fst); stack.push(snd); },
+        Tree::Swi { fst, snd } => { stack.push(fst); stack.push(snd); },
+        Tree::Num { val } => {},
+        Tree::Var { nam } => {},
+        Tree::Era => {},
+      };
+    }
+    acc
+  }
 }
 
 impl Net {
@@ -517,6 +556,82 @@ impl Book {
       ast_def.build(&mut def, &name_to_fid, &mut BTreeMap::new());
       book.defs.push(def);
     }
+    self.propagate_safety(&mut book, &name_to_fid);
     return book;
+  }
+
+  /// Propagate unsafe definitions to those that reference them.
+  ///
+  /// When calling this function, it is expected that definitions that are directly
+  /// unsafe are already marked as such in the `compiled_book`.
+  /// 
+  /// This does not completely solve the cloning safety in HVM. It only stops invalid
+  /// **global** definitions from being cloned, but local unsafe code can still be
+  /// cloned and can generate seemingly unexpected results, such as placing eraser
+  /// nodes in weird places. See HVM issue [#362](https://github.com/HigherOrderCO/HVM/issues/362)
+  /// for an example.
+  fn propagate_safety(&self, compiled_book: &mut hvm::Book, lookup: &BTreeMap<String, u32>) {
+    let dependents = self.direct_dependents();
+    let mut stack: Vec<&str> = Vec::new();
+
+    for (name, _) in self.defs.iter() {
+      let def = &mut compiled_book.defs[lookup[name] as usize];
+      if !def.safe {
+        for next in dependents[name.as_str()].iter() {
+          stack.push(next);
+        }
+      }
+    }
+
+    while let Some(curr) = stack.pop() {
+      let def = &mut compiled_book.defs[lookup[curr] as usize];
+      if !def.safe {
+        // Already visited, skip this
+        continue;
+      }
+
+      def.safe = false;
+
+      for &next in dependents[curr].iter() {
+        stack.push(next);
+      }
+    }
+  }
+
+  /// Calculates the dependents of each definition, that is, if definition `A`
+  /// requires `B`, `B: A` is in the return map. This is used to propagate unsafe
+  /// definitions to others that depend on them.
+  /// 
+  /// This solution has linear complexity on the number of definitions in the
+  /// book and the number of direct references in each definition, but it also
+  /// traverses each definition's trees entirely once.
+  ///
+  /// Complexity: O(d*t + r)
+  /// - `d` is the number of definitions in the book
+  /// - `r` is the number of direct references in each definition
+  /// - `t` is the number of nodes in each tree
+  fn direct_dependents<'name>(&'name self) -> BTreeMap<&'name str, BTreeSet<&'name str>> {
+    let mut result = BTreeMap::new();
+    for (name, _) in self.defs.iter() {
+      result.insert(name.as_str(), BTreeSet::new());
+    }
+
+    let mut process = |tree: &'name Tree, name: &'name str| {
+      for dependency in tree.direct_dependencies() {
+        result
+          .get_mut(dependency)
+          .expect("global definition depends on undeclared reference")
+          .insert(name);
+      }
+    };
+
+    for (name, net) in self.defs.iter() {
+      process(&net.root, name);
+      for (_, r1, r2) in net.rbag.iter() {
+        process(r1, name);
+        process(r2, name);
+      }
+    }
+    result
   }
 }

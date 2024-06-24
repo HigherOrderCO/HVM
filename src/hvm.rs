@@ -25,6 +25,10 @@ pub struct APair(pub AtomicU64);
 
 // Number
 pub struct Numb(pub Val);
+const U24_MAX : u32 = (1 << 24) - 1;
+const U24_MIN : u32 = 0;
+const I24_MAX : i32 = (1 << 23) - 1;
+const I24_MIN : i32 = (-1) << 23;
 
 // Tags
 pub const VAR : Tag = 0x0; // variable
@@ -229,7 +233,7 @@ impl Numb {
   }
 
   // U24: unsigned 24-bit integer
-  
+
   pub fn new_u24(val: u32) -> Self {
     Numb((val << 5) as Val | (TY_U24 as Val))
   }
@@ -249,7 +253,7 @@ impl Numb {
   }
 
   // F24: 24-bit float
-  
+
   pub fn new_f24(val: f32) -> Self {
     let bits = val.to_bits();
     let mut shifted_bits = bits >> 8;
@@ -266,16 +270,47 @@ impl Numb {
   }
 
   // Gets the numeric type.
-
   pub fn get_typ(&self) -> Tag {
-    return (self.0 & 0x1F) as Tag;
+    (self.0 & 0x1F) as Tag
   }
 
-  // Flip flag.
+  pub fn is_num(&self) -> bool {
+    self.get_typ() >= TY_U24 && self.get_typ() <= TY_F24
+  }
+
+  pub fn is_cast(&self) -> bool {
+    self.get_typ() == TY_SYM && self.get_sym() >= TY_U24 && self.get_sym() <= TY_F24
+  }
 
   // Partial application.
   pub fn partial(a: Self, b: Self) -> Self {
-    return Numb((b.0 & !0x1F) | a.get_sym() as u32);
+    Numb((b.0 & !0x1F) | a.get_sym() as u32)
+  }
+
+  // Cast a number to another type.
+  // The semantics are meant to spiritually resemble rust's numeric casts:
+  // - i24 <-> u24: is just reinterpretation of bits
+  // - f24  -> i24,
+  //   f24  -> u24: casts to the "closest" integer representing this float,
+  //                saturating if out of range and 0 if NaN
+  // - i24  -> f24,
+  //   u24  -> f24: casts to the "closest" float representing this integer.
+  pub fn cast(a: Self, b: Self) -> Self {
+    match (a.get_sym(), b.get_typ()) {
+      (TY_U24, TY_U24) => b,
+      (TY_U24, TY_I24) => Self::new_u24(b.get_i24() as u32),
+      (TY_U24, TY_F24) => Self::new_u24((b.get_f24() as u32).clamp(U24_MIN, U24_MAX)),
+
+      (TY_I24, TY_U24) => Self::new_i24(b.get_u24() as i32),
+      (TY_I24, TY_I24) => b,
+      (TY_I24, TY_F24) => Self::new_i24((b.get_f24() as i32).clamp(I24_MIN, I24_MAX)),
+
+      (TY_F24, TY_U24) => Self::new_f24(b.get_u24() as f32),
+      (TY_F24, TY_I24) => Self::new_f24(b.get_i24() as f32),
+      (TY_F24, TY_F24) => b,
+      // invalid cast
+      (_, _) => Self::new_u24(0),
+    }
   }
 
   pub fn operate(a: Self, b: Self) -> Self {
@@ -284,6 +319,12 @@ impl Numb {
     let bt = b.get_typ();
     if at == TY_SYM && bt == TY_SYM {
       return Numb::new_u24(0);
+    }
+    if a.is_cast() && b.is_num() {
+      return Numb::cast(a, b);
+    }
+    if b.is_cast() && a.is_num() {
+      return Numb::cast(b, a);
     }
     if at == TY_SYM && bt != TY_SYM {
       return Numb::partial(a, b);
@@ -320,7 +361,7 @@ impl Numb {
           OP_XOR => Numb::new_u24(av ^ bv),
           OP_SHL => Numb::new_u24(av << (bv & 31)),
           OP_SHR => Numb::new_u24(av >> (bv & 31)),
-          FP_SHL => Numb::new_u24(bv << (av & 31)), 
+          FP_SHL => Numb::new_u24(bv << (av & 31)),
           FP_SHR => Numb::new_u24(bv >> (av & 31)),
           _      => unreachable!(),
         }
@@ -366,6 +407,8 @@ impl Numb {
           OP_AND => Numb::new_f24(av.atan2(bv)),
           OP_OR  => Numb::new_f24(bv.log(av)),
           OP_XOR => Numb::new_f24(av.powf(bv)),
+          OP_SHL => Numb::new_f24((av + bv).sin()),
+          OP_SHR => Numb::new_f24((av + bv).tan()),
           _      => unreachable!(),
         }
       }
@@ -442,7 +485,7 @@ impl<'a> GNet<'a> {
   pub fn vars_store(&self, var: usize, val: Port) {
     self.vars[var].0.store(val.0, Ordering::Relaxed);
   }
-  
+
   pub fn node_exchange(&self, loc: usize, val: Pair) -> Pair {
     Pair(self.node[loc].0.swap(val.0, Ordering::Relaxed))
   }
@@ -512,7 +555,7 @@ impl TMem {
       rbag: RBag::new(),
     }
   }
-  
+
   pub fn node_alloc(&mut self, net: &GNet, num: usize) -> usize {
     let mut got = 0;
     for _ in 0..net.nlen {
@@ -603,7 +646,7 @@ impl TMem {
 
     // Links.
     self.link_pair(net, Pair::new(a, b));
-    
+
     true
   }
 
@@ -649,7 +692,7 @@ impl TMem {
       self.link_pair(net, pair.adjust_pair(self));
     }
     self.link_pair(net, Pair::new(def.root.adjust_port(self), b));
-  
+
     true
   }
 
@@ -678,7 +721,7 @@ impl TMem {
     // Links.
     self.link_pair(net, Pair::new(a, b1));
     self.link_pair(net, Pair::new(a, b2));
-    
+
     true
   }
 
@@ -728,7 +771,7 @@ impl TMem {
     let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
     let b2 = b_.get_snd();
-      
+
     // Stores new vars.
     net.vars_create(self.vloc[0], NONE);
     net.vars_create(self.vloc[1], NONE);
@@ -746,7 +789,7 @@ impl TMem {
     self.link_pair(net, Pair::new(Port::new(b.get_tag(), self.nloc[1] as u32), a2));
     self.link_pair(net, Pair::new(Port::new(a.get_tag(), self.nloc[2] as u32), b1));
     self.link_pair(net, Pair::new(Port::new(a.get_tag(), self.nloc[3] as u32), b2));
-    
+
     true
   }
 
@@ -768,7 +811,7 @@ impl TMem {
     let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
     let b2 = net.enter(b_.get_snd());
-     
+
     // Performs operation.
     if b1.get_tag() == NUM {
       let bv = b1.get_val();
@@ -788,7 +831,7 @@ impl TMem {
     if !self.get_resources(net, 1, 2, 0) {
       return false;
     }
-  
+
     // Checks availability
     if net.node_load(b.get_val() as usize).0 == 0 {
       return false;
@@ -799,7 +842,7 @@ impl TMem {
     let b_ = net.node_take(b.get_val() as usize);
     let b1 = b_.get_fst();
     let b2 = b_.get_snd();
- 
+
     // Stores new nodes.
     if av == 0 {
       net.node_create(self.nloc[0], Pair::new(b2, Port::new(ERA,0)));
@@ -936,13 +979,13 @@ impl Book {
 
       // Writes the rbag length
       buf.extend_from_slice(&(def.rbag.len() as u32).to_ne_bytes());
-      
+
       // Writes the node length
       buf.extend_from_slice(&(def.node.len() as u32).to_ne_bytes());
 
       // Writes the vars length
       buf.extend_from_slice(&(def.vars as u32).to_ne_bytes());
-      
+
       // Writes the root
       buf.extend_from_slice(&def.root.0.to_ne_bytes());
 

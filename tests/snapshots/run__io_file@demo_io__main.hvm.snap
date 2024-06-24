@@ -1,0 +1,8 @@
+---
+source: tests/run.rs
+expression: c_output
+input_file: examples/demo_io/main.hvm
+---
+What is your name?
+io fr from
+Result: 42

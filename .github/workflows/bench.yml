@@ -1,0 +1,75 @@
+name: Bench
+
+on:
+  pull_request:
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: [self-hosted, cuda]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v3
+      - name: compare perf
+        run: |
+          git fetch origin main
+          git clone https://github.com/HigherOrderCO/hvm-bench
+          cd hvm-bench
+          NO_COLOR=1 cargo run bench --repo-dir ../ -r main --timeout 20 > ../table
+        shell: bash -l {0}
+      - name: write comment
+        run: |
+          echo 'Perf run for [`'`git rev-parse --short ${{ github.sha }}`'`](https://github.com/higherorderco/HVM/commit/${{ github.sha }}):' >> comment
+          echo '```' >> comment
+          cat table >> comment
+          echo '```' >> comment
+      - name: post comment
+        run: gh pr comment ${{ github.event.number }} -F comment
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+      - name: hide old comment
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+        run: |
+          COMMENT_ID=$(
+            gh api graphql -F pr=${{ github.event.number }} -f query='
+              query($pr: Int!) {
+                organization(login: "higherorderco") {
+                  repository(name: "HVM") {
+                    pullRequest(number: $pr) {
+                      comments(last: 100) {
+                        nodes { id author { login } }
+                      }
+                    }
+                  }
+                }
+            }
+            ' \
+            | jq -r '
+              [
+                .data.organization.repository.pullRequest.comments.nodes | .[]
+                | select(.author.login == "HigherOrderBot")
+                | .id
+              ] | .[-2]
+            '
+          )
+
+          if [ $COMMENT_ID != null ]
+          then
+            gh api graphql -F id=$COMMENT_ID -f query='
+              mutation($id: ID!) {
+                minimizeComment(input: {
+                  subjectId: $id,
+                  classifier: OUTDATED,
+                }) { minimizedComment { ...on Comment { id } } }
+              }
+            '
+          fi
+      - name: delete on cancel
+        if: ${{ cancelled() }}
+        run: gh workflow run delete-cancelled.yml -f run_id=${{ github.run_id }}
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}

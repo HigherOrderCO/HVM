@@ -11,6 +11,10 @@
 #define INTERPRETED
 #define WITHOUT_MAIN
 
+// Booleans
+#define TRUE  1
+#define FALSE 0
+
 // Integers
 // --------
 
@@ -21,6 +25,8 @@ typedef uint16_t u16;
 typedef  int32_t i32;
 typedef uint32_t u32;
 typedef uint64_t u64;
+typedef    float f32;
+typedef   double f64;
 
 typedef _Atomic(u8) a8;
 typedef _Atomic(u16) a16;
@@ -75,6 +81,10 @@ typedef u32 Numb; // Numb ::= 29-bit (rounded up to u32)
 #define SWIT 0x7
 
 // Numbers
+static const f32 U24_MAX = (f32) (1 << 24) - 1;
+static const f32 U24_MIN = 0.0;
+static const f32 I24_MAX = (f32) (1 << 23) - 1;
+static const f32 I24_MIN = (f32) (i32) ((-1u) << 23);
 #define TY_SYM 0x00
 #define TY_U24 0x01
 #define TY_I24 0x02
@@ -164,37 +174,6 @@ typedef struct TM {
   Pair hbag_buf[HLEN]; // high-priority redexes
 } TM;
 
-// Readback: λ-Encoded Ctr
-typedef struct Ctr {
-  u32  tag;
-  u32  args_len;
-  Port args_buf[16];
-} Ctr;
-
-// Readback: λ-Encoded Str (UTF-32)
-// FIXME: this is actually ASCII :|
-// FIXME: remove len limit
-typedef struct Str {
-  u32  text_len;
-  char text_buf[256];
-} Str;
-
-// IO Magic Number
-#define IO_MAGIC_0 0xD0CA11
-#define IO_MAGIC_1 0xFF1FF1
-
-// IO Tags
-#define IO_DONE 0
-#define IO_CALL 1
-
-// List Type
-#define LIST_NIL  0
-#define LIST_CONS 1
-
-// Booleans
-#define TRUE  1
-#define FALSE 0
-
 // Debugger
 // --------
 
@@ -278,8 +257,13 @@ static inline void swap(Port *a, Port *b) {
   Port x = *a; *a = *b; *b = x;
 }
 
-u32 min(u32 a, u32 b) {
+static inline u32 min(u32 a, u32 b) {
   return (a < b) ? a : b;
+}
+
+static inline f32 clamp(f32 x, f32 min, f32 max) {
+  const f32 t = x < min ? min : x;
+  return (t > max) ? max : t;
 }
 
 // A simple spin-wait barrier using atomic operations
@@ -429,9 +413,61 @@ static inline Tag get_typ(Numb word) {
   return word & 0x1F;
 }
 
+static inline bool is_num(Numb word) {
+  return get_typ(word) >= TY_U24 && get_typ(word) <= TY_F24;
+}
+
+static inline bool is_cast(Numb word) {
+  return get_typ(word) == TY_SYM && get_sym(word) >= TY_U24 && get_sym(word) <= TY_F24;
+}
+
 // Partial application
 static inline Numb partial(Numb a, Numb b) {
   return (b & ~0x1F) | get_sym(a);
+}
+
+// Cast a number to another type.
+// The semantics are meant to spiritually resemble rust's numeric casts:
+// - i24 <-> u24: is just reinterpretation of bits
+// - f24  -> i24,
+//   f24  -> u24: casts to the "closest" integer representing this float,
+//                saturating if out of range and 0 if NaN
+// - i24  -> f24,
+//   u24  -> f24: casts to the "closest" float representing this integer.
+static inline Numb cast(Numb a, Numb b) {
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_U24) return b;
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_I24) {
+    // reinterpret bits
+    i32 val = get_i24(b);
+    return new_u24(*(u32*) &val);
+  }
+  if (get_sym(a) == TY_U24 && get_typ(b) == TY_F24) {
+    f32 val = get_f24(b);
+    if (isnan(val)) {
+      return new_u24(0);
+    }
+    return new_u24((u32) clamp(val, U24_MIN, U24_MAX));
+  }
+
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_U24) {
+    // reinterpret bits
+    u32 val = get_u24(b);
+    return new_i24(*(i32*) &val);
+  }
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_I24) return b;
+  if (get_sym(a) == TY_I24 && get_typ(b) == TY_F24) {
+    f32 val = get_f24(b);
+    if (isnan(val)) {
+      return new_i24(0);
+    }
+    return new_i24((i32) clamp(val, I24_MIN, I24_MAX));
+  }
+
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_U24) return new_f24((f32) get_u24(b));
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_I24) return new_f24((f32) get_i24(b));
+  if (get_sym(a) == TY_F24 && get_typ(b) == TY_F24) return b;
+
+  return new_u24(0);
 }
 
 // Operate function
@@ -440,6 +476,12 @@ static inline Numb operate(Numb a, Numb b) {
   Tag bt = get_typ(b);
   if (at == TY_SYM && bt == TY_SYM) {
     return new_u24(0);
+  }
+  if (is_cast(a) && is_num(b)) {
+    return cast(a, b);
+  }
+  if (is_cast(b) && is_num(a)) {
+    return cast(b, a);
   }
   if (at == TY_SYM && bt != TY_SYM) {
     return partial(a, b);
@@ -528,6 +570,8 @@ static inline Numb operate(Numb a, Numb b) {
         case OP_AND: return new_f24(atan2f(av, bv));
         case OP_OR:  return new_f24(logf(bv) / logf(av));
         case OP_XOR: return new_f24(powf(av, bv));
+        case OP_SHL: return new_f24(sin(av + bv));
+        case OP_SHR: return new_f24(tan(av + bv));
         default:     return new_f24(0);
       }
     }
@@ -601,7 +645,7 @@ static inline void node_create(Net* net, u32 loc, Pair val) {
   atomic_store_explicit(&net->node_buf[loc], val, memory_order_relaxed);
 }
 
-// Stores a var on global. Returns old.
+// Stores a var on global.
 static inline void vars_create(Net* net, u32 var, Port val) {
   atomic_store_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
@@ -619,11 +663,6 @@ static inline Port vars_load(Net* net, u32 var) {
 // Stores a node on global.
 static inline void node_store(Net* net, u32 loc, Pair val) {
   atomic_store_explicit(&net->node_buf[loc], val, memory_order_relaxed);
-}
-
-// Stores a var on global. Returns old.
-static inline void vars_store(Net* net, u32 var, Port val) {
-  atomic_store_explicit(&net->vars_buf[var], val, memory_order_relaxed);
 }
 
 // Exchanges a node on global by a value. Returns old.
@@ -725,7 +764,7 @@ u32 vars_alloc(Net* net, TM* tm, u32 num) {
 }
 
 // Gets the necessary resources for an interaction. Returns success.
-static inline bool get_resources(Net* net, TM* tm, u8 need_rbag, u8 need_node, u8 need_vars) {
+static inline bool get_resources(Net* net, TM* tm, u32 need_rbag, u32 need_node, u32 need_vars) {
   u32 got_rbag = 0xFF; // FIXME: implement
   u32 got_node = node_alloc(net, tm, need_node);
   u32 got_vars = vars_alloc(net, tm, need_vars);
@@ -1239,92 +1278,8 @@ Port expand(Net* net, Book* book, Port port) {
     normalize(net, book);
     got = peek(net, vars_load(net, get_val(ROOT)));
   }
-  vars_store(net, get_val(ROOT), old);
+  vars_create(net, get_val(ROOT), old);
   return got;
-}
-
-// Readback
-// --------
-
-// Reads back a λ-Encoded constructor from device to host.
-// Encoding: λt ((((t TAG) arg0) arg1) ...)
-Ctr read_ctr(Net* net, Book* book, Port port) {
-  Ctr ctr;
-  ctr.tag = -1;
-  ctr.args_len = 0;
-
-  // Loads root lambda
-  Port lam_port = expand(net, book, port);
-  if (get_tag(lam_port) != CON) return ctr;
-  Pair lam_node = node_load(net, get_val(lam_port));
-
-  // Loads first application
-  Port app_port = expand(net, book, get_fst(lam_node));
-  if (get_tag(app_port) != CON) return ctr;
-  Pair app_node = node_load(net, get_val(app_port));
-
-  // Loads first argument (as the tag)
-  Port arg_port = expand(net, book, get_fst(app_node));
-  if (get_tag(arg_port) != NUM) return ctr;
-  ctr.tag = get_u24(get_val(arg_port));
-
-  // Loads remaining arguments
-  while (TRUE) {
-    app_port = expand(net, book, get_snd(app_node));
-    if (get_tag(app_port) != CON) break;
-    app_node = node_load(net, get_val(app_port));
-    arg_port = expand(net, book, get_fst(app_node));
-    ctr.args_buf[ctr.args_len++] = arg_port;
-  }
-
-  return ctr;
-}
-
-// Reads back a UTF-32 (truncated to 24 bits) string.
-// Since unicode scalars can fit in 21 bits, HVM's u24
-// integers can contain any unicode scalar value.
-// Encoding:
-// - λt (t NIL)
-// - λt (((t CONS) head) tail)
-Str read_str(Net* net, Book* book, Port port) {
-  // Result
-  Str str;
-  str.text_len = 0;
-
-  // Readback loop
-  while (TRUE) {
-    // Normalizes the net
-    normalize(net, book);
-
-    //printf("reading str %s\n", show_port(peek(net, port)).x);
-
-    // Reads the λ-Encoded Ctr
-    Ctr ctr = read_ctr(net, book, peek(net, port));
-
-    //printf("reading tag %d | len %d\n", ctr.tag, ctr.args_len);
-
-    // Reads string layer
-    switch (ctr.tag) {
-      case LIST_NIL: {
-        break;
-      }
-      case LIST_CONS: {
-        if (ctr.args_len != 2) break;
-        if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.text_len >= 256) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
-        //printf("reading chr %d\n", get_u24(get_val(ctr.args_buf[0])));
-        str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
-        boot_redex(net, new_pair(ctr.args_buf[1], ROOT));
-        port = ROOT;
-        continue;
-      }
-    }
-    break;
-  }
-
-  str.text_buf[str.text_len] = '\0';
-
-  return str;
 }
 
 // Reads back an image.
@@ -1377,70 +1332,6 @@ void read_img(Net* net, Port port, u32 width, u32 height, u32* buffer) {
   }
 }
 
-// Primitive IO Fns
-// -----------------
-
-// IO: GetText
-Port io_get_text(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
-  return new_port(ERA, 0);
-}
-
-// IO: PutText
-Port io_put_text(Net* net, Book* book, Port argm) {
-  // Converts argument to C string
-  Str str = read_str(net, book, argm);
-  // Prints it
-  printf("%s", str.text_buf);
-  // Returns result (in this case, just an eraser)
-  return new_port(ERA, 0);
-}
-
-// IO: GetFile
-Port io_get_file(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
-  return new_port(ERA, 0);
-}
-
-// IO: PutFile
-Port io_put_file(Net* net, Book* book, Port argm) {
-  printf("TODO\n");
-  return new_port(ERA, 0);
-}
-
-// IO: GetTime
-Port io_get_time(Net* net, Book* book, Port argm) {
-  // Get the current time in nanoseconds
-  u64 time_ns = time64();
-  // Encode the time as a 64-bit unsigned integer
-  u32 time_hi = (u32)(time_ns >> 24) & 0xFFFFFFF;
-  u32 time_lo = (u32)(time_ns & 0xFFFFFFF);
-  // Allocate a node to store the time
-  u32 lps = 0;
-  u32 loc = node_alloc_1(net, tm[0], &lps);
-  node_create(net, loc, new_pair(new_port(NUM, new_u24(time_hi)), new_port(NUM, new_u24(time_lo))));
-  // Return the encoded time
-  return new_port(CON, loc);
-}
-
-// IO: PutTime
-// NOTE: changing this name will corrupt the timeline. You've been warned.
-Port io_put_time(Net* net, Book* book, Port argm) {
-  // Get the sleep duration node
-  Pair dur_node = node_load(net, get_val(argm));
-  // Get the high and low 24-bit parts of the duration
-  u32 dur_hi = get_u24(get_val(get_fst(dur_node)));
-  u32 dur_lo = get_u24(get_val(get_snd(dur_node)));
-  // Combine into a 48-bit duration in nanoseconds
-  u64 dur_ns = (((u64)dur_hi) << 24) | dur_lo;
-  // Sleep for the specified duration
-  struct timespec ts;
-  ts.tv_sec = dur_ns / 1000000000;
-  ts.tv_nsec = dur_ns % 1000000000;
-  nanosleep(&ts, NULL);
-  // Return an eraser
-  return new_port(ERA, 0);
-}
 
 //#ifdef IO_DRAWIMAGE
 //// Global variables for the window and renderer
@@ -1551,78 +1442,8 @@ Port io_put_time(Net* net, Book* book, Port argm) {
 //}
 //#endif
 
-// Monadic IO Evaluator
-// ---------------------
-
-// Runs an IO computation.
-void do_run_io(Net* net, Book* book, Port port) {
-  // IO loop
-  while (TRUE) {
-    // Normalizes the net
-    normalize(net, book);
-
-    // Reads the λ-Encoded Ctr
-    Ctr ctr = read_ctr(net, book, peek(net, port));
-
-    // Checks if IO Magic Number is a CON
-    if (get_tag(ctr.args_buf[0]) != CON) {
-      break;
-    }
-
-    // Checks the IO Magic Number
-    Pair io_magic = node_load(net, get_val(ctr.args_buf[0]));
-    //printf("%08x %08x\n", get_u24(get_val(get_fst(io_magic))), get_u24(get_val(get_snd(io_magic))));
-    if (get_val(get_fst(io_magic)) != new_u24(IO_MAGIC_0) || get_val(get_snd(io_magic)) != new_u24(IO_MAGIC_1)) {
-      break;
-    }
-
-    switch (ctr.tag) {
-      case IO_CALL: {
-        Str  func = read_str(net, book, ctr.args_buf[1]);
-        Port argm = ctr.args_buf[2];
-        Port cont = ctr.args_buf[3];
-        u32  lps  = 0;
-        u32  loc  = node_alloc_1(net, tm[0], &lps);
-        Port ret  = new_port(ERA, 0);
-        FFn* ffn  = NULL;
-        // FIXME: optimize this linear search
-        for (u32 fid = 0; fid < book->ffns_len; ++fid) {
-          if (strcmp(func.text_buf, book->ffns_buf[fid].name) == 0) {
-            ffn = &book->ffns_buf[fid];
-            break;
-          }
-        }
-        if (ffn == NULL) {
-          break;
-        }
-        ret = ffn->func(net, book, argm);
-        node_create(net, loc, new_pair(ret, ROOT));
-        boot_redex(net, new_pair(new_port(CON, loc), cont));
-        port = ROOT;
-        continue;
-      }
-      case IO_DONE: {
-        printf("DONE\n");
-        break;
-      }
-    }
-    break;
-  }
-}
-
 // Book Loader
 // -----------
-
-// TODO: initialize ffns_len with the builtin ffns
-void book_init(Book* book) {
-  book->ffns_len = 6;
-  book->ffns_buf[0] = (FFn){"GET_TEXT", io_get_text};
-  book->ffns_buf[1] = (FFn){"PUT_TEXT", io_put_text};
-  book->ffns_buf[2] = (FFn){"GET_FILE", io_get_file};
-  book->ffns_buf[3] = (FFn){"PUT_FILE", io_put_file};
-  book->ffns_buf[4] = (FFn){"GET_TIME", io_get_time};
-  book->ffns_buf[5] = (FFn){"PUT_TIME", io_put_time};
-}
 
 void book_load(Book* book, u32* buf) {
   // Reads defs_len
@@ -1743,6 +1564,11 @@ void pretty_print_numb(Numb word) {
   switch (get_typ(word)) {
     case TY_SYM: {
       switch (get_sym(word)) {
+        // types
+        case TY_U24: printf("[u24]"); break;
+        case TY_I24: printf("[i24]"); break;
+        case TY_F24: printf("[f24]"); break;
+        // operations
         case OP_ADD: printf("[+]"); break;
         case OP_SUB: printf("[-]"); break;
         case FP_SUB: printf("[:-]"); break;
@@ -1784,32 +1610,32 @@ void pretty_print_numb(Numb word) {
       } else if (isnan(get_f24(word))) {
         printf("+NaN");
       } else {
-        printf("%f", get_f24(word));
+        printf("%.7e", get_f24(word));
       }
       break;
     }
     default: {
       switch (get_typ(word)) {
-        case OP_ADD: printf("[+%07X]", get_u24(word)); break;
-        case OP_SUB: printf("[-%07X]", get_u24(word)); break;
-        case FP_SUB: printf("[:-%07X]", get_u24(word)); break;
-        case OP_MUL: printf("[*%07X]", get_u24(word)); break;
-        case OP_DIV: printf("[/%07X]", get_u24(word)); break;
-        case FP_DIV: printf("[:/%07X]", get_u24(word)); break;
-        case OP_REM: printf("[%%%07X]", get_u24(word)); break;
-        case FP_REM: printf("[:%%%07X]", get_u24(word)); break;
-        case OP_EQ:  printf("[=%07X]", get_u24(word)); break;
-        case OP_NEQ: printf("[!%07X]", get_u24(word)); break;
-        case OP_LT:  printf("[<%07X]", get_u24(word)); break;
-        case OP_GT:  printf("[>%07X]", get_u24(word)); break;
-        case OP_AND: printf("[&%07X]", get_u24(word)); break;
-        case OP_OR:  printf("[|%07X]", get_u24(word)); break;
-        case OP_XOR: printf("[^%07X]", get_u24(word)); break;
-        case OP_SHL: printf("[<<%07X]", get_u24(word)); break;
-        case FP_SHL: printf("[:<<%07X]", get_u24(word)); break;
-        case OP_SHR: printf("[>>%07X]", get_u24(word)); break;
-        case FP_SHR: printf("[:>>%07X]", get_u24(word)); break;
-        default:     printf("[?%07X]", get_u24(word)); break;
+        case OP_ADD: printf("[+0x%07X]", get_u24(word)); break;
+        case OP_SUB: printf("[-0x%07X]", get_u24(word)); break;
+        case FP_SUB: printf("[:-0x%07X]", get_u24(word)); break;
+        case OP_MUL: printf("[*0x%07X]", get_u24(word)); break;
+        case OP_DIV: printf("[/0x%07X]", get_u24(word)); break;
+        case FP_DIV: printf("[:/0x%07X]", get_u24(word)); break;
+        case OP_REM: printf("[%%0x%07X]", get_u24(word)); break;
+        case FP_REM: printf("[:%%0x%07X]", get_u24(word)); break;
+        case OP_EQ:  printf("[=0x%07X]", get_u24(word)); break;
+        case OP_NEQ: printf("[!0x%07X]", get_u24(word)); break;
+        case OP_LT:  printf("[<0x%07X]", get_u24(word)); break;
+        case OP_GT:  printf("[>0x%07X]", get_u24(word)); break;
+        case OP_AND: printf("[&0x%07X]", get_u24(word)); break;
+        case OP_OR:  printf("[|0x%07X]", get_u24(word)); break;
+        case OP_XOR: printf("[^0x%07X]", get_u24(word)); break;
+        case OP_SHL: printf("[<<0x%07X]", get_u24(word)); break;
+        case FP_SHL: printf("[:<<0x%07X]", get_u24(word)); break;
+        case OP_SHR: printf("[>>0x%07X]", get_u24(word)); break;
+        case FP_SHR: printf("[:>>0x%07X]", get_u24(word)); break;
+        default:     printf("[?0x%07X]", get_u24(word)); break;
       }
       break;
     }
@@ -1818,7 +1644,7 @@ void pretty_print_numb(Numb word) {
 }
 
 void pretty_print_port(Net* net, Book* book, Port port) {
-  Port stack[256];
+  Port stack[4096];
   stack[0] = port;
   u32 len = 1;
   u32 num = 0;
@@ -1935,6 +1761,10 @@ void pretty_print_port(Net* net, Book* book, Port port) {
 
 //COMPILED_BOOK_BUF//
 
+#ifdef IO
+void do_run_io(Net* net, Book* book, Port port);
+#endif
+
 // Main
 // ----
 
@@ -1950,7 +1780,6 @@ void hvm_c(u32* book_buffer) {
   Book* book = NULL;
   if (book_buffer) {
     book = (Book*)malloc(sizeof(Book));
-    book_init(book);
     book_load(book, book_buffer);
   }
 
@@ -1964,8 +1793,11 @@ void hvm_c(u32* book_buffer) {
   // Creates an initial redex that calls main
   boot_redex(net, new_pair(new_port(REF, 0), ROOT));
 
-  // Normalizes and runs IO
+  #ifdef IO
   do_run_io(net, book, ROOT);
+  #else
+  normalize(net, book);
+  #endif
 
   // Prints the result
   printf("Result: ");
@@ -1993,5 +1825,3 @@ int main() {
   return 0;
 }
 #endif
-
-

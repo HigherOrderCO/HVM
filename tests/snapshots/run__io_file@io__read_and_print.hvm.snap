@@ -1,0 +1,8 @@
+---
+source: tests/run.rs
+expression: c_output
+input_file: tests/programs/io/read_and_print.hvm
+---
+What is your name?
+io fr from
+Result: 42

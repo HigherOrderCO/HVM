@@ -64,7 +64,7 @@ syntax for wiring interaction nets. For example:
 @sum = (?(((a a) @sum__C0) b) b)
 
 @sum__C0 = ({c a} ({$([*2] $([+1] d)) $([*2] $([+0] b))} f))
-  &! @sum ~ (a (b $(:[+] $(e f))))
+  &! @sum ~ (a (b $([+] $(e f))))
   &! @sum ~ (c (d e))
 ```
 

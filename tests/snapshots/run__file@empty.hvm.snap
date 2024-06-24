@@ -4,6 +4,6 @@ expression: rust_output
 input_file: tests/programs/empty.hvm
 ---
 exit status: 101
-thread 'main' panicked at src/ast.rs:508:41:
+thread 'main' panicked at src/ast.rs:547:41:
 missing `@main` definition
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
