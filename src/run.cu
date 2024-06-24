@@ -126,7 +126,10 @@ Str gnet_readback_str(GNet* gnet, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.text_len >= 255) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
+        if (str.text_len >= 255) {
+          printf("ERROR: for now, HVM can only readback strings of length <256.");
+          break;
+        }
 
         str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
         gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
@@ -168,7 +171,10 @@ Bytes gnet_readback_bytes(GNet* gnet, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (bytes.len >= MAX_BYTES) { printf("ERROR: for now, HVM can only readback list of bytes of length <%u.", MAX_BYTES); break; }
+        if (bytes.len >= MAX_BYTES) {
+          printf("ERROR: for now, HVM can only readback list of bytes of length <%u.", MAX_BYTES);
+          break;
+        }
 
         bytes.buf[bytes.len++] = get_u24(get_val(ctr.args_buf[0]));
         gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
@@ -208,13 +214,13 @@ __device__ Port inject_nil(Net* net, TM* tm) {
 /// The `char_idx` parameter is used to offset the vloc and nloc
 /// allocations, otherwise they would conflict with each other on
 /// subsequent calls.
-__device__ Port inject_cons(Net* net, TM* tm, Port head, Port tail, u32 char_idx) {
-  u32 v1 = tm->vloc[1 + char_idx];
+__device__ Port inject_cons(Net* net, TM* tm, Port head, Port tail) {
+  u32 v1 = tm->vloc[0];
 
-  u32 n1 = tm->nloc[2 + char_idx * 4 + 0];
-  u32 n2 = tm->nloc[2 + char_idx * 4 + 1];
-  u32 n3 = tm->nloc[2 + char_idx * 4 + 2];
-  u32 n4 = tm->nloc[2 + char_idx * 4 + 3];
+  u32 n1 = tm->nloc[0];
+  u32 n2 = tm->nloc[1];
+  u32 n3 = tm->nloc[2];
+  u32 n4 = tm->nloc[3];
 
   vars_create(net, v1, NONE);
   Port var = new_port(VAR, v1);
@@ -236,16 +242,19 @@ __device__ Port inject_bytes(Net* net, TM* tm, Bytes *bytes) {
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
   u32 len = bytes->len;
-  if (!get_resources(net, tm, 0, 2 + 4 * len, 1 + len)) {
+  if (!get_resources(net, tm, 0, 2, 1)) {
     printf("inject_bytes: failed to get resources\n");
     return new_port(ERA, 0);
   }
-
   Port port = inject_nil(net, tm);
 
   for (u32 i = 0; i < len; i++) {
+    if (!get_resources(net, tm, 0, 4, 1)) {
+      printf("inject_bytes: failed to get resources\n");
+      return new_port(ERA, 0);
+    }
     Port byte = new_port(NUM, new_u24(bytes->buf[len - i - 1]));
-    port = inject_cons(net, tm, byte, port, i);
+    port = inject_cons(net, tm, byte, port);
   }
 
   return port;

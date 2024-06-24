@@ -1,6 +1,11 @@
 #define INTERPRETED
 #define WITHOUT_MAIN
-//#define DEBUG
+
+#ifdef DEBUG
+  #define debug(...) printf(__VA_ARGS__)
+#else
+  #define debug(x)
+#endif
 
 #include <stdint.h>
 #include <stdio.h>
@@ -706,9 +711,9 @@ __device__ u32 rbag_has_highs(RBag* rbag) {
 __device__ void push_redex(TM* tm, Pair redex) {
   Rule rule = get_pair_rule(redex);
   if (is_high_priority(rule)) {
-    tm->rbag.hi_buf[tm->rbag.hi_end++ % RLEN] = redex;
+    tm->rbag.hi_buf[tm->rbag.hi_end++] = redex;
   } else {
-    tm->rbag.lo_buf[tm->rbag.lo_end++ % RLEN] = redex;
+    tm->rbag.lo_buf[tm->rbag.lo_end++] = redex;
   }
 }
 
@@ -1754,10 +1759,10 @@ __global__ void initialize(GNet* gnet) {
   gnet->vars_put[GID()] = 0;
   gnet->rbag_pos[GID()] = 0;
   for (u32 i = 0; i < RLEN; ++i) {
-    gnet->rbag_buf_A[G_RBAG_LEN / TPG * GID()] = 0;
+    gnet->rbag_buf_A[G_RBAG_LEN / TPG * GID() + i] = 0;
   }
   for (u32 i = 0; i < RLEN; ++i) {
-    gnet->rbag_buf_B[G_RBAG_LEN / TPG * GID()] = 0;
+    gnet->rbag_buf_B[G_RBAG_LEN / TPG * GID() + i] = 0;
   }
 }
 
@@ -1876,11 +1881,9 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
 // Book Loader
 // -----------
 
-void book_load(Book* book, u32* buf) {
+bool book_load(Book* book, u32* buf) {
   // Reads defs_len
   book->defs_len = *buf++;
-
-  //printf("len %d\n", book->defs_len);
 
   // Parses each def
   for (u32 i = 0; i < book->defs_len; ++i) {
@@ -1902,6 +1905,16 @@ void book_load(Book* book, u32* buf) {
     def->node_len = *buf++;
     def->vars_len = *buf++;
 
+    if (def->rbag_len >= DEF_RBAG_LEN) {
+      fprintf(stderr, "def '%s' has too many redexes: %u\n", def->name, def->rbag_len);
+      return FALSE;
+    }
+
+    if (def->node_len >= DEF_NODE_LEN) {
+      fprintf(stderr, "def '%s' has too many nodes: %u\n", def->name, def->node_len);
+      return FALSE;
+    }
+
     // Reads root
     def->root = *buf++;
 
@@ -1913,6 +1926,8 @@ void book_load(Book* book, u32* buf) {
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
   }
+
+  return TRUE;
 }
 
 // Debug Printing
@@ -2289,13 +2304,14 @@ void do_run_io(GNet* gnet, Book* book, Port port);
 #endif
 
 extern "C" void hvm_cu(u32* book_buffer) {
-  // Start the timer
-  clock_t start = clock();
-
   // Loads the Book
   Book* book = (Book*)malloc(sizeof(Book));
   if (book_buffer) {
-    book_load(book, (u32*)book_buffer);
+    if (!book_load(book, (u32*)book_buffer)) {
+      fprintf(stderr, "failed to load book\n");
+
+      return;
+    }
     cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
   }
 
@@ -2304,6 +2320,9 @@ extern "C" void hvm_cu(u32* book_buffer) {
 
   // Creates a new GNet
   GNet* gnet = gnet_create();
+
+  // Start the timer
+  clock_t start = clock();
 
   // Boots root redex, to expand @main
   gnet_boot_redex(gnet, new_pair(new_port(REF, 0), ROOT));
