@@ -204,13 +204,13 @@ Port inject_nil(Net* net) {
 /// The `char_idx` parameter is used to offset the vloc and nloc
 /// allocations, otherwise they would conflict with each other on
 /// subsequent calls.
-Port inject_cons(Net* net, Port head, Port tail, u32 char_idx) {
-  u32 v1 = tm[0]->vloc[1 + char_idx];
+Port inject_cons(Net* net, Port head, Port tail) {
+  u32 v1 = tm[0]->vloc[0];
 
-  u32 n1 = tm[0]->nloc[2 + char_idx * 4 + 0];
-  u32 n2 = tm[0]->nloc[2 + char_idx * 4 + 1];
-  u32 n3 = tm[0]->nloc[2 + char_idx * 4 + 2];
-  u32 n4 = tm[0]->nloc[2 + char_idx * 4 + 3];
+  u32 n1 = tm[0]->nloc[0];
+  u32 n2 = tm[0]->nloc[1];
+  u32 n3 = tm[0]->nloc[2];
+  u32 n4 = tm[0]->nloc[3];
 
   vars_create(net, v1, NONE);
   Port var = new_port(VAR, v1);
@@ -232,16 +232,19 @@ Port inject_bytes(Net* net, Bytes *bytes) {
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
   u32 len = bytes->len;
-  if (!get_resources(net, tm[0], 0, 2 + 4 * len, 1 + len)) {
+  if (!get_resources(net, tm[0], 0, 2, 1)) {
     fprintf(stderr, "inject_bytes: failed to get resources\n");
     return new_port(ERA, 0);
   }
-
   Port port = inject_nil(net);
 
   for (u32 i = 0; i < len; i++) {
+    if (!get_resources(net, tm[0], 0, 4, 1)) {
+      fprintf(stderr, "inject_bytes: failed to get resources\n");
+      return new_port(ERA, 0);
+    }
     Port byte = new_port(NUM, new_u24(bytes->buf[len - i - 1]));
-    port = inject_cons(net, byte, port, i);
+    port = inject_cons(net, byte, port);
   }
 
   return port;
