@@ -162,8 +162,7 @@ Str readback_str(Net* net, Book* book, Port port) {
 }
 
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
-/// Should only be called within `inject_bytes`, as a previous call
-/// to `get_resources` is expected.
+/// A previous call to `get_resources(tm, 0, 2, 1)` is required.
 Port inject_nil(Net* net) {
   u32 v1 = tm[0]->vloc[0];
 
@@ -180,11 +179,7 @@ Port inject_nil(Net* net) {
 }
 
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
-/// Should only be called within `inject_bytes`, as a previous call
-/// to `get_resources` is expected.
-/// The `char_idx` parameter is used to offset the vloc and nloc
-/// allocations, otherwise they would conflict with each other on
-/// subsequent calls.
+/// A previous call to `get_resources(tm, 0, 4, 1)` is required.
 Port inject_cons(Net* net, Port head, Port tail) {
   u32 v1 = tm[0]->vloc[0];
 
@@ -219,7 +214,7 @@ Port inject_bytes(Net* net, Bytes *bytes) {
   }
   Port port = inject_nil(net);
 
-  // TODO: batch allocate these (within the limits of TM)
+  // TODO: batch-allocate these (within the limits of TM)
   for (u32 i = 0; i < len; i++) {
     if (!get_resources(net, tm[0], 0, 4, 1)) {
       fprintf(stderr, "inject_bytes: failed to get resources\n");

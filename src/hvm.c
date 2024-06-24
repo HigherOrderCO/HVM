@@ -1755,7 +1755,7 @@ void hvm_c(u32* book_buffer) {
   if (book_buffer) {
     book = (Book*)malloc(sizeof(Book));
     if (!book_load(book, book_buffer)) {
-      fprintf(stderr, "failed to load book, quitting\n");
+      fprintf(stderr, "failed to load book\n");
 
       return;
     }
