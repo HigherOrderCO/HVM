@@ -1435,12 +1435,12 @@ bool book_load(Book* book, u32* buf) {
     def->node_len = *buf++;
     def->vars_len = *buf++;
 
-    if (def->rbag_len >= DEF_RBAG_LEN) {
+    if (def->rbag_len > DEF_RBAG_LEN) {
       fprintf(stderr, "def '%s' has too many redexes: %u\n", def->name, def->rbag_len);
       return FALSE;
     }
 
-    if (def->node_len >= DEF_NODE_LEN) {
+    if (def->node_len > DEF_NODE_LEN) {
       fprintf(stderr, "def '%s' has too many nodes: %u\n", def->name, def->node_len);
       return FALSE;
     }
