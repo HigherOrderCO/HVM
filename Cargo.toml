@@ -6,6 +6,7 @@ version = "2.0.20"
 edition = "2021"
 rust-version = "1.74"
 build = "build.rs"
+repository = "https://github.com/HigherOrderCO/HVM"
 
 [lib]
 name = "hvm"
