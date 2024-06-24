@@ -15,10 +15,9 @@ struct Tup {
 
 // Readback: λ-Encoded Str (UTF-32)
 // FIXME: this is actually ASCII :|
-// FIXME: remove len limit
 struct Str {
-  u32  text_len;
-  char text_buf[256];
+  u32  len;
+  char* buf;
 };
 
 // Readback: λ-Encoded list of bytes
@@ -26,8 +25,6 @@ typedef struct Bytes {
   u32  len;
   char *buf;
 } Bytes;
-
-#define MAX_BYTES 256
 
 // IO Magic Number
 #define IO_MAGIC_0 0xD0CA11
@@ -99,60 +96,14 @@ Tup gnet_readback_tup(GNet* gnet, Port port, u32 size) {
 }
 
 
-// Reads back a UTF-32 (truncated to 24 bits) string.
-// Since unicode scalars can fit in 21 bits, HVM's u24
-// integers can contain any unicode scalar value.
-// Encoding:
-// - λt (t NIL)
-// - λt (((t CONS) head) tail)
-Str gnet_readback_str(GNet* gnet, Port port) {
-  // Result
-  Str str;
-  str.text_len = 0;
-
-  // Readback loop
-  while (TRUE) {
-    // Normalizes the net
-    gnet_normalize(gnet);
-
-    // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
-
-    // Reads string layer
-    switch (ctr.tag) {
-      case LIST_NIL: {
-        break;
-      }
-      case LIST_CONS: {
-        if (ctr.args_len != 2) break;
-        if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.text_len >= 255) {
-          printf("ERROR: for now, HVM can only readback strings of length <256.");
-          break;
-        }
-
-        str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
-        gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
-        port = ROOT;
-        continue;
-      }
-    }
-    break;
-  }
-
-  str.text_buf[str.text_len] = '\0';
-
-  return str;
-}
-
 // Converts a Port into a list of bytes.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
 Bytes gnet_readback_bytes(GNet* gnet, Port port) {
-  // Result
   Bytes bytes;
-  bytes.buf = (char*) malloc(sizeof(char) * MAX_BYTES);
+  u32 capacity = 256;
+  bytes.buf = (char*) malloc(sizeof(char) * capacity);
   bytes.len = 0;
 
   // Readback loop
@@ -171,9 +122,12 @@ Bytes gnet_readback_bytes(GNet* gnet, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (bytes.len >= MAX_BYTES) {
-          printf("ERROR: for now, HVM can only readback list of bytes of length <%u.", MAX_BYTES);
-          break;
+        if (bytes.len == capacity - 1) {
+          capacity *= 2;
+          char* new_buf = (char*)malloc(sizeof(char) * capacity);
+          memcpy(new_buf, bytes.buf, bytes.len);
+          free(bytes.buf);
+          bytes.buf = new_buf;
         }
 
         bytes.buf[bytes.len++] = get_u24(get_val(ctr.args_buf[0]));
@@ -185,10 +139,28 @@ Bytes gnet_readback_bytes(GNet* gnet, Port port) {
     break;
   }
 
-  bytes.buf[bytes.len] = '\0';
-
   return bytes;
 }
+
+// Reads back a UTF-32 (truncated to 24 bits) string.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Str gnet_readback_str(GNet* gnet, Port port) {
+  // gnet_readback_bytes is guaranteed to return a buffer with a capacity of at least one more
+  // than the number of bytes read, so we can null-terminate it.
+  Bytes bytes = gnet_readback_bytes(gnet, port);
+
+  Str str;
+  str.len = bytes.len;
+  str.buf = bytes.buf;
+  str.buf[str.len] = 0;
+
+  return str;
+}
+
 
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
 /// Should only be called within `inject_bytes`, as a previous call
@@ -374,12 +346,20 @@ Port io_open(GNet* gnet, Port argm) {
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
-      FILE_POINTERS[fd] = fopen(name.text_buf, mode.text_buf);
+      FILE_POINTERS[fd] = fopen(name.buf, mode.buf);
+
+      free(name.buf);
+      free(mode.buf);
+
       return new_port(NUM, new_u24(fd));
     }
   }
 
   fprintf(stderr, "io_open: too many open files\n");
+
+  free(name.buf);
+  free(mode.buf);
+
   return new_port(ERA, 0);
 }
 
@@ -573,18 +553,23 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search
         for (u32 fid = 0; fid < book->ffns_len; ++fid) {
-          if (strcmp(func.text_buf, book->ffns_buf[fid].name) == 0) {
+          if (strcmp(func.buf, book->ffns_buf[fid].name) == 0) {
             ffn = &book->ffns_buf[fid];
             break;
           }
         }
 
         if (ffn == NULL) {
-          fprintf(stderr, "Unknown IO func '%s'\n", func.text_buf);
+          fprintf(stderr, "Unknown IO func '%s'\n", func.buf);
+
+          free(func.buf);
+
           break;
         }
 
-        debug("running io func '%s'\n", func.text_buf);
+        debug("running io func '%s'\n", func.buf);
+
+        free(func.buf);
 
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
