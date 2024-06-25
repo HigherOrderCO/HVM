@@ -1,3 +1,4 @@
+#include <dlfcn.h>
 #include "hvm.c"
 
 // Readback: λ-Encoded Ctr
@@ -81,7 +82,7 @@ Ctr readback_ctr(Net* net, Book* book, Port port) {
 // Reads back a tuple of at most `size` elements. Tuples are
 // (right-nested con nodes) (CON 1 (CON 2 (CON 3 (...))))
 // The provided `port` should be `expanded` before calling.
-Tup readback_tup(Net* net, Book* book, Port port, u32 size) {
+extern Tup readback_tup(Net* net, Book* book, Port port, u32 size) {
   Tup tup;
   tup.elem_len = 0;
 
@@ -258,6 +259,10 @@ Port inject_bytes(Net* net, Bytes *bytes) {
 // - 2 -> stderr
 static FILE* FILE_POINTERS[256];
 
+// Open dylibs handles. Indices into this array
+// are used as opaque loadedd object "handles".
+static void* DYLIBS[256];
+
 // Converts a NUM port (file descriptor) to file pointer.
 FILE* readback_file(Port port) {
   if (get_tag(port) != NUM) {
@@ -278,6 +283,24 @@ FILE* readback_file(Port port) {
   }
 
   return fp;
+}
+
+// Converts a NUM port (dylib handle) to an opaque dylib object.
+void* readback_dylib(Port port) {
+  if (get_tag(port) != NUM) {
+    fprintf(stderr, "non-num where dylib handle was expected: %i\n", get_tag(port));
+    return NULL;
+  }
+
+  u32 idx = get_u24(get_val(port));
+
+  void* dl = DYLIBS[idx];
+  if (dl == NULL) {
+    fprintf(stderr, "invalid dylib handle\n");
+    return NULL;
+  }
+
+  return dl;
 }
 
 // Reads from a file a specified number of bytes.
@@ -483,6 +506,77 @@ Port io_sleep(Net* net, Book* book, Port argm) {
   return new_port(ERA, 0);
 }
 
+// Opens a dylib at the provided path.
+// `argm` is a tuple of `filename` and `lazy`.
+// `filename` is a λ-encoded string.
+// `lazy` is a `bool` indicating if functions should be lazily loaded.
+Port io_dl_open(Net* net, Book* book, Port argm) {
+  Tup tup = readback_tup(net, book, argm, 2);
+  Str str = readback_str(net, book, tup.elem_buf[0]);
+  u32 lazy = get_u24(get_val(tup.elem_buf[1]));
+
+  int flags = lazy ? RTLD_LAZY : RTLD_NOW;
+
+  for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
+    if (DYLIBS[dl] == NULL) {
+      DYLIBS[dl] = dlopen(str.text_buf, flags);
+      if (DYLIBS[dl] == NULL) {
+        fprintf(stderr, "failed to open dylib '%s': %s\n", str.text_buf, dlerror());
+
+        return new_port(ERA, 0);
+      }
+
+      return new_port(NUM, new_u24(dl));
+    }
+  }
+
+  fprintf(stderr, "io_dl_open: too many open dylibs\n");
+  return new_port(ERA, 0);
+}
+
+// Calls a function from a loaded dylib.
+// `argm` is a 3-tuple of `dylib_handle`, `symbol`, `args`.
+// `dylib_handle` is the numeric node returned from a `DL_OPEN` call.
+// `symbol` is a λ-encoded string of the symbol name.
+// `args` is the argument to be provided to the dylib symbol.
+Port io_dl_call(Net* net, Book* book, Port argm) {
+  Tup tup = readback_tup(net, book, argm, 3);
+  if (tup.elem_len != 3) {
+    fprintf(stderr, "io_dl_call: expected 3-tuple\n");
+    return new_port(ERA, 0);
+  }
+
+  void* dl = readback_dylib(tup.elem_buf[0]);
+  Str symbol = readback_str(net, book, tup.elem_buf[1]);
+
+  dlerror();
+  Port (*func)(Net*, Book*, Port) = dlsym(dl, symbol.text_buf);
+  char* error = dlerror();
+  if (error != NULL) {
+    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.text_buf, error);
+  }
+
+  return func(net, book, tup.elem_buf[2]);
+}
+
+// Closes a loaded dylib, reclaiming the handle.
+Port io_dl_close(Net* net, Book* book, Port argm) {
+  void* dl = readback_dylib(argm);
+  if (dl == NULL) {
+    fprintf(stderr, "io_dl_close: invalid handle\n");
+    return new_port(ERA, 0);
+  }
+
+  int err = dlclose(dl) != 0;
+  if (err != 0) {
+    fprintf(stderr, "io_dl_close: failed to close: %i\n", err);
+    return new_port(ERA, 0);
+  }
+
+  DYLIBS[get_u24(get_val(argm))] = NULL;
+  return new_port(ERA, 0);
+}
+
 // Book Loader
 // -----------
 
@@ -495,6 +589,9 @@ void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"SEEK", io_seek};
   book->ffns_buf[book->ffns_len++] = (FFn){"GET_TIME", io_get_time};
   book->ffns_buf[book->ffns_len++] = (FFn){"SLEEP", io_sleep};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DL_OPEN", io_dl_open};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DL_CALL", io_dl_call};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DL_CLOSE", io_dl_open};
 }
 
 // Monadic IO Evaluator

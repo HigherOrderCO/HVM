@@ -6,6 +6,7 @@ fn main() {
   println!("cargo:rerun-if-changed=src/hvm.c");
   println!("cargo:rerun-if-changed=src/run.cu");
   println!("cargo:rerun-if-changed=src/hvm.cu");
+  println!("cargo:rustc-link-arg=-rdynamic");
 
   match cc::Build::new()
       .file("src/run.c")
