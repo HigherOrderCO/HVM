@@ -1,3 +1,4 @@
+#include <dlfcn.h>
 #include "hvm.cu"
 
 // Readback: λ-Encoded Ctr
@@ -78,7 +79,7 @@ Ctr gnet_readback_ctr(GNet* gnet, Port port) {
 // Reads back a tuple of at most `size` elements. Tuples are
 // (right-nested con nodes) (CON 1 (CON 2 (CON 3 (...))))
 // The provided `port` should be `expanded` before calling.
-Tup gnet_readback_tup(GNet* gnet, Port port, u32 size) {
+extern "C" Tup gnet_readback_tup(GNet* gnet, Port port, u32 size) {
   Tup tup;
   tup.elem_len = 0;
 
@@ -96,11 +97,55 @@ Tup gnet_readback_tup(GNet* gnet, Port port, u32 size) {
 }
 
 
+// Reads back a UTF-32 (truncated to 24 bits) string.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+extern "C" Str gnet_readback_str(GNet* gnet, Port port) {
+  // Result
+  Str str;
+  str.len = 0;
+
+  // Readback loop
+  while (TRUE) {
+    // Normalizes the net
+    gnet_normalize(gnet);
+
+    // Reads the λ-Encoded Ctr
+    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
+
+    // Reads string layer
+    switch (ctr.tag) {
+      case LIST_NIL: {
+        break;
+      }
+      case LIST_CONS: {
+        if (ctr.args_len != 2) break;
+        if (get_tag(ctr.args_buf[0]) != NUM) break;
+        if (str.len >= 255) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
+
+        str.buf[str.len++] = get_u24(get_val(ctr.args_buf[0]));
+        gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
+        port = ROOT;
+        continue;
+      }
+    }
+    break;
+  }
+
+  str.buf[str.len] = '\0';
+
+  return str;
+}
+
 // Converts a Port into a list of bytes.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Bytes gnet_readback_bytes(GNet* gnet, Port port) {
+extern "C" Bytes gnet_readback_bytes(GNet* gnet, Port port) {
+  // Result
   Bytes bytes;
   u32 capacity = 256;
   bytes.buf = (char*) malloc(sizeof(char) * capacity);
@@ -242,7 +287,7 @@ __global__ void make_bytes_port(GNet* gnet, Bytes bytes, Port* ret) {
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Port gnet_inject_bytes(GNet* gnet, Bytes *bytes) {
+extern "C" Port gnet_inject_bytes(GNet* gnet, Bytes *bytes) {
   Port* d_ret;
   cudaMalloc(&d_ret, sizeof(Port));
 
@@ -273,6 +318,10 @@ Port gnet_inject_bytes(GNet* gnet, Bytes *bytes) {
 // - 2 -> stderr
 static FILE* FILE_POINTERS[256];
 
+// Open dylibs handles. Indices into this array
+// are used as opaque loadedd object "handles".
+static void* DYLIBS[256];
+
 // Converts a NUM port (file descriptor) to file pointer.
 FILE* readback_file(Port port) {
   if (get_tag(port) != NUM) {
@@ -293,6 +342,24 @@ FILE* readback_file(Port port) {
   }
 
   return fp;
+}
+
+// Converts a NUM port (dylib handle) to an opaque dylib object.
+void* readback_dylib(Port port) {
+  if (get_tag(port) != NUM) {
+    fprintf(stderr, "non-num where dylib handle was expected: %i\n", get_tag(port));
+    return NULL;
+  }
+
+  u32 idx = get_u24(get_val(port));
+
+  void* dl = DYLIBS[idx];
+  if (dl == NULL) {
+    fprintf(stderr, "invalid dylib handle\n");
+    return NULL;
+  }
+
+  return dl;
 }
 
 // Reads from a file a specified number of bytes.
@@ -502,6 +569,79 @@ Port io_sleep(GNet* gnet, Port argm) {
   return new_port(ERA, 0);
 }
 
+// Opens a dylib at the provided path.
+// `argm` is a tuple of `filename` and `lazy`.
+// `filename` is a λ-encoded string.
+// `lazy` is a `bool` indicating if functions should be lazily loaded.
+Port io_dl_open(GNet* gnet, Port argm) {
+  Tup tup = gnet_readback_tup(gnet, argm, 2);
+  Str str = gnet_readback_str(gnet, tup.elem_buf[0]);
+  u32 lazy = get_u24(get_val(tup.elem_buf[1]));
+
+  int flags = lazy ? RTLD_LAZY : RTLD_NOW;
+
+  for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
+    if (DYLIBS[dl] == NULL) {
+      DYLIBS[dl] = dlopen(str.buf, flags);
+      if (DYLIBS[dl] == NULL) {
+        fprintf(stderr, "failed to open dylib '%s': %s\n", str.buf, dlerror());
+
+        return new_port(ERA, 0);
+      } else {
+        fprintf(stderr, "opened dylib '%s'\n", str.buf);
+      }
+
+      return new_port(NUM, new_u24(dl));
+    }
+  }
+
+  fprintf(stderr, "io_dl_open: too many open dylibs\n");
+  return new_port(ERA, 0);
+}
+
+// Calls a function from a loaded dylib.
+// `argm` is a 3-tuple of `dylib_handle`, `symbol`, `args`.
+// `dylib_handle` is the numeric node returned from a `DL_OPEN` call.
+// `symbol` is a λ-encoded string of the symbol name.
+// `args` is the argument to be provided to the dylib symbol.
+Port io_dl_call(GNet* gnet, Port argm) {
+  Tup tup = gnet_readback_tup(gnet, argm, 3);
+  if (tup.elem_len != 3) {
+    fprintf(stderr, "io_dl_call: expected 3-tuple\n");
+    return new_port(ERA, 0);
+  }
+
+  void* dl = readback_dylib(tup.elem_buf[0]);
+  Str symbol = gnet_readback_str(gnet, tup.elem_buf[1]);
+
+  dlerror();
+  Port (*func)(GNet*, Port) = (Port (*)(GNet*, Port)) dlsym(dl, symbol.buf);
+  char* error = dlerror();
+  if (error != NULL) {
+    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.buf, error);
+  }
+
+  return func(gnet, tup.elem_buf[2]);
+}
+
+// Closes a loaded dylib, reclaiming the handle.
+Port io_dl_close(Net* net, Book* book, Port argm) {
+  void* dl = readback_dylib(argm);
+  if (dl == NULL) {
+    fprintf(stderr, "io_dl_close: invalid handle\n");
+    return new_port(ERA, 0);
+  }
+
+  int err = dlclose(dl) != 0;
+  if (err != 0) {
+    fprintf(stderr, "io_dl_close: failed to close: %i\n", err);
+    return new_port(ERA, 0);
+  }
+
+  DYLIBS[get_u24(get_val(argm))] = NULL;
+  return new_port(ERA, 0);
+}
+
 void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"READ", io_read};
   book->ffns_buf[book->ffns_len++] = (FFn){"OPEN", io_open};
@@ -511,6 +651,9 @@ void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"SEEK", io_seek};
   book->ffns_buf[book->ffns_len++] = (FFn){"GET_TIME", io_get_time};
   book->ffns_buf[book->ffns_len++] = (FFn){"SLEEP", io_sleep};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DL_OPEN", io_dl_open};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DL_CALL", io_dl_call};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DL_CLOSE", io_dl_open};
 
   cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
 }
