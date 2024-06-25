@@ -97,49 +97,6 @@ extern "C" Tup gnet_readback_tup(GNet* gnet, Port port, u32 size) {
 }
 
 
-// Reads back a UTF-32 (truncated to 24 bits) string.
-// Since unicode scalars can fit in 21 bits, HVM's u24
-// integers can contain any unicode scalar value.
-// Encoding:
-// - λt (t NIL)
-// - λt (((t CONS) head) tail)
-extern "C" Str gnet_readback_str(GNet* gnet, Port port) {
-  // Result
-  Str str;
-  str.len = 0;
-
-  // Readback loop
-  while (TRUE) {
-    // Normalizes the net
-    gnet_normalize(gnet);
-
-    // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
-
-    // Reads string layer
-    switch (ctr.tag) {
-      case LIST_NIL: {
-        break;
-      }
-      case LIST_CONS: {
-        if (ctr.args_len != 2) break;
-        if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.len >= 255) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
-
-        str.buf[str.len++] = get_u24(get_val(ctr.args_buf[0]));
-        gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
-        port = ROOT;
-        continue;
-      }
-    }
-    break;
-  }
-
-  str.buf[str.len] = '\0';
-
-  return str;
-}
-
 // Converts a Port into a list of bytes.
 // Encoding:
 // - λt (t NIL)
@@ -191,7 +148,7 @@ extern "C" Bytes gnet_readback_bytes(GNet* gnet, Port port) {
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
-Str gnet_readback_str(GNet* gnet, Port port) {
+extern "C" Str gnet_readback_str(GNet* gnet, Port port) {
   // gnet_readback_bytes is guaranteed to return a buffer with a capacity of at least one more
   // than the number of bytes read, so we can null-terminate it.
   Bytes bytes = gnet_readback_bytes(gnet, port);

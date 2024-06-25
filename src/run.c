@@ -504,9 +504,9 @@ Port io_dl_open(Net* net, Book* book, Port argm) {
 
   for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
     if (DYLIBS[dl] == NULL) {
-      DYLIBS[dl] = dlopen(str.text_buf, flags);
+      DYLIBS[dl] = dlopen(str.buf, flags);
       if (DYLIBS[dl] == NULL) {
-        fprintf(stderr, "failed to open dylib '%s': %s\n", str.text_buf, dlerror());
+        fprintf(stderr, "failed to open dylib '%s': %s\n", str.buf, dlerror());
 
         return new_port(ERA, 0);
       }
@@ -535,10 +535,10 @@ Port io_dl_call(Net* net, Book* book, Port argm) {
   Str symbol = readback_str(net, book, tup.elem_buf[1]);
 
   dlerror();
-  Port (*func)(Net*, Book*, Port) = dlsym(dl, symbol.text_buf);
+  Port (*func)(Net*, Book*, Port) = dlsym(dl, symbol.buf);
   char* error = dlerror();
   if (error != NULL) {
-    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.text_buf, error);
+    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.buf, error);
   }
 
   return func(net, book, tup.elem_buf[2]);
