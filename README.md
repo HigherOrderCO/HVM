@@ -48,7 +48,8 @@ hvm gen-cu <file.hvm> # compile to standalone CUDA
 All modes produce the same output. The compiled modes require you to compile the
 generated file (with `gcc file.c -o file`, for example), but are faster to run.
 The CUDA versions have much higher peak performance but are less stable. As a
-rule of thumb, `gen-c` should be used in production.
+rule of thumb, `gen-c` should be used in production. 
+The environment variable `HVM_NUM_THREADS` sets the number of threads use when using `run-c`
 
 Language
 --------
