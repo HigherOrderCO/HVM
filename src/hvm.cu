@@ -1,6 +1,11 @@
 #define INTERPRETED
 #define WITHOUT_MAIN
-//#define DEBUG
+
+#ifdef DEBUG
+  #define debug(...) printf(__VA_ARGS__)
+#else
+  #define debug(...)
+#endif
 
 #include <stdint.h>
 #include <stdio.h>
@@ -704,11 +709,19 @@ __device__ u32 rbag_has_highs(RBag* rbag) {
 }
 
 __device__ void push_redex(TM* tm, Pair redex) {
+  #ifdef DEBUG
+  bool free_hi = tm->rbag.hi_end < RLEN;
+  bool free_lo = tm->rbag.lo_end < RLEN;
+  if (!free_hi || !free_lo) {
+    debug("push_redex: limited resources, maybe corrupting memory\n");
+  }
+  #endif
+
   Rule rule = get_pair_rule(redex);
   if (is_high_priority(rule)) {
-    tm->rbag.hi_buf[tm->rbag.hi_end++ % RLEN] = redex;
+    tm->rbag.hi_buf[tm->rbag.hi_end++] = redex;
   } else {
-    tm->rbag.lo_buf[tm->rbag.lo_end++ % RLEN] = redex;
+    tm->rbag.lo_buf[tm->rbag.lo_end++] = redex;
   }
 }
 
@@ -868,7 +881,7 @@ __device__ inline Port vars_take(Net* net, u32 var) {
 // ---------
 
 template <typename A>
-__device__ u32 g_alloc_1(Net* net, TM* tm, u32* g_put, A* g_buf) {
+__device__ u32 g_alloc_1(Net* net, u32* g_put, A* g_buf) {
   u32 lps = 0;
   while (true) {
     u32 lc = GID()*(G_NODE_LEN/TPG) + (*g_put%(G_NODE_LEN/TPG));
@@ -883,7 +896,7 @@ __device__ u32 g_alloc_1(Net* net, TM* tm, u32* g_put, A* g_buf) {
 }
 
 template <typename A>
-__device__ u32 g_alloc(Net* net, TM* tm, u32* ret, u32* g_put, A* g_buf, u32 num) {
+__device__ u32 g_alloc(Net* net, u32* ret, u32* g_put, A* g_buf, u32 num) {
   u32 got = 0;
   u32 lps = 0;
   while (got < num) {
@@ -893,6 +906,7 @@ __device__ u32 g_alloc(Net* net, TM* tm, u32* ret, u32* g_put, A* g_buf, u32 num
     if (lc >= L_NODE_LEN && elem == 0) {
       ret[got++] = lc;
     }
+
     if (++lps >= G_NODE_LEN/TPG) printf("OOM\n"); // FIXME: remove
     //assert(++lps < G_NODE_LEN/TPG); // FIXME: enable?
   }
@@ -901,7 +915,7 @@ __device__ u32 g_alloc(Net* net, TM* tm, u32* ret, u32* g_put, A* g_buf, u32 num
 }
 
 template <typename A>
-__device__ u32 l_alloc(Net* net, TM* tm, u32* ret, u32* l_put, A* l_buf, u32 num) {
+__device__ u32 l_alloc(Net* net, u32* ret, u32* l_put, A* l_buf, u32 num) {
   u32 got = 0;
   u32 lps = 0;
   while (got < num) {
@@ -918,7 +932,7 @@ __device__ u32 l_alloc(Net* net, TM* tm, u32* ret, u32* l_put, A* l_buf, u32 num
 }
 
 template <typename A>
-__device__ u32 l_alloc_1(Net* net, TM* tm, u32* ret, u32* l_put, A* l_buf, u32* lps) {
+__device__ u32 l_alloc_1(Net* net, u32* ret, u32* l_put, A* l_buf, u32* lps) {
   u32 got = 0;
   while (true) {
     u32 lc = ((*l_put)++ * TPB) % L_NODE_LEN + TID();
@@ -933,41 +947,41 @@ __device__ u32 l_alloc_1(Net* net, TM* tm, u32* ret, u32* l_put, A* l_buf, u32* 
   return got;
 }
 
-__device__ u32 g_node_alloc_1(Net* net, TM* tm) {
-  return g_alloc_1(net, tm, net->g_node_put, net->g_node_buf);
+__device__ u32 g_node_alloc_1(Net* net) {
+  return g_alloc_1(net, net->g_node_put, net->g_node_buf);
 }
 
-__device__ u32 g_vars_alloc_1(Net* net, TM* tm) {
-  return g_alloc_1(net, tm, net->g_vars_put, net->g_vars_buf);
+__device__ u32 g_vars_alloc_1(Net* net) {
+  return g_alloc_1(net, net->g_vars_put, net->g_vars_buf);
 }
 
 __device__ u32 g_node_alloc(Net* net, TM* tm, u32 num) {
-  return g_alloc(net, tm, tm->nloc, net->g_node_put, net->g_node_buf, num);
+  return g_alloc(net, tm->nloc, net->g_node_put, net->g_node_buf, num);
 }
 
 __device__ u32 g_vars_alloc(Net* net, TM* tm, u32 num) {
-  return g_alloc(net, tm, tm->vloc, net->g_vars_put, net->g_vars_buf, num);
+  return g_alloc(net, tm->vloc, net->g_vars_put, net->g_vars_buf, num);
 }
 
 __device__ u32 l_node_alloc(Net* net, TM* tm, u32 num) {
-  return l_alloc(net, tm, tm->nloc, &tm->nput, net->l_node_buf, num);
+  return l_alloc(net, tm->nloc, &tm->nput, net->l_node_buf, num);
 }
 
 __device__ u32 l_vars_alloc(Net* net, TM* tm, u32 num) {
-  return l_alloc(net, tm, tm->vloc, &tm->vput, net->l_vars_buf, num);
+  return l_alloc(net, tm->vloc, &tm->vput, net->l_vars_buf, num);
 }
 
 __device__ u32 l_node_alloc_1(Net* net, TM* tm, u32* lps) {
-  return l_alloc_1(net, tm, tm->nloc, &tm->nput, net->l_node_buf, lps);
+  return l_alloc_1(net, tm->nloc, &tm->nput, net->l_node_buf, lps);
 }
 
 __device__ u32 l_vars_alloc_1(Net* net, TM* tm, u32* lps) {
-  return l_alloc_1(net, tm, tm->vloc, &tm->vput, net->l_vars_buf, lps);
+  return l_alloc_1(net, tm->vloc, &tm->vput, net->l_vars_buf, lps);
 }
 
 __device__ u32 node_alloc_1(Net* net, TM* tm, u32* lps) {
   if (tm->mode != WORK) {
-    return g_node_alloc_1(net, tm);
+    return g_node_alloc_1(net);
   } else {
     return l_node_alloc_1(net, tm, lps);
   }
@@ -975,7 +989,7 @@ __device__ u32 node_alloc_1(Net* net, TM* tm, u32* lps) {
 
 __device__ u32 vars_alloc_1(Net* net, TM* tm, u32* lps) {
   if (tm->mode != WORK) {
-    return g_vars_alloc_1(net, tm);
+    return g_vars_alloc_1(net);
   } else {
     return l_vars_alloc_1(net, tm, lps);
   }
@@ -985,7 +999,7 @@ __device__ u32 vars_alloc_1(Net* net, TM* tm, u32* lps) {
 // -------
 
 // Finds a variable's value.
-__device__ inline Port peek(Net* net, TM* tm, Port var) {
+__device__ inline Port peek(Net* net, Port var) {
   while (get_tag(var) == VAR) {
     Port val = vars_load(net, get_val(var));
     if (val == NONE) break;
@@ -996,7 +1010,7 @@ __device__ inline Port peek(Net* net, TM* tm, Port var) {
 }
 
 // Finds a variable's value.
-__device__ inline Port enter(Net* net, TM* tm, Port var) {
+__device__ inline Port enter(Net* net, Port var) {
   u32 lps = 0;
   Port init = var;
   // While `B` is VAR: extend it (as an optimization)
@@ -1042,7 +1056,7 @@ __device__ void link(Net* net, TM* tm, Port A, Port B) {
     }
 
     // While `B` is VAR: extend it (as an optimization)
-    B = enter(net, tm, B);
+    B = enter(net, B);
 
     // Since `A` is VAR: point `A ~> B`.
     if (true) {
@@ -1100,6 +1114,8 @@ __device__ bool get_resources(Net* net, TM* tm, u32 need_rbag, u32 need_node, u3
   u32 got_node;
   u32 got_vars;
   if (tm->mode != WORK) {
+    debug("allocating need_rbag=%u need_node=%u need_vars=%u\n", need_rbag, need_node, need_vars);
+
     got_node = g_node_alloc(net, tm, need_node);
     got_vars = g_vars_alloc(net, tm, need_vars);
   } else {
@@ -1130,13 +1146,13 @@ __device__ bool interact_link(Net* net, TM* tm, Port a, Port b) {
 
     // Loads ports.
     Pair l_b  = node_take(net, get_val(b));
-    Port l_b1 = enter(net, tm, get_fst(l_b));
-    Port l_b2 = enter(net, tm, get_snd(l_b));
+    Port l_b1 = enter(net, get_fst(l_b));
+    Port l_b2 = enter(net, get_snd(l_b));
 
     // Leaks port 1.
     Port g_b1;
     if (is_local(l_b1)) {
-      g_b1 = new_port(VAR, g_vars_alloc_1(net, tm));
+      g_b1 = new_port(VAR, g_vars_alloc_1(net));
       vars_create(net, get_val(g_b1), NONE);
       link_pair(net, tm, new_pair(g_b1, l_b1));
     } else {
@@ -1146,7 +1162,7 @@ __device__ bool interact_link(Net* net, TM* tm, Port a, Port b) {
     // Leaks port 2.
     Port g_b2;
     if (is_local(l_b2)) {
-      g_b2 = new_port(VAR, g_vars_alloc_1(net, tm));
+      g_b2 = new_port(VAR, g_vars_alloc_1(net));
       vars_create(net, get_val(g_b2), NONE);
       link_pair(net, tm, new_pair(g_b2, l_b2));
     } else {
@@ -1154,7 +1170,7 @@ __device__ bool interact_link(Net* net, TM* tm, Port a, Port b) {
     }
 
     // Leaks node.
-    Port g_b = new_port(get_tag(b), g_node_alloc_1(net, tm));
+    Port g_b = new_port(get_tag(b), g_node_alloc_1(net));
     node_create(net, get_val(g_b), new_pair(g_b1, g_b2));
     link_pair(net, tm, new_pair(a, g_b));
 
@@ -1309,7 +1325,7 @@ __device__ bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   Val  av = get_val(a);
   Pair B  = node_take(net, get_val(b));
   Port B1 = get_fst(B);
-  Port B2 = enter(net, tm, get_snd(B));
+  Port B2 = enter(net, get_snd(B));
 
   // Performs operation.
   if (get_tag(B1) == NUM) {
@@ -1419,8 +1435,8 @@ __device__ void save_redexes(Net* net, TM *tm, u32 turn) {
     Pair R = tm->rbag.lo_buf[i % RLEN];
     Port x = get_fst(R);
     Port y = get_snd(R);
-    Port X = new_port(VAR, g_vars_alloc_1(net, tm));
-    Port Y = new_port(VAR, g_vars_alloc_1(net, tm));
+    Port X = new_port(VAR, g_vars_alloc_1(net));
+    Port Y = new_port(VAR, g_vars_alloc_1(net));
     vars_create(net, get_val(X), NONE);
     vars_create(net, get_val(Y), NONE);
     link_pair(net, tm, new_pair(X, x));
@@ -1455,8 +1471,8 @@ __device__ void load_redexes(Net* net, TM *tm, u32 turn) {
   for (u32 i = 0; i < RLEN; ++i) {
     Pair redex = atomicExch(&net->g_rbag_buf_A[bag * RLEN + i], 0);
     if (redex != 0) {
-      Port a = enter(net, tm, get_fst(redex));
-      Port b = enter(net, tm, get_snd(redex));
+      Port a = enter(net, get_fst(redex));
+      Port b = enter(net, get_snd(redex));
       #ifdef DEBUG
       if (is_local(a) || is_local(b)) printf("[%04x] ERR LOAD_REDEXES\n", turn);
       #endif
@@ -1486,9 +1502,8 @@ __global__ void boot_redex(GNet* gnet, Pair redex) {
 // Creates a node.
 __global__ void make_node(GNet* gnet, Tag tag, Port fst, Port snd, Port* ret) {
   if (GID() == 0) {
-    TM tm;
     Net net = vnet_new(gnet, NULL, gnet->turn);
-    u32 loc = g_node_alloc_1(&net, &tm);
+    u32 loc = g_node_alloc_1(&net);
     node_create(&net, loc, new_pair(fst, snd));
     *ret = new_port(tag, loc);
   }
@@ -1754,10 +1769,10 @@ __global__ void initialize(GNet* gnet) {
   gnet->vars_put[GID()] = 0;
   gnet->rbag_pos[GID()] = 0;
   for (u32 i = 0; i < RLEN; ++i) {
-    gnet->rbag_buf_A[G_RBAG_LEN / TPG * GID()] = 0;
+    gnet->rbag_buf_A[G_RBAG_LEN / TPG * GID() + i] = 0;
   }
   for (u32 i = 0; i < RLEN; ++i) {
-    gnet->rbag_buf_B[G_RBAG_LEN / TPG * GID()] = 0;
+    gnet->rbag_buf_B[G_RBAG_LEN / TPG * GID() + i] = 0;
   }
 }
 
@@ -1876,11 +1891,9 @@ Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
 // Book Loader
 // -----------
 
-void book_load(Book* book, u32* buf) {
+bool book_load(Book* book, u32* buf) {
   // Reads defs_len
   book->defs_len = *buf++;
-
-  //printf("len %d\n", book->defs_len);
 
   // Parses each def
   for (u32 i = 0; i < book->defs_len; ++i) {
@@ -1902,6 +1915,16 @@ void book_load(Book* book, u32* buf) {
     def->node_len = *buf++;
     def->vars_len = *buf++;
 
+    if (def->rbag_len > L_NODE_LEN/TPB) {
+      fprintf(stderr, "def '%s' has too many redexes: %u\n", def->name, def->rbag_len);
+      return FALSE;
+    }
+
+    if (def->node_len > L_NODE_LEN/TPB) {
+      fprintf(stderr, "def '%s' has too many nodes: %u\n", def->name, def->node_len);
+      return FALSE;
+    }
+
     // Reads root
     def->root = *buf++;
 
@@ -1913,6 +1936,8 @@ void book_load(Book* book, u32* buf) {
     memcpy(def->node_buf, buf, 8*def->node_len);
     buf += def->node_len * 2;
   }
+
+  return TRUE;
 }
 
 // Debug Printing
@@ -1968,10 +1993,10 @@ __device__ void print_rbag(Net* net, TM* tm) {
     printf("%04X | %s | %s | hi | (%s %s) ~ (%s %s)\n", i,
       show_port(get_fst(redex)).x,
       show_port(get_snd(redex)).x,
-      show_port(peek(net, tm, get_fst(node1))).x,
-      show_port(peek(net, tm, get_snd(node1))).x,
-      show_port(peek(net, tm, get_fst(node2))).x,
-      show_port(peek(net, tm, get_snd(node2))).x);
+      show_port(peek(net, get_fst(node1))).x,
+      show_port(peek(net, get_snd(node1))).x,
+      show_port(peek(net, get_fst(node2))).x,
+      show_port(peek(net, get_snd(node2))).x);
   }
   for (u32 i = 0; i < tm->rbag.lo_end; ++i) {
     Pair redex = tm->rbag.lo_buf[i%RLEN];
@@ -1980,10 +2005,10 @@ __device__ void print_rbag(Net* net, TM* tm) {
     printf("%04X | %s | %s | hi | (%s %s) ~ (%s %s)\n", i,
       show_port(get_fst(redex)).x,
       show_port(get_snd(redex)).x,
-      show_port(peek(net, tm, get_fst(node1))).x,
-      show_port(peek(net, tm, get_snd(node1))).x,
-      show_port(peek(net, tm, get_fst(node2))).x,
-      show_port(peek(net, tm, get_snd(node2))).x);
+      show_port(peek(net, get_fst(node1))).x,
+      show_port(peek(net, get_snd(node1))).x,
+      show_port(peek(net, get_fst(node2))).x,
+      show_port(peek(net, get_snd(node2))).x);
   }
   printf("==== | ============ | ============\n");
 }
@@ -2262,7 +2287,7 @@ __global__ void print_result(GNet* gnet) {
   Net net = vnet_new(gnet, NULL, gnet->turn);
   if (threadIdx.x == 0 && blockIdx.x == 0) {
     printf("Result: ");
-    pretty_print_port(&net, enter(&net, NULL, ROOT));
+    pretty_print_port(&net, enter(&net, ROOT));
     printf("\n");
   }
 }
@@ -2289,13 +2314,14 @@ void do_run_io(GNet* gnet, Book* book, Port port);
 #endif
 
 extern "C" void hvm_cu(u32* book_buffer) {
-  // Start the timer
-  clock_t start = clock();
-
   // Loads the Book
   Book* book = (Book*)malloc(sizeof(Book));
   if (book_buffer) {
-    book_load(book, (u32*)book_buffer);
+    if (!book_load(book, (u32*)book_buffer)) {
+      fprintf(stderr, "failed to load book\n");
+
+      return;
+    }
     cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
   }
 
@@ -2304,6 +2330,9 @@ extern "C" void hvm_cu(u32* book_buffer) {
 
   // Creates a new GNet
   GNet* gnet = gnet_create();
+
+  // Start the timer
+  clock_t start = clock();
 
   // Boots root redex, to expand @main
   gnet_boot_redex(gnet, new_pair(new_port(REF, 0), ROOT));

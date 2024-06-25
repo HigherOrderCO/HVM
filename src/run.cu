@@ -16,10 +16,9 @@ struct Tup {
 
 // Readback: λ-Encoded Str (UTF-32)
 // FIXME: this is actually ASCII :|
-// FIXME: remove len limit
 struct Str {
-  u32  text_len;
-  char text_buf[256];
+  u32  len;
+  char* buf;
 };
 
 // Readback: λ-Encoded list of bytes
@@ -27,8 +26,6 @@ typedef struct Bytes {
   u32  len;
   char *buf;
 } Bytes;
-
-#define MAX_BYTES 256
 
 // IO Magic Number
 #define IO_MAGIC_0 0xD0CA11
@@ -100,49 +97,6 @@ extern "C" Tup gnet_readback_tup(GNet* gnet, Port port, u32 size) {
 }
 
 
-// Reads back a UTF-32 (truncated to 24 bits) string.
-// Since unicode scalars can fit in 21 bits, HVM's u24
-// integers can contain any unicode scalar value.
-// Encoding:
-// - λt (t NIL)
-// - λt (((t CONS) head) tail)
-extern "C" Str gnet_readback_str(GNet* gnet, Port port) {
-  // Result
-  Str str;
-  str.text_len = 0;
-
-  // Readback loop
-  while (TRUE) {
-    // Normalizes the net
-    gnet_normalize(gnet);
-
-    // Reads the λ-Encoded Ctr
-    Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
-
-    // Reads string layer
-    switch (ctr.tag) {
-      case LIST_NIL: {
-        break;
-      }
-      case LIST_CONS: {
-        if (ctr.args_len != 2) break;
-        if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.text_len >= 255) { printf("ERROR: for now, HVM can only readback strings of length <256."); break; }
-
-        str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
-        gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
-        port = ROOT;
-        continue;
-      }
-    }
-    break;
-  }
-
-  str.text_buf[str.text_len] = '\0';
-
-  return str;
-}
-
 // Converts a Port into a list of bytes.
 // Encoding:
 // - λt (t NIL)
@@ -150,7 +104,8 @@ extern "C" Str gnet_readback_str(GNet* gnet, Port port) {
 extern "C" Bytes gnet_readback_bytes(GNet* gnet, Port port) {
   // Result
   Bytes bytes;
-  bytes.buf = (char*) malloc(sizeof(char) * MAX_BYTES);
+  u32 capacity = 256;
+  bytes.buf = (char*) malloc(sizeof(char) * capacity);
   bytes.len = 0;
 
   // Readback loop
@@ -169,7 +124,11 @@ extern "C" Bytes gnet_readback_bytes(GNet* gnet, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (bytes.len >= MAX_BYTES) { printf("ERROR: for now, HVM can only readback list of bytes of length <%u.", MAX_BYTES); break; }
+
+        if (bytes.len == capacity - 1) {
+          capacity *= 2;
+          bytes.buf = (char*) realloc(bytes.buf, capacity);
+        }
 
         bytes.buf[bytes.len++] = get_u24(get_val(ctr.args_buf[0]));
         gnet_boot_redex(gnet, new_pair(ctr.args_buf[1], ROOT));
@@ -180,10 +139,28 @@ extern "C" Bytes gnet_readback_bytes(GNet* gnet, Port port) {
     break;
   }
 
-  bytes.buf[bytes.len] = '\0';
-
   return bytes;
 }
+
+// Reads back a UTF-32 (truncated to 24 bits) string.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+extern "C" Str gnet_readback_str(GNet* gnet, Port port) {
+  // gnet_readback_bytes is guaranteed to return a buffer with a capacity of at least one more
+  // than the number of bytes read, so we can null-terminate it.
+  Bytes bytes = gnet_readback_bytes(gnet, port);
+
+  Str str;
+  str.len = bytes.len;
+  str.buf = bytes.buf;
+  str.buf[str.len] = 0;
+
+  return str;
+}
+
 
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
 /// Should only be called within `inject_bytes`, as a previous call
@@ -209,13 +186,13 @@ __device__ Port inject_nil(Net* net, TM* tm) {
 /// The `char_idx` parameter is used to offset the vloc and nloc
 /// allocations, otherwise they would conflict with each other on
 /// subsequent calls.
-__device__ Port inject_cons(Net* net, TM* tm, Port head, Port tail, u32 char_idx) {
-  u32 v1 = tm->vloc[1 + char_idx];
+__device__ Port inject_cons(Net* net, TM* tm, Port head, Port tail) {
+  u32 v1 = tm->vloc[0];
 
-  u32 n1 = tm->nloc[2 + char_idx * 4 + 0];
-  u32 n2 = tm->nloc[2 + char_idx * 4 + 1];
-  u32 n3 = tm->nloc[2 + char_idx * 4 + 2];
-  u32 n4 = tm->nloc[2 + char_idx * 4 + 3];
+  u32 n1 = tm->nloc[0];
+  u32 n2 = tm->nloc[1];
+  u32 n3 = tm->nloc[2];
+  u32 n4 = tm->nloc[3];
 
   vars_create(net, v1, NONE);
   Port var = new_port(VAR, v1);
@@ -237,16 +214,19 @@ __device__ Port inject_bytes(Net* net, TM* tm, Bytes *bytes) {
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
   u32 len = bytes->len;
-  if (!get_resources(net, tm, 0, 2 + 4 * len, 1 + len)) {
-    printf("inject_bytes: failed to get resources\n");
+
+  if (!get_resources(net, tm, 0, 2, 1)) {
     return new_port(ERA, 0);
   }
-
   Port port = inject_nil(net, tm);
 
   for (u32 i = 0; i < len; i++) {
+    if (!get_resources(net, tm, 0, 4, 1)) {
+      return new_port(ERA, 0);
+    }
+
     Port byte = new_port(NUM, new_u24(bytes->buf[len - i - 1]));
-    port = inject_cons(net, tm, byte, port, i);
+    port = inject_cons(net, tm, byte, port);
   }
 
   return port;
@@ -254,7 +234,7 @@ __device__ Port inject_bytes(Net* net, TM* tm, Bytes *bytes) {
 
 __global__ void make_bytes_port(GNet* gnet, Bytes bytes, Port* ret) {
   if (GID() == 0) {
-    TM tm;
+    TM tm = tmem_new();
     Net net = vnet_new(gnet, NULL, gnet->turn);
     *ret = inject_bytes(&net, &tm, &bytes);
   }
@@ -388,12 +368,20 @@ Port io_open(GNet* gnet, Port argm) {
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
-      FILE_POINTERS[fd] = fopen(name.text_buf, mode.text_buf);
+      FILE_POINTERS[fd] = fopen(name.buf, mode.buf);
+
+      free(name.buf);
+      free(mode.buf);
+
       return new_port(NUM, new_u24(fd));
     }
   }
 
   fprintf(stderr, "io_open: too many open files\n");
+
+  free(name.buf);
+  free(mode.buf);
+
   return new_port(ERA, 0);
 }
 
@@ -551,13 +539,13 @@ Port io_dl_open(GNet* gnet, Port argm) {
 
   for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
     if (DYLIBS[dl] == NULL) {
-      DYLIBS[dl] = dlopen(str.text_buf, flags);
+      DYLIBS[dl] = dlopen(str.buf, flags);
       if (DYLIBS[dl] == NULL) {
-        fprintf(stderr, "failed to open dylib '%s': %s\n", str.text_buf, dlerror());
+        fprintf(stderr, "failed to open dylib '%s': %s\n", str.buf, dlerror());
 
         return new_port(ERA, 0);
       } else {
-        fprintf(stderr, "opened dylib '%s'\n", str.text_buf);
+        fprintf(stderr, "opened dylib '%s'\n", str.buf);
       }
 
       return new_port(NUM, new_u24(dl));
@@ -584,10 +572,10 @@ Port io_dl_call(GNet* gnet, Port argm) {
   Str symbol = gnet_readback_str(gnet, tup.elem_buf[1]);
 
   dlerror();
-  Port (*func)(GNet*, Port) = (Port (*)(GNet*, Port)) dlsym(dl, symbol.text_buf);
+  Port (*func)(GNet*, Port) = (Port (*)(GNet*, Port)) dlsym(dl, symbol.buf);
   char* error = dlerror();
   if (error != NULL) {
-    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.text_buf, error);
+    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.buf, error);
   }
 
   return func(gnet, tup.elem_buf[2]);
@@ -663,15 +651,23 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search
         for (u32 fid = 0; fid < book->ffns_len; ++fid) {
-          if (strcmp(func.text_buf, book->ffns_buf[fid].name) == 0) {
+          if (strcmp(func.buf, book->ffns_buf[fid].name) == 0) {
             ffn = &book->ffns_buf[fid];
             break;
           }
         }
+
         if (ffn == NULL) {
-          fprintf(stderr, "Unknown IO func '%s'\n", func.text_buf);
+          fprintf(stderr, "Unknown IO func '%s'\n", func.buf);
+
+          free(func.buf);
+
           break;
         }
+
+        debug("running io func '%s'\n", func.buf);
+
+        free(func.buf);
 
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];

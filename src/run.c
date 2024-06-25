@@ -14,12 +14,11 @@ typedef struct Tup {
   Port elem_buf[8];
 } Tup;
 
-// Readback: λ-Encoded Str (UTF-32)
+// Readback: λ-Encoded Str (UTF-32), null-terminated
 // FIXME: this is actually ASCII :|
-// FIXME: remove len limit
 typedef struct Str {
-  u32  text_len;
-  char text_buf[256];
+  u32  len;
+  char *buf;
 } Str;
 
 // Readback: λ-Encoded list of bytes
@@ -27,8 +26,6 @@ typedef struct Bytes {
   u32  len;
   char *buf;
 } Bytes;
-
-#define MAX_BYTES 256
 
 // IO Magic Number
 #define IO_MAGIC_0 0xD0CA11
@@ -99,57 +96,14 @@ extern Tup readback_tup(Net* net, Book* book, Port port, u32 size) {
   return tup;
 }
 
-// Converts a Port into a UTF-32 (truncated to 24 bits) string.
-// Since unicode scalars can fit in 21 bits, HVM's u24
-// integers can contain any unicode scalar value.
-// Encoding:
-// - λt (t NIL)
-// - λt (((t CONS) head) tail)
-Str readback_str(Net* net, Book* book, Port port) {
-  // Result
-  Str str;
-  str.text_len = 0;
-
-  // Readback loop
-  while (TRUE) {
-    // Normalizes the net
-    normalize(net, book);
-
-    // Reads the λ-Encoded Ctr
-    Ctr ctr = readback_ctr(net, book, peek(net, port));
-
-    // Reads string layer
-    switch (ctr.tag) {
-      case LIST_NIL: {
-        break;
-      }
-      case LIST_CONS: {
-        if (ctr.args_len != 2) break;
-        if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (str.text_len >= 255) { printf("ERROR: for now, HVM can only readback strings of length <=255."); break; }
-
-        str.text_buf[str.text_len++] = get_u24(get_val(ctr.args_buf[0]));
-        boot_redex(net, new_pair(ctr.args_buf[1], ROOT));
-        port = ROOT;
-        continue;
-      }
-    }
-    break;
-  }
-
-  str.text_buf[str.text_len] = '\0';
-
-  return str;
-}
-
 // Converts a Port into a list of bytes.
 // Encoding:
 // - λt (t NIL)
 // - λt (((t CONS) head) tail)
 Bytes readback_bytes(Net* net, Book* book, Port port) {
-  // Result
   Bytes bytes;
-  bytes.buf = (char*) malloc(sizeof(char) * MAX_BYTES);
+  u32 capacity = 256;
+  bytes.buf = (char*) malloc(sizeof(char) * capacity);
   bytes.len = 0;
 
   // Readback loop
@@ -168,7 +122,12 @@ Bytes readback_bytes(Net* net, Book* book, Port port) {
       case LIST_CONS: {
         if (ctr.args_len != 2) break;
         if (get_tag(ctr.args_buf[0]) != NUM) break;
-        if (bytes.len >= MAX_BYTES) { printf("ERROR: for now, HVM can only readback list of bytes of length <%u.", MAX_BYTES); break; }
+
+        if (bytes.len == capacity - 1) {
+          capacity *= 2;
+          bytes.buf = realloc(bytes.buf, capacity);
+        }
+
         bytes.buf[bytes.len++] = get_u24(get_val(ctr.args_buf[0]));
         boot_redex(net, new_pair(ctr.args_buf[1], ROOT));
         port = ROOT;
@@ -181,9 +140,27 @@ Bytes readback_bytes(Net* net, Book* book, Port port) {
   return bytes;
 }
 
+// Converts a Port into a UTF-32 (truncated to 24 bits) null-terminated string.
+// Since unicode scalars can fit in 21 bits, HVM's u24
+// integers can contain any unicode scalar value.
+// Encoding:
+// - λt (t NIL)
+// - λt (((t CONS) head) tail)
+Str readback_str(Net* net, Book* book, Port port) {
+  // readback_bytes is guaranteed to return a buffer with a capacity of at least one more
+  // than the number of bytes read, so we can null-terminate it.
+  Bytes bytes = readback_bytes(net, book, port);
+
+  Str str;
+  str.len = bytes.len;
+  str.buf = bytes.buf;
+  str.buf[str.len] = 0;
+
+  return str;
+}
+
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
-/// Should only be called within `inject_bytes`, as a previous call
-/// to `get_resources` is expected.
+/// A previous call to `get_resources(tm, 0, 2, 1)` is required.
 Port inject_nil(Net* net) {
   u32 v1 = tm[0]->vloc[0];
 
@@ -200,18 +177,14 @@ Port inject_nil(Net* net) {
 }
 
 /// Returns a λ-Encoded Ctr for a CONS: λt (((t CONS) head) tail)
-/// Should only be called within `inject_bytes`, as a previous call
-/// to `get_resources` is expected.
-/// The `char_idx` parameter is used to offset the vloc and nloc
-/// allocations, otherwise they would conflict with each other on
-/// subsequent calls.
-Port inject_cons(Net* net, Port head, Port tail, u32 char_idx) {
-  u32 v1 = tm[0]->vloc[1 + char_idx];
+/// A previous call to `get_resources(tm, 0, 4, 1)` is required.
+Port inject_cons(Net* net, Port head, Port tail) {
+  u32 v1 = tm[0]->vloc[0];
 
-  u32 n1 = tm[0]->nloc[2 + char_idx * 4 + 0];
-  u32 n2 = tm[0]->nloc[2 + char_idx * 4 + 1];
-  u32 n3 = tm[0]->nloc[2 + char_idx * 4 + 2];
-  u32 n4 = tm[0]->nloc[2 + char_idx * 4 + 3];
+  u32 n1 = tm[0]->nloc[0];
+  u32 n2 = tm[0]->nloc[1];
+  u32 n3 = tm[0]->nloc[2];
+  u32 n4 = tm[0]->nloc[3];
 
   vars_create(net, v1, NONE);
   Port var = new_port(VAR, v1);
@@ -233,16 +206,20 @@ Port inject_bytes(Net* net, Bytes *bytes) {
   // - NIL needs  2 nodes & 1 var
   // - CONS needs 4 nodes & 1 var
   u32 len = bytes->len;
-  if (!get_resources(net, tm[0], 0, 2 + 4 * len, 1 + len)) {
+  if (!get_resources(net, tm[0], 0, 2, 1)) {
     fprintf(stderr, "inject_bytes: failed to get resources\n");
     return new_port(ERA, 0);
   }
-
   Port port = inject_nil(net);
 
+  // TODO: batch-allocate these (within the limits of TM)
   for (u32 i = 0; i < len; i++) {
+    if (!get_resources(net, tm[0], 0, 4, 1)) {
+      fprintf(stderr, "inject_bytes: failed to get resources\n");
+      return new_port(ERA, 0);
+    }
     Port byte = new_port(NUM, new_u24(bytes->buf[len - i - 1]));
-    port = inject_cons(net, byte, port, i);
+    port = inject_cons(net, byte, port);
   }
 
   return port;
@@ -352,12 +329,20 @@ Port io_open(Net* net, Book* book, Port argm) {
 
   for (u32 fd = 3; fd < sizeof(FILE_POINTERS); fd++) {
     if (FILE_POINTERS[fd] == NULL) {
-      FILE_POINTERS[fd] = fopen(name.text_buf, mode.text_buf);
+      FILE_POINTERS[fd] = fopen(name.buf, mode.buf);
+
+      free(name.buf);
+      free(mode.buf);
+
       return new_port(NUM, new_u24(fd));
     }
   }
 
   fprintf(stderr, "io_open: too many open files\n");
+
+  free(name.buf);
+  free(mode.buf);
+
   return new_port(ERA, 0);
 }
 
@@ -519,9 +504,9 @@ Port io_dl_open(Net* net, Book* book, Port argm) {
 
   for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
     if (DYLIBS[dl] == NULL) {
-      DYLIBS[dl] = dlopen(str.text_buf, flags);
+      DYLIBS[dl] = dlopen(str.buf, flags);
       if (DYLIBS[dl] == NULL) {
-        fprintf(stderr, "failed to open dylib '%s': %s\n", str.text_buf, dlerror());
+        fprintf(stderr, "failed to open dylib '%s': %s\n", str.buf, dlerror());
 
         return new_port(ERA, 0);
       }
@@ -550,10 +535,10 @@ Port io_dl_call(Net* net, Book* book, Port argm) {
   Str symbol = readback_str(net, book, tup.elem_buf[1]);
 
   dlerror();
-  Port (*func)(Net*, Book*, Port) = dlsym(dl, symbol.text_buf);
+  Port (*func)(Net*, Book*, Port) = dlsym(dl, symbol.buf);
   char* error = dlerror();
   if (error != NULL) {
-    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.text_buf, error);
+    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.buf, error);
   }
 
   return func(net, book, tup.elem_buf[2]);
@@ -630,15 +615,20 @@ void do_run_io(Net* net, Book* book, Port port) {
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search
         for (u32 fid = 0; fid < book->ffns_len; ++fid) {
-          if (strcmp(func.text_buf, book->ffns_buf[fid].name) == 0) {
+          if (strcmp(func.buf, book->ffns_buf[fid].name) == 0) {
             ffn = &book->ffns_buf[fid];
             break;
           }
         }
         if (ffn == NULL) {
-          fprintf(stderr, "Unknown IO func '%s'\n", func.text_buf);
+          fprintf(stderr, "Unknown IO func '%s'\n", func.buf);
+
+          free(func.buf);
+
           break;
         }
+
+        free(func.buf);
 
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
