@@ -65,7 +65,7 @@ Ctr gnet_readback_ctr(GNet* gnet, Port port) {
   ctr.tag = get_u24(get_val(arg_port));
 
   // Loads remaining arguments
-  while (TRUE) {
+  while (true) {
     app_port = gnet_expand(gnet, get_snd(app_node));
     if (get_tag(app_port) != CON) break;
     app_node = gnet_node_load(gnet, get_val(app_port));
@@ -109,7 +109,7 @@ extern "C" Bytes gnet_readback_bytes(GNet* gnet, Port port) {
   bytes.len = 0;
 
   // Readback loop
-  while (TRUE) {
+  while (true) {
     // Normalizes the net
     gnet_normalize(gnet);
 
@@ -626,7 +626,7 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
   setlinebuf(stderr);
 
   // IO loop
-  while (TRUE) {
+  while (true) {
     // Normalizes the net
     gnet_normalize(gnet);
 

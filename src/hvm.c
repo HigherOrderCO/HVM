@@ -2,6 +2,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,14 +17,8 @@
 #define INTERPRETED
 #define WITHOUT_MAIN
 
-// Booleans
-#define TRUE  1
-#define FALSE 0
-
 // Types
 // --------
-
-typedef uint8_t bool;
 
 typedef  uint8_t  u8;
 typedef uint16_t u16;
@@ -251,7 +246,7 @@ bool get_par_flag(Pair pair) {
   if (get_tag(p1) == REF) {
     return (get_val(p1) >> 28) == 1;
   } else {
-    return FALSE;
+    return false;
   }
 }
 
@@ -716,7 +711,7 @@ static inline Net* net_new() {
 // ---------
 
 u32 node_alloc_1(Net* net, TM* tm, u32* lps) {
-  while (TRUE) {
+  while (true) {
     u32 lc = tm->tid*(G_NODE_LEN/TPC) + (tm->nput%(G_NODE_LEN/TPC));
     Pair elem = net->node_buf[lc];
     tm->nput += 1;
@@ -729,7 +724,7 @@ u32 node_alloc_1(Net* net, TM* tm, u32* lps) {
 }
 
 u32 vars_alloc_1(Net* net, TM* tm, u32* lps) {
-  while (TRUE) {
+  while (true) {
     u32 lc = tm->tid*(G_NODE_LEN/TPC) + (tm->vput%(G_NODE_LEN/TPC));
     Port elem = net->vars_buf[lc];
     tm->vput += 1;
@@ -816,7 +811,7 @@ static inline Port enter(Net* net, Port var) {
 // Atomically Links `A ~ B`.
 static inline void link(Net* net, TM* tm, Port A, Port B) {
   // Attempts to directionally point `A ~> B`
-  while (TRUE) {
+  while (true) {
     // If `A` is NODE: swap `A` and `B`, and continue
     if (get_tag(A) != VAR && get_tag(B) == VAR) {
       Port X = A; A = B; B = X;
@@ -858,13 +853,13 @@ static inline bool interact_link(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 0, 0)) {
     debug("interact_link: get_resources failed\n");
-    return FALSE;
+    return false;
   }
 
   // Links.
   link_pair(net, tm, new_pair(a, b));
 
-  return TRUE;
+  return true;
 }
 
 // Declared here for use in call interactions.
@@ -887,7 +882,7 @@ static inline bool interact_call(Net* net, TM* tm, Port a, Port b, Book* book) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, def->rbag_len + 1, def->node_len, def->vars_len)) {
     debug("interact_call: get_resources failed\n");
-    return FALSE;
+    return false;
   }
 
   // Stores new vars.
@@ -906,13 +901,13 @@ static inline bool interact_call(Net* net, TM* tm, Port a, Port b, Book* book) {
   }
   link_pair(net, tm, new_pair(adjust_port(net, tm, def->root), b));
 
-  return TRUE;
+  return true;
 }
 #endif
 
 // The Void Interaction.
 static inline bool interact_void(Net* net, TM* tm, Port a, Port b) {
-  return TRUE;
+  return true;
 }
 
 // The Eras Interaction.
@@ -920,12 +915,12 @@ static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
     debug("interact_eras: get_resources failed\n");
-    return FALSE;
+    return false;
   }
 
   // Checks availability
   if (node_load(net, get_val(b)) == 0) {
-    return FALSE;
+    return false;
   }
 
   // Loads ports.
@@ -937,7 +932,7 @@ static inline bool interact_eras(Net* net, TM* tm, Port a, Port b) {
   link_pair(net, tm, new_pair(a, B1));
   link_pair(net, tm, new_pair(a, B2));
 
-  return TRUE;
+  return true;
 }
 
 // The Anni Interaction.
@@ -945,12 +940,12 @@ static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 2, 0, 0)) {
     debug("interact_anni: get_resources failed\n");
-    return FALSE;
+    return false;
   }
 
   // Checks availability
   if (node_load(net, get_val(a)) == 0 || node_load(net, get_val(b)) == 0) {
-    return FALSE;
+    return false;
   }
 
   // Loads ports.
@@ -965,7 +960,7 @@ static inline bool interact_anni(Net* net, TM* tm, Port a, Port b) {
   link_pair(net, tm, new_pair(A1, B1));
   link_pair(net, tm, new_pair(A2, B2));
 
-  return TRUE;
+  return true;
 }
 
 // The Comm Interaction.
@@ -973,12 +968,12 @@ static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 4, 4, 4)) {
     debug("interact_comm: get_resources failed\n");
-    return FALSE;
+    return false;
   }
 
   // Checks availability
   if (node_load(net, get_val(a)) == 0 || node_load(net, get_val(b)) == 0) {
-    return FALSE;
+    return false;
   }
 
   // Loads ports.
@@ -1007,7 +1002,7 @@ static inline bool interact_comm(Net* net, TM* tm, Port a, Port b) {
   link_pair(net, tm, new_pair(new_port(get_tag(a), tm->nloc[2]), B1));
   link_pair(net, tm, new_pair(new_port(get_tag(a), tm->nloc[3]), B2));
 
-  return TRUE;
+  return true;
 }
 
 // The Oper Interaction.
@@ -1015,12 +1010,12 @@ static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 1, 0)) {
     debug("interact_oper: get_resources failed\n");
-    return FALSE;
+    return false;
   }
 
   // Checks availability
   if (node_load(net, get_val(b)) == 0) {
-    return FALSE;
+    return false;
   }
 
   // Loads ports.
@@ -1039,7 +1034,7 @@ static inline bool interact_oper(Net* net, TM* tm, Port a, Port b) {
     link_pair(net, tm, new_pair(B1, new_port(OPR, tm->nloc[0])));
   }
 
-  return TRUE;
+  return true;
 }
 
 // The Swit Interaction.
@@ -1047,12 +1042,12 @@ static inline bool interact_swit(Net* net, TM* tm, Port a, Port b) {
   // Allocates needed nodes and vars.
   if (!get_resources(net, tm, 1, 2, 0)) {
     debug("interact_swit: get_resources failed\n");
-    return FALSE;
+    return false;
   }
 
   // Checks availability
   if (node_load(net, get_val(b)) == 0) {
-    return FALSE;
+    return false;
   }
 
   // Loads ports.
@@ -1071,7 +1066,7 @@ static inline bool interact_swit(Net* net, TM* tm, Port a, Port b) {
     link_pair(net, tm, new_pair(new_port(CON, tm->nloc[0]), B1));
   }
 
-  return TRUE;
+  return true;
 }
 
 // Pops a local redex and performs a single interaction.
@@ -1116,14 +1111,14 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
     // If error, pushes redex back.
     if (!success) {
       push_redex(net, tm, redex);
-      return FALSE;
+      return false;
     // Else, increments the interaction count.
     } else if (rule != LINK) {
       tm->itrs += 1;
     }
   }
 
-  return TRUE;
+  return true;
 }
 
 // Evaluator
@@ -1137,14 +1132,14 @@ void evaluator(Net* net, TM* tm, Book* book) {
   // Performs some interactions
   u32  tick = 0;
   bool busy = tm->tid == 0;
-  while (TRUE) {
+  while (true) {
     tick += 1;
 
     // If we have redexes...
     if (rbag_len(net, tm) > 0) {
       // Update global idle counter
       if (!busy) atomic_fetch_sub_explicit(&net->idle, 1, memory_order_relaxed);
-      busy = TRUE;
+      busy = true;
 
       // Perform an interaction
       #ifdef DEBUG
@@ -1156,7 +1151,7 @@ void evaluator(Net* net, TM* tm, Book* book) {
     } else {
       // Update global idle counter
       if (busy) atomic_fetch_add_explicit(&net->idle, 1, memory_order_relaxed);
-      busy = FALSE;
+      busy = false;
 
       //// Peeks a redex from target
       u32 sid = (tm->tid - 1) % TPC;
@@ -1436,12 +1431,12 @@ bool book_load(Book* book, u32* buf) {
 
     if (def->rbag_len > DEF_RBAG_LEN) {
       fprintf(stderr, "def '%s' has too many redexes: %u\n", def->name, def->rbag_len);
-      return FALSE;
+      return false;
     }
 
     if (def->node_len > DEF_NODE_LEN) {
       fprintf(stderr, "def '%s' has too many nodes: %u\n", def->name, def->node_len);
-      return FALSE;
+      return false;
     }
 
     // Reads root
@@ -1456,7 +1451,7 @@ bool book_load(Book* book, u32* buf) {
     buf += def->node_len * 2;
   }
 
-  return TRUE;
+  return true;
 }
 
 // Debug Printing
