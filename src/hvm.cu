@@ -22,9 +22,6 @@ typedef    float f32;
 typedef   double f64;
 typedef unsigned long long int u64;
 
-#define FALSE false
-#define TRUE  true
-
 // Configuration
 // -------------
 
@@ -1917,12 +1914,12 @@ bool book_load(Book* book, u32* buf) {
 
     if (def->rbag_len > L_NODE_LEN/TPB) {
       fprintf(stderr, "def '%s' has too many redexes: %u\n", def->name, def->rbag_len);
-      return FALSE;
+      return false;
     }
 
     if (def->node_len > L_NODE_LEN/TPB) {
       fprintf(stderr, "def '%s' has too many nodes: %u\n", def->name, def->node_len);
-      return FALSE;
+      return false;
     }
 
     // Reads root
@@ -1937,7 +1934,7 @@ bool book_load(Book* book, u32* buf) {
     buf += def->node_len * 2;
   }
 
-  return TRUE;
+  return true;
 }
 
 // Debug Printing

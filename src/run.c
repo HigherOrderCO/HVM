@@ -65,7 +65,7 @@ Ctr readback_ctr(Net* net, Book* book, Port port) {
   ctr.tag = get_u24(get_val(arg_port));
 
   // Loads remaining arguments
-  while (TRUE) {
+  while (true) {
     app_port = expand(net, book, get_snd(app_node));
     if (get_tag(app_port) != CON) break;
     app_node = node_load(net, get_val(app_port));
@@ -107,7 +107,7 @@ Bytes readback_bytes(Net* net, Book* book, Port port) {
   bytes.len = 0;
 
   // Readback loop
-  while (TRUE) {
+  while (true) {
     // Normalizes the net
     normalize(net, book);
 
@@ -590,7 +590,7 @@ void do_run_io(Net* net, Book* book, Port port) {
   setlinebuf(stderr);
 
   // IO loop
-  while (TRUE) {
+  while (true) {
     // Normalizes the net
     normalize(net, book);
 
