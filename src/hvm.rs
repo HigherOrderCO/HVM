@@ -408,7 +408,9 @@ impl Numb {
           OP_OR  => Numb::new_f24(bv.log(av)),
           OP_XOR => Numb::new_f24(av.powf(bv)),
           OP_SHL => Numb::new_f24((av + bv).sin()),
+          FP_SHL => Numb::new_f24((bv + av).sin()),
           OP_SHR => Numb::new_f24((av + bv).tan()),
+          FP_SHR => Numb::new_f24((bv + av).tan()),
           _      => unreachable!(),
         }
       }
