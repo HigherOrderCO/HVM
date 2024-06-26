@@ -26,7 +26,7 @@ pub fn compile_book(trg: Target, book: &hvm::Book) -> String {
   for (fid, def) in book.defs.iter().enumerate() {
     code.push_str(&format!("    case {}: return interact_call_{}(net, tm, a, b);\n", fid, &def.name.replace("/","_").replace(".","_").replace("-","_")));
   }
-  code.push_str(&format!("    default: return FALSE;\n"));
+  code.push_str(&format!("    default: return false;\n"));
   code.push_str(&format!("  }}\n"));
   code.push_str(&format!("}}"));
 
@@ -70,7 +70,7 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
     code.push_str(&format!(" || !n{:x}", i));
   }
   code.push_str(&format!(") {{\n"));
-  code.push_str(&format!("{}return FALSE;\n", indent(tab+2)));
+  code.push_str(&format!("{}return false;\n", indent(tab+2)));
   code.push_str(&format!("{}}}\n", indent(tab+1)));
   for i in 0 .. def.vars {
     code.push_str(&format!("{}vars_create(net, v{:x}, NONE);\n", indent(tab+1), i));
@@ -79,7 +79,7 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
   // Allocs resources (using slow allocator)
   //code.push_str(&format!("{}// Allocates needed resources.\n", indent(tab+1)));
   //code.push_str(&format!("{}if (!get_resources(net, tm, {}, {}, {})) {{\n", indent(tab+1), def.rbag.len()+1, def.node.len(), def.vars));
-  //code.push_str(&format!("{}return FALSE;\n", indent(tab+2)));
+  //code.push_str(&format!("{}return false;\n", indent(tab+2)));
   //code.push_str(&format!("{}}}\n", indent(tab+1)));
   //for i in 0 .. def.node.len() {
     //code.push_str(&format!("{}Val n{:x} = tm->nloc[0x{:x}];\n", indent(tab+1), i, i));
@@ -102,7 +102,7 @@ pub fn compile_def(trg: Target, code: &mut String, book: &hvm::Book, tab: usize,
   }
 
   // Return
-  code.push_str(&format!("{}return TRUE;\n", indent(tab+1)));
+  code.push_str(&format!("{}return true;\n", indent(tab+1)));
   code.push_str(&format!("{}}}\n", indent(tab)));
 }
 
