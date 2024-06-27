@@ -1186,7 +1186,7 @@ doesn't feature these yet.
 
 For example, a single-core C program that adds numbers from 0 to a few billions
 will easily outperform an HVM2 one that uses thousands of threads, given the C
-version is doing no allocation, while C is allocating a tree-like recursive
+version is doing no allocation, while HVM2 is allocating a tree-like recursive
 stack. That said, not every program can be implemented as an allocation-free,
 register-mutating loop. For real programs that allocate tons of short memory
 objects, HVM2 is expected to perform extremely well.
