@@ -9,7 +9,7 @@ concurrency:
 
 jobs:
   bench:
-    runs-on: [self-hosted, cuda]
+    runs-on: [self-hosted, CUDA]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
@@ -19,7 +19,6 @@ jobs:
           git clone https://github.com/HigherOrderCO/hvm-bench
           cd hvm-bench
           NO_COLOR=1 cargo run bench --repo-dir ../ -r main --timeout 20 > ../table
-        shell: bash -l {0}
       - name: write comment
         run: |
           echo 'Perf run for [`'`git rev-parse --short ${{ github.sha }}`'`](https://github.com/higherorderco/HVM/commit/${{ github.sha }}):' >> comment
