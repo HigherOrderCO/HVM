@@ -40,15 +40,5 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cuda-${{ hashFiles('**/Cargo.lock') }}
-      - name: install hvm again
-        run: cargo install --path .
-      - name: run tests
-        run: cargo test --release
+      - run: cargo test --release
 
