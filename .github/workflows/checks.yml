@@ -36,7 +36,7 @@ jobs:
       - run: cargo test --release
   test-cuda:
     needs: test # don't bother the cuda machine if other tests are failing
-    runs-on: [self-hosted, cuda]
+    runs-on: [self-hosted, CUDA]
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v3
