@@ -1,0 +1,30 @@
+@List/Cons = (a (b ((@List/Cons/tag (a (b c))) c)))
+
+@List/Cons/tag = 1
+
+@List/Nil = ((@List/Nil/tag a) a)
+
+@List/Nil/tag = 0
+
+@id = (a a)
+
+@list = c
+  & @List/Cons ~ (1 (b c))
+  & @List/Cons ~ (2 (a b))
+  & @List/Cons ~ (3 (@List/Nil a))
+
+@main = e
+  & @map ~ ((a b) (d e))
+  & @map ~ (a (@list b))
+  & @List/Cons ~ (@id (@List/Nil d))
+
+// @main__C0 = (a b)
+//   & @map ~ (a (@list b))
+
+@map = (a ((@map__C1 (a b)) b))
+
+@map__C0 = (* (a (d ({(a b) c} f))))
+  & @List/Cons ~ (b (e f))
+  & @map ~ (c (d e))
+
+@map__C1 = (?(((* @List/Nil) @map__C0) a) a)
