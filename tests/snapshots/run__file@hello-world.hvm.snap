@@ -1,0 +1,6 @@
+---
+source: tests/run.rs
+expression: rust_output
+input_file: tests/programs/hello-world.hvm
+---
+Result: ((@String/Cons/tag (104 (((@String/Cons/tag (101 (((@String/Cons/tag (108 (((@String/Cons/tag (108 (((@String/Cons/tag (111 (((@String/Cons/tag (44 (((@String/Cons/tag (32 (((@String/Cons/tag (119 (((@String/Cons/tag (111 (((@String/Cons/tag (114 (((@String/Cons/tag (108 (((@String/Cons/tag (100 (@String/Nil x0))) x0) x1))) x1) x2))) x2) x3))) x3) x4))) x4) x5))) x5) x6))) x6) x7))) x7) x8))) x8) x9))) x9) x10))) x10) x11))) x11)
