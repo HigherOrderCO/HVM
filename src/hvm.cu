@@ -1852,6 +1852,11 @@ Port gnet_vars_load(GNet* gnet, u32 loc) {
   return port;
 }
 
+// Writes a host var to device
+void gnet_vars_create(GNet* gnet, u32 var, Port val) {
+  cudaMemcpy(&gnet->vars_buf[var], &val, sizeof(Port), cudaMemcpyHostToDevice);
+}
+
 // Like the enter() function, but from host and read-only
 Port gnet_peek(GNet* gnet, Port port) {
   while (get_tag(port) == VAR) {
@@ -1864,6 +1869,7 @@ Port gnet_peek(GNet* gnet, Port port) {
 
 // Expands a REF Port.
 Port gnet_expand(GNet* gnet, Port port) {
+  Port old = gnet_vars_load(gnet, get_val(ROOT));
   Port got = gnet_peek(gnet, port);
   //printf("expand %s\n", show_port(got).x);
   while (get_tag(got) == REF) {
@@ -1871,6 +1877,7 @@ Port gnet_expand(GNet* gnet, Port port) {
     gnet_normalize(gnet);
     got = gnet_peek(gnet, gnet_vars_load(gnet, get_val(ROOT)));
   }
+  gnet_vars_create(gnet, get_val(ROOT), old);
   return got;
 }
 
