@@ -205,9 +205,11 @@ typedef struct Tup {
 // For example, `(CON a (CON b (CON c)))` is a 3-tuple (a, b, c).
 extern Tup readback_tup(Net* net, Book* book, Port port, u32 size);
 
+// Readback: λ-Encoded Str (UTF-32), null-terminated
+// FIXME: this is actually ASCII :|
 typedef struct Str {
-  u32  text_len;
-  char text_buf[256];
+  u32  len;
+  char *buf;
 } Str;
 
 // Reads a constructor-encoded string (of length at most 255 characters),
