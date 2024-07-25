@@ -35,6 +35,10 @@ typedef struct Bytes {
 #define IO_DONE 0
 #define IO_CALL 1
 
+// Result Tags
+#define RESULT_OK  0
+#define RESULT_ERR 1
+
 // List Type
 #define LIST_NIL  0
 #define LIST_CONS 1
@@ -264,6 +268,135 @@ extern "C" Port gnet_inject_bytes(GNet* gnet, Bytes *bytes) {
   return ret;
 }
 
+/// Returns a λ-Encoded Ctr for a RESULT_OK: λt ((t RESULT_OK) val)
+Port inject_ok(Net* net, TM* tm, Port val) {
+  if (!get_resources(net, tm, 0, 3, 1)) {
+    fprintf(stderr, "inject_ok: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
+  u32 v1 = tm->vloc[0];
+
+  u32 n1 = tm->nloc[0];
+  u32 n2 = tm->nloc[1];
+  u32 n3 = tm->nloc[2];
+
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
+
+  node_create(net, n1, new_pair(val, var));
+  node_create(net, n2, new_pair(new_port(NUM, new_u24(RESULT_OK)), new_port(CON, n1)));
+  node_create(net, n3, new_pair(new_port(CON, n2), var));
+
+  return new_port(CON, n3);
+}
+
+__global__ void make_ok_port(GNet* gnet, Port val, Port* ret) {
+  if (GID() == 0) {
+    TM tm = tmem_new();
+    Net net = vnet_new(gnet, NULL, gnet->turn);
+    *ret = inject_ok(&net, &tm, val);
+  }
+}
+
+extern "C" Port gnet_inject_ok(GNet* gnet, Port val) {
+  Port* d_ret;
+  cudaMalloc(&d_ret, sizeof(Port));
+
+  make_ok_port<<<1,1>>>(gnet, val, d_ret);
+
+  Port ret;
+  cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
+  cudaFree(d_ret);
+
+  return ret;
+}
+
+/// Returns a λ-Encoded Ctr for a RESULT_ERR: λt ((t RESULT_ERR) err)
+Port inject_err(Net* net, TM* tm, Port err) {
+  if (!get_resources(net, tm, 0, 3, 1)) {
+    fprintf(stderr, "inject_err: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
+  u32 v1 = tm->vloc[0];
+
+  u32 n1 = tm->nloc[0];
+  u32 n2 = tm->nloc[1];
+  u32 n3 = tm->nloc[2];
+
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
+
+  node_create(net, n1, new_pair(err, var));
+  node_create(net, n2, new_pair(new_port(NUM, new_u24(RESULT_ERR)), new_port(CON, n1)));
+  node_create(net, n3, new_pair(new_port(CON, n2), var));
+
+  return new_port(CON, n3);
+}
+
+
+__global__ void make_err_port(GNet* gnet, Port val, Port* ret) {
+  if (GID() == 0) {
+    TM tm = tmem_new();
+    Net net = vnet_new(gnet, NULL, gnet->turn);
+    *ret = inject_err(&net, &tm, val);
+  }
+}
+
+extern "C" Port gnet_inject_err(GNet* gnet, Port val) {
+  Port* d_ret;
+  cudaMalloc(&d_ret, sizeof(Port));
+
+  make_err_port<<<1,1>>>(gnet, val, d_ret);
+
+  Port ret;
+  cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
+  cudaFree(d_ret);
+
+  return ret;
+}
+
+/// Returns a λ-Encoded Ctr for a RESULT_ERR: λt ((t RESULT_ERR) err)
+/// where the Error variant contains a String.
+/// `err` must be `NUL`-terminated.
+Port inject_err_str(Net* net, TM *tm, char* err) {
+  Bytes err_bytes;
+  err_bytes.buf = err;
+  err_bytes.len = strlen(err_bytes.buf);
+  Port err_port = inject_bytes(net, tm, &err_bytes);
+
+  return inject_err(net, tm, err_port);
+}
+
+__global__ void make_err_str_port(GNet* gnet, char* err, Port* ret) {
+  if (GID() == 0) {
+    TM tm = tmem_new();
+    Net net = vnet_new(gnet, NULL, gnet->turn);
+    *ret = inject_err_str(&net, &tm, err);
+  }
+}
+
+extern "C" Port gnet_inject_err_str(GNet* gnet, char* err) {
+  Port* d_ret;
+  cudaMalloc(&d_ret, sizeof(Port));
+
+  char* err_cu;
+  cudaMalloc(&d_ret, sizeof(char) * strlen(err));
+  cudaMemcpy(err_cu, err, sizeof(char) * strlen(err), cudaMemcpyHostToDevice);
+
+  make_err_str_port<<<1,1>>>(gnet, err, d_ret);
+
+  cudaFree(err_cu);
+
+  Port ret;
+  cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
+  cudaFree(d_ret);
+
+  return ret;
+}
+
+
 // Primitive IO Fns
 // -----------------
 
@@ -321,19 +454,19 @@ void* readback_dylib(Port port) {
 
 // Reads from a file a specified number of bytes.
 // `argm` is a tuple of (file_descriptor, num_bytes).
+// Returns: Result<Bytes, i24 | *>
 Port io_read(GNet* gnet, Port argm) {
   Tup tup = gnet_readback_tup(gnet, argm, 2);
   if (tup.elem_len != 2) {
     fprintf(stderr, "io_read: expected 2-tuple\n");
-    return new_port(ERA, 0);
+    return gnet_inject_err(gnet, new_port(ERA, 0));
   }
 
   FILE* fp = readback_file(tup.elem_buf[0]);
   u32 num_bytes = get_u24(get_val(tup.elem_buf[1]));
 
   if (fp == NULL) {
-    fprintf(stderr, "io_read: invalid file descriptor\n");
-    return new_port(ERA, 0);
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(EBADF)));
   }
 
   /// Read a string.
@@ -344,23 +477,26 @@ Port io_read(GNet* gnet, Port argm) {
   if ((bytes.len != num_bytes) && ferror(fp)) {
     fprintf(stderr, "io_read: failed to read\n");
     free(bytes.buf);
-    return new_port(ERA, 0);
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(ferror(fp))));
   }
 
   // Convert it to a port.
   Port ret = gnet_inject_bytes(gnet, &bytes);
   free(bytes.buf);
-  return ret;
+
+  return gnet_inject_ok(gnet, ret);
 }
 
 // Opens a file with the provided mode.
 // `argm` is a tuple (CON node) of the
 // file name and mode as strings.
+// Returns: Result<File, i24 | *>
 Port io_open(GNet* gnet, Port argm) {
   Tup tup = gnet_readback_tup(gnet, argm, 2);
   if (tup.elem_len != 2) {
     fprintf(stderr, "io_open: expected 2-tuple\n");
-    return new_port(ERA, 0);
+
+    return gnet_inject_err(gnet, new_port(ERA, 0));
   }
 
   Str name = gnet_readback_str(gnet, tup.elem_buf[0]);
@@ -373,78 +509,84 @@ Port io_open(GNet* gnet, Port argm) {
       free(name.buf);
       free(mode.buf);
 
-      return new_port(NUM, new_u24(fd));
+      if (FILE_POINTERS[fd] == NULL) {
+        return gnet_inject_err(gnet, new_port(NUM, new_i24(errno)));
+      }
+
+      return gnet_inject_ok(gnet, new_port(NUM, new_u24(fd)));
     }
   }
-
-  fprintf(stderr, "io_open: too many open files\n");
 
   free(name.buf);
   free(mode.buf);
 
-  return new_port(ERA, 0);
+  fprintf(stderr, "io_open: too many open files\n");
+
+  // too many open files
+  return gnet_inject_err(net, new_port(NUM, new_i24(EMFILE)));
 }
 
 // Closes a file, reclaiming the file descriptor.
+// Returns: Result<*, i24>
 Port io_close(GNet* gnet, Port argm) {
   FILE* fp = readback_file(argm);
   if (fp == NULL) {
-    fprintf(stderr, "io_close: invalid file descriptor\n");
-    return new_port(ERA, 0);
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(EBADF)));
   }
 
-  int err = fclose(fp) != 0;
-  if (err != 0) {
-    fprintf(stderr, "io_close: failed to close: %i\n", err);
-    return new_port(ERA, 0);
+  if (fclose(fp) != 0) {
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(ferror(fp))));
   }
 
   FILE_POINTERS[get_u24(get_val(argm))] = NULL;
-  return new_port(ERA, 0);
-}
 
-// Flushes an output stream.
-Port io_flush(GNet* gnet, Port argm) {
-  FILE* fp = readback_file(argm);
-  if (fp == NULL) {
-    fprintf(stderr, "io_flush: invalid file descriptor\n");
-    return new_port(ERA, 0);
-  }
-
-  int err = fflush(fp) != 0;
-  if (err != 0) {
-    fprintf(stderr, "io_flush: failed to flush: %i\n", err);
-    return new_port(ERA, 0);
-  }
-
-  return new_port(ERA, 0);
+  return gnet_inject_ok(gnet, new_port(ERA, 0));
 }
 
 // Writes a list of bytes to a file.
 // `argm` is a tuple (CON node) of the
 // file descriptor and list of bytes to write.
+// Returns: Result<*, i24 | *>
 Port io_write(GNet* gnet, Port argm) {
   Tup tup = gnet_readback_tup(gnet, argm, 2);
   if (tup.elem_len != 2) {
     fprintf(stderr, "io_write: expected 2-tuple\n");
-    return new_port(ERA, 0);
+    return gnet_inject_err(gnet, new_port(ERA, 0));
   }
 
   FILE* fp = readback_file(tup.elem_buf[0]);
   Bytes bytes = gnet_readback_bytes(gnet, tup.elem_buf[1]);
 
   if (fp == NULL) {
-    fprintf(stderr, "io_write: invalid file descriptor\n");
     free(bytes.buf);
-    return new_port(ERA, 0);
+
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(EBADF)));
   }
 
   if (fwrite(bytes.buf, sizeof(char), bytes.len, fp) != bytes.len) {
-    fprintf(stderr, "io_write: failed to write\n");
+    free(bytes.buf);
+
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(ferror(fp))));
   }
 
   free(bytes.buf);
-  return new_port(ERA, 0);
+
+  return gnet_inject_ok(gnet, new_port(ERA, 0));
+}
+
+// Flushes an output stream.
+// Returns: Result<*, i24>
+Port io_flush(GNet* gnet, Port argm) {
+  FILE* fp = readback_file(argm);
+  if (fp == NULL) {
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(EBADF)));
+  }
+
+  if (fflush(fp) != 0) {
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(ferror(fp))));
+  }
+
+  return gnet_inject_ok(gnet, new_port(ERA, 0));
 }
 
 // Seeks to a position in a file.
@@ -455,11 +597,12 @@ Port io_write(GNet* gnet, Port argm) {
 //    - 0 (SEEK_SET): beginning of file
 //    - 1 (SEEK_CUR): current position of the file pointer
 //    - 2 (SEEK_END): end of the file
+// Returns: Result<*, i24 | *>
 Port io_seek(GNet* gnet, Port argm) {
   Tup tup = gnet_readback_tup(gnet, argm, 3);
   if (tup.elem_len != 3) {
     fprintf(stderr, "io_seek: expected 3-tuple\n");
-    return new_port(ERA, 0);
+    return gnet_inject_err(gnet, new_port(ERA, 0));
   }
 
   FILE* fp = readback_file(tup.elem_buf[0]);
@@ -467,8 +610,7 @@ Port io_seek(GNet* gnet, Port argm) {
   u32 whence = get_i24(get_val(tup.elem_buf[2]));
 
   if (fp == NULL) {
-    fprintf(stderr, "io_write: invalid file descriptor\n");
-    return new_port(ERA, 0);
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(EBADF)));
   }
 
   int cwhence;
@@ -478,18 +620,19 @@ Port io_seek(GNet* gnet, Port argm) {
     case 2: cwhence = SEEK_END; break;
     default:
       fprintf(stderr, "io_seek: invalid whence\n");
-      return new_port(ERA, 0);
+      return gnet_inject_err(gnet, new_port(ERA, 0));
   }
 
   if (fseek(fp, offset, cwhence) != 0) {
-    fprintf(stderr, "io_seek: failed to seek\n");
+    return gnet_inject_err(gnet, new_port(NUM, new_i24(ferror(fp))));
   }
 
-  return new_port(ERA, 0);
+  return gnet_inject_ok(gnet, new_port(ERA, 0));
 }
 
 // Returns the current time as a tuple of the high
 // and low 24 bits of a 48-bit nanosecond timestamp.
+// Returns: (u24, u24)
 Port io_get_time(GNet* gnet, Port argm) {
   // Get the current time in nanoseconds
   u64 time_ns = time64();
@@ -503,11 +646,12 @@ Port io_get_time(GNet* gnet, Port argm) {
 // Sleeps.
 // `argm` is a tuple (CON node) of the high and low
 // 24 bits for a 48-bit duration in nanoseconds.
+// Returns: Result<*, *>
 Port io_sleep(GNet* gnet, Port argm) {
   Tup tup = gnet_readback_tup(gnet, argm, 2);
   if (tup.elem_len != 2) {
     fprintf(stderr, "io_sleep: expected 3-tuple\n");
-    return new_port(ERA, 0);
+    return gnet_inject_err(gnet, new_port(ERA, 0));
   }
 
   // Get the sleep duration node
@@ -522,14 +666,15 @@ Port io_sleep(GNet* gnet, Port argm) {
   ts.tv_sec = dur_ns / 1000000000;
   ts.tv_nsec = dur_ns % 1000000000;
   nanosleep(&ts, NULL);
-  // Return an eraser
-  return new_port(ERA, 0);
+
+  return gnet_inject_ok(gnet, new_port(ERA, 0));
 }
 
 // Opens a dylib at the provided path.
 // `argm` is a tuple of `filename` and `lazy`.
 // `filename` is a λ-encoded string.
 // `lazy` is a `bool` indicating if functions should be lazily loaded.
+// Returns: Result<Dylib, String>
 Port io_dl_open(GNet* gnet, Port argm) {
   Tup tup = gnet_readback_tup(gnet, argm, 2);
   Str str = gnet_readback_str(gnet, tup.elem_buf[0]);
@@ -540,20 +685,18 @@ Port io_dl_open(GNet* gnet, Port argm) {
   for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
     if (DYLIBS[dl] == NULL) {
       DYLIBS[dl] = dlopen(str.buf, flags);
-      if (DYLIBS[dl] == NULL) {
-        fprintf(stderr, "failed to open dylib '%s': %s\n", str.buf, dlerror());
 
-        return new_port(ERA, 0);
-      } else {
-        fprintf(stderr, "opened dylib '%s'\n", str.buf);
+      free(str.buf);
+
+      if (DYLIBS[dl] == NULL) {
+        return gnet_inject_err_str(net, dlerror());
       }
 
-      return new_port(NUM, new_u24(dl));
+      return gnet_inject_ok(gnet, new_port(NUM, new_u24(dl)));
     }
   }
 
-  fprintf(stderr, "io_dl_open: too many open dylibs\n");
-  return new_port(ERA, 0);
+  return gnet_inject_err_str(net, "too many open dylibs");
 }
 
 // Calls a function from a loaded dylib.
@@ -565,7 +708,8 @@ Port io_dl_call(GNet* gnet, Port argm) {
   Tup tup = gnet_readback_tup(gnet, argm, 3);
   if (tup.elem_len != 3) {
     fprintf(stderr, "io_dl_call: expected 3-tuple\n");
-    return new_port(ERA, 0);
+
+    return gnet_inject_err(gnet, new_port(ERA, 0));
   }
 
   void* dl = readback_dylib(tup.elem_buf[0]);
@@ -575,10 +719,10 @@ Port io_dl_call(GNet* gnet, Port argm) {
   Port (*func)(GNet*, Port) = (Port (*)(GNet*, Port)) dlsym(dl, symbol.buf);
   char* error = dlerror();
   if (error != NULL) {
-    fprintf(stderr, "io_dl_call: failed to get symbol '%s': %s\n", symbol.buf, error);
+    return gnet_inject_err_str(gnet, error);
   }
 
-  return func(gnet, tup.elem_buf[2]);
+  return gnet_inject_ok(gnet, func(gnet, tup.elem_buf[2]));
 }
 
 // Closes a loaded dylib, reclaiming the handle.
@@ -586,17 +730,18 @@ Port io_dl_close(Net* net, Book* book, Port argm) {
   void* dl = readback_dylib(argm);
   if (dl == NULL) {
     fprintf(stderr, "io_dl_close: invalid handle\n");
-    return new_port(ERA, 0);
+
+    return gnet_inject_err(gnet, new_port(ERA, 0));
   }
 
   int err = dlclose(dl) != 0;
   if (err != 0) {
-    fprintf(stderr, "io_dl_close: failed to close: %i\n", err);
-    return new_port(ERA, 0);
+    return gnet_inject_err_str(gnet, dlerror());
   }
 
   DYLIBS[get_u24(get_val(argm))] = NULL;
-  return new_port(ERA, 0);
+
+  return gnet_inject_ok(gnet, new_port(ERA, 0));
 }
 
 void book_init(Book* book) {

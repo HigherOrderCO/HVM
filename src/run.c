@@ -400,7 +400,7 @@ Port io_open(Net* net, Book* book, Port argm) {
       free(mode.buf);
 
       if (FILE_POINTERS[fd] == NULL) {
-          return inject_err(net, new_port(NUM, new_i24(errno)));
+        return inject_err(net, new_port(NUM, new_i24(errno)));
       }
 
       return inject_ok(net, new_port(NUM, new_u24(fd)));
@@ -455,10 +455,12 @@ Port io_write(Net* net, Book* book, Port argm) {
 
   if (fwrite(bytes.buf, sizeof(char), bytes.len, fp) != bytes.len) {
     free(bytes.buf);
+
     return inject_err(net, new_port(NUM, new_i24(ferror(fp))));
   }
 
   free(bytes.buf);
+
   return inject_ok(net, new_port(ERA, 0));
 }
 
@@ -577,14 +579,11 @@ Port io_dl_open(Net* net, Book* book, Port argm) {
   for (u32 dl = 0; dl < sizeof(DYLIBS); dl++) {
     if (DYLIBS[dl] == NULL) {
       DYLIBS[dl] = dlopen(str.buf, flags);
-      if (DYLIBS[dl] == NULL) {
-        Bytes err_bytes;
-        err_bytes.buf = dlerror();
-        err_bytes.len = strlen(err_bytes.buf);
-        Port err_port = inject_bytes(net, &err_bytes);
-        free(err_bytes.buf);
 
-        return inject_err(net, err_port);
+      free(str.buf);
+
+      if (DYLIBS[dl] == NULL) {
+        return inject_err_str(net, dlerror());
       }
 
       return inject_ok(net, new_port(NUM, new_u24(dl)));
