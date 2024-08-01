@@ -1873,7 +1873,7 @@ Port gnet_expand(GNet* gnet, Port port) {
   Port got = gnet_peek(gnet, port);
   //printf("expand %s\n", show_port(got).x);
   while (get_tag(got) == REF) {
-    gnet_boot_redex(gnet, new_pair(new_port(REF,get_val(got)), ROOT));
+    gnet_boot_redex(gnet, new_pair(got, ROOT));
     gnet_normalize(gnet);
     got = gnet_peek(gnet, gnet_vars_load(gnet, get_val(ROOT)));
   }
