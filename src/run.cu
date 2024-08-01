@@ -1,4 +1,6 @@
 #include <dlfcn.h>
+#include <errno.h>
+#include <stdio.h>
 #include "hvm.cu"
 
 // Readback: λ-Encoded Ctr
@@ -252,26 +254,26 @@ extern "C" Port gnet_inject_bytes(GNet* gnet, Bytes *bytes) {
   Port* d_ret;
   cudaMalloc(&d_ret, sizeof(Port));
 
-  Bytes cu_bytes;
-  cu_bytes.len = bytes->len;
+  Bytes bytes_cu;
+  bytes_cu.len = bytes->len;
 
-  cudaMalloc(&cu_bytes.buf, sizeof(char) * cu_bytes.len);
-  cudaMemcpy(cu_bytes.buf, bytes->buf, sizeof(char) * cu_bytes.len, cudaMemcpyHostToDevice);
+  cudaMalloc(&bytes_cu.buf, sizeof(char) * bytes_cu.len);
+  cudaMemcpy(bytes_cu.buf, bytes->buf, sizeof(char) * bytes_cu.len, cudaMemcpyHostToDevice);
 
-  make_bytes_port<<<1,1>>>(gnet, cu_bytes, d_ret);
+  make_bytes_port<<<1,1>>>(gnet, bytes_cu, d_ret);
 
   Port ret;
   cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
   cudaFree(d_ret);
-  cudaFree(cu_bytes.buf);
+  cudaFree(bytes_cu.buf);
 
   return ret;
 }
 
 /// Returns a λ-Encoded Ctr for a RESULT_OK: λt ((t RESULT_OK) val)
-Port inject_ok(Net* net, TM* tm, Port val) {
+__device__ Port inject_ok(Net* net, TM* tm, Port val) {
   if (!get_resources(net, tm, 0, 3, 1)) {
-    fprintf(stderr, "inject_ok: failed to get resources\n");
+    printf("inject_ok: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
@@ -313,9 +315,9 @@ extern "C" Port gnet_inject_ok(GNet* gnet, Port val) {
 }
 
 /// Returns a λ-Encoded Ctr for a RESULT_ERR: λt ((t RESULT_ERR) err)
-Port inject_err(Net* net, TM* tm, Port err) {
+__device__ Port inject_err(Net* net, TM* tm, Port err) {
   if (!get_resources(net, tm, 0, 3, 1)) {
-    fprintf(stderr, "inject_err: failed to get resources\n");
+    printf("inject_err: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
@@ -360,34 +362,28 @@ extern "C" Port gnet_inject_err(GNet* gnet, Port val) {
 /// Returns a λ-Encoded Ctr for a RESULT_ERR: λt ((t RESULT_ERR) err)
 /// where the Error variant contains a String.
 /// `err` must be `NUL`-terminated.
-Port inject_err_str(Net* net, TM *tm, char* err) {
-  Bytes err_bytes;
-  err_bytes.buf = err;
-  err_bytes.len = strlen(err_bytes.buf);
-  Port err_port = inject_bytes(net, tm, &err_bytes);
-
-  return inject_err(net, tm, err_port);
-}
-
-__global__ void make_err_str_port(GNet* gnet, char* err, Port* ret) {
-  if (GID() == 0) {
-    TM tm = tmem_new();
-    Net net = vnet_new(gnet, NULL, gnet->turn);
-    *ret = inject_err_str(&net, &tm, err);
-  }
-}
-
 extern "C" Port gnet_inject_err_str(GNet* gnet, char* err) {
+  Port* d_bytes_port;
+  cudaMalloc(&d_bytes_port, sizeof(Port));
+
+  Bytes bytes_cu;
+  bytes_cu.len = strlen(err);
+
+  cudaMalloc(&bytes_cu.buf, sizeof(char) * bytes_cu.len);
+  cudaMemcpy(bytes_cu.buf, err, sizeof(char) * bytes_cu.len, cudaMemcpyHostToDevice);
+
+  make_bytes_port<<<1,1>>>(gnet, bytes_cu, d_bytes_port);
+
+  Port bytes_port;
+  cudaMemcpy(&bytes_port, d_bytes_port, sizeof(Port), cudaMemcpyDeviceToHost);
+  cudaFree(d_bytes_port);
+
+  cudaFree(bytes_cu.buf);
+
   Port* d_ret;
   cudaMalloc(&d_ret, sizeof(Port));
 
-  char* err_cu;
-  cudaMalloc(&d_ret, sizeof(char) * strlen(err));
-  cudaMemcpy(err_cu, err, sizeof(char) * strlen(err), cudaMemcpyHostToDevice);
-
-  make_err_str_port<<<1,1>>>(gnet, err, d_ret);
-
-  cudaFree(err_cu);
+  make_err_port<<<1,1>>>(gnet, bytes_port, d_ret);
 
   Port ret;
   cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
@@ -523,7 +519,7 @@ Port io_open(GNet* gnet, Port argm) {
   fprintf(stderr, "io_open: too many open files\n");
 
   // too many open files
-  return gnet_inject_err(net, new_port(NUM, new_i24(EMFILE)));
+  return gnet_inject_err(gnet, new_port(NUM, new_i24(EMFILE)));
 }
 
 // Closes a file, reclaiming the file descriptor.
@@ -689,14 +685,14 @@ Port io_dl_open(GNet* gnet, Port argm) {
       free(str.buf);
 
       if (DYLIBS[dl] == NULL) {
-        return gnet_inject_err_str(net, dlerror());
+        return gnet_inject_err_str(gnet, dlerror());
       }
 
       return gnet_inject_ok(gnet, new_port(NUM, new_u24(dl)));
     }
   }
 
-  return gnet_inject_err_str(net, "too many open dylibs");
+  return gnet_inject_err_str(gnet, "too many open dylibs");
 }
 
 // Calls a function from a loaded dylib.
@@ -726,7 +722,7 @@ Port io_dl_call(GNet* gnet, Port argm) {
 }
 
 // Closes a loaded dylib, reclaiming the handle.
-Port io_dl_close(Net* net, Book* book, Port argm) {
+Port io_dl_close(GNet* gnet, Book* book, Port argm) {
   void* dl = readback_dylib(argm);
   if (dl == NULL) {
     fprintf(stderr, "io_dl_close: invalid handle\n");
