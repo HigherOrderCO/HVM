@@ -1714,7 +1714,7 @@ __global__ void evaluator(GNet* gnet) {
     u32 bag  = tm.mode == SEED ? transpose(GID(), TPB, BPG) : GID();
     u32 rpos = gnet->rbag_pos[bag];
     for (tick = 0; tick < 1 << 9; ++tick) {
-      if (tm.rbag.lo_end > rpos) {
+      if (tm.rbag.lo_end > rpos || rbag_has_highs(&tm.rbag)) {
         if (interact(&net, &tm, pop_redex(&tm), gnet->turn)) {
           while (rbag_has_highs(&tm.rbag)) {
             if (!interact(&net, &tm, pop_redex(&tm), gnet->turn)) break;
