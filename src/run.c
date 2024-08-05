@@ -352,6 +352,7 @@ Port inject_io_err_name(Net* net) {
   return inject_io_err(net, io_error);
 }
 
+/// Returns a λ-Encoded Ctr for a Result/Err(IOError/Inner(val))
 Port inject_io_err_inner(Net* net, Port val) {
   IOError io_error = {
     .tag = IO_ERR_INNER,
