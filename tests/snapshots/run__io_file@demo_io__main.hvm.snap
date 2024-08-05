@@ -3,5 +3,5 @@ source: tests/run.rs
 expression: c_output
 input_file: examples/demo_io/main.hvm
 ---
-Higher-order Virtual Machine 2
+                                 Apache License
 Result: ((@IO/Done/tag (@IO/MAGIC (((0 (* x0)) x0) x1))) x1)

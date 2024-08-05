@@ -8,10 +8,10 @@ def unwrap(res):
       return res.val
 
 def open():
-  return call("OPEN", ("./README.md", "r"))
+  return call("OPEN", ("./LICENSE", "r"))
 
 def read(f):
-  return call("READ", (f, 30))
+  return call("READ", (f, 47))
 
 def print(bytes):
   with IO:

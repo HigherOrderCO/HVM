@@ -36,25 +36,23 @@
 @call__C0 = a
   & @IO/Done ~ (@IO/MAGIC a)
 
-@main = u
-  & @IO/bind ~ (q ((((r r) (@IO/wrap t)) t) u))
-  & @call ~ (d ((o p) q))
+@main = s
+  & @IO/bind ~ (o ((((p p) (@IO/wrap r)) r) s))
+  & @call ~ (d ((m n) o))
   & @String/Cons ~ (79 (c d))
   & @String/Cons ~ (80 (b c))
   & @String/Cons ~ (69 (a b))
   & @String/Cons ~ (78 (@String/Nil a))
-  & @String/Cons ~ (46 (n o))
-  & @String/Cons ~ (47 (m n))
-  & @String/Cons ~ (82 (l m))
-  & @String/Cons ~ (69 (k l))
-  & @String/Cons ~ (65 (j k))
-  & @String/Cons ~ (68 (i j))
-  & @String/Cons ~ (77 (h i))
+  & @String/Cons ~ (46 (l m))
+  & @String/Cons ~ (47 (k l))
+  & @String/Cons ~ (76 (j k))
+  & @String/Cons ~ (73 (i j))
+  & @String/Cons ~ (67 (h i))
   & @String/Cons ~ (69 (g h))
-  & @String/Cons ~ (46 (f g))
-  & @String/Cons ~ (109 (e f))
-  & @String/Cons ~ (100 (@String/Nil e))
-  & @String/Cons ~ (114 (@String/Nil p))
+  & @String/Cons ~ (78 (f g))
+  & @String/Cons ~ (83 (e f))
+  & @String/Cons ~ (69 (@String/Nil e))
+  & @String/Cons ~ (114 (@String/Nil n))
 
 @test-io = 1
 
