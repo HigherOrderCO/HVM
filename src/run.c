@@ -37,9 +37,23 @@ typedef struct Bytes {
 #define IO_DONE 0
 #define IO_CALL 1
 
-// Result Tags
+// Result Tags = Result<T, E>
 #define RESULT_OK  0
 #define RESULT_ERR 1
+
+// IOError = {
+//   Type,           -- a type error
+//   Name,           -- invalid io func name
+//   Inner {val: T}, -- an error while calling an io func
+// }
+#define IO_ERR_TYPE 0
+#define IO_ERR_NAME 1
+#define IO_ERR_INNER 2
+
+typedef struct IOError {
+  u32 tag;
+  Port val;
+} IOError;
 
 // List Tags
 #define LIST_NIL  0
@@ -277,16 +291,85 @@ Port inject_err(Net* net, Port err) {
   return new_port(CON, n3);
 }
 
-/// Returns a λ-Encoded Ctr for a RESULT_ERR: λt ((t RESULT_ERR) err)
-/// where the Error variant contains a String.
+/// Returns a λ-Encoded Ctr for a Result/Err(IOError(..))
+Port inject_io_err(Net* net, IOError err) {
+  if (err.tag <= IO_ERR_NAME) {
+    if (!get_resources(net, tm[0], 0, 2, 1)) {
+      fprintf(stderr, "inject_bytes: failed to get resources\n");
+      return new_port(ERA, 0);
+    }
+
+    u32 v1 = tm[0]->vloc[0];
+
+    u32 n1 = tm[0]->nloc[0];
+    u32 n2 = tm[0]->nloc[1];
+
+    vars_create(net, v1, NONE);
+    Port var = new_port(VAR, v1);
+
+    node_create(net, n1, new_pair(new_port(NUM, new_u24(err.tag)), var));
+    node_create(net, n2, new_pair(new_port(CON, n1), var));
+
+    return inject_err(net, new_port(CON, n2));
+  }
+
+  if (!get_resources(net, tm[0], 0, 3, 1)) {
+    fprintf(stderr, "inject_ok: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
+  u32 v1 = tm[0]->vloc[0];
+
+  u32 n1 = tm[0]->nloc[0];
+  u32 n2 = tm[0]->nloc[1];
+  u32 n3 = tm[0]->nloc[2];
+
+  vars_create(net, v1, NONE);
+  Port var = new_port(VAR, v1);
+
+  node_create(net, n1, new_pair(err.val, var));
+  node_create(net, n2, new_pair(new_port(NUM, new_u24(IO_ERR_INNER)), new_port(CON, n1)));
+  node_create(net, n3, new_pair(new_port(CON, n2), var));
+
+  return inject_err(net, new_port(CON, n3));
+}
+
+/// Returns a λ-Encoded Ctr for a Result/Err(IOError/Type)
+Port inject_io_err_type(Net* net) {
+  IOError io_error = {
+    .tag = IO_ERR_TYPE,
+  };
+
+  return inject_io_err(net, io_error);
+}
+
+/// Returns a λ-Encoded Ctr for a Result/Err(IOError/Name)
+Port inject_io_err_name(Net* net) {
+  IOError io_error = {
+    .tag = IO_ERR_NAME,
+  };
+
+  return inject_io_err(net, io_error);
+}
+
+Port inject_io_err_inner(Net* net, Port val) {
+  IOError io_error = {
+    .tag = IO_ERR_INNER,
+    .val = val,
+  };
+
+  return inject_io_err(net, io_error);
+}
+
+/// Returns a λ-Encoded Ctr for an Result<T, IOError<String>>
 /// `err` must be `NUL`-terminated.
-Port inject_err_str(Net* net, char* err) {
+Port inject_io_err_str(Net* net, char* err) {
   Bytes err_bytes;
   err_bytes.buf = err;
   err_bytes.len = strlen(err_bytes.buf);
   Port err_port = inject_bytes(net, &err_bytes);
 
-  return inject_err(net, err_port);
+  return inject_io_err_inner(net, err_port);
 }
 
 // Primitive IO Fns
@@ -345,19 +428,18 @@ void* readback_dylib(Port port) {
 
 // Reads from a file a specified number of bytes.
 // `argm` is a tuple of (file_descriptor, num_bytes).
-// Returns: Result<Bytes, i24 | *>
+// Returns: Result<Bytes, IOError<i24>>
 Port io_read(Net* net, Book* book, Port argm) {
   Tup tup = readback_tup(net, book, argm, 2);
   if (tup.elem_len != 2) {
-    fprintf(stderr, "io_read: expected 2-tuple\n");
-    return inject_err(net, new_port(ERA, 0));
+    return inject_io_err_type(net);
   }
 
   FILE* fp = readback_file(tup.elem_buf[0]);
   u32 num_bytes = get_u24(get_val(tup.elem_buf[1]));
 
   if (fp == NULL) {
-    return inject_err(net, new_port(NUM, new_i24(EBADF)));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(EBADF)));
   }
 
   /// Read a string.
@@ -367,7 +449,7 @@ Port io_read(Net* net, Book* book, Port argm) {
 
   if ((bytes.len != num_bytes) && ferror(fp)) {
     free(bytes.buf);
-    return inject_err(net, new_port(NUM, new_i24(ferror(fp))));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(ferror(fp))));
   }
 
   // Convert it to a port.
@@ -380,13 +462,11 @@ Port io_read(Net* net, Book* book, Port argm) {
 // Opens a file with the provided mode.
 // `argm` is a tuple (CON node) of the
 // file name and mode as strings.
-// Returns: Result<File, i24 | *>
+// Returns: Result<File, IOError<i24>>
 Port io_open(Net* net, Book* book, Port argm) {
   Tup tup = readback_tup(net, book, argm, 2);
   if (tup.elem_len != 2) {
-    fprintf(stderr, "io_open: expected 2-tuple\n");
-
-    return inject_err(net, new_port(ERA, 0));
+    return inject_io_err_type(net);
   }
 
   Str name = readback_str(net, book, tup.elem_buf[0]);
@@ -400,7 +480,7 @@ Port io_open(Net* net, Book* book, Port argm) {
       free(mode.buf);
 
       if (FILE_POINTERS[fd] == NULL) {
-        return inject_err(net, new_port(NUM, new_i24(errno)));
+        return inject_io_err_inner(net, new_port(NUM, new_i24(errno)));
       }
 
       return inject_ok(net, new_port(NUM, new_u24(fd)));
@@ -410,22 +490,20 @@ Port io_open(Net* net, Book* book, Port argm) {
   free(name.buf);
   free(mode.buf);
 
-  fprintf(stderr, "io_open: returning ERR\n");
-
   // too many open files
-  return inject_err(net, new_port(NUM, new_i24(EMFILE)));
+  return inject_io_err_inner(net, new_port(NUM, new_i24(EMFILE)));
 }
 
 // Closes a file, reclaiming the file descriptor.
-// Returns: Result<*, i24>
+// Returns: Result<*, IOError<i24>>
 Port io_close(Net* net, Book* book, Port argm) {
   FILE* fp = readback_file(argm);
   if (fp == NULL) {
-    return inject_err(net, new_port(NUM, new_i24(EBADF)));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(EBADF)));
   }
 
   if (fclose(fp) != 0) {
-    return inject_err(net, new_port(NUM, new_i24(ferror(fp))));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(ferror(fp))));
   }
 
   FILE_POINTERS[get_u24(get_val(argm))] = NULL;
@@ -436,12 +514,11 @@ Port io_close(Net* net, Book* book, Port argm) {
 // Writes a list of bytes to a file.
 // `argm` is a tuple (CON node) of the
 // file descriptor and list of bytes to write.
-// Returns: Result<*, i24 | *>
+// Returns: Result<*, IOError<i24>>
 Port io_write(Net* net, Book* book, Port argm) {
   Tup tup = readback_tup(net, book, argm, 2);
   if (tup.elem_len != 2) {
-    fprintf(stderr, "io_write: expected 2-tuple\n");
-    return inject_err(net, new_port(ERA, 0));
+    return inject_io_err_type(net);
   }
 
   FILE* fp = readback_file(tup.elem_buf[0]);
@@ -450,13 +527,13 @@ Port io_write(Net* net, Book* book, Port argm) {
   if (fp == NULL) {
     free(bytes.buf);
 
-    return inject_err(net, new_port(NUM, new_i24(EBADF)));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(EBADF)));
   }
 
   if (fwrite(bytes.buf, sizeof(char), bytes.len, fp) != bytes.len) {
     free(bytes.buf);
 
-    return inject_err(net, new_port(NUM, new_i24(ferror(fp))));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(ferror(fp))));
   }
 
   free(bytes.buf);
@@ -465,15 +542,15 @@ Port io_write(Net* net, Book* book, Port argm) {
 }
 
 // Flushes an output stream.
-// Returns: Result<*, i24>
+// Returns: Result<*, IOError<i24>>
 Port io_flush(Net* net, Book* book, Port argm) {
   FILE* fp = readback_file(argm);
   if (fp == NULL) {
-    return inject_err(net, new_port(NUM, new_i24(EBADF)));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(EBADF)));
   }
 
   if (fflush(fp) != 0) {
-    return inject_err(net, new_port(NUM, new_i24(ferror(fp))));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(ferror(fp))));
   }
 
   return inject_ok(net, new_port(ERA, 0));
@@ -487,12 +564,11 @@ Port io_flush(Net* net, Book* book, Port argm) {
 //    - 0 (SEEK_SET): beginning of file
 //    - 1 (SEEK_CUR): current position of the file pointer
 //    - 2 (SEEK_END): end of the file
-// Returns: Result<*, i24 | *>
+// Returns: Result<*, IOError<i24>>
 Port io_seek(Net* net, Book* book, Port argm) {
   Tup tup = readback_tup(net, book, argm, 3);
   if (tup.elem_len != 3) {
-    fprintf(stderr, "io_seek: expected 3-tuple\n");
-    return inject_err(net, new_port(ERA, 0));
+    return inject_io_err_type(net);
   }
 
   FILE* fp = readback_file(tup.elem_buf[0]);
@@ -500,7 +576,7 @@ Port io_seek(Net* net, Book* book, Port argm) {
   u32 whence = get_i24(get_val(tup.elem_buf[2]));
 
   if (fp == NULL) {
-    return inject_err(net, new_port(NUM, new_i24(EBADF)));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(EBADF)));
   }
 
   int cwhence;
@@ -509,12 +585,11 @@ Port io_seek(Net* net, Book* book, Port argm) {
     case 1: cwhence = SEEK_CUR; break;
     case 2: cwhence = SEEK_END; break;
     default:
-      fprintf(stderr, "io_seek: invalid whence\n");
-      return inject_err(net, new_port(ERA, 0));
+      return inject_io_err_type(net);
   }
 
   if (fseek(fp, offset, cwhence) != 0) {
-    return inject_err(net, new_port(NUM, new_i24(ferror(fp))));
+    return inject_io_err_inner(net, new_port(NUM, new_i24(ferror(fp))));
   }
 
   return inject_ok(net, new_port(ERA, 0));
@@ -522,7 +597,7 @@ Port io_seek(Net* net, Book* book, Port argm) {
 
 // Returns the current time as a tuple of the high
 // and low 24 bits of a 48-bit nanosecond timestamp.
-// Returns: (u24, u24)
+// Returns: Result<(u24, u24), IOError<*>>
 Port io_get_time(Net* net, Book* book, Port argm) {
   // Get the current time in nanoseconds
   u64 time_ns = time64();
@@ -534,18 +609,17 @@ Port io_get_time(Net* net, Book* book, Port argm) {
   u32 loc = node_alloc_1(net, tm[0], &lps);
   node_create(net, loc, new_pair(new_port(NUM, new_u24(time_hi)), new_port(NUM, new_u24(time_lo))));
 
-  return new_port(CON, loc);
+  return inject_ok(net, new_port(CON, loc));
 }
 
 // Sleeps.
 // `argm` is a tuple (CON node) of the high and low
 // 24 bits for a 48-bit duration in nanoseconds.
-// Returns: Result<*, *>
+// Returns: Result<*, IOError<*>>
 Port io_sleep(Net* net, Book* book, Port argm) {
   Tup tup = readback_tup(net, book, argm, 2);
   if (tup.elem_len != 2) {
-    fprintf(stderr, "io_sleep: expected 2-tuple\n");
-    return inject_err(net, new_port(ERA, 0));
+    return inject_io_err_type(net);
   }
 
   // Get the sleep duration node
@@ -568,7 +642,7 @@ Port io_sleep(Net* net, Book* book, Port argm) {
 // `argm` is a tuple of `filename` and `lazy`.
 // `filename` is a λ-encoded string.
 // `lazy` is a `bool` indicating if functions should be lazily loaded.
-// Returns: Result<Dylib, String>
+// Returns: Result<Dylib, IOError<String>>
 Port io_dl_open(Net* net, Book* book, Port argm) {
   Tup tup = readback_tup(net, book, argm, 2);
   Str str = readback_str(net, book, tup.elem_buf[0]);
@@ -583,14 +657,14 @@ Port io_dl_open(Net* net, Book* book, Port argm) {
       free(str.buf);
 
       if (DYLIBS[dl] == NULL) {
-        return inject_err_str(net, dlerror());
+        return inject_io_err_str(net, dlerror());
       }
 
       return inject_ok(net, new_port(NUM, new_u24(dl)));
     }
   }
 
-  return inject_err_str(net, "too many open dylibs");
+  return inject_io_err_str(net, "too many open dylibs");
 }
 
 // Calls a function from a loaded dylib.
@@ -602,13 +676,11 @@ Port io_dl_open(Net* net, Book* book, Port argm) {
 // This function returns a Result with an Ok variant containing an
 // arbitrary type.
 //
-// Returns Result<T, String | *>
+// Returns Result<T, IOError<String>>
 Port io_dl_call(Net* net, Book* book, Port argm) {
   Tup tup = readback_tup(net, book, argm, 3);
   if (tup.elem_len != 3) {
-    fprintf(stderr, "io_dl_call: expected 3-tuple\n");
-
-    return inject_err(net, new_port(ERA, 0));
+    return inject_io_err_type(net);
   }
 
   void* dl = readback_dylib(tup.elem_buf[0]);
@@ -618,7 +690,7 @@ Port io_dl_call(Net* net, Book* book, Port argm) {
   Port (*func)(Net*, Book*, Port) = dlsym(dl, symbol.buf);
   char* error = dlerror();
   if (error != NULL) {
-    return inject_err_str(net, error);
+    return inject_io_err_str(net, error);
   }
 
   return inject_ok(net, func(net, book, tup.elem_buf[2]));
@@ -626,18 +698,16 @@ Port io_dl_call(Net* net, Book* book, Port argm) {
 
 // Closes a loaded dylib, reclaiming the handle.
 //
-// Returns:  Result<*, String | *>
+// Returns:  Result<*, IOError<String>>
 Port io_dl_close(Net* net, Book* book, Port argm) {
   void* dl = readback_dylib(argm);
   if (dl == NULL) {
-    fprintf(stderr, "io_dl_close: invalid handle\n");
-
-    return inject_err(net, new_port(ERA, 0));
+    return inject_io_err_type(net);
   }
 
   int err = dlclose(dl) != 0;
   if (err != 0) {
-    return inject_err_str(net, dlerror());
+    return inject_io_err_str(net, dlerror());
   }
 
   DYLIBS[get_u24(get_val(argm))] = NULL;
@@ -703,27 +773,28 @@ void do_run_io(Net* net, Book* book, Port port) {
             break;
           }
         }
-        if (ffn == NULL) {
-          fprintf(stderr, "Unknown IO func '%s'\n", func.buf);
-
-          free(func.buf);
-
-          break;
-        }
 
         free(func.buf);
 
         Port argm = ctr.args_buf[2];
         Port cont = ctr.args_buf[3];
-        Port ret = ffn->func(net, book, argm);
+
+        Port ret;
+        if (ffn == NULL) {
+          ret = inject_io_err_name(net);
+        } else {
+          ret = ffn->func(net, book, argm);
+        };
 
         u32 lps = 0;
         u32 loc = node_alloc_1(net, tm[0], &lps);
         node_create(net, loc, new_pair(ret, ROOT));
         boot_redex(net, new_pair(new_port(CON, loc), cont));
         port = ROOT;
+
         continue;
       }
+
       case IO_DONE: {
         break;
       }
