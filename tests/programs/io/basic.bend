@@ -5,14 +5,29 @@ def unwrap(res):
     case Result/Err:
       return res.val
 
-def main():
+def open():
+  return call("OPEN", ("./README.md", "r"))
+
+def read(f):
+  return call("READ", (f, 30))
+
+def print(bytes):
   with IO:
-    f <- call("OPEN", ("./README.md", "r"))
-    f = unwrap(f)
-    bytes <- call("READ", (f, 30))
-    bytes = unwrap(bytes)
     * <- call("WRITE", (1, bytes))
     * <- call("WRITE", (1, "\n"))
-    res <- call("CLOSE", f)
+
+    return wrap(*)
+
+def close(f):
+  return call("CLOSE", f)
+
+def main():
+  with IO:
+    f <- open()
+    f = unwrap(f)
+    bytes <- read(f)
+    bytes = unwrap(bytes)
+    * <- print(bytes)
+    res <- close(f)
 
     return wrap(res)

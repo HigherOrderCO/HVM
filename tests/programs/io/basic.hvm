@@ -36,8 +36,26 @@
 @call__C0 = a
   & @IO/Done ~ (@IO/MAGIC a)
 
-@main = mc
-  & @IO/bind ~ (q ((((ic (r kc)) (@IO/wrap lc)) lc) mc))
+@close = f
+  & @call ~ (e f)
+  & @String/Cons ~ (67 (d e))
+  & @String/Cons ~ (76 (c d))
+  & @String/Cons ~ (79 (b c))
+  & @String/Cons ~ (83 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@main = w
+  & @IO/bind ~ (@open ((((s (a u)) (@IO/wrap v)) v) w))
+  & @IO/bind ~ (c ((((n (o (d q))) (r (s t))) t) u))
+  & @unwrap ~ (a {b r})
+  & @read ~ (b c)
+  & @IO/bind ~ (f ((((g (k (* m))) (n (o p))) p) q))
+  & @print ~ (e f)
+  & @unwrap ~ (d e)
+  & @IO/bind ~ (h ((((i i) (k l)) l) m))
+  & @close ~ (g h)
+
+@open = q
   & @call ~ (d ((o p) q))
   & @String/Cons ~ (79 (c d))
   & @String/Cons ~ (80 (b c))
@@ -55,36 +73,38 @@
   & @String/Cons ~ (109 (e f))
   & @String/Cons ~ (100 (@String/Nil e))
   & @String/Cons ~ (114 (@String/Nil p))
-  & @IO/bind ~ (x ((((dc (ec (db gc))) (hc (ic jc))) jc) kc))
-  & @unwrap ~ (r {w hc})
-  & @call ~ (v ((w 30) x))
-  & @String/Cons ~ (82 (u v))
-  & @String/Cons ~ (69 (t u))
-  & @String/Cons ~ (65 (s t))
-  & @String/Cons ~ (68 (@String/Nil s))
-  & @IO/bind ~ (fb ((((zb (ac (* cc))) (dc (ec fc))) fc) gc))
-  & @call ~ (cb ((1 eb) fb))
-  & @String/Cons ~ (87 (bb cb))
-  & @String/Cons ~ (82 (ab bb))
-  & @String/Cons ~ (73 (z ab))
-  & @String/Cons ~ (84 (y z))
-  & @String/Cons ~ (69 (@String/Nil y))
-  & @unwrap ~ (db eb)
-  & @IO/bind ~ (mb ((((sb (wb (* yb))) (zb (ac bc))) bc) cc))
-  & @call ~ (kb ((1 lb) mb))
-  & @String/Cons ~ (87 (jb kb))
-  & @String/Cons ~ (82 (ib jb))
-  & @String/Cons ~ (73 (hb ib))
-  & @String/Cons ~ (84 (gb hb))
-  & @String/Cons ~ (69 (@String/Nil gb))
-  & @String/Cons ~ (10 (@String/Nil lb))
-  & @IO/bind ~ (tb ((((ub ub) (wb xb)) xb) yb))
-  & @call ~ (rb (sb tb))
-  & @String/Cons ~ (67 (qb rb))
-  & @String/Cons ~ (76 (pb qb))
-  & @String/Cons ~ (79 (ob pb))
-  & @String/Cons ~ (83 (nb ob))
-  & @String/Cons ~ (69 (@String/Nil nb))
+
+@print = (f h)
+  & @IO/bind ~ (g (@print__C3 h))
+  & @call ~ (e ((1 f) g))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@print__C0 = ((* a) (* a))
+
+@print__C1 = g
+  & @call ~ (e ((1 f) g))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+  & @String/Cons ~ (10 (@String/Nil f))
+
+@print__C2 = (a (* c))
+  & @IO/bind ~ (@print__C1 (((@print__C0 (a b)) b) c))
+
+@print__C3 = ((@print__C2 (@IO/wrap a)) a)
+
+@read = (e f)
+  & @call ~ (d ((e 30) f))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (69 (b c))
+  & @String/Cons ~ (65 (a b))
+  & @String/Cons ~ (68 (@String/Nil a))
 
 @undefer = (((a a) b) b)
 
