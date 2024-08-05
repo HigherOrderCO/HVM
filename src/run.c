@@ -295,7 +295,7 @@ Port inject_err(Net* net, Port err) {
 Port inject_io_err(Net* net, IOError err) {
   if (err.tag <= IO_ERR_NAME) {
     if (!get_resources(net, tm[0], 0, 2, 1)) {
-      fprintf(stderr, "inject_bytes: failed to get resources\n");
+      fprintf(stderr, "inject_io_err: failed to get resources\n");
       return new_port(ERA, 0);
     }
 
@@ -314,7 +314,7 @@ Port inject_io_err(Net* net, IOError err) {
   }
 
   if (!get_resources(net, tm[0], 0, 3, 1)) {
-    fprintf(stderr, "inject_ok: failed to get resources\n");
+    fprintf(stderr, "inject_io_err: failed to get resources\n");
     return new_port(ERA, 0);
   }
 
