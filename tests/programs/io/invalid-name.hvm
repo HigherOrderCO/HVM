@@ -64,6 +64,8 @@
   & @String/Cons ~ (100 (@String/Nil m))
   & @String/Cons ~ (114 (@String/Nil x))
 
+@test-io = 1
+
 @undefer = (((a a) b) b)
 
 

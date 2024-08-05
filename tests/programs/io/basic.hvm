@@ -106,6 +106,8 @@
   & @String/Cons ~ (65 (a b))
   & @String/Cons ~ (68 (@String/Nil a))
 
+@test-io = 1
+
 @undefer = (((a a) b) b)
 
 @unwrap = ((@unwrap__C0 a) a)

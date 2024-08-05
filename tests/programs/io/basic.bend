@@ -1,3 +1,5 @@
+test-io = 1
+
 def unwrap(res):
   match res:
     case Result/Ok:

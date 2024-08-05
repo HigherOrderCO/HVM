@@ -1,3 +1,5 @@
+test-io = 1
+
 def main():
   with IO:
     # calling open with an unexpected type of arg
