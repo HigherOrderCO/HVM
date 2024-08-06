@@ -752,7 +752,7 @@ void do_run_io(Net* net, Book* book, Port port) {
     Ctr ctr = readback_ctr(net, book, peek(net, port));
 
     // Checks if IO Magic Number is a CON
-    if (get_tag(ctr.args_buf[0]) != CON) {
+    if (ctr.args_len < 1 || get_tag(ctr.args_buf[0]) != CON) {
       break;
     }
 
@@ -765,6 +765,11 @@ void do_run_io(Net* net, Book* book, Port port) {
 
     switch (ctr.tag) {
       case IO_CALL: {
+        if (ctr.args_len != 4) {
+          fprintf(stderr, "invalid IO_CALL: args_len = %u\n", ctr.args_len);
+          break;
+        }
+
         Str  func = readback_str(net, book, ctr.args_buf[1]);
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search

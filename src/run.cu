@@ -869,7 +869,7 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
     Ctr ctr = gnet_readback_ctr(gnet, gnet_peek(gnet, port));
 
     // Checks if IO Magic Number is a CON
-    if (get_tag(ctr.args_buf[0]) != CON) {
+    if (ctr.args_len < 1 || get_tag(ctr.args_buf[0]) != CON) {
       break;
     }
 
@@ -882,6 +882,11 @@ void do_run_io(GNet* gnet, Book* book, Port port) {
 
     switch (ctr.tag) {
       case IO_CALL: {
+        if (ctr.args_len != 4) {
+          fprintf(stderr, "invalid IO_CALL: args_len = %u\n", ctr.args_len);
+          break;
+        }
+
         Str  func = gnet_readback_str(gnet, ctr.args_buf[1]);
         FFn* ffn  = NULL;
         // FIXME: optimize this linear search
