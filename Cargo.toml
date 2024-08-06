@@ -30,3 +30,6 @@ cuda = []
 
 [dev-dependencies]
 insta = { version = "1.39.0", features = ["glob"] }
+
+[patch.crates-io]
+TSPL = { git = "https://github.com/HigherOrderCO/TSPL.git", branch = "range-info"}

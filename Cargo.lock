@@ -5,8 +5,7 @@ version = 3
 [[package]]
 name = "TSPL"
 version = "0.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52dfd6238b1461b99635b26585a85b4e7b9c786cc0481b3c540ae5f590b6dfb6"
+source = "git+https://github.com/HigherOrderCO/TSPL.git?branch=range-info#f46f88debf9e0363e7ec33f554dc1798c9a62737"
 dependencies = [
  "highlight_error",
 ]
