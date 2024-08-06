@@ -206,8 +206,8 @@ typedef struct Tup {
 extern Tup readback_tup(Net* net, Book* book, Port port, u32 size);
 
 typedef struct Str {
-  u32  text_len;
-  char text_buf[256];
+  u32  len;
+  char *buf;
 } Str;
 
 // Reads a constructor-encoded string (of length at most 255 characters),
