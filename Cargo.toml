@@ -2,7 +2,7 @@
 name = "hvm"
 description = "A massively parallel, optimal functional runtime in Rust."
 license = "Apache-2.0"
-version = "2.0.21"
+version = "2.0.22"
 edition = "2021"
 rust-version = "1.74"
 build = "build.rs"
@@ -13,7 +13,7 @@ name = "hvm"
 path = "src/lib.rs"
 
 [dependencies]
-TSPL = "0.0.12"
+TSPL = "0.0.13"
 clap = "4.5.2"
 highlight_error = "0.1.1"
 num_cpus = "1.0"
@@ -30,6 +30,3 @@ cuda = []
 
 [dev-dependencies]
 insta = { version = "1.39.0", features = ["glob"] }
-
-[patch.crates-io]
-TSPL = { git = "https://github.com/HigherOrderCO/TSPL.git", branch = "range-info"}
