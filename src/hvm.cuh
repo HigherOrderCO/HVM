@@ -194,8 +194,8 @@ typedef struct Tup {
 extern Tup gnet_readback_tup(GNet* gnet, Port port, u32 size);
 
 typedef struct Str {
-  u32  text_len;
-  char text_buf[256];
+  u32  len;
+  char *buf;
 } Str;
 
 // Reads a constructor-encoded string (of length at most 255 characters),

@@ -1714,7 +1714,7 @@ __global__ void evaluator(GNet* gnet) {
     u32 bag  = tm.mode == SEED ? transpose(GID(), TPB, BPG) : GID();
     u32 rpos = gnet->rbag_pos[bag];
     for (tick = 0; tick < 1 << 9; ++tick) {
-      if (tm.rbag.lo_end > rpos) {
+      if (tm.rbag.lo_end > rpos || rbag_has_highs(&tm.rbag)) {
         if (interact(&net, &tm, pop_redex(&tm), gnet->turn)) {
           while (rbag_has_highs(&tm.rbag)) {
             if (!interact(&net, &tm, pop_redex(&tm), gnet->turn)) break;
@@ -1873,7 +1873,7 @@ Port gnet_expand(GNet* gnet, Port port) {
   Port got = gnet_peek(gnet, port);
   //printf("expand %s\n", show_port(got).x);
   while (get_tag(got) == REF) {
-    gnet_boot_redex(gnet, new_pair(new_port(REF,get_val(got)), ROOT));
+    gnet_boot_redex(gnet, new_pair(got, ROOT));
     gnet_normalize(gnet);
     got = gnet_peek(gnet, gnet_vars_load(gnet, get_val(ROOT)));
   }
