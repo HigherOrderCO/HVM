@@ -1,4 +1,4 @@
-use TSPL::{new_parser, Parser};
+use TSPL::{new_parser, Parser, ParseError};
 use highlight_error::highlight_error;
 use crate::hvm;
 use std::fmt::{Debug, Display};
@@ -37,11 +37,13 @@ pub struct Book {
 // Parser
 // ------
 
+pub type ParseResult<T> = std::result::Result<T, ParseError>;
+
 new_parser!(CoreParser);
 
 impl<'i> CoreParser<'i> {
 
-  pub fn parse_numb_sym(&mut self) -> Result<Numb, String> {
+  pub fn parse_numb_sym(&mut self) -> ParseResult<Numb> {
     self.consume("[")?;
 
     // numeric casts
@@ -97,33 +99,29 @@ impl<'i> CoreParser<'i> {
     return Ok(Numb(num.0));
   }
 
-  pub fn parse_numb_lit(&mut self) -> Result<Numb, String> {
+  pub fn parse_numb_lit(&mut self) -> ParseResult<Numb> {
     let ini = self.index;
     let num = self.take_while(|x| x.is_alphanumeric() || x == '+' || x == '-' || x == '.');
+    let mut num_parser = CoreParser::new(num);
     let end = self.index;
     Ok(Numb(if num.contains('.') || num.contains("inf") || num.contains("NaN") {
-      let val: f32 = num.parse().map_err(|err| format!("invalid number literal: {}\n{}", err, highlight_error(ini, end, self.input)))?;
+      let val: f32 = num.parse()
+        .map_err(|err| {
+          let msg = format!("invalid number literal: {}\n{}", err, highlight_error(ini, end, self.input));
+          self.expected_and::<Numb>("number literal", &msg).unwrap_err()
+        })?;
       hvm::Numb::new_f24(val)
     } else if num.starts_with('+') || num.starts_with('-') {
-      let val = Self::parse_int(&num[1..])? as i32;
+      *num_parser.index() += 1;
+      let val = num_parser.parse_u64()? as i32;
       hvm::Numb::new_i24(if num.starts_with('-') { -val } else { val })
     } else {
-      let val = Self::parse_int(num)? as u32;
+      let val = num_parser.parse_u64()? as u32;
       hvm::Numb::new_u24(val)
     }.0))
   }
 
-  fn parse_int(input: &str) -> Result<u64, String> {
-    if let Some(rest) = input.strip_prefix("0x") {
-      u64::from_str_radix(rest, 16).map_err(|err| format!("{err:?}"))
-    } else if let Some(rest) = input.strip_prefix("0b") {
-      u64::from_str_radix(rest, 2).map_err(|err| format!("{err:?}"))
-    } else {
-      input.parse::<u64>().map_err(|err| format!("{err:?}"))
-    }
-  }
-
-  pub fn parse_numb(&mut self) -> Result<Numb, String> {
+  pub fn parse_numb(&mut self) -> ParseResult<Numb> {
     self.skip_trivia();
 
     // Parses symbols (SYM)
@@ -135,7 +133,7 @@ impl<'i> CoreParser<'i> {
     }
   }
 
-  pub fn parse_tree(&mut self) -> Result<Tree, String> {
+  pub fn parse_tree(&mut self) -> ParseResult<Tree> {
     self.skip_trivia();
     //println!("aaa ||{}", &self.input[self.index..]);
     match self.peek_one() {
@@ -194,7 +192,7 @@ impl<'i> CoreParser<'i> {
     }
   }
 
-  pub fn parse_net(&mut self) -> Result<Net, String> {
+  pub fn parse_net(&mut self) -> ParseResult<Net> {
     let root = self.parse_tree()?;
     let mut rbag = Vec::new();
     self.skip_trivia();
@@ -210,7 +208,7 @@ impl<'i> CoreParser<'i> {
     Ok(Net { root, rbag })
   }
 
-  pub fn parse_book(&mut self) -> Result<Book, String> {
+  pub fn parse_book(&mut self) -> ParseResult<Book> {
     let mut defs = BTreeMap::new();
     while !self.is_eof() {
       self.consume("@")?;
@@ -527,7 +525,7 @@ impl Net {
 }
 
 impl Book {
-  pub fn parse(code: &str) -> Result<Self, String> {
+  pub fn parse(code: &str) -> ParseResult<Self> {
     CoreParser::new(code).parse_book()
   }
 

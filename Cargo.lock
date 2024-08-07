@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "TSPL"
-version = "0.0.12"
+version = "0.0.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52dfd6238b1461b99635b26585a85b4e7b9c786cc0481b3c540ae5f590b6dfb6"
+checksum = "fe639519d49b56c98fd4fde7a5a7be01b5563862341a783b9bc2eb58f5120d8b"
 dependencies = [
  "highlight_error",
 ]
@@ -163,7 +163,7 @@ checksum = "809e18805660d7b6b2e2b9f316a5099521b5998d5cba4dda11b5157a21aaef03"
 
 [[package]]
 name = "hvm"
-version = "2.0.21"
+version = "2.0.22"
 dependencies = [
  "TSPL",
  "cc",
