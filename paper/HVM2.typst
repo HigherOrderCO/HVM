@@ -10,7 +10,7 @@
   title: [HVM2: A Parallel Evaluator for Interaction Combinators],
   authors: ((name: "Victor Taelin", company: "Higher Order Company", email: "taelin@HigherOrderCO.com"),),
   abstract:[
-    We present HVM2, an efficient, massively parallel evaluator for extended interaction combinators. When compiling non-sequential programs from a high-level programming language to C and CUDA, we achieved a near-ideal parallel speedup as a function of cores available, scaling from 400 million interactions per second (MIPS) (Apple M3 Max; single thread), to 5,200 MIPS (Apple M3 Max; 16 threads), to 74,000 MIPS (NVIDIA RTX 4090; 32,768 threads). In this paper we describe HVM2's architecture, present snippets of the reference implementation in Rust, share early benchmarks and experimental results, and discuss current limitations and future plans.
+    We present HVM2, an efficient, massively parallel evaluator for extended interaction combinators. When compiling non-sequential programs from a high-level programming language to C and CUDA, we achieved a near-ideal parallel speedup as a function of cores available (within a single device), scaling from 400 million interactions per second (MIPS) (Apple M3 Max; single thread), to 5,200 MIPS (Apple M3 Max; 16 threads), to 74,000 MIPS (NVIDIA RTX 4090; 32,768 threads). In this paper we describe HVM2's architecture, present snippets of the reference implementation in Rust, share early benchmarks and experimental results, and discuss current limitations and future plans.
   ],
   bibliography: bibliography("refs.bib", style: "annual-reviews"),
 )
@@ -42,20 +42,20 @@ HVM2's syntax has seven different types of _agents_ (in Lafont's terms) or _Node
 
 #align(center)[
   ```
-  <Node> ::=
-      | "*"                    -- (ERA)ser
-      | "@" <alphanumeric>     -- (REF)erence
-      | <Numeric>              -- (NUM)eric
-      | "(" <Tree> <Tree> ")"  -- (CON)structor
-      | "{" <Tree> <Tree> "}"  -- (DUP)licator
-      | "$(" <Tree> <Tree> ")" -- (OPE)rator
-      | "?(" <Tree> <Tree> ")" -- (SWI)tch
+<Node> ::=
+    | "*"                    -- (ERA)ser
+    | "@" <alphanumeric>     -- (REF)erence
+    | <Numeric>              -- (NUM)eric
+    | "(" <Tree> <Tree> ")"  -- (CON)structor
+    | "{" <Tree> <Tree> "}"  -- (DUP)licator
+    | "$(" <Tree> <Tree> ")" -- (OPE)rator
+    | "?(" <Tree> <Tree> ")" -- (SWI)tch
 
-  <Tree> ::=
-      | <alphanumeric>         -- (VAR)iable
-      | <Node>
+<Tree> ::=
+    | <alphanumeric>         -- (VAR)iable
+    | <Node>
 
-  <alphanumeric> ::= [a-zA-Z0-9_.-/]+
+<alphanumeric> ::= [a-zA-Z0-9_.-/]+
   ``` \
   _(For details on the `<Numeric>` syntax, see Numbers (@numbers))_
 ] \
@@ -204,7 +204,6 @@ $
   & "Numeric Value Nodes (Not Operators)" & #raw("#n"), #raw("#m") &:= #raw("NUM") "where" #raw("n"), #raw("m") in bb(Q) \
   & "Erasure Nodes" & #raw("*") &:= #raw("ERA") \
   & "Variables" & #raw("x"), #raw("y"), #raw("z"), #raw("w") &:= #raw("VAR") \
-
 $
 
 #v(1em)
@@ -743,7 +742,7 @@ Ports are 32-bit values that represent a wire connected to a main port. The low 
 pub type Tag = u8;  // 3 bits  (rounded up to u8)
 pub type Val = u32; // 29 bits (rounded up to u32)
 
-pub struct Port(pub Val); //  Tag + Val  (32 bits)
+pub struct Port(pub u32); //  Tag + Val  (32 bits)
 pub struct Pair(pub u64); // Port + Port (64 bits)
 ```
 ]
