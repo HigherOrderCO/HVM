@@ -1231,8 +1231,8 @@ Interaction Combinators, carefully designing an efficient memory format,
 implementing lock-free concurrent interactions via lightweight atomic
 primitives, and granularly distributing workload across all cores, we were able
 to design a parallel compiler and evaluator for high-level programming languages
-that achieves near-linear speedup as a function of core count. While the
-resulting system still has many limitations, we proposed sensible plans to
+that achieves near-linear speedup as a function of core count (within a single device).
+While the resulting system still has many limitations, we proposed sensible plans to
 address them in the future.
 
 This work creates a solid foundation for parallel programming languages that are
