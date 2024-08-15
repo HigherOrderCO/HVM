@@ -806,7 +806,7 @@ In HVM2's memory, it would be represented as:
 ```
 RBAG | FST-TREE | SND-TREE
 ---- | -------- | --------
-0800 | CON 0001 | CON 0002 // '& (b a) ~ (x (y *))'
+0800 | CON 0002 | CON 0003 // '& (b a) ~ (x (y *))'
 1800 | DUP 0005 | REF 0000 // '& {x y} ~ @foo'
 ---- | -------- | --------
 NODE | PORT-1   | PORT-2
@@ -814,7 +814,7 @@ NODE | PORT-1   | PORT-2
 0001 | VAR 0000 | VAR 0001 // '(a b)' node (root)
 0002 | VAR 0001 | VAR 0000 // '(b a)' node
 0003 | VAR 0002 | CON 0004 // '(x (y *))' node
-0004 | VAR 0003 | DUP 0000 // '(y *)' node
+0004 | VAR 0003 | ERA 0000 // '(y *)' node
 0005 | VAR 0003 | VAR 0002 // '{y x}' node
 ---- | -------- | --------
 VARS | VALUE    |
@@ -1185,7 +1185,7 @@ doesn't feature these yet.
 
 For example, a single-core C program that adds numbers from 0 to a few billions
 will easily outperform an HVM2 one that uses thousands of threads, given the C
-version is doing no allocation, while C is allocating a tree-like recursive
+version is doing no allocation, while HVM2 is allocating a tree-like recursive
 stack. That said, not every program can be implemented as an allocation-free,
 register-mutating loop. For real programs that allocate tons of short memory
 objects, HVM2 is expected to perform extremely well.
