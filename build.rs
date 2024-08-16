@@ -43,7 +43,6 @@ fn main() {
           let shared_mem_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
           std::fs::write("src/shared_mem_config.h", format!("#define HVM_SHARED_MEM {}", shared_mem_str))
             .expect("Failed to write shared_mem_config.h");
-          println!("cargo:warning=Shared memory size: {}", shared_mem_str);
         } else {
           println!("cargo:warning=\x1b[1m\x1b[31mWARNING: Failed to get shared memory size. Using default value.\x1b[0m");
         }
