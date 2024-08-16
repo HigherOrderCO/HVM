@@ -14,3 +14,6 @@ examples/**/*.cu
 # nix-direnv
 /.direnv/
 /.envrc
+
+# cuda header
+src/shared_mem_config.h
