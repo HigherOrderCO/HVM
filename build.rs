@@ -9,7 +9,6 @@ fn main() {
   println!("cargo:rerun-if-changed=src/run.cu");
   println!("cargo:rerun-if-changed=src/hvm.cu");
   println!("cargo:rerun-if-changed=src/get_shared_mem.cu");
-  println!("cargo:rerun-if-changed=src/shared_mem_config.h");
   println!("cargo:rustc-link-arg=-rdynamic");
 
   match cc::Build::new()
@@ -35,28 +34,31 @@ fn main() {
     }
 
     // Compile get_shared_mem.cu
-    if let Ok(output) = Command::new("nvcc")
+    let shared_mem_value = Command::new("nvcc")
       .args(&["src/get_shared_mem.cu", "-o", "get_shared_mem"])
       .output()
-      .and_then(|_| Command::new("./get_shared_mem").output()) {
-        if output.status.success() {
-          let shared_mem_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-          std::fs::write("src/shared_mem_config.h", format!("#define HVM_SHARED_MEM {}", shared_mem_str))
-            .expect("Failed to write shared_mem_config.h");
-        } else {
-          println!("cargo:warning=\x1b[1m\x1b[31mWARNING: Failed to get shared memory size. Using default value.\x1b[0m");
-        }
-    } else {
-      println!("cargo:warning=\x1b[1m\x1b[31mWARNING: Failed to compile or run get_shared_mem.cu. Using default shared memory value.\x1b[0m");
-    }
+      .and_then(|_| Command::new("./get_shared_mem").output())
+      .ok()
+      .and_then(|output| if output.status.success() {
+          Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+      } else {
+        None
+      })
+      .unwrap_or_else(|| {
+        println!("cargo:warning=\x1b[1m\x1b[31mWARNING: Failed to get shared memory size. Using default value.\x1b[0m");
+        "0x2000".to_string()
+      });
 
     // Clean up temporary executable
     let _ = std::fs::remove_file("get_shared_mem");
+
+    println!("cargo:warning=\x1b[1m\x1b[33mShared memory size set to: {}\x1b[0m", shared_mem_value);
 
     cc::Build::new()
       .cuda(true)
       .file("src/run.cu")
       .define("IO", None)
+      .define("HVM_SHARED_MEM", Some(shared_mem_value.as_str()))
       .flag("-diag-suppress=177") // variable was declared but never referenced
       .flag("-diag-suppress=550") // variable was set but never used
       .flag("-diag-suppress=20039") // a __host__ function redeclared with __device__, hence treated as a __host__ __device__ function

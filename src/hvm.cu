@@ -126,10 +126,9 @@ struct RBag {
   Pair lo_buf[RLEN];
 };
 
-#include "shared_mem_config.h"
-
+// Default value for shared memory (96KB)
 #ifndef HVM_SHARED_MEM
-#define HVM_SHARED_MEM 0x2000 // Default value
+#define HVM_SHARED_MEM 0x2000
 #endif
 
 // Local Net
