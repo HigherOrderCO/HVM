@@ -126,9 +126,14 @@ struct RBag {
   Pair lo_buf[RLEN];
 };
 
+// Default value for shared memory (96KB)
+#ifndef HVM_SHARED_MEM
+#define HVM_SHARED_MEM 0x2000
+#endif
+
 // Local Net
-const u32 L_NODE_LEN = 0x2000;
-const u32 L_VARS_LEN = 0x2000;
+const u32 L_NODE_LEN = HVM_SHARED_MEM;
+const u32 L_VARS_LEN = HVM_SHARED_MEM;
 struct LNet {
   Pair node_buf[L_NODE_LEN];
   Port vars_buf[L_VARS_LEN];
