@@ -804,11 +804,10 @@ Port io_delete_directory(Net* net, Book* book, Port argm) {
   int res;
   if (rec) {
     res = delete_directory_recursive(path.buf);
-    free(path.buf);
   } else {
     res = rmdir(path.buf);
-    free(path.buf);
   }
+  free(path.buf);
 
   if (0 == res) {
     return inject_ok(net, new_port(ERA, 0));
@@ -817,6 +816,9 @@ Port io_delete_directory(Net* net, Book* book, Port argm) {
   }
 }
 
+// Creates a new directory with the given path.
+// Returns Ok(None) if sucessfull, or Err(reason) if an error occurs.
+// Returns: Result<*, IOError<i24>>
 Port io_mkdir(Net* net, Book* book, Port argm) {
   Str name = readback_str(net, book, argm);
 
