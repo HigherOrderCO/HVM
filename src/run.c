@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <dirent.h>
 #include <sys/stat.h>
-// #include <unistd.h>
+#include <unistd.h>
 #include "hvm.c"
 
 // Readback: λ-Encoded Ctr
@@ -780,7 +780,7 @@ int delete_directory_recursive(const char* path) {
   }
 
   if (!r) {
-    r = remove(path);
+    r = rmdir(path);
   }
 
   return r;
@@ -806,7 +806,7 @@ Port io_delete_directory(Net* net, Book* book, Port argm) {
     res = delete_directory_recursive(path.buf);
     free(path.buf);
   } else {
-    res = remove(path.buf);
+    res = rmdir(path.buf);
     free(path.buf);
   }
 
@@ -814,6 +814,20 @@ Port io_delete_directory(Net* net, Book* book, Port argm) {
     return inject_ok(net, new_port(ERA, 0));
   } else {
     return inject_io_err_inner(net, new_port(NUM, new_i24(errno)));
+  }
+}
+
+Port io_mkdir(Net* net, Book* book, Port argm) {
+  Str name = readback_str(net, book, argm);
+
+  const mode_t mode = 0777;
+  int status = mkdir(name.buf, mode);
+  free(name.buf);
+
+  if (status) {
+    return inject_io_err_inner(net, new_port(NUM, new_i24(errno)));
+  } else {
+    return inject_ok(net, new_port(ERA, 0));
   }
 }
 
@@ -834,6 +848,7 @@ void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CLOSE", io_dl_open};
   book->ffns_buf[book->ffns_len++] = (FFn){"DELETE_FILE", io_delete_file};
   book->ffns_buf[book->ffns_len++] = (FFn){"DELETE_DIRECTORY", io_delete_directory};
+  book->ffns_buf[book->ffns_len++] = (FFn){"MKDIR", io_mkdir};
 }
 
 // Monadic IO Evaluator

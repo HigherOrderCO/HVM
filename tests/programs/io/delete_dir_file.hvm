@@ -1,0 +1,90 @@
+@False = 0
+
+@IO/Call = (a (b (c (d ((@IO/Call/tag (a (b (c (d e))))) e)))))
+
+@IO/Call/tag = 1
+
+@IO/Done = (a (b ((@IO/Done/tag (a (b c))) c)))
+
+@IO/Done/tag = 0
+
+@IO/FS/delete_directory = (q (r s))
+  & @call ~ (p ((q r) s))
+  & @String/Cons ~ (68 (o p))
+  & @String/Cons ~ (69 (n o))
+  & @String/Cons ~ (76 (m n))
+  & @String/Cons ~ (69 (l m))
+  & @String/Cons ~ (84 (k l))
+  & @String/Cons ~ (69 (j k))
+  & @String/Cons ~ (95 (i j))
+  & @String/Cons ~ (68 (h i))
+  & @String/Cons ~ (73 (g h))
+  & @String/Cons ~ (82 (f g))
+  & @String/Cons ~ (69 (e f))
+  & @String/Cons ~ (67 (d e))
+  & @String/Cons ~ (84 (c d))
+  & @String/Cons ~ (79 (b c))
+  & @String/Cons ~ (82 (a b))
+  & @String/Cons ~ (89 (@String/Nil a))
+
+@IO/MAGIC = (13683217 16719857)
+
+@IO/bind = ((@IO/bind__C2 a) a)
+
+@IO/bind__C0 = (* (b (a c)))
+  & @undefer ~ (a (b c))
+
+@IO/bind__C1 = (* (* (a (b ((c d) (e g))))))
+  & @IO/Call ~ (@IO/MAGIC (a (b ((c f) g))))
+  & @IO/bind ~ (d (e f))
+
+@IO/bind__C2 = (?((@IO/bind__C0 @IO/bind__C1) a) a)
+
+@IO/wrap = a
+  & @IO/Done ~ (@IO/MAGIC a)
+
+@String/Cons = (a (b ((@String/Cons/tag (a (b c))) c)))
+
+@String/Cons/tag = 1
+
+@String/Nil = ((@String/Nil/tag a) a)
+
+@String/Nil/tag = 0
+
+@call = (a (b c))
+  & @IO/Call ~ (@IO/MAGIC (a (b (@call__C0 c))))
+
+@call__C0 = a
+  & @IO/Done ~ (@IO/MAGIC a)
+
+@main = ab
+  & @IO/bind ~ (w ((((x x) (@IO/wrap z)) z) ab))
+  & @IO/FS/delete_directory ~ (v (@False w))
+  & @String/Cons ~ (46 (u v))
+  & @String/Cons ~ (47 (t u))
+  & @String/Cons ~ (100 (s t))
+  & @String/Cons ~ (101 (r s))
+  & @String/Cons ~ (108 (q r))
+  & @String/Cons ~ (101 (p q))
+  & @String/Cons ~ (116 (o p))
+  & @String/Cons ~ (101 (n o))
+  & @String/Cons ~ (95 (m n))
+  & @String/Cons ~ (100 (l m))
+  & @String/Cons ~ (105 (k l))
+  & @String/Cons ~ (114 (j k))
+  & @String/Cons ~ (95 (i j))
+  & @String/Cons ~ (102 (h i))
+  & @String/Cons ~ (105 (g h))
+  & @String/Cons ~ (108 (f g))
+  & @String/Cons ~ (101 (e f))
+  & @String/Cons ~ (46 (d e))
+  & @String/Cons ~ (98 (c d))
+  & @String/Cons ~ (101 (b c))
+  & @String/Cons ~ (110 (a b))
+  & @String/Cons ~ (100 (@String/Nil a))
+
+@test-io = 1
+
+@undefer = (((a a) b) b)
+
+

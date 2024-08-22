@@ -1,0 +1,261 @@
+@IO/Call = (a (b (c (d ((@IO/Call/tag (a (b (c (d e))))) e)))))
+
+@IO/Call/tag = 1
+
+@IO/Done = (a (b ((@IO/Done/tag (a (b c))) c)))
+
+@IO/Done/tag = 0
+
+@IO/FS/close = (f g)
+  & @IO/Call ~ (@IO/MAGIC (e (f (@IO/wrap g))))
+  & @String/Cons ~ (67 (d e))
+  & @String/Cons ~ (76 (c d))
+  & @String/Cons ~ (79 (b c))
+  & @String/Cons ~ (83 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@IO/FS/delete_directory = (q (r s))
+  & @call ~ (p ((q r) s))
+  & @String/Cons ~ (68 (o p))
+  & @String/Cons ~ (69 (n o))
+  & @String/Cons ~ (76 (m n))
+  & @String/Cons ~ (69 (l m))
+  & @String/Cons ~ (84 (k l))
+  & @String/Cons ~ (69 (j k))
+  & @String/Cons ~ (95 (i j))
+  & @String/Cons ~ (68 (h i))
+  & @String/Cons ~ (73 (g h))
+  & @String/Cons ~ (82 (f g))
+  & @String/Cons ~ (69 (e f))
+  & @String/Cons ~ (67 (d e))
+  & @String/Cons ~ (84 (c d))
+  & @String/Cons ~ (79 (b c))
+  & @String/Cons ~ (82 (a b))
+  & @String/Cons ~ (89 (@String/Nil a))
+
+@IO/FS/mkdir = f
+  & @call ~ (e f)
+  & @String/Cons ~ (77 (d e))
+  & @String/Cons ~ (75 (c d))
+  & @String/Cons ~ (68 (b c))
+  & @String/Cons ~ (73 (a b))
+  & @String/Cons ~ (82 (@String/Nil a))
+
+@IO/FS/open = (e (f g))
+  & @IO/Call ~ (@IO/MAGIC (d ((e f) (@IO/wrap g))))
+  & @String/Cons ~ (79 (c d))
+  & @String/Cons ~ (80 (b c))
+  & @String/Cons ~ (69 (a b))
+  & @String/Cons ~ (78 (@String/Nil a))
+
+@IO/FS/write = (f (g h))
+  & @IO/Call ~ (@IO/MAGIC (e ((f g) (@IO/wrap h))))
+  & @String/Cons ~ (87 (d e))
+  & @String/Cons ~ (82 (c d))
+  & @String/Cons ~ (73 (b c))
+  & @String/Cons ~ (84 (a b))
+  & @String/Cons ~ (69 (@String/Nil a))
+
+@IO/FS/write_file = (a (d f))
+  & @IO/bind ~ (c (((@IO/FS/write_file__C5 (d (@IO/wrap e))) e) f))
+  & @IO/FS/open ~ (a (b c))
+  & @String/Cons ~ (119 (@String/Nil b))
+
+@IO/FS/write_file__C0 = ((b c) (a (* c)))
+  & @Result/Ok ~ (a b)
+
+@IO/FS/write_file__C1 = (a (d (e (* g))))
+  & @IO/bind ~ (c (((@IO/FS/write_file__C0 (d (e f))) f) g))
+  & @IO/done_on_err ~ (b c)
+  & @IO/FS/close ~ (a b)
+
+@IO/FS/write_file__C2 = ({a e} ({b g} (f i)))
+  & @IO/bind ~ (d (((@IO/FS/write_file__C1 (e (f (g h)))) h) i))
+  & @IO/done_on_err ~ (c d)
+  & @IO/FS/write ~ (a (b c))
+
+@IO/FS/write_file__C3 = (* (a (* ((b c) c))))
+  & @Result/Err ~ (a b)
+
+@IO/FS/write_file__C4 = (?((@IO/FS/write_file__C2 @IO/FS/write_file__C3) a) a)
+
+@IO/FS/write_file__C5 = (a (b ((@IO/FS/write_file__C4 (a (b c))) c)))
+
+@IO/MAGIC = (13683217 16719857)
+
+@IO/bind = ((@IO/bind__C2 a) a)
+
+@IO/bind__C0 = (* (b (a c)))
+  & @undefer ~ (a (b c))
+
+@IO/bind__C1 = (* (* (a (b ((c d) (e g))))))
+  & @IO/Call ~ (@IO/MAGIC (a (b ((c f) g))))
+  & @IO/bind ~ (d (e f))
+
+@IO/bind__C2 = (?((@IO/bind__C0 @IO/bind__C1) a) a)
+
+@IO/done_on_err = ((@IO/done_on_err__C5 a) a)
+
+@IO/done_on_err__C0 = (a ((a b) b))
+
+@IO/done_on_err__C1 = (* (a (* c)))
+  & @IO/Done ~ (@IO/MAGIC (b c))
+  & @Result/Err ~ (a b)
+
+@IO/done_on_err__C2 = (?((@IO/done_on_err__C0 @IO/done_on_err__C1) a) a)
+
+@IO/done_on_err__C3 = a
+  & @IO/Done ~ a
+
+@IO/done_on_err__C4 = (* (a (b (c (d f)))))
+  & @IO/Call ~ (a (b (c (((@IO/done_on_err__C2 (d e)) e) f))))
+
+@IO/done_on_err__C5 = (?((@IO/done_on_err__C3 @IO/done_on_err__C4) a) a)
+
+@IO/wrap = a
+  & @IO/Done ~ (@IO/MAGIC a)
+
+@List/Cons = (a (b ((@List/Cons/tag (a (b c))) c)))
+
+@List/Cons/tag = 1
+
+@List/Nil = ((@List/Nil/tag a) a)
+
+@List/Nil/tag = 0
+
+@Result/Err = (a ((@Result/Err/tag (a b)) b))
+
+@Result/Err/tag = 1
+
+@Result/Ok = (a ((@Result/Ok/tag (a b)) b))
+
+@Result/Ok/tag = 0
+
+@String/Cons = (a (b ((@String/Cons/tag (a (b c))) c)))
+
+@String/Cons/tag = 1
+
+@String/Nil = ((@String/Nil/tag a) a)
+
+@String/Nil/tag = 0
+
+@String/encode_utf8 = ((@String/encode_utf8__C7 a) a)
+
+@String/encode_utf8__C0 = ({$([&0x000003F] g) {$([:>>0x0000006] $([&0x000003F] e)) {$([:>>0x000000C] $([&0x000003F] c)) $([:>>0x0000012] a)}}} (i n))
+  & @List/Cons ~ (b (m n))
+  & $(a b) ~ [|0x00000F0]
+  & @List/Cons ~ (d (l m))
+  & $(c d) ~ [|0x0000080]
+  & @List/Cons ~ (f (k l))
+  & $(e f) ~ [|0x0000080]
+  & @List/Cons ~ (h (j k))
+  & $(g h) ~ [|0x0000080]
+  & @String/encode_utf8 ~ (i j)
+
+@String/encode_utf8__C1 = (* ({$([&0x000003F] e) {$([:>>0x0000006] $([&0x000003F] c)) $([:>>0x000000C] a)}} (g k)))
+  & @List/Cons ~ (b (j k))
+  & $(a b) ~ [|0x00000E0]
+  & @List/Cons ~ (d (i j))
+  & $(c d) ~ [|0x0000080]
+  & @List/Cons ~ (f (h i))
+  & $(e f) ~ [|0x0000080]
+  & @String/encode_utf8 ~ (g h)
+
+@String/encode_utf8__C2 = ({$([<0x000FFFF] a) b} c)
+  & $(a ?((@String/encode_utf8__C0 @String/encode_utf8__C1) (b c))) ~ [=0x0000000]
+
+@String/encode_utf8__C3 = (* ({$([&0x000003F] c) $([:>>0x0000006] a)} (e h)))
+  & @List/Cons ~ (b (g h))
+  & $(a b) ~ [|0x00000C0]
+  & @List/Cons ~ (d (f g))
+  & $(c d) ~ [|0x0000080]
+  & @String/encode_utf8 ~ (e f)
+
+@String/encode_utf8__C4 = ({$([<0x00007FF] a) b} c)
+  & $(a ?((@String/encode_utf8__C2 @String/encode_utf8__C3) (b c))) ~ [=0x0000000]
+
+@String/encode_utf8__C5 = (* (a (b d)))
+  & @List/Cons ~ (a (c d))
+  & @String/encode_utf8 ~ (b c)
+
+@String/encode_utf8__C6 = (* ({$([<0x000007F] a) b} c))
+  & $(a ?((@String/encode_utf8__C4 @String/encode_utf8__C5) (b c))) ~ [=0x0000000]
+
+@String/encode_utf8__C7 = (?((@List/Nil @String/encode_utf8__C6) a) a)
+
+@True = 1
+
+@call = (a (b c))
+  & @IO/Call ~ (@IO/MAGIC (a (b (@call__C0 c))))
+
+@call__C0 = a
+  & @IO/Done ~ (@IO/MAGIC a)
+
+@main = xc
+  & @IO/bind ~ (b ((((tc (* vc)) (@IO/wrap wc)) wc) xc))
+  & @IO/FS/mkdir ~ (a b)
+  & @String/Cons ~ (65 (@String/Nil a))
+  & @IO/bind ~ (g ((((qc (* sc)) (tc uc)) uc) vc))
+  & @IO/FS/mkdir ~ (f g)
+  & @String/Cons ~ (65 (e f))
+  & @String/Cons ~ (47 (d e))
+  & @String/Cons ~ (65 (c d))
+  & @String/Cons ~ (65 (@String/Nil c))
+  & @IO/bind ~ (l ((((nc (* pc)) (qc rc)) rc) sc))
+  & @IO/FS/mkdir ~ (k l)
+  & @String/Cons ~ (65 (j k))
+  & @String/Cons ~ (47 (i j))
+  & @String/Cons ~ (65 (h i))
+  & @String/Cons ~ (66 (@String/Nil h))
+  & @IO/bind ~ (v ((((kc (* mc)) (nc oc)) oc) pc))
+  & @IO/FS/write_file ~ (s (u v))
+  & @String/Cons ~ (65 (r s))
+  & @String/Cons ~ (47 (q r))
+  & @String/Cons ~ (97 (p q))
+  & @String/Cons ~ (46 (o p))
+  & @String/Cons ~ (116 (n o))
+  & @String/Cons ~ (120 (m n))
+  & @String/Cons ~ (116 (@String/Nil m))
+  & @String/encode_utf8 ~ (t u)
+  & @String/Cons ~ (97 (@String/Nil t))
+  & @IO/bind ~ (kb ((((hc (* jc)) (kc lc)) lc) mc))
+  & @IO/FS/write_file ~ (gb (jb kb))
+  & @String/Cons ~ (65 (fb gb))
+  & @String/Cons ~ (47 (eb fb))
+  & @String/Cons ~ (65 (db eb))
+  & @String/Cons ~ (65 (cb db))
+  & @String/Cons ~ (47 (bb cb))
+  & @String/Cons ~ (97 (ab bb))
+  & @String/Cons ~ (97 (z ab))
+  & @String/Cons ~ (46 (y z))
+  & @String/Cons ~ (116 (x y))
+  & @String/Cons ~ (120 (w x))
+  & @String/Cons ~ (116 (@String/Nil w))
+  & @String/encode_utf8 ~ (ib jb)
+  & @String/Cons ~ (97 (hb ib))
+  & @String/Cons ~ (97 (@String/Nil hb))
+  & @IO/bind ~ (zb ((((ec (* gc)) (hc ic)) ic) jc))
+  & @IO/FS/write_file ~ (vb (yb zb))
+  & @String/Cons ~ (65 (ub vb))
+  & @String/Cons ~ (47 (tb ub))
+  & @String/Cons ~ (65 (sb tb))
+  & @String/Cons ~ (66 (rb sb))
+  & @String/Cons ~ (47 (qb rb))
+  & @String/Cons ~ (97 (pb qb))
+  & @String/Cons ~ (98 (ob pb))
+  & @String/Cons ~ (46 (nb ob))
+  & @String/Cons ~ (116 (mb nb))
+  & @String/Cons ~ (120 (lb mb))
+  & @String/Cons ~ (116 (@String/Nil lb))
+  & @String/encode_utf8 ~ (xb yb)
+  & @String/Cons ~ (97 (wb xb))
+  & @String/Cons ~ (98 (@String/Nil wb))
+  & @IO/bind ~ (bc ((((cc cc) (ec fc)) fc) gc))
+  & @IO/FS/delete_directory ~ (ac (@True bc))
+  & @String/Cons ~ (65 (@String/Nil ac))
+
+@test-io = 1
+
+@undefer = (((a a) b) b)
+
+
