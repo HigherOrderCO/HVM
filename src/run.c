@@ -1,6 +1,9 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <stdio.h>
+#include <dirent.h>
+#include <sys/stat.h>
+// #include <unistd.h>
 #include "hvm.c"
 
 // Readback: λ-Encoded Ctr
@@ -716,6 +719,104 @@ Port io_dl_close(Net* net, Book* book, Port argm) {
   return inject_ok(net, new_port(ERA, 0));
 }
 
+// Deletes a single file or an empty directory at the specified path.
+// Returns Ok(None) if successful, or Err(reason) if an error occurs.
+// This function attempts to remove both files and empty directories without
+// first checking the type of the path.
+// Returns: Result<*, IOError<i24>>
+Port io_delete_file(Net* net, Book* book, Port argm) {
+  Str path = readback_str(net, book, argm);
+
+  int result = remove(path.buf);
+  free(path.buf);
+
+  if (result == 0) {
+    return inject_ok(net, new_port(ERA, 0));
+  } else {
+    return inject_io_err_inner(net, new_port(NUM, new_i24(errno)));
+  }
+}
+
+int delete_directory_recursive(const char* path) {
+  DIR *d = opendir(path);
+  size_t path_len = strlen(path);
+  int r = -1;
+
+  if (d) {
+    struct dirent *p;
+    r = 0;
+
+    while (!r && (p = readdir(d))) {
+      int r2 = -1;
+      char *buf;
+      size_t len;
+
+      if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, "..")) {
+        continue;
+      }
+
+      len = path_len + strlen(p->d_name) + 2;
+      buf = malloc(len);
+
+      if (buf) {
+        struct stat statbuf;
+        snprintf(buf, len, "%s/%s", path, p->d_name);
+
+        if (!stat(buf, &statbuf)) {
+          if (S_ISDIR(statbuf.st_mode)) {
+            r2 = delete_directory_recursive(buf);
+          } else {
+            r2 = remove(buf);
+          }
+        }
+
+        free(buf);
+      }
+
+      r = r2;
+    }
+
+    closedir(d);
+  }
+
+  if (!r) {
+    r = remove(path);
+  }
+
+  return r;
+}
+
+// Deletes a directory at the specified path. If recursive is True,
+// it will delete the directory and all its contents.
+// Returns Ok(None) if successful, or Err(reason) if an error occurs.
+// Note: For non-recursive deletion of an empty directory,
+// this function behaves the same as delete_file(path).
+// Returns: Result<*, IOError<i24>>
+Port io_delete_directory(Net* net, Book* book, Port argm) {
+  Tup tup = readback_tup(net, book, argm, 2);
+  if (2 != tup.elem_len) {
+    return inject_io_err_type(net);
+  }
+
+  Str path = readback_str(net, book, tup.elem_buf[0]);
+  u32 rec  = get_u24(get_val(tup.elem_buf[1]));
+
+  int res;
+  if (rec) {
+    res = delete_directory_recursive(path.buf);
+    free(path.buf);
+  } else {
+    res = remove(path.buf);
+    free(path.buf);
+  }
+
+  if (0 == res) {
+    return inject_ok(net, new_port(ERA, 0));
+  } else {
+    return inject_io_err_inner(net, new_port(NUM, new_i24(errno)));
+  }
+}
+
 // Book Loader
 // -----------
 
@@ -731,6 +832,8 @@ void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_OPEN", io_dl_open};
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CALL", io_dl_call};
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CLOSE", io_dl_open};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DELETE_FILE", io_delete_file};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DELETE_DIRECTORY", io_delete_directory};
 }
 
 // Monadic IO Evaluator
