@@ -1,0 +1,6 @@
+---
+source: tests/run.rs
+expression: c_output
+input_file: tests/programs/io/delete_non_existing_file.hvm
+---
+Result: ((@IO/Done/tag (@IO/MAGIC (((1 (((2 (+2 x0)) x0) x1)) x1) x2))) x2)
