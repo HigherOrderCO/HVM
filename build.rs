@@ -2,14 +2,13 @@ fn main() {
   let cores = num_cpus::get();
   let tpcl2 = (cores as f64).log2().floor() as u32;
 
-  println!("cargo:rerun-if-changed=src/run.c");
-  println!("cargo:rerun-if-changed=src/hvm.c");
-  println!("cargo:rerun-if-changed=src/run.cu");
-  println!("cargo:rerun-if-changed=src/hvm.cu");
+  println!("cargo:rerun-if-changed=src/c");
+  println!("cargo:rerun-if-changed=src/cuda");
+
   println!("cargo:rustc-link-arg=-rdynamic");
 
   match cc::Build::new()
-      .file("src/run.c")
+      .file("src/c/run.c")
       .opt_level(3)
       .warnings(false)
       .define("TPC_L2", &*tpcl2.to_string())
@@ -32,7 +31,7 @@ fn main() {
 
     cc::Build::new()
       .cuda(true)
-      .file("src/run.cu")
+      .file("src/cuda/run.cu")
       .define("IO", None)
       .flag("-diag-suppress=177") // variable was declared but never referenced
       .flag("-diag-suppress=550") // variable was set but never used
