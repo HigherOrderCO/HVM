@@ -3,7 +3,6 @@
 
 #include "types.cuh"
 #include "config.cuh"
-#include "grid.cuh"
 #include "structs.cuh"
 #include <stdio.h>
 

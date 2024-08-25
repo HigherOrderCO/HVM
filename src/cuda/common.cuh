@@ -24,4 +24,16 @@ __host__ __device__ inline u64 time64() {
   return (u64)ts.tv_sec * 1000000000ULL + (u64)ts.tv_nsec;
 }
 
+__device__ inline u32 TID() {
+  return threadIdx.x;
+}
+
+__device__ inline u32 BID() {
+  return blockIdx.x;
+}
+
+__device__ inline u32 GID() {
+  return TID() + BID() * blockDim.x;
+}
+
 #endif // common_cuh_INCLUDED

@@ -14,7 +14,7 @@ struct Show {
 __device__ __host__ Show show_port(Port port);
 __device__ __host__ Show show_rule(Rule rule);
 
-__device__ void print_net(Net* net, u32 start, u32 end);
+__device__ __host__ void print_net(Net* net, u32 start, u32 end);
 __device__ void print_rbag(Net* net, TM* tm);
 __device__ void pretty_print_rbag(Net* net, RBag* rbag);
 __device__ void pretty_print_port(Net* net, Port port);

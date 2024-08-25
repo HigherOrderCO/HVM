@@ -4,7 +4,6 @@
 #include "port/port.cuh"
 #include "rule.cuh"
 #include "config.cuh"
-#include "grid.cuh"
 #include "constants.cuh"
 
 // Structures
@@ -105,8 +104,8 @@ struct Net {
   u32  *g_vars_put; // next global vars allocation index
 };
 
-// RBag
-// ----
+// Redex Bag
+// ---------
 
 __device__ RBag rbag_new() {
   RBag rbag;
@@ -147,6 +146,18 @@ __device__ Pair pop_redex(TM* tm) {
     return tm->rbag.lo_buf[(--tm->rbag.lo_end) % RLEN];
   } else {
     return 0;
+  }
+}
+
+// Sets the initial redex.
+__global__ void boot_redex(GNet* gnet, Pair redex) {
+  // Creates root variable.
+  gnet->vars_buf[get_val(ROOT)] = NONE;
+  // Creates root redex.
+  if (gnet->turn % 2 == 0) {
+    gnet->rbag_buf_A[0] = redex;
+  } else {
+    gnet->rbag_buf_B[0] = redex;
   }
 }
 

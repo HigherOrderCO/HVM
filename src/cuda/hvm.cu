@@ -544,18 +544,6 @@ __device__ void load_redexes(Net* net, TM *tm, u32 turn) {
 // Kernels
 // -------
 
-// Sets the initial redex.
-__global__ void boot_redex(GNet* gnet, Pair redex) {
-  // Creates root variable.
-  gnet->vars_buf[get_val(ROOT)] = NONE;
-  // Creates root redex.
-  if (gnet->turn % 2 == 0) {
-    gnet->rbag_buf_A[0] = redex;
-  } else {
-    gnet->rbag_buf_B[0] = redex;
-  }
-}
-
 // Creates a node.
 __global__ void make_node(GNet* gnet, Tag tag, Port fst, Port snd, Port* ret) {
   if (GID() == 0) {
