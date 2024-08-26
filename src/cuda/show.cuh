@@ -1,7 +1,10 @@
+// Utilities for converting some structures to strings, or printing them out.
+// These are useful for debugging and for printing the result of a reduction.
+
 #ifndef show_cuh_INCLUDED
 #define show_cuh_INCLUDED
 
-#include "port/numb.cuh"
+#include "numb.cuh"
 #include "pair.cuh"
 #include "structs.cuh"
 #include <string.h>
@@ -45,7 +48,7 @@ __device__ __host__ Show show_port(Port port) {
   return s;
 }
 
-__device__ Show show_rule(Rule rule) {
+__device__ __host__ Show show_rule(Rule rule) {
   Show s;
   switch (rule) {
     case LINK: memcpy(s.x, "LINK", 4); break;

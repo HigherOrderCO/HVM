@@ -1,7 +1,7 @@
 #ifndef constants_cuh_INCLUDED
 #define constants_cuh_INCLUDED
 
-#include "types.cuh"
+#include "common.cuh"
 
 // Special Substitution Map Values
 const Port FREE = 0x00000000;

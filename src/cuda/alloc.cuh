@@ -1,10 +1,15 @@
+// Functions to allocate variables and nodes.
+
 #ifndef alloc_cuh_INCLUDED
 #define alloc_cuh_INCLUDED
 
-#include "types.cuh"
+#include "common.cuh"
 #include "config.cuh"
-#include "structs.cuh"
+#include "structs/vnet.cuh"
 #include <stdio.h>
+
+// Local Net Allocations
+// ---------------------
 
 template <typename A>
 __device__ u32 g_alloc_1(Net* net, u32* g_put, A* g_buf) {
@@ -150,6 +155,30 @@ __device__ bool get_resources(Net* net, TM* tm, u32 need_rbag, u32 need_node, u3
     got_vars = l_vars_alloc(net, tm, need_vars);
   }
   return got_rbag >= need_rbag && got_node >= need_node && got_vars >= need_vars;
+}
+
+// Global Net Allocations
+// ----------------------
+
+// Creates a node.
+__global__ void make_node(GNet* gnet, Tag tag, Port fst, Port snd, Port* ret) {
+  if (GID() == 0) {
+    Net net = vnet_new(gnet, NULL, gnet->turn);
+    u32 loc = g_node_alloc_1(&net);
+    node_create(&net, loc, new_pair(fst, snd));
+    *ret = new_port(tag, loc);
+  }
+}
+
+// Allocs and creates a node, returning its port.
+Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
+  Port ret;
+  Port* d_ret;
+  cudaMalloc(&d_ret, sizeof(Port));
+  make_node<<<1,1>>>(gnet, tag, fst, snd, d_ret);
+  cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
+  cudaFree(d_ret);
+  return ret;
 }
 
 #endif // alloc_cuh_INCLUDED

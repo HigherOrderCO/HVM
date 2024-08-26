@@ -1,8 +1,14 @@
-#ifndef port_numb_cuh_INCLUDED
-#define port_numb_cuh_INCLUDED
+#ifndef numb_cuh_INCLUDED
+#define numb_cuh_INCLUDED
 
-#include "../types.cuh"
+#include "common.cuh"
 #include <math.h>
+
+// Numbs
+// -----
+// Numb ::= 29-bit (rounded up to u32)
+// One of the 8 possible kinds of values of a port.
+typedef u32 Numb;
 
 // Numeric Tags (Types and Operations)
 const Tag TY_SYM = 0x00;
@@ -29,7 +35,8 @@ const Tag FP_SHL = 0x14;
 const Tag OP_SHR = 0x15;
 const Tag FP_SHR = 0x16;
 
-// Numeric Bounds
+// Numeric Bounds, stored as floats since they are used for clamping
+// when casting a float to an (possibly unsigned) integer.
 const f32 U24_MAX = (f32) (1 << 24) - 1;
 const f32 U24_MIN = 0.0;
 const f32 I24_MAX = (f32) (1 << 23) - 1;
@@ -96,6 +103,12 @@ __host__ __device__ inline Numb partial(Numb a, Numb b) {
   return (b & ~0x1F) | get_sym(a);
 }
 
+// Clamps a float between two values.
+__host__ __device__ inline f32 clamp(f32 x, f32 min, f32 max) {
+  const f32 t = x < min ? min : x;
+  return (t > max) ? max : t;
+}
+
 // Cast a number to another type.
 // The semantics are meant to spiritually resemble rust's numeric casts:
 // - i24 <-> u24: is just reinterpretation of bits
@@ -116,7 +129,7 @@ __device__ __host__ inline Numb cast(Numb a, Numb b) {
     if (isnan(val)) {
       return new_u24(0);
     }
-    return new_u24((u32) clamp(val, 0.0, 16777215));
+    return new_u24((u32) clamp(val, U24_MIN, U24_MAX));
   }
 
   if (get_sym(a) == TY_I24 && get_typ(b) == TY_U24) {
@@ -130,7 +143,7 @@ __device__ __host__ inline Numb cast(Numb a, Numb b) {
     if (isnan(val)) {
       return new_i24(0);
     }
-    return new_i24((i32) clamp(val, -8388608.0, 8388607.0));
+    return new_i24((i32) clamp(val, I24_MIN, I24_MAX));
   }
 
   if (get_sym(a) == TY_F24 && get_typ(b) == TY_U24) return new_f24((f32) get_u24(b));
@@ -249,4 +262,4 @@ __device__ __host__ inline Numb operate(Numb a, Numb b) {
   }
 }
 
-#endif // port_numb_cuh_INCLUDED
+#endif // numb_cuh_INCLUDED

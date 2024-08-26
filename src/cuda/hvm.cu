@@ -2,108 +2,16 @@
 #define WITH_MAIN
 
 #include "alloc.cuh"
-#include "port/numb.cuh"
+#include "structs/tm.cuh"
+#include "structs/book.cuh"
+#include "structs/gnet.cuh"
+#include "structs/rbag.cuh"
+#include "numb.cuh"
 #include "show.cuh"
+#include "sync.cuh"
 
 #include <stdio.h>
 #include <stdlib.h>
-
-__device__ __host__ Pair set_par_flag(Pair pair) {
-  Port p1 = get_fst(pair);
-  Port p2 = get_snd(pair);
-  if (get_tag(p1) == REF) {
-    return new_pair(new_port(get_tag(p1), get_val(p1) | 0x10000000), p2);
-  } else {
-    return pair;
-  }
-}
-
-__device__ __host__ Pair clr_par_flag(Pair pair) {
-  Port p1 = get_fst(pair);
-  Port p2 = get_snd(pair);
-  if (get_tag(p1) == REF) {
-    return new_pair(new_port(get_tag(p1), get_val(p1) & 0xFFFFFFF), p2);
-  } else {
-    return pair;
-  }
-}
-
-__device__ __host__ bool get_par_flag(Pair pair) {
-  Port p1 = get_fst(pair);
-  if (get_tag(p1) == REF) {
-    return (get_val(p1) >> 28) == 1;
-  } else {
-    return false;
-  }
-}
-
-// Utils
-// -----
-
-// Transposes an index over a matrix.
-__device__ u32 transpose(u32 idx, u32 width, u32 height) {
-  u32 old_row = idx / width;
-  u32 old_col = idx % width;
-  u32 new_row = old_col % height;
-  u32 new_col = old_col / height + old_row * (width / height);
-  return new_row * width + new_col;
-}
-
-// Returns true if all 'x' are true, block-wise
-__device__ __noinline__ bool block_all(bool x) {
-  __shared__ bool res;
-  if (TID() == 0) res = true;
-  __syncthreads();
-  if (!x) res = false;
-  __syncthreads();
-  return res;
-}
-
-// Returns true if any 'x' is true, block-wise
-__device__ __noinline__ bool block_any(bool x) {
-  __shared__ bool res;
-  if (TID() == 0) res = false;
-  __syncthreads();
-  if (x) res = true;
-  __syncthreads();
-  return res;
-}
-
-// Returns the sum of a value, block-wise
-template <typename A>
-__device__ __noinline__ A block_sum(A x) {
-  __shared__ A res;
-  if (TID() == 0) res = 0;
-  __syncthreads();
-  atomicAdd(&res, x);
-  __syncthreads();
-  return res;
-}
-
-// Returns the sum of a boolean, block-wise
-__device__ __noinline__ u32 block_count(bool x) {
-  __shared__ u32 res;
-  if (TID() == 0) res = 0;
-  __syncthreads();
-  atomicAdd(&res, x);
-  __syncthreads();
-  return res;
-}
-
-// Prints a 4-bit value for each thread in a block
-__device__ void block_print(u32 x) {
-  __shared__ u8 value[TPB];
-
-  value[TID()] = x;
-  __syncthreads();
-
-  if (TID() == 0) {
-    for (u32 i = 0; i < TPB; ++i) {
-      printf("%x", min(value[i],0xF));
-    }
-  }
-  __syncthreads();
-}
 
 // Linking
 // -------
@@ -482,6 +390,16 @@ __device__ bool interact(Net* net, TM* tm, Pair redex, u32 turn) {
 // RBag Save/Load
 // --------------
 
+// Transposes an index over a matrix.
+__device__ u32 transpose(u32 idx, u32 width, u32 height) {
+  u32 old_row = idx / width;
+  u32 old_col = idx % width;
+  u32 new_row = old_col % height;
+  u32 new_col = old_col / height + old_row * (width / height);
+  return new_row * width + new_col;
+}
+
+
 // Moves redexes from shared memory to global bag
 __device__ void save_redexes(Net* net, TM *tm, u32 turn) {
   u32 idx = 0;
@@ -543,57 +461,6 @@ __device__ void load_redexes(Net* net, TM *tm, u32 turn) {
 
 // Kernels
 // -------
-
-// Creates a node.
-__global__ void make_node(GNet* gnet, Tag tag, Port fst, Port snd, Port* ret) {
-  if (GID() == 0) {
-    Net net = vnet_new(gnet, NULL, gnet->turn);
-    u32 loc = g_node_alloc_1(&net);
-    node_create(&net, loc, new_pair(fst, snd));
-    *ret = new_port(tag, loc);
-  }
-}
-
-__global__ void inbetween(GNet* gnet) {
-  // Clears rbag use counter
-  if (gnet->turn % 2 == 0) {
-    gnet->rbag_use_A = 0;
-  } else {
-    gnet->rbag_use_B = 0;
-  }
-
-  // Increments gnet turn
-  gnet->turn += 1;
-
-  // Increments interaction counter
-  gnet->itrs += gnet->iadd;
-
-  // Resets the rdec variable
-  gnet->rdec = 0;
-
-  // Moves to next mode
-  if (!gnet->down) {
-    gnet->mode = min(gnet->mode + 1, WORK);
-  }
-
-  // If no work was done...
-  if (gnet->iadd == 0) {
-    // If on seed mode, go up to GROW mode
-    if (gnet->mode == SEED) {
-      gnet->mode = GROW;
-      gnet->down = 0;
-    // Otherwise, go down to SEED mode
-    } else {
-      gnet->mode = SEED;
-      gnet->down = 1;
-      gnet->rdec = 1; // peel one rpos
-    }
-    //printf(">> CHANGE MODE TO %d | %d <<\n", gnet->mode, gnet->down);
-  }
-
-  // Reset interaction adder
-  gnet->iadd = 0;
-}
 
 // EVAL
 __global__ void evaluator(GNet* gnet) {
@@ -808,53 +675,6 @@ __global__ void evaluator(GNet* gnet) {
 // GNet Host Functions
 // -------------------
 
-// Initializes the GNet
-__global__ void initialize(GNet* gnet) {
-  gnet->node_put[GID()] = 0;
-  gnet->vars_put[GID()] = 0;
-  gnet->rbag_pos[GID()] = 0;
-  for (u32 i = 0; i < RLEN; ++i) {
-    gnet->rbag_buf_A[G_RBAG_LEN / TPG * GID() + i] = 0;
-  }
-  for (u32 i = 0; i < RLEN; ++i) {
-    gnet->rbag_buf_B[G_RBAG_LEN / TPG * GID() + i] = 0;
-  }
-}
-
-GNet* gnet_create() {
-  GNet *gnet;
-  cudaMalloc((void**)&gnet, sizeof(GNet));
-  initialize<<<BPG, TPB>>>(gnet);
-  //cudaMemset(gnet, 0, sizeof(GNet));
-  return gnet;
-}
-
-u32 gnet_get_rlen(GNet* gnet, u32 turn) {
-  u32 rbag_use;
-  if (turn % 2 == 0) {
-    cudaMemcpy(&rbag_use, &gnet->rbag_use_B, sizeof(u32), cudaMemcpyDeviceToHost);
-  } else {
-    cudaMemcpy(&rbag_use, &gnet->rbag_use_A, sizeof(u32), cudaMemcpyDeviceToHost);
-  }
-  return rbag_use;
-}
-
-u64 gnet_get_itrs(GNet* gnet) {
-  u64 itrs;
-  cudaMemcpy(&itrs, &gnet->itrs, sizeof(u64), cudaMemcpyDeviceToHost);
-  return itrs;
-}
-
-u64 gnet_get_leak(GNet* gnet) {
-  u64 leak;
-  cudaMemcpy(&leak, &gnet->leak, sizeof(u64), cudaMemcpyDeviceToHost);
-  return leak;
-}
-
-void gnet_boot_redex(GNet* gnet, Pair redex) {
-  boot_redex<<<BPG, TPB>>>(gnet, redex);
-}
-
 void gnet_normalize(GNet* gnet) {
   // Invokes the Evaluator Kernel repeatedly
   u32 turn;
@@ -868,7 +688,7 @@ void gnet_normalize(GNet* gnet) {
     //cudaDeviceSynchronize();
 
     evaluator<<<BPG, TPB, sizeof(LNet)>>>(gnet);
-    inbetween<<<1, 1>>>(gnet);
+    gnet_inbetween<<<1, 1>>>(gnet);
     //cudaDeviceSynchronize();
 
     //count_memory<<<BPG, TPB>>>(gnet);
@@ -886,35 +706,6 @@ void gnet_normalize(GNet* gnet) {
   }
 }
 
-// Reads a device node to host
-Pair gnet_node_load(GNet* gnet, u32 loc) {
-  Pair pair;
-  cudaMemcpy(&pair, &gnet->node_buf[loc], sizeof(Pair), cudaMemcpyDeviceToHost);
-  return pair;
-}
-
-// Reads a device var to host
-Port gnet_vars_load(GNet* gnet, u32 loc) {
-  Pair port;
-  cudaMemcpy(&port, &gnet->vars_buf[loc], sizeof(Port), cudaMemcpyDeviceToHost);
-  return port;
-}
-
-// Writes a host var to device
-void gnet_vars_create(GNet* gnet, u32 var, Port val) {
-  cudaMemcpy(&gnet->vars_buf[var], &val, sizeof(Port), cudaMemcpyHostToDevice);
-}
-
-// Like the enter() function, but from host and read-only
-Port gnet_peek(GNet* gnet, Port port) {
-  while (get_tag(port) == VAR) {
-    Port val = gnet_vars_load(gnet, get_val(port));
-    if (val == NONE) break;
-    port = val;
-  }
-  return port;
-}
-
 // Expands a REF Port.
 Port gnet_expand(GNet* gnet, Port port) {
   Port old = gnet_vars_load(gnet, get_val(ROOT));
@@ -927,95 +718,6 @@ Port gnet_expand(GNet* gnet, Port port) {
   }
   gnet_vars_create(gnet, get_val(ROOT), old);
   return got;
-}
-
-// Allocs and creates a node, returning its port.
-Port gnet_make_node(GNet* gnet, Tag tag, Port fst, Port snd) {
-  Port ret;
-  Port* d_ret;
-  cudaMalloc(&d_ret, sizeof(Port));
-  make_node<<<1,1>>>(gnet, tag, fst, snd, d_ret);
-  cudaMemcpy(&ret, d_ret, sizeof(Port), cudaMemcpyDeviceToHost);
-  cudaFree(d_ret);
-  return ret;
-}
-
-// Book Loader
-// -----------
-
-bool book_load(Book* book, u32* buf) {
-  // Reads defs_len
-  book->defs_len = *buf++;
-
-  // Parses each def
-  for (u32 i = 0; i < book->defs_len; ++i) {
-    // Reads fid
-    u32 fid = *buf++;
-
-    // Gets def
-    Def* def = &book->defs_buf[fid];
-
-    // Reads name
-    memcpy(def->name, buf, 256);
-    buf += 64;
-
-    // Reads safe flag
-    def->safe = *buf++;
-
-    // Reads lengths
-    def->rbag_len = *buf++;
-    def->node_len = *buf++;
-    def->vars_len = *buf++;
-
-    if (def->rbag_len > L_NODE_LEN/TPB) {
-      fprintf(stderr, "def '%s' has too many redexes: %u\n", def->name, def->rbag_len);
-      return false;
-    }
-
-    if (def->node_len > L_NODE_LEN/TPB) {
-      fprintf(stderr, "def '%s' has too many nodes: %u\n", def->name, def->node_len);
-      return false;
-    }
-
-    // Reads root
-    def->root = *buf++;
-
-    // Reads rbag_buf
-    memcpy(def->rbag_buf, buf, 8*def->rbag_len);
-    buf += def->rbag_len * 2;
-
-    // Reads node_buf
-    memcpy(def->node_buf, buf, 8*def->node_len);
-    buf += def->node_len * 2;
-  }
-
-  return true;
-}
-
-__device__ u32 NODE_COUNT;
-__device__ u32 VARS_COUNT;
-
-__global__ void count_memory(GNet* gnet) {
-  u32 node_count = 0;
-  u32 vars_count = 0;
-  for (u32 i = GID(); i < G_NODE_LEN; i += TPG) {
-    if (gnet->node_buf[i] != 0) ++node_count;
-    if (gnet->vars_buf[i] != 0) ++vars_count;
-  }
-
-  __shared__ u32 block_node_count;
-  __shared__ u32 block_vars_count;
-
-  if (TID() == 0) block_node_count = 0;
-  if (TID() == 0) block_vars_count = 0;
-  __syncthreads();
-
-  atomicAdd(&block_node_count, node_count);
-  atomicAdd(&block_vars_count, vars_count);
-  __syncthreads();
-
-  if (TID() == 0) atomicAdd(&NODE_COUNT, block_node_count);
-  if (TID() == 0) atomicAdd(&VARS_COUNT, block_vars_count);
 }
 
 // Demos

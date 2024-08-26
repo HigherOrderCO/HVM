@@ -1,8 +1,8 @@
 #ifndef rule_cuh_INCLUDED
 #define rule_cuh_INCLUDED
 
-#include "types.cuh"
-#include "port/port.cuh"
+#include "common.cuh"
+#include "port.cuh"
 #include "pair.cuh"
 
 // Given two tags, gets their interaction rule. Uses a u64mask lookup table.

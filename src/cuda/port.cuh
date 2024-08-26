@@ -1,8 +1,8 @@
-#ifndef port_port_cuh_INCLUDED
-#define port_port_cuh_INCLUDED
+#ifndef port_cuh_INCLUDED
+#define port_cuh_INCLUDED
 
-#include "../types.cuh"
-#include "../config.cuh"
+#include "common.cuh"
+#include "config.cuh"
 
 __host__ __device__ inline Port new_port(Tag tag, Val val) {
   return (val << 3) | tag;
@@ -36,7 +36,7 @@ __device__ __host__ inline bool is_global(Port a) {
   return (is_nod(a) || is_var(a)) && get_val(a) >= L_NODE_LEN;
 }
 
-// TODO(enricozb): move swap stuff to some internal file
+// TODO(enricozb): consider moving swap stuff to some internal file
 
 // Swaps two ports.
 __host__ __device__ inline void swap(Port *a, Port *b) {
@@ -48,4 +48,4 @@ __device__ __host__ inline bool should_swap(Port A, Port B) {
   return get_tag(B) < get_tag(A);
 }
 
-#endif // port_port_cuh_INCLUDED
+#endif // port_cuh_INCLUDED
