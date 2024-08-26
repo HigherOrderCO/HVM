@@ -714,6 +714,13 @@ Port io_seek(GNet* gnet, Port argm) {
   return gnet_inject_ok(gnet, new_port(ERA, 0));
 }
 
+// TODO: write a time64() function that returns the time as fast as possible as a u64
+__host__ __device__ inline u64 time64() {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (u64)ts.tv_sec * 1000000000ULL + (u64)ts.tv_nsec;
+}
+
 // Returns the current time as a tuple of the high
 // and low 24 bits of a 48-bit nanosecond timestamp.
 // Returns: Result<(u24, u24), IOError<*>>
