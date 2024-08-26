@@ -1,7 +1,7 @@
+#include "hvm.cuh"
 #include <dlfcn.h>
 #include <errno.h>
 #include <stdio.h>
-#include "hvm.cu"
 
 // Readback: λ-Encoded Ctr
 struct Ctr {
@@ -823,7 +823,7 @@ Port io_dl_call(GNet* gnet, Port argm) {
 // Closes a loaded dylib, reclaiming the handle.
 //
 // Returns:  Result<*, IOError<String>>
-Port io_dl_close(GNet* gnet, Book* book, Port argm) {
+Port io_dl_close(GNet* gnet, Port argm) {
   void* dl = readback_dylib(argm);
   if (dl == NULL) {
     fprintf(stderr, "io_dl_close: invalid handle\n");

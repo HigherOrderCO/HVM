@@ -10,6 +10,10 @@
 //COMPILED_BOOK_BUF//
 ///COMPILED_INTERACT_CALL///
 
+#ifdef IO
+void do_run_io(GNet* gnet, Book* book, Port port);
+#endif
+
 // Normalize the root net in book_buffer and print the result.
 extern "C" void hvm_cu(u32* book_buffer) {
   // Loads the Book
@@ -36,7 +40,6 @@ extern "C" void hvm_cu(u32* book_buffer) {
   gnet_boot_redex(gnet, new_pair(new_port(REF, 0), ROOT));
 
   #ifdef IO
-  void do_run_io(GNet* gnet, Book* book, Port port);
   do_run_io(gnet, book, ROOT);
   #else
   gnet_normalize(gnet);

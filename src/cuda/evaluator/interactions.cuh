@@ -1,10 +1,10 @@
 #ifndef evaluator_interactions_cuh_INCLUDED
 #define evaluator_interactions_cuh_INCLUDED
 
-#include "alloc.cuh"
-#include "numb.cuh"
-#include "structs/rbag.cuh"
-#include "structs/gnet.cuh"
+#include "../alloc.cuh"
+#include "../numb.cuh"
+#include "../structs/rbag.cuh"
+#include "../structs/gnet.cuh"
 
 // Linking
 // -------

@@ -145,7 +145,7 @@ fn main() {
       //let hvm_c = hvm_c.replace("#define INTERPRETED", "#define COMPILED");
       
       // Generates the Cuda file
-      let hvm_cu = include_str!("cuda/hvm.cu");
+      let hvm_cu = include_str!("cuda/main.cu");
       let hvm_cu = format!("#define IO\n\n{hvm_cu}");
       let hvm_cu = hvm_cu.replace("//COMPILED_BOOK_BUF//", &bookb);
       let hvm_cu = hvm_cu.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
