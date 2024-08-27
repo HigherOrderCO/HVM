@@ -1,6 +1,10 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <stdio.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <string.h>
+#include <unistd.h>
 #include "hvm.cu"
 
 // Readback: λ-Encoded Ctr
@@ -834,6 +838,121 @@ Port io_dl_close(GNet* gnet, Book* book, Port argm) {
   return gnet_inject_ok(gnet, new_port(ERA, 0));
 }
 
+// Deletes a single file or an empty directory at the specified path.
+// Returns Ok(None) if successful, or Err(reason) if an error occurs.
+// This function attempts to remove both files and empty directories without
+// first checking the type of the path.
+// Returns: Result<*, IOError<i24>>
+Port io_delete_file(GNet* gnet, Port argm) {
+  Str s = gnet_readback_str(gnet, argm);
+
+  int result = remove(s.buf);
+  free(s.buf);
+
+  if (result == 0) {
+    return gnet_inject_ok(gnet, new_port(ERA, 0));
+  } else {
+    return gnet_inject_io_err_inner(gnet, new_port(NUM, new_i24(errno)));
+  }
+}
+
+int delete_directory_recursive(const char* path) {
+  DIR* d = opendir(path);
+  size_t path_len = strlen(path);
+  int r = -1;
+
+  if (d) {
+    struct dirent *p;
+    r = 0;
+
+    while (!r && (p = readdir(d))) {
+      int r2 = -1;
+      char* buf;
+      size_t len;
+
+      if (!strcmp(p->d_name, ".") || !strcmp(p->d_name, "..")) {
+        continue;
+      }
+
+      len = path_len + strlen(p->d_name) + 2;
+      buf = malloc(len);
+
+      if (buf) {
+        struct stat statbuf;
+        snprintf(buf, len, "%s/%s", path, p->d_name);
+
+        if (!stat(buf, &statbuf)) {
+          if (S_ISDIR(statbuf.st_mode)) {
+            r2 = delete_directory_recursive(buf);
+          } else {
+            r2 = remove(buf);
+          }
+        }
+
+        free(buf);
+      }
+
+      r = r2;
+    }
+
+    closedir(d);
+  }
+
+  if (!r) {
+    r = rmdir(path);
+  }
+
+  return r;
+}
+
+// Deletes a directory at the specified path. If recursive is True,
+// it will delete the directory and all its contents.
+// Returns Ok(None) if successful, or Err(reason) if an error occurs.
+// Note: For non-recursive deletion of an empty directory,
+// this function behaves the same as delete_file(path).
+// Returns: Result<*, IOError<i24>>
+Port io_delete_directory(GNet* gnet, Port argm) {
+  Tup tup = gnet_readback_tup(gnet, argm, 2);
+  if (tup.elem_len != 2) {
+    fprintf(stderr, "io_delete_directory: expected tuple\n");
+
+    return gnet_inject_io_err_type(gnet);
+  }
+
+  Str path = gnet_readback_str(gnet, tup.elem_buf[0]);
+  u32 rec  = get_u24(get_val(tup.elem_buf[1]));
+  int res;
+  if (rec) {
+    res = delete_directory_recursive(path.buf);
+  } else {
+    res = rmdir(path.buf);
+  }
+  free(path.buf);
+
+  if (res == 0) {
+    return gnet_inject_ok(gnet, new_port(ERA, 0));
+  } else {
+    return gnet_inject_io_err_inner(gnet, new_port(NUM, new_i24(errno)));
+  }
+}
+
+// Creates a new directory with the given path.
+// Returns Ok(None) if sucessfull, or Err(reason) if an error occurs.
+// Returns: Result<*, IOError<i24>>
+Port io_mkdir(GNet* gnet, Port argm) {
+  Str name = gnet_readback_str(gnet, argm);
+
+  const mode_t mode = 0777;
+  int result = mkdir(name.buf, mode);
+  free(name.buf);
+
+  if (result) {
+    return gnet_inject_io_err_inner(gnet, new_port(NUM, new_i24(errno)));
+  } else {
+    return gnet_inject_ok(gnet, new_port(ERA, 0));
+  }
+}
+
 void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"READ", io_read};
   book->ffns_buf[book->ffns_len++] = (FFn){"OPEN", io_open};
@@ -846,6 +965,9 @@ void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_OPEN", io_dl_open};
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CALL", io_dl_call};
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CLOSE", io_dl_open};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DELETE_FILE", io_delete_file};
+  book->ffns_buf[book->ffns_len++] = (FFn){"DELETE_DIRECTORY", io_delete_directory};
+  book->ffns_buf[book->ffns_len++] = (FFn){"MKDIR", io_mkdir};
 
   cudaMemcpyToSymbol(BOOK, book, sizeof(Book));
 }
