@@ -875,7 +875,7 @@ int delete_directory_recursive(const char* path) {
       }
 
       len = path_len + strlen(p->d_name) + 2;
-      buf = malloc(len);
+      buf = (char*) malloc(len);
 
       if (buf) {
         struct stat statbuf;
