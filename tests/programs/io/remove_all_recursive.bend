@@ -1,5 +1,5 @@
 #{
-  Creates the following tree structure and then deletes A and its children.
+  Creates the following tree structure and then removes A and its children.
   A
   |-- a.txt
   |-- AA
@@ -10,23 +10,26 @@
 
 test-io = 1
 
-IO/FS/mkdir path =
+mkdir path =
   (call "MKDIR" path)
 
-IO/FS/delete_directory path recursive =
-  (call "DELETE_DIRECTORY" (path, recursive))
+rm_all path =
+  (call "RM_ALL" path)
 
-True = 1
-
-main =
+test =
   with IO {
-    ask * = (IO/FS/mkdir "A")
-    ask * = (IO/FS/mkdir "A/AA")
-    ask * = (IO/FS/mkdir "A/AB")
+    ask * = (mkdir "A")
+    ask * = (mkdir "A/AA")
+    ask * = (mkdir "A/AB")
     ask * = (IO/FS/write_file "A/a.txt" (String/encode_utf8 "a"))
     ask * = (IO/FS/write_file "A/AA/aa.txt" (String/encode_utf8 "aa"))
     ask * = (IO/FS/write_file "A/AB/ab.txt" (String/encode_utf8 "ab"))
-
-    ask s = (IO/FS/delete_directory "A" True)
+    ask s = (rm_all "./A")
     (wrap s)
+  }
+
+main =
+  with IO {
+    ask res = (test)
+    (wrap res)
   }
