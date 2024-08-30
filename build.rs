@@ -37,8 +37,6 @@ fn main() {
       .flag("-diag-suppress=177") // variable was declared but never referenced
       .flag("-diag-suppress=550") // variable was set but never used
       .flag("-diag-suppress=20039") // a __host__ function redeclared with __device__, hence treated as a __host__ __device__ function
-      .flag("-diag-suppress=68") // integer conversion resulted in a change of sign
-      .flag("-diag-suppress=2464") // conversion from a string literal to "char *" is deprecated
       .compile("hvm-cu");
 
     println!("cargo:rustc-cfg=feature=\"cuda\"");
