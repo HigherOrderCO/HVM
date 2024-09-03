@@ -1,6 +1,13 @@
+#ifndef __APPLE__
+#define _XOPEN_SOURCE 500
+#endif
+
 #include <dlfcn.h>
 #include <errno.h>
 #include <stdio.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <ftw.h>
 #include "hvm.c"
 
 // Readback: λ-Encoded Ctr
@@ -716,6 +723,76 @@ Port io_dl_close(Net* net, Book* book, Port argm) {
   return inject_ok(net, new_port(ERA, 0));
 }
 
+// Deletes a single file or an empty directory at the specified path.
+// Returns Ok(None) if successful, or Err(reason) if an error occurs.
+// This function attempts to remove both files and empty directories without
+// first checking the type of the path.
+// Returns: Result<*, IOError<i24>>
+Port io_remove(Net* net, Book* book, Port argm) {
+  Str path = readback_str(net, book, argm);
+
+  int result = remove(path.buf);
+  free(path.buf);
+
+  if (result == 0) {
+    return inject_ok(net, new_port(ERA, 0));
+  } else {
+    return inject_io_err_inner(net, new_port(NUM, new_i24(errno)));
+  }
+}
+
+int remove_all_aux(const char* path, const struct stat* stat, int flags, struct FTW* ftw) {
+  return remove(path);
+}
+
+int remove_all(const char* path) {
+  struct stat st;
+  if (stat(path, &st) != 0) {
+    return remove(path);
+  }
+  if (S_ISDIR(st.st_mode)) {
+    return nftw(path, remove_all_aux, 32, FTW_DEPTH | FTW_PHYS);
+  } else {
+    return remove(path);
+  }
+}
+
+// Removes any file or directory recursively at the specified path.
+// it will delete the directory and all its contents.
+// Returns Ok(None) if successful, or Err(reason) if an error occurs.
+// Note: For non-recursive deletion of an empty directory,
+// this function behaves the same as delete_file(path).
+// Returns: Result<*, IOError<i24>>
+Port io_remove_all(Net* net, Book* book, Port argm) {
+  Str path = readback_str(net, book, argm);
+
+  int res = remove_all(path.buf);
+  free(path.buf);
+
+  if (0 == res) {
+    return inject_ok(net, new_port(ERA, 0));
+  } else {
+    return inject_io_err_inner(net, new_port(NUM, new_i24(errno)));
+  }
+}
+
+// Creates a new directory with the given path.
+// Returns Ok(None) if sucessfull, or Err(reason) if an error occurs.
+// Returns: Result<*, IOError<i24>>
+Port io_mkdir(Net* net, Book* book, Port argm) {
+  Str name = readback_str(net, book, argm);
+
+  const mode_t mode = 0777;
+  int status = mkdir(name.buf, mode);
+  free(name.buf);
+
+  if (status) {
+    return inject_io_err_inner(net, new_port(NUM, new_i24(errno)));
+  } else {
+    return inject_ok(net, new_port(ERA, 0));
+  }
+}
+
 // Book Loader
 // -----------
 
@@ -731,6 +808,9 @@ void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_OPEN", io_dl_open};
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CALL", io_dl_call};
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CLOSE", io_dl_open};
+  book->ffns_buf[book->ffns_len++] = (FFn){"RM", io_remove};
+  book->ffns_buf[book->ffns_len++] = (FFn){"RM_ALL", io_remove_all};
+  book->ffns_buf[book->ffns_len++] = (FFn){"MKDIR", io_mkdir};
 }
 
 // Monadic IO Evaluator
