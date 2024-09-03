@@ -1,3 +1,7 @@
+#ifndef __APPLE__
+#define _XOPEN_SOURCE 500
+#endif
+
 #include <dlfcn.h>
 #include <errno.h>
 #include <stdio.h>
