@@ -1,6 +1,8 @@
 #include <dlfcn.h>
 #include <errno.h>
+#include <unistd.h>
 #include <stdio.h>
+#include <sys/wait.h>
 #include "hvm.c"
 
 // Readback: λ-Encoded Ctr
@@ -15,6 +17,15 @@ typedef struct Tup {
   u32  elem_len;
   Port elem_buf[8];
 } Tup;
+
+// Readback: List(String)
+// A list of null-terminated strings.
+// `strs` should also be null-terminated, that is
+// list_str.strs[list_str.len] = 0
+typedef struct ListStr {
+  u32  len;
+  char **strs;
+} ListStr;
 
 // Readback: λ-Encoded Str (UTF-32), null-terminated
 // FIXME: this is actually ASCII :|
@@ -177,6 +188,75 @@ Str readback_str(Net* net, Book* book, Port port) {
   str.buf[str.len] = 0;
 
   return str;
+}
+
+// Converts a Port into a list of strings.
+ListStr readback_list_str(Net* net, Book* book, Port port) {
+  ListStr list_str;
+  u32 capacity = 4;
+  list_str.strs = (char**) malloc(sizeof(char*) * capacity);
+  list_str.len = 0;
+
+  // Readback loop
+  while (true) {
+    // Normalizes the net
+    normalize(net, book);
+
+    // Reads the λ-Encoded Ctr
+    Ctr ctr = readback_ctr(net, book, peek(net, port));
+
+    // Reads string layer
+    switch (ctr.tag) {
+      case LIST_NIL: {
+        break;
+      }
+      case LIST_CONS: {
+        if (ctr.args_len != 2) break;
+
+        Str str = readback_str(net, book, ctr.args_buf[0]);
+
+        if (list_str.len == capacity - 1) {
+          capacity *= 2;
+          list_str.strs = realloc(list_str.strs, capacity);
+        }
+
+        list_str.strs[list_str.len++] = str.buf;
+
+        boot_redex(net, new_pair(ctr.args_buf[1], ROOT));
+        port = ROOT;
+        continue;
+      }
+    }
+    break;
+  }
+
+  list_str.strs[list_str.len] = 0;
+
+  return list_str;
+}
+
+// Injects a tuple.
+Port inject_tup(Net* net, Tup tup) {
+  if (tup.elem_len <= 1) {
+    fprintf(stderr, "inject_tup: tuple must have size at least 2\n");
+    return new_port(ERA, 0);
+  }
+
+  if (!get_resources(net, tm[0], 0, tup.elem_len - 1, 0)) {
+    fprintf(stderr, "inject_tup: failed to get resources\n");
+    return new_port(ERA, 0);
+  }
+
+  i32 i = tup.elem_len - 1;
+  Port ret = tup.elem_buf[i];
+  while (--i >= 0) {
+    u32 n = tm[0]->nloc[i];
+    node_create(net, n, new_pair(tup.elem_buf[i], ret));
+
+    ret = new_port(CON, n);
+  }
+
+  return ret;
 }
 
 /// Returns a λ-Encoded Ctr for a NIL: λt (t NIL)
@@ -716,6 +796,104 @@ Port io_dl_close(Net* net, Book* book, Port argm) {
   return inject_ok(net, new_port(ERA, 0));
 }
 
+// Read all bytes from a file descriptor, used by io_exec.
+Bytes read_all(int fd) {
+  Bytes bytes;
+  u32 capacity = 256;
+  bytes.buf = (char*) malloc(sizeof(char) * capacity);
+  bytes.len = 0;
+
+  u32 bytes_read;
+
+  while (true) {
+    u32 bytes_read = read(fd, bytes.buf + bytes.len, capacity - bytes.len);
+    if (bytes_read == 0) {
+      break;
+    }
+
+    bytes.len += bytes_read;
+
+    if (bytes.len == capacity - 1) {
+      capacity *= 2;
+      bytes.buf = realloc(bytes.buf, capacity);
+    }
+  }
+
+  bytes.buf[bytes.len] = 0;
+
+  return bytes;
+}
+
+// Executes a subprocess returning its stdout, stderr, and exit
+// status as a three tuple.
+//
+// `argm` is a n-tuple of arguments passed to exec. Note: n must
+// be at most 8.
+//
+// Returns:  Result<(Sring, String, u24), IOError<String>>
+Port io_exec(Net* net, Book* book, Port argm) {
+  ListStr args = readback_list_str(net, book, argm);
+
+  int stdout_pipe[2], stderr_pipe[2];
+  pid_t pid;
+
+  if (pipe(stdout_pipe) == -1 || pipe(stderr_pipe) == -1) {
+    return inject_io_err_str(net, "failed to create pipes");
+  }
+
+  pid = fork();
+  if (pid == -1) {
+    return inject_io_err_str(net, "failed to fork");
+  }
+
+  if (pid == 0) {
+    // child process
+    dup2(stdout_pipe[1], STDOUT_FILENO);
+    dup2(stderr_pipe[1], STDERR_FILENO);
+    close(stdout_pipe[0]);
+    close(stderr_pipe[0]);
+    close(stdout_pipe[1]);
+    close(stderr_pipe[1]);
+
+    execvp(args.strs[0], args.strs);
+
+    fprintf(stderr, "failed to exec subprocess");
+
+    exit(1);
+  }
+
+  // parent process
+
+  close(stdout_pipe[1]);
+  close(stderr_pipe[1]);
+
+  Bytes res_stdout = read_all(stdout_pipe[0]);
+  Bytes res_stderr = read_all(stderr_pipe[0]);
+
+  int status;
+  waitpid(pid, &status, 0);
+
+  int res_status;
+  if (WIFEXITED(status)) {
+    res_status = WEXITSTATUS(status);
+  } else {
+    // Indicate abnormal termination
+    res_status = -1;
+  }
+
+  Tup res;
+  res.elem_len = 3;
+
+  res.elem_buf[0] = inject_bytes(net, &res_stdout);
+  res.elem_buf[1] = inject_bytes(net, &res_stderr);
+  res.elem_buf[2] = new_port(NUM, new_i24(res_status));
+
+  free(res_stdout.buf);
+  free(res_stderr.buf);
+
+  return inject_ok(net, inject_tup(net, res));
+}
+
 // Book Loader
 // -----------
 
@@ -731,6 +909,7 @@ void book_init(Book* book) {
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_OPEN", io_dl_open};
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CALL", io_dl_call};
   book->ffns_buf[book->ffns_len++] = (FFn){"DL_CLOSE", io_dl_open};
+  book->ffns_buf[book->ffns_len++] = (FFn){"EXEC", io_exec};
 }
 
 // Monadic IO Evaluator
