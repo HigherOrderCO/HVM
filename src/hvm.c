@@ -809,7 +809,7 @@ static inline Port enter(Net* net, Port var) {
 }
 
 // Atomically Links `A ~ B`.
-static inline void link(Net* net, TM* tm, Port A, Port B) {
+static inline void link_ports(Net* net, TM* tm, Port A, Port B) {
   // Attempts to directionally point `A ~> B`
   while (true) {
     // If `A` is NODE: swap `A` and `B`, and continue
@@ -842,7 +842,7 @@ static inline void link(Net* net, TM* tm, Port A, Port B) {
 
 // Links `A ~ B` (as a pair).
 static inline void link_pair(Net* net, TM* tm, Pair AB) {
-  link(net, tm, get_fst(AB), get_snd(AB));
+  link_ports(net, tm, get_fst(AB), get_snd(AB));
 }
 
 // Interactions
