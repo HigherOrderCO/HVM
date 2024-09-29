@@ -68,7 +68,7 @@ syntax for wiring interaction nets. For example:
 ```
 
 The file above implements a recursive sum. If that looks unreadable to you -
-don't worry, it isn't meant to. [Bend](https://github.com/HigherOrderCO/Bend) is
-the human-readable language and should be used both by end users and by languages
+don't worry, it isn't meant to be used directly. [Bend](https://github.com/HigherOrderCO/Bend)
+is the human-readable language and should be used both by end users and by languages
 aiming to target the HVM. If you're looking to learn more about the core
 syntax and tech, though, please check the [PAPER](./paper/HVM2.pdf).
