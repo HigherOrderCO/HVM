@@ -72,3 +72,28 @@ don't worry, it isn't meant to. [Bend](https://github.com/HigherOrderCO/Bend) is
 the human-readable language and should be used both by end users and by languages
 aiming to target the HVM. If you're looking to learn more about the core
 syntax and tech, though, please check the [PAPER](./paper/HVM2.pdf).
+
+Interaction Net graph dumping and visualization
+-----------------------------------------------
+
+With the rust interpreter (`hvm run`), every evaluation step can be dumped with
+the `--dump` command line option. You can dump in sequential mode (only one
+redex is evaluated in each step) or, with the `--parallel` option,
+in parallel mode (all redexes are evaluated in each step).
+
+The dump will be written to the file `dots.js` in the current directory.
+
+You can view the graph dump as follows: Copy the file `dots.js` to the HVM
+directory, then open `index.html` in your browser. You can step through
+the graph with the wasd keys.
+
+How parallel is my Bend/HVM program?
+------------------------------------
+
+With the `--parallel` option, HVM also calculates the average number of regexes
+in each step, thus giving a measurement of how parallel a given bend program is.
+
+You can use the `--parallel` option without the `--dump` option as well.
+
+With the `--profile` option, a parallelization profile will be written to
+`profile.csv`. This file contains the number of regexes per step.
