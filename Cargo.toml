@@ -27,6 +27,7 @@ default = []
 # C and CUDA features are determined during build
 c = []
 cuda = []
+hip = []
 
 [dev-dependencies]
 insta = { version = "1.39.0", features = ["glob"] }

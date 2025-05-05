@@ -6,6 +6,8 @@ fn main() {
   println!("cargo:rerun-if-changed=src/hvm.c");
   println!("cargo:rerun-if-changed=src/run.cu");
   println!("cargo:rerun-if-changed=src/hvm.cu");
+  println!("cargo:rerun-if-changed=src/run.hip");
+  println!("cargo:rerun-if-changed=src/hvm.hip");
   println!("cargo:rustc-link-arg=-rdynamic");
 
   match cc::Build::new()
@@ -40,6 +42,16 @@ fn main() {
       .compile("hvm-cu");
 
     println!("cargo:rustc-cfg=feature=\"cuda\"");
+  }
+  else if std::process::Command::new("hipcc").arg("--version").stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status().is_ok() {
+    std::env::set_var("CXX", "hipcc");
+    cc::Build::new()
+      .cpp(true)
+      .file("src/run.hip")
+      .define("IO", None)
+      .flag("-w")  // Tempararily supress all warnings as some cannot be supressed individually TODO : Actually fix the warnings
+      .compile("hvm-rocm");
+    println!("cargo:rustc-cfg=feature=\"hip\"");
   }
   else {
     println!("cargo:warning=\x1b[1m\x1b[31mWARNING: CUDA compiler not found.\x1b[0m \x1b[1mHVM will not be able to run on GPU.\x1b[0m");

@@ -19,6 +19,11 @@ extern "C" {
   fn hvm_cu(book_buffer: *const u32);
 }
 
+#[cfg(feature = "hip")]
+extern "C" {
+  fn hvm_hip(book_buffer: *const u32);
+}
+
 fn main() {
   let matches = Command::new("hvm")
     .about("HVM2: Higher-order Virtual Machine 2 (32-bit Version)")
@@ -47,6 +52,14 @@ fn main() {
           .action(ArgAction::SetTrue)
           .help("Run with IO enabled")))
     .subcommand(
+      Command::new("run-hip")
+        .about("Interprets a file (using HIP)")
+        .arg(Arg::new("file").required(true))
+        .arg(Arg::new("io")
+          .long("io")
+          .action(ArgAction::SetTrue)
+          .help("Run with IO enabled")))
+    .subcommand(
       Command::new("gen-c")
         .about("Compiles a file with IO (to standalone C)")
         .arg(Arg::new("file").required(true))
@@ -57,6 +70,14 @@ fn main() {
     .subcommand(
       Command::new("gen-cu")
         .about("Compiles a file (to standalone CUDA)")
+        .arg(Arg::new("file").required(true))
+        .arg(Arg::new("io")
+          .long("io")
+          .action(ArgAction::SetTrue)
+          .help("Generate with IO enabled")))
+    .subcommand(
+      Command::new("gen-hip")
+        .about("Compiles a file (to standalone HIP)")
         .arg(Arg::new("file").required(true))
         .arg(Arg::new("io")
           .long("io")
@@ -96,6 +117,19 @@ fn main() {
       }
       #[cfg(not(feature = "cuda"))]
       println!("CUDA runtime not available!\n If you've installed CUDA and nvcc after HVM, please reinstall HVM.");
+    }
+    Some(("run-hip", sub_matches)) => {
+      let file = sub_matches.get_one::<String>("file").expect("required");
+      let code = fs::read_to_string(file).expect("Unable to read file");
+      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
+      let mut data : Vec<u8> = Vec::new();
+      book.to_buffer(&mut data);
+      #[cfg(feature = "hip")]
+      unsafe {
+        hvm_hip(data.as_mut_ptr() as *mut u32);
+      }
+      #[cfg(not(feature = "hip"))]
+      println!("HIP runtime not available!\n If you've installed HIP and nvcc after HVM, please reinstall HVM.");
     }
     Some(("gen-c", sub_matches)) => {
       // Reads book from file
@@ -152,6 +186,26 @@ fn main() {
       let hvm_cu = format!("{hvm_cu}\n\n{}", include_str!("run.cu"));
       let hvm_cu = hvm_cu.replace(r#"#include "hvm.cu""#, "");
       println!("{}", hvm_cu);
+    }
+    Some(("gen-hip", sub_matches)) => {
+      // Reads book from file
+      let file = sub_matches.get_one::<String>("file").expect("required");
+      let code = fs::read_to_string(file).expect("Unable to read file");
+      let book = ast::Book::parse(&code).unwrap_or_else(|er| panic!("{}",er)).build();
+
+      // Generates the interpreted book
+      let mut book_buf : Vec<u8> = Vec::new();
+      book.to_buffer(&mut book_buf);
+      let bookb = format!("{:?}", book_buf).replace("[","{").replace("]","}");
+      let bookb = format!("static const u8 BOOK_BUF[] = {};", bookb);
+
+      let hvm_hip = include_str!("hvm.hip");
+      let hvm_hip = format!("#define IO\n\n{hvm_hip}");
+      let hvm_hip = hvm_hip.replace("//COMPILED_BOOK_BUF//", &bookb);
+      let hvm_hip = hvm_hip.replace("#define WITHOUT_MAIN", "#define WITH_MAIN");
+      let hvm_hip = format!("{hvm_hip}\n\n{}", include_str!("run.hip"));
+      let hvm_hip = hvm_hip.replace(r#"#include "hvm.hip""#, "");
+      println!("{}", hvm_hip);
     }
     _ => unreachable!(),
   }
