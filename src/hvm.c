@@ -42,6 +42,25 @@ typedef _Atomic(u64) a64;
 #endif
 #define TPC (1ul << TPC_L2)
 
+// Active worker count. Defaults to the compiled TPC; can be lowered at
+// startup via the HVM_THREADS environment variable (clamped to [1, TPC]).
+// The thread pool, barrier and work-stealing ring all use this count, while
+// the per-thread memory partitioning keeps the compiled TPC stride, so idle
+// workers simply never start.
+static u32 hvm_tpc = TPC;
+static bool hvm_tpc_from_env = false;
+
+// Reads HVM_THREADS once at startup. Unset/invalid values keep the compiled TPC.
+static void hvm_tpc_init() {
+  const char* env = getenv("HVM_THREADS");
+  if (env == NULL || *env == '\0') return;
+  char* end = NULL;
+  long val = strtol(env, &end, 10);
+  if (end == NULL || *end != '\0' || val < 1) return;
+  hvm_tpc = val > (long)TPC ? (u32)TPC : (u32)val;
+  hvm_tpc_from_env = true;
+}
+
 // Types
 // -----
 
@@ -272,7 +291,7 @@ a64 a_reached = 0; // number of threads that reached the current barrier
 a64 a_barrier = 0; // number of barriers passed during this program
 void sync_threads() {
   u64 barrier_old = atomic_load_explicit(&a_barrier, memory_order_relaxed);
-  if (atomic_fetch_add_explicit(&a_reached, 1, memory_order_relaxed) == (TPC - 1)) {
+  if (atomic_fetch_add_explicit(&a_reached, 1, memory_order_relaxed) == (hvm_tpc - 1)) {
     // Last thread to reach the barrier resets the counter and advances the barrier
     atomic_store_explicit(&a_reached, 0, memory_order_relaxed);
     atomic_store_explicit(&a_barrier, barrier_old + 1, memory_order_release);
@@ -1126,7 +1145,7 @@ static inline bool interact(Net* net, TM* tm, Book* book) {
 
 void evaluator(Net* net, TM* tm, Book* book) {
   // Initializes the global idle counter
-  atomic_store_explicit(&net->idle, TPC - 1, memory_order_relaxed);
+  atomic_store_explicit(&net->idle, hvm_tpc - 1, memory_order_relaxed);
   sync_threads();
 
   // Performs some interactions
@@ -1154,7 +1173,10 @@ void evaluator(Net* net, TM* tm, Book* book) {
       busy = false;
 
       //// Peeks a redex from target
-      u32 sid = (tm->tid - 1) % TPC;
+      // (tid + hvm_tpc - 1) % hvm_tpc: predecessor in the ring of ACTIVE
+      // threads; the unsigned-wrap trick of (tid - 1) % TPC only works for
+      // power-of-two counts, which hvm_tpc need not be.
+      u32 sid = (tm->tid + hvm_tpc - 1) % hvm_tpc;
       u32 idx = sid*(G_RBAG_LEN/TPC) + (tm->sidx++);
 
       // Stealing Everything: this will steal all redexes
@@ -1171,7 +1193,7 @@ void evaluator(Net* net, TM* tm, Book* book) {
       sched_yield();
       // Halt if all threads are idle
       if (tick % 256 == 0) {
-        if (atomic_load_explicit(&net->idle, memory_order_relaxed) == TPC) {
+        if (atomic_load_explicit(&net->idle, memory_order_relaxed) == hvm_tpc) {
           break;
         }
       }
@@ -1211,7 +1233,7 @@ void boot_redex(Net* net, Pair redex) {
 void normalize(Net* net, Book* book) {
   // Inits thread_arg objects
   ThreadArg thread_arg[TPC];
-  for (u32 t = 0; t < TPC; ++t) {
+  for (u32 t = 0; t < hvm_tpc; ++t) {
     thread_arg[t].net  = net;
     thread_arg[t].tm   = tm[t];
     thread_arg[t].book = book;
@@ -1219,12 +1241,12 @@ void normalize(Net* net, Book* book) {
 
   // Spawns the evaluation threads
   pthread_t threads[TPC];
-  for (u32 t = 0; t < TPC; ++t) {
+  for (u32 t = 0; t < hvm_tpc; ++t) {
     pthread_create(&threads[t], NULL, thread_func, &thread_arg[t]);
   }
 
   // Wait for the threads to finish
-  for (u32 t = 0; t < TPC; ++t) {
+  for (u32 t = 0; t < hvm_tpc; ++t) {
     pthread_join(threads[t], NULL);
   }
 }
@@ -1741,6 +1763,9 @@ void do_run_io(Net* net, Book* book, Port port);
 // ----
 
 void hvm_c(u32* book_buffer) {
+  // Applies HVM_THREADS (if set) before any thread is spawned
+  hvm_tpc_init();
+
   // Creates static TMs
   alloc_static_tms();
 
@@ -1783,6 +1808,11 @@ void hvm_c(u32* book_buffer) {
   printf("- ITRS: %" PRIu64 "\n", itrs);
   printf("- TIME: %.2fs\n", duration);
   printf("- MIPS: %.2f\n", (double)itrs / duration / 1000000.0);
+  // Readback so tools can confirm HVM_THREADS took effect; only printed when
+  // the env var was set, keeping default output byte-identical.
+  if (hvm_tpc_from_env) {
+    printf("- THREADS: %u\n", hvm_tpc);
+  }
 
   // Frees everything
   free_static_tms();
